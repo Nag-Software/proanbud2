@@ -1,0 +1,257 @@
+"use client";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Search, Plus, MoreHorizontal, Shield, Mail, X } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuPortal } from "@/components/ui/dropdown-menu";
+import { updateUserRole } from "./actions";
+
+const fallbackEmployees: any[] = [];
+
+export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }) {
+  const [employees, setEmployees] = useState(initialEmployees ?? fallbackEmployees);
+  const [search, setSearch] = useState("");
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("Håndverker");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+
+  const filteredEmployees = employees.filter(e => 
+    e.name.toLowerCase().includes(search.toLowerCase()) || 
+    e.email.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const handleInvite = async () => {
+    if (!inviteEmail) return;
+    setIsSubmitting(true);
+    
+    try {
+      const resp = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail, role_ids: [inviteRole] })
+      });
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        console.error("API Error details:", errData);
+        throw new Error(errData.error || "Feil under utsendelse av invitasjon");
+      }
+      
+      const data = await resp.json();
+      console.log("Invitation created. Mock URL (sendt på epost egentlig):", data.invitationUrl);
+      
+      setEmployees([...employees, {
+        id: Math.random().toString(),
+        name: "Avventer Registrering",
+        email: inviteEmail,
+        role: inviteRole,
+        status: "Invitert"
+      }]);
+      
+      setInviteLink(data.invitationUrl);
+    } catch (error) {
+      console.error(error);
+      alert("Kunne ikke sende invitasjon.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    try {
+      const result = await updateUserRole(userId, newRole);
+      if (result.error) {
+        alert(result.error);
+        return;
+      }
+      setEmployees(employees.map(e => e.id === userId ? { ...e, role: newRole } : e));
+    } catch (error) {
+      console.error(error);
+      alert("Kunne ikke endre rolle.");
+    }
+  };
+
+  const closeDialog = () => {
+    setIsInviteOpen(false);
+    setTimeout(() => {
+      setInviteLink(null);
+      setInviteEmail("");
+      setInviteRole("Håndverker");
+    }, 300);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input 
+            type="search" 
+            placeholder="Søk i ansatte..." 
+            className="pl-9" 
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <Button onClick={() => setIsInviteOpen(true)} className="w-full sm:w-auto gap-2">
+          <Plus className="h-4 w-4" /> Inviter ansatt
+        </Button>
+      </div>
+      <div className="border rounded-lg">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-muted/50 border-b">
+              <tr>
+                <th className="px-3 py-2 font-medium">Navn</th>
+                <th className="px-3 py-2 font-medium">E-post</th>
+                <th className="px-3 py-2 font-medium">Rolle</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium text-right">Handlinger</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredEmployees.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center p-8 text-muted-foreground">Ingen ansatte funnet.</td>
+                </tr>
+              ) : (
+                filteredEmployees.map((e) => (
+                  <tr key={e.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                    <td className="px-3 py-2 font-medium">{e.name}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{e.email}</td>
+                    <td className="px-3 py-2">{e.role}</td>
+                    <td className="px-3 py-2">
+                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                          e.status === "Aktiv" ? "bg-green-100 text-green-800" :
+                          "bg-amber-100 text-amber-800"
+                        }`}>
+                          {e.status === "Aktiv" ? "🟢 " : "🟡 "}{e.status}
+                        </span>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {e.status === "Invitert" ? (
+                             <>
+                               <DropdownMenuItem><Mail className="mr-2 h-4 w-4" /> Gjensend invitasjon</DropdownMenuItem>
+                               <DropdownMenuSeparator />
+                               <DropdownMenuItem className="text-destructive"><X className="mr-2 h-4 w-4" /> Trekk tilbake</DropdownMenuItem>
+                             </>
+                          ) : (
+                             <>
+                              <DropdownMenuSub>
+                                <DropdownMenuSubTrigger>
+                                  <Shield className="mr-2 h-4 w-4" />
+                                  <span>Endre rolle</span>
+                                </DropdownMenuSubTrigger>
+                                <DropdownMenuPortal>
+                                  <DropdownMenuSubContent>
+                                    <DropdownMenuItem onClick={() => handleRoleChange(e.id, "Administrator")}>
+                                      <span>Administrator</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleRoleChange(e.id, "Prosjektleder")}>
+                                      <span>Prosjektleder</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleRoleChange(e.id, "Håndverker")}>
+                                      <span>Håndverker</span>
+                                    </DropdownMenuItem>
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuPortal>
+                              </DropdownMenuSub>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-destructive"><X className="mr-2 h-4 w-4" /> Deaktiver ansatt</DropdownMenuItem>
+                             </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+      <Dialog open={isInviteOpen} onOpenChange={closeDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{inviteLink ? "Invitasjon Sendt!" : "Inviter ny ansatt"}</DialogTitle>
+            <DialogDescription>
+              {inviteLink 
+                ? "E-post med invitasjon ble sendt av gårde (via Resend)." 
+                : "Send en invitasjon for å gi noen tilgang til bedriftens workspace."}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {inviteLink ? (
+            <div className="grid gap-4 py-4">
+               <div className="space-y-4 text-center">
+                 <Mail className="h-12 w-12 mx-auto text-green-500" />
+                 <p className="text-sm">En invitasjons-epost ble sendt til <b>{inviteEmail}</b>.</p>
+                 <div className="mt-4 p-4 border rounded-md text-left text-xs text-muted-foreground bg-muted">
+                    <p className="font-semibold mb-2">Fallback for lokal testing (dersom mail ikke kommer frem):</p>
+                    <Input readOnly value={inviteLink} className="bg-background cursor-copy" onClick={e => {
+                        (e.target as HTMLInputElement).select();
+                        navigator.clipboard.writeText(inviteLink);
+                    }}/>
+                 </div>
+               </div>
+            </div>
+          ) : (
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">E-postadresse</Label>
+                <Input 
+                  id="email" 
+                  type="email" 
+                  placeholder="ansatt@domene.no" 
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="role">Velg Rolle</Label>
+                <Select value={inviteRole} onValueChange={setInviteRole}>
+                  <SelectTrigger id="role">
+                    <SelectValue placeholder="Velg en rolle" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Administrator">Administrator (Full tilgang)</SelectItem>
+                    <SelectItem value="Prosjektleder">Prosjektleder</SelectItem>
+                    <SelectItem value="Håndverker">Håndverker (Begrenset)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            {inviteLink ? (
+              <Button onClick={() => {
+                closeDialog();
+              }}>Lukk</Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={closeDialog}>Avbryt</Button>
+                <Button onClick={handleInvite} disabled={!inviteEmail || isSubmitting}>
+                  {isSubmitting ? "Sender..." : "Send invitasjon"}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

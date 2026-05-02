@@ -1,7 +1,26 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "www.tripletex.no"
+      },
+      {
+        protocol: "https",
+        hostname: "fiken.no"
+      },
+      {
+        protocol: "https",
+        hostname: "brandlogos.net"
+      },
+      {
+        protocol: "https",
+        hostname: "companieslogo.com" 
+      }
+    ]
+  }
 };
 
 export default nextConfig;

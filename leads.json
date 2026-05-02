@@ -1,0 +1,46 @@
+[
+  {
+    "firma": "nag snekkersrvice",
+    "navn": "casper nag",
+    "stilling": "Daglig leder",
+    "email": "nasdasd@ijisd.no",
+    "telefon": "",
+    "antallForslag": "11-50",
+    "startTidspunkt": "2026-10-10",
+    "acceptAgreement": true,
+    "timestamp": "2025-10-21T03:51:32.194Z"
+  },
+  {
+    "firma": "nag snekkerservice",
+    "navn": "casper nag",
+    "stilling": "daglig leder",
+    "email": "nagsnekker@outlook.com",
+    "telefon": "48338033",
+    "antallForslag": "1-10",
+    "startTidspunkt": "2026-10-17",
+    "acceptAgreement": true,
+    "timestamp": "2025-10-21T09:21:59.253Z"
+  },
+  {
+    "firma": "nag snekkerservice",
+    "navn": "casper nag",
+    "stilling": "Daglig leder",
+    "email": "casper_nag@outlook.com",
+    "telefon": "48338033",
+    "antallForslag": "1-10",
+    "startTidspunkt": "2004-10-17",
+    "acceptAgreement": true,
+    "timestamp": "2025-10-24T01:41:48.581Z"
+  },
+  {
+    "firma": "nag snekkerservice",
+    "navn": "casper nag",
+    "stilling": "Daglig leder",
+    "email": "casper_nag@outlook.com",
+    "telefon": "48338033",
+    "antallForslag": "1-10",
+    "startTidspunkt": "2004-10-17",
+    "acceptAgreement": true,
+    "timestamp": "2025-10-24T01:42:34.862Z"
+  }
+]

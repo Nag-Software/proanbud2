@@ -1,0 +1,38 @@
+
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import InboxClient from "./inbox-client";
+import { AppPageShell } from "@/components/app-page-shell";
+
+export const metadata = {
+  title: "Innboks - Proanbud",
+};
+
+export default async function Page() {
+  const supabase = createClient();
+
+  const {
+    data: { user },
+  } = await (await supabase).auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: userData } = await (await supabase)
+    .from("users")
+    .select("company_id")
+    .eq("id", user.id)
+    .single();
+
+  if (!userData?.company_id) {
+    redirect("/login");
+  }
+
+  return (
+
+    <AppPageShell segments={["Meldinger"]}>
+      <InboxClient companyId={userData.company_id} currentUserId={user.id} />
+    </AppPageShell>
+  );
+}

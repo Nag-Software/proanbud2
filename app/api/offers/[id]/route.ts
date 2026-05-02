@@ -1,0 +1,166 @@
+import { NextResponse } from "next/server"
+
+import { createClient } from "@/lib/supabase/server"
+import { calculateOfferTotals, type OfferLineItem } from "@/lib/tilbud/types"
+
+type UpdatePayload = {
+  title?: string
+  description?: string
+  status?: "draft" | "sent" | "accepted" | "rejected"
+  quoteValidUntil?: string | null
+  customerName?: string
+  customerEmail?: string
+  customerPhone?: string
+  customerAddress?: string
+  customerPostalCode?: string
+  customerCity?: string
+  customerOrgNumber?: string
+  recipientName?: string
+  recipientEmail?: string
+  recipientPhone?: string
+  sourceSummary?: string
+  lineItems?: OfferLineItem[]
+}
+
+function normalizeLineItems(input: unknown): OfferLineItem[] {
+  if (!Array.isArray(input)) return []
+
+  return input.map((row) => {
+    const item = row as Partial<OfferLineItem>
+    return {
+      id: String(item.id || crypto.randomUUID()),
+      subproject: String(item.subproject || "Generelt"),
+      title: String(item.title || ""),
+      description: String(item.description || ""),
+      quantity: Number(item.quantity || 0),
+      unit: String(item.unit || "stk"),
+      supplier: String(item.supplier || ""),
+      supplierSku: item.supplierSku ? String(item.supplierSku) : undefined,
+      supplierUrl: item.supplierUrl ? String(item.supplierUrl) : undefined,
+      unitPriceNok: Number(item.unitPriceNok || 0),
+      markupPercent: Number(item.markupPercent || 0),
+      discountPercent: Number(item.discountPercent || 0),
+    }
+  })
+}
+
+async function resolveContext() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
+  }
+
+  const { data: userRow } = await supabase.from("users").select("company_id").eq("id", user.id).maybeSingle()
+  if (!userRow?.company_id) {
+    return { error: NextResponse.json({ error: "Company context missing" }, { status: 400 }) }
+  }
+
+  return { supabase, companyId: userRow.company_id }
+}
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await resolveContext()
+  if ("error" in ctx) return ctx.error
+
+  const { id } = await params
+  const payload = (await request.json()) as UpdatePayload
+
+  const { data: existingOffer, error: existingOfferError } = await ctx.supabase
+    .from("offers")
+    .select("id, customer_id")
+    .eq("id", id)
+    .eq("company_id", ctx.companyId)
+    .maybeSingle()
+
+  if (existingOfferError || !existingOffer) {
+    return NextResponse.json({ error: existingOfferError?.message || "Offer not found" }, { status: 404 })
+  }
+
+  if (payload.status === "sent") {
+    return NextResponse.json(
+      { error: "Direkte sending av tilbud er deaktivert. Send kontrakt fra tilbudssiden." },
+      { status: 400 }
+    )
+  }
+
+  const lineItems = normalizeLineItems(payload.lineItems)
+  const totals = calculateOfferTotals(lineItems)
+
+  const updateRow = {
+    title: payload.title?.trim() || "Uten tittel",
+    description: payload.description?.trim() || "",
+    status: payload.status || "draft",
+    quote_valid_until: payload.quoteValidUntil || null,
+    recipient_name: payload.recipientName?.trim() || null,
+    recipient_email: payload.recipientEmail?.trim() || null,
+    recipient_phone: payload.recipientPhone?.trim() || null,
+    source_summary: payload.sourceSummary?.trim() || "",
+    line_items: lineItems,
+    subtotal_nok: totals.subtotalNok,
+    discount_nok: totals.discountNok,
+    amount_nok: Math.round(totals.totalNok),
+    sent_at: payload.status === "sent" ? new Date().toISOString() : null,
+    updated_at: new Date().toISOString(),
+  }
+
+  const { data, error } = await ctx.supabase
+    .from("offers")
+    .update(updateRow)
+    .eq("id", id)
+    .eq("company_id", ctx.companyId)
+    .select("id, amount_nok, subtotal_nok, discount_nok, updated_at")
+    .single()
+
+  if (error || !data) {
+    return NextResponse.json({ error: error?.message || "Offer not found" }, { status: 400 })
+  }
+
+  if (existingOffer.customer_id) {
+    const hasCustomerUpdates =
+      payload.customerName !== undefined ||
+      payload.customerEmail !== undefined ||
+      payload.customerPhone !== undefined ||
+      payload.customerAddress !== undefined ||
+      payload.customerPostalCode !== undefined ||
+      payload.customerCity !== undefined ||
+      payload.customerOrgNumber !== undefined
+
+    const customerUpdatePayload = {
+      name: payload.customerName?.trim() || null,
+      email: payload.customerEmail?.trim() || null,
+      phone: payload.customerPhone?.trim() || null,
+      address: payload.customerAddress?.trim() || null,
+      postal_code: payload.customerPostalCode?.trim() || null,
+      city: payload.customerCity?.trim() || null,
+      org_number: payload.customerOrgNumber?.trim() || null,
+      updated_at: new Date().toISOString(),
+    }
+
+    if (hasCustomerUpdates) {
+      const { error: customerUpdateError } = await ctx.supabase
+        .from("customers")
+        .update(customerUpdatePayload)
+        .eq("id", existingOffer.customer_id)
+        .eq("company_id", ctx.companyId)
+
+      if (customerUpdateError) {
+        return NextResponse.json({ error: customerUpdateError.message }, { status: 400 })
+      }
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    offer: {
+      id: data.id,
+      amountNok: Number(data.amount_nok || 0),
+      subtotalNok: Number(data.subtotal_nok || 0),
+      discountNok: Number(data.discount_nok || 0),
+      updatedAt: data.updated_at || null,
+    },
+  })
+}
