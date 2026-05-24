@@ -72,10 +72,6 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
   const [renameTarget, setRenameTarget] = useState<DocumentItem | null>(null)
   const [renameValue, setRenameValue] = useState("")
 
-  const [previewTarget, setPreviewTarget] = useState<DocumentItem | null>(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
-  const [previewText, setPreviewText] = useState<string | null>(null)
-
   const files = useMemo(() => items.filter((item) => item.itemType === "file"), [items])
 
   const filteredFiles = useMemo(() => {
@@ -204,41 +200,10 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
     }
   }
 
-  async function onOpenPreview(item: DocumentItem) {
-    setPreviewTarget(item)
-    setPreviewText(null)
-
-    if (!item.downloadUrl) return
-
-    const canLoadAsText =
-      item.mimeType?.startsWith("text/") ||
-      ["txt", "md", "json", "csv", "xml", "html"].includes((item.extension ?? "").toLowerCase())
-
-    if (!canLoadAsText) return
-
-    setPreviewLoading(true)
-    try {
-      const res = await fetch(item.downloadUrl)
-      if (!res.ok) {
-        setPreviewText("Kunne ikke laste innholdet.")
-        return
-      }
-
-      setPreviewText(await res.text())
-    } catch {
-      setPreviewText("Kunne ikke laste innholdet.")
-    } finally {
-      setPreviewLoading(false)
-    }
+  function openFile(item: DocumentItem) {
+    const url = item.webUrl ?? item.downloadUrl
+    if (url) window.open(url, "_blank", "noreferrer")
   }
-
-  const previewUrl = previewTarget?.webUrl ?? previewTarget?.downloadUrl ?? null
-  const isImage = Boolean(previewTarget?.mimeType?.startsWith("image/"))
-  const isPdf =
-    previewTarget?.mimeType === "application/pdf" ||
-    (previewTarget?.extension ?? "").toLowerCase() === "pdf"
-  const isVideo = Boolean(previewTarget?.mimeType?.startsWith("video/"))
-  const isAudio = Boolean(previewTarget?.mimeType?.startsWith("audio/"))
 
   return (
     <div className="space-y-4">
@@ -248,8 +213,8 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Sok i prosjektfiler"
-            className="pl-8"
+            placeholder="Søk i prosjektfiler"
+            className="pl-8 h-9"
           />
         </div>
 
@@ -297,16 +262,16 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
                 const disabled = busyId === item.id
 
                 return (
-                  <TableRow key={item.id}>
-                    <TableCell onClick={() => void onOpenPreview(item)} className="font-medium">
+                  <TableRow key={item.id} onClick={() => openFile(item)} className="cursor-pointer">
+                    <TableCell className="font-medium">
                       {item.name}
                     </TableCell>
-                    <TableCell onClick={() => void onOpenPreview(item)}>
+                    <TableCell>
                       {item.extension?.toUpperCase() ?? "Fil"}
                     </TableCell>
-                    <TableCell onClick={() => void onOpenPreview(item)}>{formatSize(item.sizeBytes)}</TableCell>
-                    <TableCell onClick={() => void onOpenPreview(item)}>{formatDate(item.updatedAt)}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell>{formatSize(item.sizeBytes)}</TableCell>
+                    <TableCell>{formatDate(item.updatedAt)}</TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
                         <Button
                           variant="ghost"
@@ -364,60 +329,7 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(previewTarget)} onOpenChange={(open) => !open && setPreviewTarget(null)}>
-        <DialogContent className="flex h-[90vh] w-[96vw] max-w-[1100px] flex-col gap-0 overflow-hidden p-0">
-          <DialogHeader className="shrink-0 border-b px-6 py-4">
-            <DialogTitle>{previewTarget?.name ?? "Forhandsvisning"}</DialogTitle>
-            <DialogDescription>Innhold i valgt fil.</DialogDescription>
-          </DialogHeader>
 
-          <div className="min-h-0 flex-1 overflow-hidden bg-muted/20 p-3">
-            {previewLoading ? (
-              <p className="p-4 text-sm text-muted-foreground">Laster innhold...</p>
-            ) : previewText !== null ? (
-              <div className="h-full overflow-auto rounded border bg-background">
-                <pre className="whitespace-pre-wrap break-words p-3 text-xs">{previewText}</pre>
-              </div>
-            ) : isImage && previewUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <div className="h-full overflow-auto rounded border bg-background/70 p-2">
-                <img
-                  src={previewUrl}
-                  alt={previewTarget?.name ?? "Dokument"}
-                  className="mx-auto h-full w-full object-contain"
-                />
-              </div>
-            ) : isPdf && previewUrl ? (
-              <div className="h-full overflow-hidden rounded border bg-background">
-                <iframe
-                  title={previewTarget?.name ?? "PDF"}
-                  src={previewUrl}
-                  className="h-full w-full border-0"
-                />
-              </div>
-            ) : isVideo && previewUrl ? (
-              <div className="flex h-full items-center justify-center rounded border bg-background p-3">
-                <video src={previewUrl} controls className="max-h-full max-w-full rounded" />
-              </div>
-            ) : isAudio && previewUrl ? (
-              <div className="flex h-full items-center justify-center rounded border bg-background p-6">
-                <audio src={previewUrl} controls className="w-full max-w-xl" />
-              </div>
-            ) : previewUrl ? (
-              <div className="flex h-full flex-col items-start justify-center gap-3 rounded border bg-background p-4 text-sm">
-                <p>Forhandsvisning er ikke tilgjengelig for denne filtypen.</p>
-                <Button asChild>
-                  <a href={previewUrl} target="_blank" rel="noreferrer">
-                    Apne fil i ny fane
-                  </a>
-                </Button>
-              </div>
-            ) : (
-              <p className="p-4 text-sm text-muted-foreground">Ingen filinnhold tilgjengelig.</p>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

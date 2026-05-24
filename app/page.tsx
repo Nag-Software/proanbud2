@@ -1,399 +1,590 @@
 "use client"
 
 import * as React from "react"
+import { useEffect, useState } from "react"
 import { AppPageShell } from "@/components/app-page-shell"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
-import { Area, AreaChart, Bar, BarChart, Pie, PieChart, CartesianGrid, XAxis, YAxis, Cell, ResponsiveContainer } from "recharts"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Area, AreaChart, CartesianGrid, XAxis, RadialBarChart, RadialBar, PolarAngleAxis } from "recharts"
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import { DollarSign, FileText, Award, Percent, TrendingUp, Settings, UserPlus, MessageSquare, ChevronDown, CheckCircle2, Search, Calendar, FolderKanban } from "lucide-react"
-
+import { TrendingUp, FileText, FolderKanban, Users, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
-// removed mock-data usage
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Progress } from "@/components/ui/progress"
+import { createClient } from "@/lib/supabase/client"
 
-const dashboardData = { projects: [] as any[], offers: [] as any[], projectTasks: [] as any[], customers: [] as any[] }
-const getOfferLegacyRows = () => [] as any[]
+const formatNok = (val: number) =>
+  new Intl.NumberFormat("no-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(val)
+
+function pctChange(curr: number, prev: number): string {
+  if (prev === 0) return curr > 0 ? "+100%" : "0%"
+  const pct = ((curr - prev) / prev) * 100
+  return `${pct > 0 ? "+" : ""}${pct.toFixed(0)}%`
+}
+
+function isUp(curr: number, prev: number) {
+  return curr >= prev
+}
+
+function greeting(): string {
+  const h = new Date().getHours()
+  if (h >= 5 && h < 12) return "God morgen"
+  if (h >= 12 && h < 17) return "God dag"
+  if (h >= 17 && h < 23) return "God kveld"
+  return "God kveld"
+}
+
+const statusColor: Record<string, string> = {
+  draft: "bg-slate-50 text-slate-700 border-slate-200",
+  sent: "bg-blue-50 text-blue-700 border-blue-200",
+  accepted: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  rejected: "bg-rose-50 text-rose-700 border-rose-200",
+}
+const statusLabel: Record<string, string> = {
+  draft: "Utkast",
+  sent: "Sendt",
+  accepted: "Godkjent",
+  rejected: "Avvist",
+}
+
+const companyStatusCfg = {
+  aktiv:       { label: "Aktiv",       badge: "bg-emerald-50 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" },
+  feil:        { label: "Feil",        badge: "bg-rose-50 text-rose-700 border-rose-200",          dot: "bg-rose-500" },
+  vedlikehold: { label: "Vedlikehold", badge: "bg-amber-50 text-amber-700 border-amber-200",       dot: "bg-amber-500" },
+} as const
+
+function StatusBadge({ status }: { status: "aktiv" | "feil" | "vedlikehold" }) {
+  const cfg = companyStatusCfg[status]
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium border ${cfg.badge}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  )
+}
+
+const areaChartConfig = {
+  omsetning: { label: "Omsetning", color: "var(--color-primary)" },
+  tilbud: { label: "Tilbud sendt", color: "var(--color-accent)" },
+} satisfies ChartConfig
+
+interface DashboardData {
+  omsetning: number
+  omsetningPrev: number
+  activeProjects: number
+  activeProjectsPrev: number
+  tilbudSendt: number
+  tilbudSentPrev: number
+  kunders: number
+  kundersPrev: number
+  todayOmsetning: number
+  yesterdayOmsetning: number
+  chartData: Array<{ date: string; omsetning: number; tilbud: number }>
+  recentOffers: Array<{ id: string; title: string; kunde: string; prosjekt: string; tid: string }>
+  tableOffers: Array<{ id: string; navn: string; shortId: string; kunde: string; verdi: number; status: string }>
+  topProjects: Array<{ navn: string; offers: number; pst: number }>
+  userName: string
+  companyName: string
+  companyLogo: string | null
+  companyStatus: "aktiv" | "feil" | "vedlikehold"
+}
 
 export default function DashboardPage() {
-  const legacyRows = getOfferLegacyRows()
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  // --- Dynamic Dashboard Data Calculations ---
-  
-  // Total Portfolio Value (Aktiv)
-  const activeProjects = dashboardData.projects.filter(p => ["Aktiv", "Planlegges"].includes(p.status))
-  const totalPortfolioValue = activeProjects.reduce((acc, p) => acc + (p.budgetNok || 0), 0)
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setLoading(false); return }
 
-  // Omsatt / Vunnet (godkjent offers)
-  const wonOffers = dashboardData.offers.filter(o => o.status === "godkjent")
-  const totalWonValue = wonOffers.reduce((acc, o) => acc + (o.amountNok || 0), 0)
+      const { data: userData } = await supabase
+        .from("users")
+        .select("company_id, full_name")
+        .eq("id", user.id)
+        .single()
+      const companyId = userData?.company_id
+      const rawName = userData?.full_name
+        || (user.user_metadata?.full_name as string | undefined)
+        || (user.user_metadata?.name as string | undefined)
+        || (user.email?.split("@")[0] ?? "")
+      const firstName = rawName.split(" ")[0]
+      if (!companyId) { setLoading(false); return }
 
-  // Hit Rate
-  const totalFinishedOffers = dashboardData.offers.filter(o => ["godkjent", "tapt", "avvist"].includes(o.status))
-  const hitRate = totalFinishedOffers.length > 0 ? (wonOffers.length / totalFinishedOffers.length) * 100 : 45.0
-  
-  // Aktive oppgaver
-  const openTasksCount = dashboardData.projectTasks.filter(t => t.status === "Apen").length
+      const now = new Date()
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+      const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
+      const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString()
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+      const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toISOString()
+      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString()
 
-  // Main Chart: 6-month aggregate example
-  const areaChartData = [
-    { date: "okt 2025", tilbudtsom: 120000, omsatt: 50000 },
-    { date: "nov 2025", tilbudtsom: 250000, omsatt: 150000 },
-    { date: "des 2025", tilbudtsom: 100000, omsatt: 100000 },
-    { date: "jan 2026", tilbudtsom: 180000, omsatt: 260000 },
-    { date: "feb 2026", tilbudtsom: 450000, omsatt: 320000 },
-    { date: "mar 2026", tilbudtsom: 680000, omsatt: 440000 },
-  ]
+      const [
+        omsetningRes, omsetningPrevRes,
+        activeProjectsRes, activeProjectsPrevRes,
+        tilbudRes, tilbudPrevRes,
+        kundersRes, kundersPrevRes,
+        todayRes, yesterdayRes,
+        chartOffersRes, recentOffersRes, tableOffersRes,
+        topProjectsRes, companyRes,
+      ] = await Promise.all([
+        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").gte("created_at", startOfMonth),
+        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").gte("created_at", startOfPrevMonth).lte("created_at", endOfPrevMonth),
+        supabase.from("projects").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "active"),
+        supabase.from("projects").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "active").lte("created_at", endOfPrevMonth),
+        supabase.from("offers").select("id", { count: "exact", head: true }).eq("company_id", companyId).neq("status", "draft").gte("created_at", startOfMonth),
+        supabase.from("offers").select("id", { count: "exact", head: true }).eq("company_id", companyId).neq("status", "draft").gte("created_at", startOfPrevMonth).lte("created_at", endOfPrevMonth),
+        supabase.from("customers").select("id", { count: "exact", head: true }).eq("company_id", companyId),
+        supabase.from("customers").select("id", { count: "exact", head: true }).eq("company_id", companyId).lte("created_at", endOfPrevMonth),
+        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").gte("created_at", startOfToday),
+        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").gte("created_at", startOfYesterday).lt("created_at", startOfToday),
+        supabase.from("offers").select("amount_nok, status, created_at").eq("company_id", companyId).neq("status", "draft").gte("created_at", sixMonthsAgo).order("created_at", { ascending: true }),
+        supabase.from("offers").select("id, title, status, created_at, amount_nok, project_id").eq("company_id", companyId).neq("status", "draft").order("created_at", { ascending: false }).limit(5),
+        supabase.from("offers").select("id, title, status, amount_nok, created_at, project_id").eq("company_id", companyId).order("created_at", { ascending: false }).limit(6),
+        supabase.from("projects").select("id, name, customer_id").eq("company_id", companyId).eq("status", "active").limit(6),
+        supabase.from("companies").select("name").eq("id", companyId).single(),
+      ])
 
-  const areaChartConfig = {
-    tilbudtsom: { label: "Tilbudt", color: "#a7f3d0" },
-    omsatt: { label: "Omsatt", color: "#fed7aa" },
-  } satisfies ChartConfig
+      // KPI values
+      const omsetning = (omsetningRes.data || []).reduce((s, r) => s + (r.amount_nok || 0), 0)
+      const omsetningPrev = (omsetningPrevRes.data || []).reduce((s, r) => s + (r.amount_nok || 0), 0)
+      const activeProjects = activeProjectsRes.count || 0
+      const activeProjectsPrev = activeProjectsPrevRes.count || 0
+      const tilbudSendt = tilbudRes.count || 0
+      const tilbudSentPrev = tilbudPrevRes.count || 0
+      const kunders = kundersRes.count || 0
+      const kundersPrev = kundersPrevRes.count || 0
+      const todayOmsetning = (todayRes.data || []).reduce((s, r) => s + (r.amount_nok || 0), 0)
+      const yesterdayOmsetning = (yesterdayRes.data || []).reduce((s, r) => s + (r.amount_nok || 0), 0)
 
-  // Siste Aktivitet
-  const activities: Array<{ icon: any; title: string; desc: string; dateStr: string; dateObj: Date; color: string }> = []
-  
-  dashboardData.projects.forEach(p => {
-    activities.push({
+      // Chart data - build 6-month skeleton then fill
+      const monthMap: Record<string, { date: string; omsetning: number; tilbud: number }> = {}
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+        const key = d.toLocaleDateString("no-NO", { month: "short" })
+        monthMap[key] = { date: key, omsetning: 0, tilbud: 0 }
+      }
+      ;(chartOffersRes.data || []).forEach(offer => {
+        const key = new Date(offer.created_at).toLocaleDateString("no-NO", { month: "short" })
+        if (monthMap[key]) {
+          monthMap[key].tilbud += offer.amount_nok || 0
+          if (offer.status === "accepted") monthMap[key].omsetning += offer.amount_nok || 0
+        }
+      })
+      const chartData = Object.values(monthMap)
+
+      // Resolve project + customer names for feeds
+      const allProjectIds = [
+        ...(recentOffersRes.data || []).map(o => o.project_id),
+        ...(tableOffersRes.data || []).map(o => o.project_id),
+        ...(topProjectsRes.data || []).map(p => p.id),
+      ].filter((id): id is string => Boolean(id))
+      const uniqueProjectIds = [...new Set(allProjectIds)]
+
+      const projectNameById: Record<string, string> = {}
+      const projectCustomerById: Record<string, string> = {}
+      const customerNameById: Record<string, string> = {}
+
+      const userName = firstName
+      const companyName = companyRes.data?.name || "Proanbud"
+      const companyLogo: string | null = null
+      const companyStatus = "aktiv" as const
+
+      if (uniqueProjectIds.length) {
+        const { data: projRows } = await supabase.from("projects").select("id, name, customer_id").in("id", uniqueProjectIds)
+        ;(projRows || []).forEach(p => {
+          projectNameById[p.id] = p.name
+          if (p.customer_id) projectCustomerById[p.id] = p.customer_id
+        })
+        const custIds = [...new Set(Object.values(projectCustomerById))]
+        if (custIds.length) {
+          const { data: custRows } = await supabase.from("customers").select("id, name").in("id", custIds)
+          ;(custRows || []).forEach(c => { customerNameById[c.id] = c.name })
+        }
+      }
+
+      const getKunde = (projectId: string | null) => {
+        if (!projectId) return "Ukjent kunde"
+        const custId = projectCustomerById[projectId]
+        return custId ? (customerNameById[custId] || "Ukjent kunde") : "Ukjent kunde"
+      }
+
+      const recentOffers = (recentOffersRes.data || []).map(o => ({
+        id: o.id,
+        title: o.title || "Uten tittel",
+        kunde: getKunde(o.project_id),
+        prosjekt: o.project_id ? (projectNameById[o.project_id] || "Ukjent prosjekt") : "Ukjent prosjekt",
+        tid: new Date(o.created_at).toLocaleString("no-NO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
+      }))
+
+      const tableOffers = (tableOffersRes.data || []).map(o => ({
+        id: o.id,
+        navn: o.title || "Uten tittel",
+        shortId: `#${o.id.slice(0, 8).toUpperCase()}`,
+        kunde: getKunde(o.project_id),
+        verdi: o.amount_nok || 0,
+        status: o.status || "draft",
+      }))
+
+      // Top projects by offer count
+      const topProjects: DashboardData["topProjects"] = []
+      if (topProjectsRes.data?.length) {
+        const counts = await Promise.all(
+          topProjectsRes.data.map(async p => {
+            const { count } = await supabase.from("offers").select("id", { count: "exact", head: true }).eq("project_id", p.id)
+            return { navn: p.name, offers: count || 0 }
+          })
+        )
+        const max = Math.max(1, ...counts.map(c => c.offers))
+        topProjects.push(
+          ...counts
+            .sort((a, b) => b.offers - a.offers)
+            .slice(0, 4)
+            .map(c => ({ ...c, pst: Math.round((c.offers / max) * 100) }))
+        )
+      }
+
+      setData({
+        omsetning, omsetningPrev,
+        activeProjects, activeProjectsPrev,
+        tilbudSendt, tilbudSentPrev,
+        kunders, kundersPrev,
+        todayOmsetning, yesterdayOmsetning,
+        chartData, recentOffers, tableOffers, topProjects,
+        userName, companyName, companyLogo, companyStatus,
+      })
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  const gaugeValue = !data ? 0
+    : data.omsetningPrev > 0
+      ? Math.min(100, Math.round((data.omsetning / data.omsetningPrev) * 100))
+      : data.omsetning > 0 ? 75 : 10
+
+  const kpiCards = data ? [
+    {
+      label: "Total Omsetning",
+      value: data.omsetning >= 1_000_000
+        ? `${(data.omsetning / 1_000_000).toFixed(2).replace(".", ",")} mill`
+        : data.omsetning >= 1_000 ? `${Math.round(data.omsetning / 1_000)}k` : `${data.omsetning}`,
+      icon: TrendingUp,
+      change: pctChange(data.omsetning, data.omsetningPrev),
+      up: isUp(data.omsetning, data.omsetningPrev),
+    },
+    {
+      label: "Aktive Prosjekter",
+      value: `${data.activeProjects}`,
       icon: FolderKanban,
-      title: "Prosjekt oppdatert",
-      desc: p.name,
-      dateStr: p.lastUpdate,
-      dateObj: new Date(p.lastUpdate),
-      color: "text-emerald-500"
-    })
-  })
-  dashboardData.offers.forEach(o => {
-    activities.push({
+      change: pctChange(data.activeProjects, data.activeProjectsPrev),
+      up: isUp(data.activeProjects, data.activeProjectsPrev),
+    },
+    {
+      label: "Tilbud sendt",
+      value: `${data.tilbudSendt}`,
       icon: FileText,
-      title: o.status === "godkjent" ? "Tilbud vunnet!" : o.status === "sendt" ? "Tilbud sendt" : "Nytt tilbud utkast",
-      desc: o.title,
-      dateStr: o.createdAt,
-      dateObj: new Date(o.createdAt),
-      color: o.status === "godkjent" ? "text-amber-500" : o.status === "sendt" ? "text-blue-500" : "text-slate-500"
-    })
-  })
-  dashboardData.projectTasks.filter(t => t.status === "Ferdig").forEach(t => {
-    activities.push({
-      icon: CheckCircle2,
-      title: "Oppgave fullført",
-      desc: `${t.title}`,
-      dateStr: t.dueDate,
-      dateObj: new Date(t.dueDate),
-      color: "text-purple-500"
-    })
-  })
-
-  const sortedActivities = activities
-    .sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime())
-    .slice(0, 7)
-
-  const formatNok = (val: number) => new Intl.NumberFormat("no-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(val)
-
-  const pieChartData = [
-    { name: "Venter", value: dashboardData.offers.filter(o=>o.status==="sendt").length, fill: "#fbbf24" },
-    { name: "Vunnet", value: dashboardData.offers.filter(o=>o.status==="godkjent").length, fill: "#10b981" },
-    { name: "Tapt", value: dashboardData.offers.filter(o=>o.status==="tapt" || o.status==="avvist").length, fill: "#f43f5e" },
-  ]
-  const pieChartConfig = {
-    venter: { label: "Venter", color: "#fbbf24" },
-    vunnet: { label: "Vunnet", color: "#10b981" },
-    tapt: { label: "Tapt", color: "#f43f5e" },
-  } satisfies ChartConfig
-
-  const barChartData = [
-    { month: "Okt 25", tilbudt: 2, vunnet: 1 },
-    { month: "Nov 25", tilbudt: 3, vunnet: 1 },
-    { month: "Des 25", tilbudt: 1, vunnet: 1 },
-    { month: "Jan 26", tilbudt: 4, vunnet: 2 },
-    { month: "Feb 26", tilbudt: 3, vunnet: 1 },
-    { month: "Mar 26", tilbudt: Math.floor(Math.random() * 5)+1, vunnet: Math.floor(Math.random()*3) },
-  ]
-  const barChartConfig = {
-    tilbudt: { label: "Tilbudt", color: "#f59e0b" },
-    vunnet: { label: "Vunnet", color: "#34d399" },
-  } satisfies ChartConfig
-
+      change: pctChange(data.tilbudSendt, data.tilbudSentPrev),
+      up: isUp(data.tilbudSendt, data.tilbudSentPrev),
+    },
+    {
+      label: "Kunder totalt",
+      value: `${data.kunders}`,
+      icon: Users,
+      change: pctChange(data.kunders, data.kundersPrev),
+      up: isUp(data.kunders, data.kundersPrev),
+    },
+  ] : []
 
   return (
     <AppPageShell segments={["Dashbord"]}>
-      <div className="flex flex-col gap-6 p-1 pb-8">
-        
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1">
-            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              Full oversikt
-            </p>
-            <h1 className="text-2xl font-semibold text-foreground">
-              Dashbordet
-            </h1>
+      <div className="flex flex-col gap-5 p-1 pb-10">
+
+        {/* Welcome banner */}
+        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+          <div className="flex flex-col gap-4">
+            <Card className="shadow-sm rounded-2xl border-0 bg-gradient-to-br from-slate-50 to-white">
+              <CardContent className="flex items-center gap-6 px-5 py-2">
+                {/* Col 1: greeting + company name */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-lg text-muted-foreground mb-1">
+                    {greeting()}{data?.userName ? `, ${data.userName}` : ""}
+                  </p>
+                  <h1 className="text-xl font-bold text-foreground truncate">
+                    {data?.companyName || "Proanbud"}
+                  </h1>
+                </div>
+                {/* Col 2: status chip + action */}
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  {data ? (
+                    <StatusBadge status={data.companyStatus} />
+                  ) : (
+                    <span className="h-5 w-16 rounded-full bg-secondary animate-pulse" />
+                  )}
+                </div>
+                {/* Col 3: company logo (only if available) */}
+                {data?.companyLogo && (
+                  <div className="shrink-0 h-12 w-12 rounded-xl overflow-hidden border border-border bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={data.companyLogo} alt="Firmalogo" className="h-full w-full object-contain p-1" />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* KPI row */}
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+              {loading
+                ? Array.from({ length: 4 }).map((_, i) => (
+                  <Card key={i} className="shadow-sm rounded-2xl border border-border/60 animate-pulse">
+                    <CardContent className="p-5 space-y-3 ">
+                      <div className="w-9 h-9 rounded-2xl bg-muted" />
+                      <div className="h-3 bg-muted rounded w-2/3" />
+                      <div className="h-6 bg-muted rounded w-1/2" />
+                      <div className="h-3 bg-muted rounded w-3/4" />
+                    </CardContent>
+                  </Card>
+                ))
+                : kpiCards.map((k) => (
+                  <Card key={k.label} className="shadow-sm rounded-2xl border border-border/60 overflow-hidden">
+                    <CardContent className="px-5 py-0 flex flex-col gap-3">
+                      <div className="flex flex-row items-center gap-3">
+                        <div className="w-9 h-9 hidden rounded-2xl bg-secondary flex items-center justify-center">
+                          <k.icon className="h-4 w-4 text-primary" strokeWidth={1.8} />
+                        </div>
+                        <p className="text-md font-medium text-muted-foreground">{k.label}</p>
+                      </div>
+                      <p className="text-2xl font-bold text-foreground tracking-tight">{k.value}</p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className={cn(
+                          "text-[11px] font-bold",
+                          k.up
+                            ? "text-accent-foreground bg-accent/40 px-1.5 py-1 rounded-sm"
+                            : "text-destructive bg-destructive/10 px-1.5 py-1 rounded-sm"
+                        )}>
+                          {k.up ? "↑" : "↓"} {k.change}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">Denne måneden</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              }
+            </div>
           </div>
-        </div>
-        
-        {/* KPI Cards */}
-        <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Aktiv Portefølje</CardTitle>
-              <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center">
-                <DollarSign className="h-3.5 w-3.5 text-slate-600" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold border-b border-transparent">{formatNok(totalPortfolioValue)}</div>
-              <div className="mt-1 flex items-center text-xs text-muted-foreground gap-2">
-                <span className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">
-                  {activeProjects.length}
-                </span>
-                Aktive & planlagte
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Prosjekter i arbeid</CardTitle>
-              <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center">
-                <FolderKanban className="h-3.5 w-3.5 text-slate-600" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold border-b border-transparent">{dashboardData.projects.filter(p => p.status === "Aktiv").length}</div>
-              <div className="mt-1 flex items-center text-xs text-muted-foreground gap-2">
-                <span className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">
-                  Aktiv
-                </span>
-                I produksjon
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Godkjente Tilbud</CardTitle>
-              <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center">
-                <Award className="h-3.5 w-3.5 text-slate-600" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold border-b border-transparent">{wonOffers.length}</div>
-              <div className="mt-1 flex items-center text-xs text-muted-foreground gap-2">
-                Verdi: <span className="font-semibold text-slate-800">{formatNok(totalWonValue)}</span>
-              </div>
-            </CardContent>
-          </Card>
 
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Konverteringsrate</CardTitle>
-              <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center">
-                <Percent className="h-3.5 w-3.5 text-slate-600" />
+          {/* Månedens ytelse */}
+          <Card className="shadow-sm rounded-2xl border border-border/60 flex flex-col">
+            <CardHeader className="">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold">Månedens Ytelse</CardTitle>
+                <button className="text-xs text-primary font-medium hover:underline">Detaljer</button>
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold border-b border-transparent">{hitRate.toFixed(1)}%</div>
-              <div className="mt-1 flex items-center text-xs text-muted-foreground gap-2">
-                <span className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">
-                  Treffprosent
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Gjøremål</CardTitle>
-              <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center">
-                <CheckCircle2 className="h-3.5 w-3.5 text-slate-600" />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold border-b border-transparent">{openTasksCount}</div>
-              <div className="mt-1 flex items-center text-xs text-muted-foreground gap-2">
-                Åpne oppgaver
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Card className="lg:col-span-2 shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <div>
-                <CardTitle className="text-lg font-bold">Økonomi & Ordreinngang</CardTitle>
-                <CardDescription className="text-xs">Fakturert vs Tilbudt volum siste 6 måneder</CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex border rounded-md overflow-hidden text-xs">
-                  <button className="px-2 py-1 hover:bg-slate-50">30d</button>
-                  <button className="px-2 py-1 bg-slate-900 border-l border-r text-white">6mnd</button>
-                  <button className="px-2 py-1 hover:bg-slate-50">1år</button>
+            <CardContent className="flex flex-col items-center px-5 gap-0 flex-1">
+              <div className="relative w-full flex justify-center my-1">
+                <ChartContainer config={{ ytelse: { label: "Ytelse", color: "var(--color-primary)" } }} className="h-[130px] w-[180px]">
+                  <RadialBarChart data={[{ name: "Ytelse", value: loading ? 0 : gaugeValue }]} startAngle={180} endAngle={0} innerRadius={55} outerRadius={80}>
+                    <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+                    <RadialBar dataKey="value" background={{ fill: "var(--color-secondary)" }} fill="var(--color-primary)" cornerRadius={6} />
+                  </RadialBarChart>
+                </ChartContainer>
+                <div className="absolute bottom-4 flex flex-col items-center">
+                  <span className="text-2xl font-bold">{loading ? "—" : formatNok(data?.omsetning ?? 0)}</span>
+                  <span className="text-[11px] text-muted-foreground">Måneds omsetning</span>
                 </div>
               </div>
+              <div className="w-full space-y-2 mt-2">
+                <div className="flex justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <span className="w-2 h-2 rounded-full bg-primary inline-block" />Omsetning
+                  </span>
+                  <span className="font-semibold">
+                    {loading || !data ? "—" : pctChange(data.omsetning, data.omsetningPrev)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <span className="w-2 h-2 rounded-full bg-accent inline-block" />Tilbud
+                  </span>
+                  <span className="font-semibold">
+                    {loading || !data ? "—" : pctChange(data.tilbudSendt, data.tilbudSentPrev)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs border-t pt-2 mt-1">
+                  <span className="text-muted-foreground">Forrige måned</span>
+                  <span className="font-semibold">{loading ? "—" : formatNok(data?.omsetningPrev ?? 0)}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Chart + Live feed */}
+        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+          <Card className="shadow-sm rounded-2xl border border-border/60">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-sm font-semibold">Omsetning VS Tilbud</CardTitle>
+              <div className="flex gap-3 text-xs text-muted-foreground items-center">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-primary inline-block" />Omsetning
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-accent inline-block" />Tilbud
+                </span>
+              </div>
             </CardHeader>
-            <CardContent className="px-0 pb-0">
-              <ChartContainer config={areaChartConfig} className="h-[280px] w-full mt-4">
-                <AreaChart data={areaChartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+            <CardContent className="px-2 pb-0 pt-2">
+              <ChartContainer config={areaChartConfig} className="h-[240px] w-full">
+                <AreaChart data={data?.chartData || []} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="fillOmsatt" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#fdba74" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#fdba74" stopOpacity={0.1}/>
+                    <linearGradient id="fillOmsetning" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="fillTilbudt" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#86efac" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#86efac" stopOpacity={0.1}/>
+                    <linearGradient id="fillTilbud" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#64748b" }} dy={10} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.2} />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} dy={8} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Area type="monotone" dataKey="omsatt" stroke="#fdba74" strokeWidth={2} fill="url(#fillOmsatt)" />
-                  <Area type="monotone" dataKey="tilbudtsom" stroke="#86efac" strokeWidth={2} fill="url(#fillTilbudt)" />
+                  <Area type="monotone" dataKey="omsetning" stroke="var(--color-primary)" strokeWidth={2.5} fill="url(#fillOmsetning)" dot={false} />
+                  <Area type="monotone" dataKey="tilbud" stroke="var(--color-accent)" strokeWidth={2.5} fill="url(#fillTilbud)" dot={false} />
                 </AreaChart>
               </ChartContainer>
-              <div className="flex justify-center flex-wrap gap-4 py-4 text-xs font-medium text-slate-600">
-                <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded bg-[#a7f3d0]"></span> Tilbudt</div>
-                <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded bg-[#fed7aa]"></span> Omsatt (Vunnet)</div>
-              </div>
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm overflow-hidden flex flex-col">
-            <CardHeader className="pb-3 border-b">
-              <CardTitle className="text-lg font-bold">Siste Aktivitet</CardTitle>
+          <Card className="shadow-sm rounded-2xl border border-border/60 flex flex-col">
+            <CardHeader className="border-b mt-0">
+              <CardTitle className="text-sm font-semibold">Aktive Tilbud</CardTitle>
             </CardHeader>
-            <CardContent className="p-0 flex-1 overflow-auto max-h-[350px]">
-              <div className="divide-y">
-                {sortedActivities.map((item, i) => (
-                  <div key={i} className="flex px-4 py-3 gap-3 hover:bg-slate-50 transition-colors">
-                    <div className="bg-slate-100 p-2 rounded-full h-fit mt-0.5">
-                      <item.icon className={cn("w-4 h-4 shrink-0", item.color)} />
+            <CardContent className="p-0 flex-1 overflow-auto">
+              {loading ? (
+                <div className="divide-y">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="px-4 py-3 space-y-1.5 animate-pulse">
+                      <div className="h-3 bg-muted rounded w-1/2" />
+                      <div className="h-2.5 bg-muted rounded w-3/4" />
+                      <div className="h-2 bg-muted rounded w-1/3" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-slate-900 truncate">{item.title}</p>
-                      <p className="text-xs text-slate-500 truncate mt-0.5">{item.desc}</p>
+                  ))}
+                </div>
+              ) : data?.recentOffers.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-8">Ingen aktive tilbud</p>
+              ) : (
+                <div className="divide-y">
+                  {data?.recentOffers.map((t, i) => (
+                    <div key={i} className="flex items-start justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">{t.kunde}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{t.title}</p>
+                        <p className="text-[10px] text-muted-foreground/70 mt-0.5">{t.tid}</p>
+                      </div>
+                      <button className="text-[11px] text-primary font-medium ml-3 mt-0.5 hover:underline shrink-0">Vis</button>
                     </div>
-                    <div className="text-[10px] text-slate-400 whitespace-nowrap pt-0.5">
-                      {new Intl.DateTimeFormat('no-NO', { day: 'numeric', month: 'short' }).format(item.dateObj)}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Card className="shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg font-bold">Tilbudsstatus</CardTitle>
-              <CardDescription className="text-xs">Statistikk over aktive tilbud</CardDescription>
+        {/* Table + Top projects */}
+        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+          <Card className="shadow-sm rounded-2xl border border-border/60">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-sm font-semibold">Siste Tilbud</CardTitle>
+              <button className="text-xs text-primary font-medium hover:underline">Vis alle</button>
             </CardHeader>
-            <CardContent className="flex flex-col items-center">
-              <div className="h-[200px] w-full flex justify-center">
-                <ChartContainer config={pieChartConfig} className="h-full w-full">
-                  <PieChart>
-                    <Pie data={pieChartData} cx="50%" cy="50%" innerRadius={0} outerRadius={70} dataKey="value" stroke="none">
-                      {pieChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-                  </PieChart>
-                </ChartContainer>
-              </div>
-              <div className="flex justify-center flex-wrap gap-4 text-xs font-medium text-slate-600 mt-2">
-                <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#fbbf24]"></span> Venter ({pieChartData[0].value})</div>
-                <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#10b981]"></span> Vunnet ({pieChartData[1].value})</div>
-                <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#f43f5e]"></span> Tapt ({pieChartData[2].value})</div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="lg:col-span-2 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg font-bold">Tilbud-statistikk</CardTitle>
-              <CardDescription className="text-xs">Historisk utvikling sist 6 måneder</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={barChartConfig} className="h-[200px] w-full">
-                <BarChart data={barChartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }} barGap={2} barSize={24}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#64748b" }} dy={10} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="tilbudt" fill="#f59e0b" radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="vunnet" fill="#34d399" radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ChartContainer>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Prosjektstyring & Kommunikasjon Section */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Card className="shadow-sm flex flex-col h-full">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg font-bold">Dine Oppgaver</CardTitle>
-              <CardDescription className="text-xs">Utestående gjøremål på dine prosjekter</CardDescription>
-            </CardHeader>
-            <CardContent className="flex-1 overflow-auto">
-              <div className="space-y-4">
-                {dashboardData.projectTasks.filter(t => t.status !== "Ferdig").slice(0, 5).map(t => {
-                  const proj = dashboardData.projects.find(p => p.id === t.projectId)
-                  return (
-                    <div key={t.id} className="flex items-start gap-4">
-                      <div className="bg-slate-50 border border-slate-100 p-2 rounded-md flex flex-col items-center justify-center min-w-[50px]">
-                        <span className="text-xs font-bold text-slate-700">{new Date(t.dueDate).getDate()}</span>
-                        <span className="text-[10px] text-slate-500 uppercase">{new Date(t.dueDate).toLocaleString('no-NO', { month: 'short'})}</span>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="text-sm font-semibold">{t.title}</p>
-                            <p className="text-xs text-muted-foreground">{proj?.name}</p>
-                          </div>
-                          <Badge variant="outline" className={t.status === "Apen" ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-slate-50 text-slate-700"}>
-                            {t.status === "Apen" ? "Åpen" : t.status}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-                {dashboardData.projectTasks.filter(t => t.status !== "Ferdig").length === 0 && (
-                  <div className="text-center text-sm text-slate-500 py-4">Ingen åpne oppgaver! 🎉</div>
+            <CardContent className="px-5 pb-5">
+              <div className="w-full overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-muted-foreground border-b">
+                      <th className="text-left pb-2 font-medium">Tilbudsnavn</th>
+                      <th className="text-left pb-2 font-medium">ID</th>
+                      <th className="text-left pb-2 font-medium">Kunde</th>
+                      <th className="text-left pb-2 font-medium">Verdi</th>
+                      <th className="text-left pb-2 font-medium">Status</th>
+                      <th className="text-right pb-2 font-medium"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {loading
+                      ? Array.from({ length: 4 }).map((_, i) => (
+                        <tr key={i}>
+                          {Array.from({ length: 6 }).map((_, j) => (
+                            <td key={j} className="py-2.5 pr-3">
+                              <div className="h-3 bg-muted rounded animate-pulse" style={{ width: j === 5 ? "20px" : "70%" }} />
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                      : data?.tableOffers.map((row, i) => (
+                        <tr key={i} className="hover:bg-muted/30 transition-colors">
+                          <td className="py-2.5 font-medium text-foreground pr-3 max-w-[140px] truncate">{row.navn}</td>
+                          <td className="py-2.5 text-muted-foreground pr-3 whitespace-nowrap font-mono text-[10px]">{row.shortId}</td>
+                          <td className="py-2.5 text-muted-foreground pr-3 max-w-[100px] truncate">{row.kunde}</td>
+                          <td className="py-2.5 font-semibold pr-3 whitespace-nowrap">{formatNok(row.verdi)}</td>
+                          <td className="py-2.5 pr-3">
+                            <Badge variant="outline" className={cn("text-[10px] font-medium", statusColor[row.status])}>
+                              {statusLabel[row.status] ?? row.status}
+                            </Badge>
+                          </td>
+                          <td className="py-2.5 text-right">
+                            <button className="p-1 hover:bg-muted rounded-md">
+                              <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    }
+                  </tbody>
+                </table>
+                {!loading && data?.tableOffers.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-6">Ingen tilbud ennå</p>
                 )}
               </div>
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm flex flex-col h-full">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg font-bold">Prosjektoversikt</CardTitle>
-              <CardDescription className="text-xs">Status og fremdrift på prosjekter i produksjon</CardDescription>
+          <Card className="shadow-sm rounded-2xl border border-border/60">
+            <CardHeader className="border-b mt-0 py-0">
+              <CardTitle className="text-sm font-semibold">Topp Prosjekter</CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 overflow-auto">
-              <div className="space-y-6">
-                {dashboardData.projects.filter(p => p.status === "Aktiv").slice(0, 4).map(p => (
-                  <div key={p.id} className="space-y-2">
-                    <div className="flex justify-between items-end">
-                      <div>
-                        <p className="text-sm font-semibold">{p.name}</p>
-                        <p className="text-xs text-muted-foreground">Prosjektleder: {dashboardData.customers.find(c=>c.id===p.customerId)?.name}</p>
-                      </div>
-                      <p className="text-xs font-medium">{p.progressPercent}%</p>
-                    </div>
-                    <Progress value={p.progressPercent} className="h-2" />
-                    <div className="flex justify-between text-[10px] text-slate-500">
-                      <span>Start: {p.startDate}</span>
-                      <span>Budsjett: {formatNok(p.budgetNok)}</span>
-                    </div>
-                  </div>
-                ))}
+            <CardContent className="px-5 py-4 space-y-4">
+              <div className="flex justify-between text-[11px] text-muted-foreground font-medium pb-1 border-b">
+                <span>Prosjektnavn</span>
+                <span>Tilbud sendt</span>
               </div>
+              {loading
+                ? Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="space-y-1.5 animate-pulse">
+                    <div className="flex justify-between">
+                      <div className="h-3 bg-muted rounded w-2/3" />
+                      <div className="h-3 bg-muted rounded w-12" />
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-1.5" />
+                  </div>
+                ))
+                : data?.topProjects.length === 0
+                  ? <p className="text-xs text-muted-foreground text-center py-4">Ingen aktive prosjekter</p>
+                  : data?.topProjects.map((p, i) => (
+                    <div key={i} className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-medium text-foreground truncate max-w-[140px]">{p.navn}</span>
+                        <span className="text-xs text-muted-foreground shrink-0 ml-2">{p.offers} tilbud</span>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${p.pst}%` }} />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground text-right">{p.pst}%</p>
+                    </div>
+                  ))
+              }
             </CardContent>
           </Card>
         </div>

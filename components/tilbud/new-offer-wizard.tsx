@@ -1,12 +1,16 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
+
+import { AiChatPanel } from "@/components/tilbud/ai-chat-panel"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
   ArrowRight,
   Calculator,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Edit3,
   LoaderCircle,
   Plus,
@@ -14,7 +18,6 @@ import {
   Send,
   Sparkles,
   Upload,
-  Wallet,
   Zap,
 } from "lucide-react"
 
@@ -23,13 +26,16 @@ import { NewOfferItemsTable } from "@/components/tilbud/new-offer-items-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { getDistinctSuppliers } from "@/lib/tilbud/supplier-prices"
 import {
   calculateLineItemTotal,
   calculateOfferTotals,
   formatNok,
   type OfferAnalysisResult,
+  type OfferCompanyContext,
   type OfferCustomerOption,
   type OfferLineItem,
   type OfferProjectOption,
@@ -40,27 +46,22 @@ import {
 type NewOfferWizardProps = {
   projects: OfferProjectOption[]
   customers: OfferCustomerOption[]
+  company: OfferCompanyContext | null
   initialProjectId?: string
   onCompleted?: () => void
-}
-
-type AnalysisApiResponse = {
-  lineItems: OfferLineItem[]
-  analysis: OfferAnalysisResult
-  error?: string
 }
 
 const steps = [
   {
     id: 1,
-    title: "AI-Analyse",
+    title: "Nytt tilbud",
     description: "Beskriv jobben og last opp bilder",
     icon: Sparkles,
   },
   {
     id: 2,
     title: "Rediger prisforslag",
-    description: "Juster pris basert på AI-analyse",
+    description: "Juster pris basert på KI-analyse",
     icon: Zap,
   },
   {
@@ -87,7 +88,11 @@ function scoreColor(score: number) {
   return "text-rose-600"
 }
 
-export function NewOfferWizard({ projects, customers, initialProjectId, onCompleted }: NewOfferWizardProps) {
+function previewKindForFile(file: File): OfferSourceDocument["previewKind"] {
+  return file.type.startsWith("image/") ? "image" : "document"
+}
+
+export function NewOfferWizard({ projects, customers, company, initialProjectId, onCompleted }: NewOfferWizardProps) {
   const router = useRouter()
   const initialProject = useMemo(
     () => (initialProjectId ? projects.find((project) => project.id === initialProjectId) || null : null),
@@ -104,19 +109,20 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
 
-  const [assignmentMode, setAssignmentMode] = useState<"project" | "customer">("project")
+  const [assignmentMode] = useState<"project" | "customer">("project")
   const [projectId, setProjectId] = useState<string>(initialProject?.id || "")
   const [customerId, setCustomerId] = useState<string>(initialProject?.customerId || "")
 
   const [sourceDocuments, setSourceDocuments] = useState<OfferSourceDocument[]>([])
+  const [sourceFiles, setSourceFiles] = useState<Record<string, File>>({})
+  const [isUploadingDocuments, setIsUploadingDocuments] = useState(false)
 
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [showAiChat, setShowAiChat] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [analysisResult, setAnalysisResult] = useState<OfferAnalysisResult | null>(null)
   const [lineItems, setLineItems] = useState<OfferLineItem[]>([])
 
   const [globalMarkupPercent, setGlobalMarkupPercent] = useState(15)
-  const [globalDiscountPercent, setGlobalDiscountPercent] = useState(0)
 
   const [recipientName, setRecipientName] = useState(initialCustomer?.name || "")
   const [recipientEmail, setRecipientEmail] = useState(initialCustomer?.email || "")
@@ -126,6 +132,9 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
 
   const [isPersisting, startPersisting] = useTransition()
   const [feedback, setFeedback] = useState<string | null>(null)
+
+  const [projectSearch, setProjectSearch] = useState("")
+  const [projectPopoverOpen, setProjectPopoverOpen] = useState(false)
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) || null,
@@ -204,13 +213,27 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
   const onDocumentsSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!event.target.files?.length) return
 
-    const files = Array.from(event.target.files)
-    const next = files.map((file) => ({
+    const slotsLeft = Math.max(0, 10 - sourceDocuments.length)
+    const selectedFiles = Array.from(event.target.files).slice(0, slotsLeft)
+    const next = selectedFiles.map((file) => ({
       id: crypto.randomUUID(),
       name: file.name,
       sizeBytes: file.size,
       type: file.type,
+      uploadStatus: "pending" as const,
+      previewKind: previewKindForFile(file),
     }))
+
+    setSourceFiles((previous) => {
+      const nextFiles = { ...previous }
+      for (const [index, file] of selectedFiles.entries()) {
+        const doc = next[index]
+        if (doc) {
+          nextFiles[doc.id] = file
+        }
+      }
+      return nextFiles
+    })
 
     setSourceDocuments((previous) => [...previous, ...next].slice(0, 10))
     event.target.value = ""
@@ -218,6 +241,67 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
 
   const removeSourceDocument = (documentId: string) => {
     setSourceDocuments((previous) => previous.filter((documentItem) => documentItem.id !== documentId))
+    setSourceFiles((previous) => {
+      const next = { ...previous }
+      delete next[documentId]
+      return next
+    })
+  }
+
+  const uploadPendingSourceDocuments = async () => {
+    const pendingDocuments = sourceDocuments.filter((documentItem) => documentItem.uploadStatus !== "ready")
+    if (!pendingDocuments.length) {
+      return sourceDocuments
+    }
+
+    setIsUploadingDocuments(true)
+    let nextDocuments = [...sourceDocuments]
+
+    try {
+      for (const documentItem of pendingDocuments) {
+        const sourceFile = sourceFiles[documentItem.id]
+        if (!sourceFile) {
+          throw new Error(`Fant ikke filinnhold for ${documentItem.name}`)
+        }
+
+        setSourceDocuments((previous) =>
+          previous.map((item) =>
+            item.id === documentItem.id
+              ? {
+                  ...item,
+                  uploadStatus: "uploading",
+                }
+              : item
+          )
+        )
+
+        const formData = new FormData()
+        formData.append("file", sourceFile)
+        formData.append("documentId", documentItem.id)
+
+        const response = await fetch("/api/tilbud/source-documents", {
+          method: "POST",
+          body: formData,
+        })
+
+        const payload = (await response.json()) as { document?: OfferSourceDocument; error?: string }
+        if (!response.ok || !payload.document) {
+          throw new Error(payload.error || `Kunne ikke laste opp ${documentItem.name}`)
+        }
+
+        nextDocuments = nextDocuments.map((item) => (item.id === documentItem.id ? payload.document! : item))
+        setSourceDocuments(nextDocuments)
+        setSourceFiles((previous) => {
+          const next = { ...previous }
+          delete next[documentItem.id]
+          return next
+        })
+      }
+
+      return nextDocuments
+    } finally {
+      setIsUploadingDocuments(false)
+    }
   }
 
   const addManualLineItem = () => {
@@ -232,7 +316,7 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
       supplier: "",
       unitPriceNok: 0,
       markupPercent: globalMarkupPercent,
-      discountPercent: globalDiscountPercent,
+      discountPercent: 0,
     }
 
     setLineItems((previous) => [...previous, next])
@@ -271,48 +355,32 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
     return null
   }
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = () => {
     const validationError = validateStepOne()
     if (validationError) {
       setAnalysisError(validationError)
       return
     }
 
-    setFeedback(null)
     setAnalysisError(null)
-    setIsAnalyzing(true)
+    setFeedback(null)
 
-    try {
-      const response = await fetch("/api/tilbud/analyse", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title,
-          description,
-          sourceSummary: "",
-          subprojects: [],
-          assignmentMode,
-        }),
-      })
-
-      const payload = (await response.json()) as AnalysisApiResponse
-
-      if (!response.ok || payload.error) {
-        throw new Error(payload.error || "Analyse feilet")
+    void (async () => {
+      try {
+        await uploadPendingSourceDocuments()
+        setShowAiChat(true)
+      } catch (error) {
+        setAnalysisError(error instanceof Error ? error.message : "Kunne ikke forberede vedlegg")
       }
+    })()
+  }
 
-      setLineItems(payload.lineItems)
-      setAnalysisResult(payload.analysis)
-      setGlobalMarkupPercent(15)
-      setGlobalDiscountPercent(0)
-      setStep(2)
-    } catch (error) {
-      setAnalysisError(error instanceof Error ? error.message : "Kunne ikke kjøre analyse")
-    } finally {
-      setIsAnalyzing(false)
-    }
+  const handleAiComplete = (items: OfferLineItem[], analysis: OfferAnalysisResult) => {
+    setLineItems(items)
+    setAnalysisResult(analysis)
+    setGlobalMarkupPercent(15)
+    setShowAiChat(false)
+    setStep(2)
   }
 
   const applyGlobalAdjustments = () => {
@@ -320,7 +388,7 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
       previous.map((item) => ({
         ...item,
         markupPercent: globalMarkupPercent,
-        discountPercent: globalDiscountPercent,
+        discountPercent: 0,
       }))
     )
   }
@@ -371,58 +439,77 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
 
   return (
     <div className="mx-auto h-full min-h-0 w-full">
-      {isAnalyzing ? (
-        <div className="w-full absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-white/90 backdrop-blur-sm">
-          <div className="text-center">
-            <LoaderCircle className="mx-auto mb-4 size-9 animate-spin text-primary" />
-            <h3 className="text-base font-semibold text-gray-900">Analyserer med OpenAI...</h3>
-            <p className="text-sm text-gray-600">Dette kan ta opptil noen sekunder avhengig av prosjektstørrelse.</p>
-          </div>
-        </div>
+      {showAiChat ? (
+        <AiChatPanel
+          title={title}
+          description={description}
+          company={company}
+          project={selectedProject}
+          customer={selectedCustomer}
+          sourceDocuments={sourceDocuments.filter((documentItem) => documentItem.uploadStatus === "ready")}
+          projectName={selectedProject?.name}
+          customerName={selectedCustomer?.name}
+          onComplete={handleAiComplete}
+          onClose={() => setShowAiChat(false)}
+        />
       ) : null}
 
       <div className="flex h-full min-h-0 flex-col rounded-md bg-white">
-        <div className="border-b px-4 py-3">
-          <div className="mb-2 flex items-center justify-end gap-3">
+        <div className="border-none px-4 pb-6">
+          <div className="mb-0 flex items-center justify-end gap-3">
             <Button type="button" variant="outline" size="sm" onClick={handleSaveDraft} disabled={isPersisting}>
               {isPersisting ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
               Lagre som utkast
             </Button>
           </div>
 
-          <p className="mb-1 text-center text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-            {steps.find((item) => item.id === step)?.title}
-          </p>
-          <div className="mb-1 flex items-center justify-center space-x-3">
-            {steps.map((item, index) => {
-              const Icon = item.icon
-              const isActive = item.id === step
-              const isCompleted = item.id < step
-              const clickable = canOpenStep(item.id)
-
-              return (
-                <div key={item.id} className="flex items-center">
-                  <button
-                    type="button"
-                    onClick={() => clickable && setStep(item.id)}
-                    disabled={!clickable}
-                    className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all ${
-                      isActive
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : isCompleted
-                        ? "border-green-500 bg-green-500 text-white"
-                        : "border-gray-200 bg-gray-100 text-gray-400"
-                    } ${!clickable ? "cursor-not-allowed" : "cursor-pointer"}`}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </button>
-
-                  {index < steps.length - 1 ? (
-                    <div className={`mx-2 h-0.5 w-10 transition-all ${item.id < step ? "bg-green-500" : "bg-gray-200"}`} />
-                  ) : null}
-                </div>
-              )
-            })}
+          {/* Step progress */}
+          <div className="mt-3 mb-5">
+            <div className="flex items-center gap-0">
+              {steps.map((item, index) => {
+                const isActive = item.id === step
+                const isCompleted = item.id < step
+                const clickable = canOpenStep(item.id)
+                return (
+                  <div key={item.id} className="flex flex-1 items-center">
+                    <button
+                      type="button"
+                      onClick={() => clickable && setStep(item.id)}
+                      disabled={!clickable}
+                      className="group flex flex-col items-center gap-1.5 focus:outline-none"
+                    >
+                      <div
+                        className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-all duration-200 ring-offset-background ${
+                          isCompleted
+                            ? "bg-primary text-primary-foreground"
+                            : isActive
+                            ? "ring-2 ring-primary ring-offset-2 bg-primary text-primary-foreground"
+                            : "border border-border bg-background text-muted-foreground"
+                        } ${clickable ? "cursor-pointer" : "cursor-default"}`}
+                      >
+                        {isCompleted ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : <span>{item.id}</span>}
+                      </div>
+                      <span
+                        className={`text-[11px] font-medium transition-colors duration-200 whitespace-nowrap ${
+                          isActive ? "text-primary" : isCompleted ? "text-muted-foreground" : "text-muted-foreground/40"
+                        }`}
+                      >
+                        {item.title}
+                      </span>
+                    </button>
+                    {index < steps.length - 1 && (
+                      <div className="relative mx-2 mb-5 h-px flex-1">
+                        <div className="absolute inset-0 bg-border" />
+                        <div
+                          className="absolute inset-y-0 left-0 bg-primary transition-all duration-500 ease-out"
+                          style={{ width: isCompleted ? "100%" : "0%" }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
 
@@ -431,31 +518,61 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
             <div className="space-y-5">
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <div className="space-y-4">
-                  <div className="rounded-lg border bg-slate-50/60 p-4">
-                    <label className="mb-2 block text-sm font-medium text-gray-700">Tilknytning</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        type="button"
-                        variant={assignmentMode === "project" ? "default" : "outline"}
-                        className="h-9 text-sm"
-                        onClick={() => setAssignmentMode("project")}
-                      >
-                        Prosjekt + kunde
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={assignmentMode === "customer" ? "default" : "outline"}
-                        className="h-9 text-sm"
-                        onClick={() => {
-                          setAssignmentMode("customer")
-                          setProjectId("")
-                        }}
-                      >
-                        Kun kunde
-                      </Button>
+                  <div className="grid grid-cols-[1fr_10fr] gap-5">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-700">Prosjekt</label>
+                      <Popover open={projectPopoverOpen} onOpenChange={setProjectPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm hover:bg-accent/30 focus:outline-none focus:ring-1 focus:ring-ring"
+                          >
+                            <span className="truncate text-left">{selectedProject?.name ?? <span className="text-muted-foreground">Velg prosjekt</span>}</span>
+                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-72 p-0" align="start">
+                          <div className="border-b p-2">
+                            <Input
+                              autoFocus
+                              placeholder="Søk i prosjekter..."
+                              value={projectSearch}
+                              onChange={(e) => setProjectSearch(e.target.value)}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          <div className="max-h-56 overflow-y-auto p-1">
+                            {projects
+                              .filter((p) => p.name.toLowerCase().includes(projectSearch.toLowerCase()))
+                              .map((project) => (
+                                <button
+                                  key={project.id}
+                                  type="button"
+                                  onClick={() => {
+                                    onProjectChange(project.id)
+                                    setProjectSearch("")
+                                    setProjectPopoverOpen(false)
+                                  }}
+                                  className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent/50 ${
+                                    projectId === project.id ? "font-medium" : ""
+                                  }`}
+                                >
+                                  <Check className={`h-4 w-4 shrink-0 ${
+                                    projectId === project.id ? "opacity-100 text-primary" : "opacity-0"
+                                  }`} />
+                                  <span className="truncate text-left">{project.name}</span>
+                                </button>
+                              ))}
+                            {projects.filter((p) =>
+                              p.name.toLowerCase().includes(projectSearch.toLowerCase())
+                            ).length === 0 && (
+                              <p className="px-2 py-3 text-center text-xs text-muted-foreground">Ingen prosjekter funnet</p>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     </div>
-                  </div>
-                  <div>
+                    <div>
                     <label className="mb-2 block text-sm font-medium text-gray-700">Tilbudsnavn</label>
                     <Input
                       className="h-9 text-sm"
@@ -464,52 +581,6 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
                       placeholder="Skriv inn tilbudsnavn..."
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-700">Prosjekt</label>
-                      <Select
-                        value={toValidSelectValue(projectId)}
-                        onValueChange={(value) => onProjectChange(value === "none" ? "" : value)}
-                        disabled={assignmentMode !== "project"}
-                      >
-                        <SelectTrigger className="h-9 text-sm min-w-[150px]">
-                          <SelectValue placeholder="Velg prosjekt" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            <SelectLabel>Velg prosjekt</SelectLabel>
-                          {projects.map((project) => (
-                            <SelectItem key={project.id} value={project.id}>
-                              {project.name}
-                            </SelectItem>
-                          ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-700">Kunde</label>
-                      <Select
-                        value={toValidSelectValue(customerId)}
-                        onValueChange={(value) => onCustomerChange(value === "none" ? "" : value)}
-                        disabled={assignmentMode === "project" && Boolean(selectedProject?.customerId)}
-                      >
-                        <SelectTrigger className="h-9 text-sm min-w-[150px]">
-                          <SelectValue placeholder="Velg kunde" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            <SelectLabel>Velg kunde</SelectLabel>
-                          {customers.map((customer) => (
-                            <SelectItem key={customer.id} value={customer.id}>
-                              {customer.name}
-                            </SelectItem>
-                          ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </div>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                     <div className="rounded-lg border bg-card px-3 py-2">
@@ -520,31 +591,8 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
                       <p className="text-xs text-muted-foreground">Kunde</p>
                       <p className="truncate text-sm font-medium">{selectedCustomer?.name || "Ikke valgt"}</p>
                     </div>
-                    <div className="rounded-lg border bg-card px-3 py-2">
-                      <p className="text-xs text-muted-foreground">Linjer</p>
-                      <p className="text-sm font-medium">{lineItems.length}</p>
-                    </div>
-                    <div className="rounded-lg border bg-card px-3 py-2">
-                      <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Wallet className="h-3.5 w-3.5" />
-                        Totalsum
-                      </p>
-                      <p className="text-sm font-semibold">{formatNok(totals.totalNok)}</p>
-                    </div>
                   </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">Jobbeskrivelse</label>
-                    <Textarea
-                      value={description}
-                      onChange={(event) => setDescription(event.target.value)}
-                      placeholder="Beskriv spesifikt jobben som skal utføres..."
-                      className="h-48 resize-none text-sm"
-                    />
-                  </div>
-
+                  {/* HERHERHERHERHER */}
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-700">Vedlegg (bilder, PDF, DOCX etc.)</label>
                     <label className="block cursor-pointer rounded-lg border-2 border-dashed border-gray-300 p-5 text-center transition-all hover:border-gray-400">
@@ -560,7 +608,12 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
                           <div key={documentItem.id} className="flex items-center justify-between rounded-lg border bg-gray-50 px-3 py-2">
                             <div className="min-w-0">
                               <p className="truncate text-sm text-gray-700">{documentItem.name}</p>
-                              <p className="text-xs text-gray-500">{Math.round(documentItem.sizeBytes / 1024)} KB</p>
+                              <p className="text-xs text-gray-500">
+                                {Math.round(documentItem.sizeBytes / 1024)} KB
+                                {documentItem.uploadStatus === "uploading" ? " • laster opp" : null}
+                                {documentItem.uploadStatus === "ready" ? " • klar for KI" : null}
+                                {documentItem.uploadStatus === "failed" ? " • feil" : null}
+                              </p>
                             </div>
                             <Button type="button" size="sm" variant="ghost" onClick={() => removeSourceDocument(documentItem.id)}>
                               Fjern
@@ -571,14 +624,23 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
                     ) : null}
                   </div>
                 </div>
+
+                <div className="space-y-4">
+                  <div className="h-[90%]">
+                    <label className="mb-2 block text-sm font-medium text-gray-700">Jobbeskrivelse</label>
+                    <Textarea
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      placeholder="Beskriv spesifikt jobben som skal utføres..."
+                      className="h-full resize-none text-sm"
+                    />
+                  </div>
+                </div>
               </div>
 
               {analysisError ? <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{analysisError}</div> : null}
 
               <div className="mt-4 flex gap-2">
-                <Button type="button" variant="outline" className="h-9 flex-1 text-sm" onClick={() => window.history.back()}>
-                  Tilbake
-                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -590,87 +652,63 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
                     setStep(2)
                   }}
                 >
-                  Fortsett uten AI
+                  Fortsett manuelt
                 </Button>
-                <Button type="button" className="h-9 flex-1 text-sm" onClick={handleAnalyze} disabled={isAnalyzing || isPersisting}>
-                  Neste
+                <Button type="button" className="h-9 flex-1 text-sm" onClick={handleAnalyze} disabled={isPersisting || isUploadingDocuments}>
+                  Kjør KI-analyse
                 </Button>
               </div>
             </div>
           ) : null}
 
           {step === 2 ? (
-            <div className="space-y-5">
-              {analysisResult ? (
-                <div className="rounded-lg border p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="flex items-center gap-2 text-base font-semibold text-gray-900">
-                      <Zap className="h-4 w-4 text-primary" />
-                      AI-Prisforslag
-                    </span>
-                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">Klar for kontroll</span>
+            <div className="space-y-6">
+              {/* Document header — price + justification */}
+              <div className="border-b pb-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">Prisforslag</h2>
+                    {analysisResult ? (
+                      <p className="mt-1 max-w-prose text-sm text-muted-foreground">{analysisResult.summary}</p>
+                    ) : null}
                   </div>
-                  <div className="text-center">
-                    <div className="mb-1 text-3xl font-bold text-primary">{formatNok(totals.totalNok)}</div>
-                    <p className="text-sm text-gray-600">{analysisResult.summary}</p>
+                  <div className="shrink-0 text-right">
+                    <div className="text-3xl font-bold text-primary">{formatNok(totals.totalNok)}</div>
+                    <p className="text-xs text-muted-foreground">{lineItems.length} linjer</p>
                   </div>
-                </div>
-              ) : null}
-
-              <div className="rounded-lg border p-4">
-                <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-                  <h3 className="text-lg font-semibold text-gray-900">Rediger prisforslag</h3>
-                  <Button type="button" variant="outline" size="sm" onClick={addManualLineItem}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Lag produkt
-                  </Button>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="grid gap-4 rounded-lg border bg-gray-50 p-3 lg:grid-cols-2">
-                    <div>
-                      <Label htmlFor="global-markup">Globalt påslag %</Label>
-                      <Input
-                        id="global-markup"
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={globalMarkupPercent}
-                        onChange={(event) => setGlobalMarkupPercent(normalizeNumberInput(event.target.value, globalMarkupPercent))}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="global-discount">Global rabatt %</Label>
-                      <Input
-                        id="global-discount"
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={globalDiscountPercent}
-                        onChange={(event) => setGlobalDiscountPercent(normalizeNumberInput(event.target.value, globalDiscountPercent))}
-                      />
-                    </div>
-                    <Button type="button" variant="outline" onClick={applyGlobalAdjustments}>
-                      Bruk på alle rader
-                    </Button>
-                  </div>
-
-                  <NewOfferItemsTable items={lineItems} onItemsChange={setLineItems} subprojectSuggestions={subprojectSuggestions} />
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-lg border px-3 py-2">
-                  <p className="text-xs text-muted-foreground">Linjer</p>
-                  <p className="text-lg font-semibold">{lineItems.length}</p>
-                </div>
-                <div className="rounded-lg border px-3 py-2">
-                  <p className="text-xs text-muted-foreground">Rabattverdi</p>
-                  <p className="text-lg font-semibold">{formatNok(totals.discountNok)}</p>
-                </div>
-                <div className="rounded-lg border px-3 py-2">
-                  <p className="text-xs text-muted-foreground">Total tilbudssum</p>
-                  <p className="text-lg font-semibold">{formatNok(totals.totalNok)}</p>
+              {/* Compact markup + add row toolbar */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Påslag</span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={globalMarkupPercent}
+                  onChange={(event) => setGlobalMarkupPercent(normalizeNumberInput(event.target.value, globalMarkupPercent))}
+                  className="h-7 w-20 text-sm"
+                />
+                <span className="text-sm text-muted-foreground">%</span>
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={applyGlobalAdjustments}>
+                  Bruk på alle
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="ml-auto h-7 text-xs" onClick={addManualLineItem}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Legg til rad
+                </Button>
+              </div>
+
+              {/* Document-styled materials list */}
+              <NewOfferItemsTable items={lineItems} onItemsChange={setLineItems} subprojectSuggestions={subprojectSuggestions} supplierSuggestions={getDistinctSuppliers()} />
+
+              {/* Totals footer */}
+              <div className="flex items-center justify-between border-t pt-3">
+                <span className="text-sm text-muted-foreground">{lineItems.length} linjer</span>
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Totalsum: </span>
+                  <span className="text-base font-bold text-primary">{formatNok(totals.totalNok)}</span>
                 </div>
               </div>
 
@@ -704,7 +742,7 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
 
                   <div className="w-full rounded-lg border bg-gradient-to-r from-blue-50 to-indigo-50 p-4 text-center sm:w-auto">
                     <div className={`text-3xl font-bold ${scoreColor(aiScore)}`}>{aiScore}%</div>
-                    <div className="text-sm text-gray-600">AI-score</div>
+                    <div className="text-sm text-gray-600">KI-score</div>
                     <div className="text-xs text-gray-500">
                       {aiComponents}/{lineItems.length} komponenter
                     </div>
@@ -716,7 +754,7 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
                 <div className="mb-3">
                   <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
                     <Send className="h-5 w-5 text-primary" />
-                    Klargjor kontrakt
+                    Klargjør kontrakt
                   </h3>
                 </div>
                 <div className="space-y-4">
@@ -840,10 +878,6 @@ export function NewOfferWizard({ projects, customers, initialProjectId, onComple
           ) : null}
 
           {feedback ? <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{feedback}</div> : null}
-
-          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {lineItems.length > 0 ? "Klar for kontraktsending: alle nødvendige kalkylelinjer er på plass." : "Legg til linjer i kalkylen før kontrakt."}
-          </div>
         </div>
       </div>
     </div>

@@ -170,6 +170,10 @@ export function getSupplierPriceCatalog() {
   return SUPPLIER_PRICE_CATALOG
 }
 
+export function getDistinctSuppliers(): string[] {
+  return Array.from(new Set(SUPPLIER_PRICE_CATALOG.map((row) => row.supplier))).sort()
+}
+
 export function matchNorwegianSupplierPrices(input: {
   description: string
   subprojects: string[]

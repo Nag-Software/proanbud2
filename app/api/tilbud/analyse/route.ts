@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import {
+  buildAiPriceSelectionContext,
+  type CompanyPriceFileMeta,
+  type CompanyPricePromptAttachment,
+  finalizeGeneratedOfferLineItems,
+  type CompanyPriceRow,
+} from "@/lib/tilbud/company-price-utils"
 import { createClient } from "@/lib/supabase/server"
 import { matchNorwegianSupplierPrices } from "@/lib/tilbud/supplier-prices"
 import { calculateOfferTotals, type OfferAnalysisResult, type OfferLineItem } from "@/lib/tilbud/types"
@@ -20,6 +27,7 @@ const aiLineItemSchema = z.object({
   unit: z.string().trim().default("stk"),
   subproject: z.string().trim().default("Generelt"),
   supplier: z.string().trim().default("Ukjent leverandør"),
+  nobb: z.string().trim().optional(),
   supplierSku: z.string().trim().optional(),
   supplierUrl: z.string().url().optional(),
   unitPriceNok: z.number().min(0),
@@ -54,6 +62,7 @@ function toOfferLineItems(items: z.infer<typeof aiLineItemSchema>[]): OfferLineI
     quantity: item.quantity,
     unit: item.unit,
     supplier: item.supplier,
+    nobb: item.nobb,
     supplierSku: item.supplierSku,
     supplierUrl: item.supplierUrl,
     unitPriceNok: item.unitPriceNok,
@@ -65,7 +74,12 @@ function toOfferLineItems(items: z.infer<typeof aiLineItemSchema>[]): OfferLineI
 function buildFallbackLineItems(input: {
   description: string
   subprojects: string[]
+  companyRows: CompanyPriceRow[]
 }) {
+  if (input.companyRows.length > 0) {
+    return []
+  }
+
   const matches = matchNorwegianSupplierPrices({
     description: input.description,
     subprojects: input.subprojects,
@@ -87,49 +101,92 @@ function buildFallbackLineItems(input: {
       supplierSku: match.id,
       supplierUrl: match.sourceUrl,
       unitPriceNok: match.unitPriceNok,
-      markupPercent: 18,
+      markupPercent: 15,
       discountPercent: 0,
     }
   })
 }
 
-async function runOpenAiAnalysis(input: z.infer<typeof analysisRequestSchema>) {
+async function runOpenAiAnalysis(
+  input: z.infer<typeof analysisRequestSchema>,
+  priceFileAttachments: CompanyPricePromptAttachment[]
+) {
   if (!process.env.OPENAI_API_KEY) {
     return null
   }
 
-  const supplierMatches = matchNorwegianSupplierPrices({
-    description: `${input.title}\n${input.description}\n${input.sourceSummary}`,
-    subprojects: input.subprojects,
-  })
+  const supplierMatches =
+    priceFileAttachments.length > 0
+      ? []
+      : matchNorwegianSupplierPrices({
+          description: `${input.title}\n${input.description}\n${input.sourceSummary}`,
+          subprojects: input.subprojects,
+        })
 
   const systemPrompt = [
-    "Du er en senior kalkulatør i norsk byggenæring.",
-    "Lag et komplett og redigerbart tilbudsgrunnlag med linjeelementer.",
-    "Du må bruke leverandørpriser i input som grunnlag for en realistisk kalkyle.",
-    "Returner KUN gyldig JSON med feltene summary, reasoning, warnings, lineItems.",
-    "lineItems må inkludere: title, description, quantity, unit, subproject, supplier, supplierSku, supplierUrl, unitPriceNok, markupPercent, discountPercent.",
-    "Bruk norsk språk.",
-  ].join(" ")
-
-  const userPrompt = JSON.stringify(
-    {
+    "Du er Norges fremste senior kalkulatør og tilbudsgenerator for bygge- og håndverksbedrifter. Du kombinerer høy faglig ekspertise, nøyaktig mengdeberegning, realistisk tidsestimering og markedskorrekt prising.",
+    "",
+    "Kjerneoppdrag:",
+    "Lag profesjonelle, komplette og markedstilpassede kalkyler basert på oppdragsbeskrivelse, prisfiler og prosjektinformasjon.",
+    "",
+    "STRATEGIER OG REGLER (høyeste prioritet):",
+    "1. Materialvalg - Vær ekstremt presis",
+    "- Bruk kun produkter fra bedriftens prisfiler (relevantePrisrader) når de er relevante.",
+    "- Inkluder nobb på produktlinjer når tilgjengelig i prisfil.",
+    "- Velg alltid det mest korrekte produktet til jobben (tykkelse, type, kvalitet, bruksområde).",
+    "- Ved etterisolering/isolasjon skal du ikke velge undertak/taktekking-produkter (f.eks. undertak, Tyvek, takpapp) med mindre oppdraget eksplisitt ber om det.",
+    "- Kun bruk fallback-produkter hvis det absolutt ikke finnes noe relevant i prisfilen.",
+    "- Ikke legg til festemidler, tape, fugemasse, lim, skruer, sparkel eller annet tilbehør med mindre det er eksplisitt nevnt i oppdraget.",
+    "2. Mengdeberegning",
+    "- Beregn realistiske og litt romslige (men ikke overdrevne) mengder.",
+    "- Ta hensyn til svinn, kutt, og praktisk utførelse (spesielt på loft, rehab og trange plasser).",
+    "- Vis tydelig i description hva som er inkludert i mengden.",
+    "3. Arbeidstid og timeforbruk",
+    "- Beregn realistisk timeforbruk basert på norsk håndverksstandard 2025/2026.",
+    "- Ta hensyn til: antall arbeidere, adkomst, tilgjengelighet, prosjektets kompleksitet, opprydding og bortkjøring.",
+    "- Bruk unit: time på alle arbeidsposter og transport.",
+    "4. Økonomi og markup",
+    "- Arbeid og transport skal alltid ha markupPercent: 0.",
+    "- Produkter/materialer skal ha default markupPercent: 15, med mindre annet er eksplisitt begrunnet.",
+    "- Totaltilbudet skal ligge på et nivå som er konkurransedyktig, men lønnsomt i det norske markedet.",
+    "5. Output-regler",
+    "- Du svarer ALLTID kun med gyldig JSON. Ingen tekst utenfor JSON-objektet.",
+    "- JSON skal følge dette eksakte formatet:",
+    '{"message":"Kalkyle generert","summary":"Kort, profesjonelt sammendrag av tilbudet (1-2 setninger)","reasoning":"Kort teknisk begrunnelse for viktige valg","warnings":["Kun reelle usikkerheter"],"lineItems":[{"subproject":"Loftsisolering","title":"Glava Proff 34 150mm","description":"150mm mineralull i CC60, inkl. nødvendig kutt og montering på 47m²","quantity":52,"unit":"m2","supplier":"Byggmakker","nobb":"12345678","supplierSku":"","supplierUrl":"","unitPriceNok":123.04,"markupPercent":15,"discountPercent":0}]}'
+  ].join("\n")
+  
+  const userPrompt = [
+    "Bruk oppdragsgrunnlaget under til å generere en komplett kalkyle.",
+    "Hvis prisfilvedlegg er tilgjengelige, skal du selv lese hele prisfilen og velge korrekte produkter derfra. Ikke stol på lokal forhåndsfiltrering.",
+    "Du skal selv avgjøre hvilke produkter som er relevante ved å vurdere hele prisfilvedlegget.",
+    "Returner kun gyldig JSON i det eksakte formatet definert i systemprompten.",
+    JSON.stringify({
       request: {
         title: input.title,
         description: input.description,
         sourceSummary: input.sourceSummary,
         subprojects: input.subprojects,
       },
-      supplierPrices: supplierMatches,
+      prisfiler: {
+        filer: priceFileAttachments.map((attachment) => ({
+          fileId: attachment.fileId,
+          supplierName: attachment.supplierName,
+          fileName: attachment.fileName,
+          rowCount: attachment.rowCount,
+        })),
+        fallbackProdukter: supplierMatches,
+      },
       outputRequirements: {
         minLineItems: 6,
         maxLineItems: 30,
         includeWarnings: true,
       },
-    },
-    null,
-    2
-  )
+    }),
+    ...priceFileAttachments.map(
+      (attachment) =>
+        `Prisfilvedlegg: ${attachment.fileName} | Leverandør: ${attachment.supplierName} | Rader: ${attachment.rowCount}\n${attachment.content}`
+    ),
+  ].join("\n\n")
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -138,8 +195,7 @@ async function runOpenAiAnalysis(input: z.infer<typeof analysisRequestSchema>) {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      temperature: 0.2,
+      model: process.env.OPENAI_MODEL || "gpt-5.2-mini",
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
@@ -170,7 +226,7 @@ async function runOpenAiAnalysis(input: z.infer<typeof analysisRequestSchema>) {
   }
 
   return {
-    model: payload.model || process.env.OPENAI_MODEL || "gpt-4.1-mini",
+    model: payload.model || process.env.OPENAI_MODEL || "gpt-5.2-mini",
     data: parsed.data,
   }
 }
@@ -202,17 +258,61 @@ export async function POST(request: Request) {
     const input = parsed.data
     const generatedAt = new Date().toISOString()
 
-    const supplierSnapshots = matchNorwegianSupplierPrices({
-      description: `${input.title}\n${input.description}\n${input.sourceSummary}`,
-      subprojects: input.subprojects,
-    }).map((match) => ({
-      supplier: match.supplier,
-      product: match.product,
-      unit: match.unit,
-      unitPriceNok: match.unitPriceNok,
-      sourceUrl: match.sourceUrl,
-      fetchedAt: generatedAt,
-    }))
+    // Fetch company's uploaded price rows
+    const { data: userRow } = await supabase
+      .from("users")
+      .select("company_id")
+      .eq("id", user.id)
+      .maybeSingle()
+
+    const companyId = (userRow as { company_id?: string } | null)?.company_id ?? null
+    let allCompanyPrices: CompanyPriceRow[] = []
+    let priceFileAttachments: CompanyPricePromptAttachment[] = []
+    let companyName: string | null = null
+
+    if (companyId) {
+      const [{ data: fileRows }, { data: companyRow }] = await Promise.all([
+        supabase
+          .from("supplier_price_files")
+          .select("id, supplier_name, original_filename, row_count")
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase.from("companies").select("name").eq("id", companyId).maybeSingle(),
+      ])
+
+      const expectedRowCount = ((fileRows ?? []) as Array<{ row_count?: number | null }>).reduce(
+        (sum, row) => sum + Math.max(row.row_count || 0, 0),
+        0
+      )
+
+      const fetchedRows: Array<CompanyPriceRow & { file_id?: string | null }> = []
+      const batchSize = 1000
+      for (let offset = 0; ; offset += batchSize) {
+        const { data: batch } = await supabase
+          .from("supplier_price_rows")
+          .select("product, unit, net_price, list_price, category, nobb, supplier_sku, file_id, product_group_code")
+          .eq("company_id", companyId)
+          .not("product", "is", null)
+          .order("id", { ascending: true })
+          .range(offset, offset + batchSize - 1)
+
+        const rows = (batch ?? []) as Array<CompanyPriceRow & { file_id?: string | null }>
+        fetchedRows.push(...rows)
+
+        if (rows.length < batchSize || (expectedRowCount > 0 && fetchedRows.length >= expectedRowCount)) {
+          break
+        }
+      }
+
+      const aiPriceSelectionContext = buildAiPriceSelectionContext({
+        files: (fileRows ?? []) as CompanyPriceFileMeta[],
+        rows: fetchedRows,
+      })
+      allCompanyPrices = aiPriceSelectionContext.allCompanyPrices
+      priceFileAttachments = aiPriceSelectionContext.attachments
+      companyName = (companyRow as { name?: string | null } | null)?.name ?? null
+    }
 
     let lineItems: OfferLineItem[] = []
     let summary = ""
@@ -221,7 +321,7 @@ export async function POST(request: Request) {
     let model = "fallback-rules"
 
     try {
-      const aiResult = await runOpenAiAnalysis(input)
+      const aiResult = await runOpenAiAnalysis(input, priceFileAttachments)
       if (aiResult) {
         model = aiResult.model
         lineItems = toOfferLineItems(aiResult.data.lineItems)
@@ -237,6 +337,7 @@ export async function POST(request: Request) {
       lineItems = buildFallbackLineItems({
         description: `${input.title}\n${input.description}\n${input.sourceSummary}`,
         subprojects: input.subprojects,
+        companyRows: allCompanyPrices,
       })
 
       if (!summary) {
@@ -245,7 +346,28 @@ export async function POST(request: Request) {
       }
     }
 
+    const finalized = finalizeGeneratedOfferLineItems({
+      generatedItems: lineItems,
+      companyRows: allCompanyPrices,
+      query: `${input.title}\n${input.description}\n${input.sourceSummary}`,
+      subprojects: input.subprojects,
+      companyName,
+      preserveAiMaterialSelections: true,
+    })
+    lineItems = finalized.lineItems
+    warnings = Array.from(new Set([...warnings, ...finalized.warnings]))
+
     const totals = calculateOfferTotals(lineItems)
+    const supplierSnapshots = lineItems
+      .filter((item) => item.supplier.trim())
+      .map((item) => ({
+        supplier: item.supplier,
+        product: item.title,
+        unit: item.unit,
+        unitPriceNok: item.unitPriceNok,
+        sourceUrl: item.supplierUrl,
+        fetchedAt: generatedAt,
+      }))
 
     const analysisResult: OfferAnalysisResult = {
       summary,

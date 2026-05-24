@@ -51,9 +51,6 @@ export default function DeltakereTab({ projectId, initialParticipants, isProject
           />
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Button variant="outline" className="w-full sm:w-auto">
-            <Mail className="mr-2 h-4 w-4" /> Send melding
-          </Button>
           {isAdmin && (
             <AddParticipantDialog projectId={projectId} currentParticipants={participants} />
           )}
@@ -139,7 +136,7 @@ export default function DeltakereTab({ projectId, initialParticipants, isProject
       </div>
       {/* Access Control Information */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-        <Card className="bg-muted/40 border-dashed">
+        <Card className="bg-muted/40 border-dashed gap-1">
           <CardHeader className="pb-2">
              <CardTitle className="text-sm flex items-center gap-2">
                 <Shield className="h-4 w-4 text-amber-500" /> Admin-tilgang
@@ -149,8 +146,8 @@ export default function DeltakereTab({ projectId, initialParticipants, isProject
             Brukere med Admin-tilgang kan redigere prosjektdetaljer, invitere andre deltakere, se økonomi og slette prosjektet. Typisk forbeholdt prosjektledere og administratorer.
           </CardContent>
         </Card>
-        <Card className="bg-muted/40 border-dashed">
-          <CardHeader className="pb-2">
+        <Card className="bg-muted/40 border-dashed gap-1">
+          <CardHeader className="">
              <CardTitle className="text-sm text-blue-600 flex items-center gap-2">
                 Bare visning
              </CardTitle>

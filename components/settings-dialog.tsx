@@ -32,6 +32,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -268,14 +269,15 @@ export function SettingsDialog({
         </Button>
       </DialogTrigger>
       <DialogContent className="overflow-hidden p-0 md:max-h-[500px] md:max-w-[700px] lg:max-w-[800px]">
-        <DialogTitle className="sr-only">Settings</DialogTitle>
+        <DialogTitle className="sr-only">Innstillinger</DialogTitle>
         <DialogDescription className="sr-only">
-          Customize your settings here.
+          Tilpass innstillingene dine her.
         </DialogDescription>
         <SidebarProvider className="items-start">
           <Sidebar collapsible="none" className="hidden md:flex">
             <SidebarContent>
               <SidebarGroup>
+                <SidebarGroupLabel className="py-2">Prosjektinnstillinger </SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {resolvedSettings.map((item) => (
@@ -299,13 +301,13 @@ export function SettingsDialog({
               </SidebarGroup>
             </SidebarContent>
           </Sidebar>
-          <main className="flex h-[480px] flex-1 flex-col overflow-hidden">
+          <main className="flex h-[480px] p-0 m-0 flex-1 flex-col overflow-hidden">
             <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
               <div className="flex items-center gap-2 px-4">
                 <Breadcrumb>
                   <BreadcrumbList>
                     <BreadcrumbItem className="hidden md:block">
-                      <BreadcrumbLink href="#">Settings</BreadcrumbLink>
+                      <BreadcrumbLink href="#">Innstillinger</BreadcrumbLink>
                     </BreadcrumbItem>
                     <BreadcrumbSeparator className="hidden md:block" />
                     <BreadcrumbItem>
@@ -316,16 +318,6 @@ export function SettingsDialog({
               </div>
             </header>
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0">
-              {/*}
-              <div className="space-y-1">
-                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                  SEKSJON
-                </p>
-                <h3 className="text-lg font-semibold text-foreground">
-                  {currentSection}
-                </h3>
-              </div>
-              */}
               {currentSettings?.fields?.length ? (
                 <div
                   className="grid gap-4"
@@ -356,8 +348,8 @@ export function SettingsDialog({
               )}
             </div>
             {onSave && (
-              <div className="flex justify-end border-t p-4">
-                <Button disabled={isSaving} onClick={() => onSave(values)}>
+              <div className="flex justify-end px-5">
+                <Button disabled={isSaving} onClick={() => onSave(values)} className="h-9">
                   {isSaving ? "Lagrer..." : "Lagre endringer"}
                 </Button>
               </div>

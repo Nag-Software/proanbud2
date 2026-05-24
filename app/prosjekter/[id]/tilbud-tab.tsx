@@ -1,13 +1,16 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { CheckCircle, FileText, Send, Wallet } from "lucide-react"
+import { CheckCircle, FileText, Link, Send, Wallet } from "lucide-react"
+import { PlusCircle } from "lucide-react"
+
 
 import { columns, type Quota } from "@/components/tilbud/columns"
 import { DataTable } from "@/components/tilbud/data-table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
 
 type OfferRow = {
     id: string
@@ -125,9 +128,8 @@ export default function TilbudTab({ projectId, projectName, customerName, offers
                     placeholder="Søk i tilbud..."
                     className="sm:max-w-sm"
                 />
-
                 <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
-                    <SelectTrigger className="w-full sm:w-[220px]">
+                    <SelectTrigger className="w-full sm:w-[220px] ">
                         <SelectValue placeholder="Sorter etter" />
                     </SelectTrigger>
                     <SelectContent>

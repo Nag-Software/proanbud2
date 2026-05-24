@@ -29,13 +29,13 @@ export function DynamicTaskList({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-foreground">Oppgaver</p>
+        <p className="text-md font-bold text-foreground">Oppgaver</p>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {onApplyTemplate ? (
             <Button
               type="button"
               variant="ghost"
-              className="h-11 rounded-lg px-4"
+              className="h-8 rounded-lg px-2"
               onClick={onApplyTemplate}
             >
               {templateLabel}
@@ -45,7 +45,7 @@ export function DynamicTaskList({
           <Button
             type="button"
             variant="outline"
-            className="h-11 rounded-lg px-4"
+            className="h-10 rounded-lg px-4"
             onClick={() => append({ title: "" })}
           >
             <Plus className="mr-2 h-4 w-4" />

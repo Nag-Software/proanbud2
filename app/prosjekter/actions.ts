@@ -201,7 +201,7 @@ export async function createProjectAction(input: CreateProjectInput) {
       project_type: values.project_type,
       status: values.status,
       start_date: values.start_date,
-      end_date: values.end_date,
+      end_date: values.end_date ?? null,
       budget_nok: values.budget_nok,
       description: values.description || null,
     })

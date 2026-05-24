@@ -59,6 +59,7 @@ function toLineItems(input: unknown): OfferLineItem[] {
         quantity: Number(item.quantity || 0),
         unit: String(item.unit || "stk"),
         supplier: String(item.supplier || ""),
+        nobb: item.nobb ? String(item.nobb) : undefined,
         supplierSku: item.supplierSku ? String(item.supplierSku) : undefined,
         supplierUrl: item.supplierUrl ? String(item.supplierUrl) : undefined,
         unitPriceNok: Number(item.unitPriceNok || 0),
@@ -172,7 +173,10 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
     notFound()
   }
 
-  const offer = offerResult.data as any
+  const offer = offerResult.data as {
+    line_items: unknown
+    analysis_result: unknown
+  }
   const lineItems = toLineItems(offer.line_items)
   const contract = readContractState(offer.analysis_result)
 

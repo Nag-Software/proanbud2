@@ -34,77 +34,42 @@ const data = {
     {
       title: "Dashbord",
       url: "/",
-      icon: (
-        <LayoutDashboardIcon className="text-green-500" />
-      ),
+      icon: <LayoutDashboardIcon className="size-4" />,
       isActive: true,
     },
     {
       title: "Prosjekter",
       url: "/prosjekter",
-      icon: (
-        <FolderIcon className="text-red-600" />
-      ),
-    },
-        {
-      title: "Kunder",
-      url: "/kunder",
-      icon: (
-        <UsersIcon className="text-blue-600" />
-      ),
+      icon: <FolderIcon className="size-4" />,
     },
     {
-      title: "Salg & Økonomi",
-      url: "#",
-      icon: (
-        <ReceiptTextIcon className="text-yellow-600" />
-      ),
-      items: [
-        {
-          title: "Tilbudsoversikt",
-          url: "/tilbud",
-        },
-        {
-          title: "Kontraktoversikt",
-          url: "/kontrakter",
-        },
-        {
-          title: "Fakturaer",
-          url: "/fakturaer",
-        }
-      ]
+      title: "Kunder",
+      url: "/kunder",
+      icon: <UsersIcon className="size-4" />,
     },
     {
       title: "Kalender",
       url: "/kalender",
-      icon: (
-        <CalendarDays className="text-purple-600" />
-      ),
+      icon: <CalendarDays className="size-4" />,
     },
     {
       title: "Meldinger",
       url: "/meldinger",
-      icon: (
-        <InboxIcon className="text-indigo-600" />
-      ),
+      icon: <InboxIcon className="size-4" />,
     },
     {
       title: "Dokumenter",
       url: "/dokumenter",
-      icon: (
-        <FilesIcon className="text-lime-600" />
-      ),
+      icon: <FilesIcon className="size-4" />,
     },
     {
       title: "Mine priser",
       url: "/mine-priser",
-      icon: (
-        <BadgePercentIcon className="text-green-600" />
-      ),
+      icon: <BadgePercentIcon className="size-4" />,
       items: [
         {
-          title: "Produktkatalog",
-          url: "/mine-priser/produktkatalog",
+          title: "Prisfiler",
+          url: "/mine-priser/prisfiler",
         },
         {
           title: "Lagrede jobber",
@@ -119,9 +84,7 @@ const data = {
     {
       title: "Min bedrift",
       url: "/min-bedrift",
-      icon: (
-        <Building2Icon />
-      ),
+      icon: <Building2Icon className="size-4" />,
       items: [
         {
           title: "Bedriftsprofil",
@@ -144,10 +107,7 @@ const data = {
     {
       title: "Innstillinger",
       url: "/innstillinger",
-      icon: (
-        <Settings2Icon className="text-cyan-600"
-        />
-      ),
+      icon: <Settings2Icon className="size-4" />,
       items: [
         {
           title: "Generelt",
@@ -218,7 +178,7 @@ function AppSidebarHeader() {
       <CreateProjectDrawer
         variant="outline"
         size="sm"
-        className="w-full mt-1 h-8 hover:shadow-sm"
+        className="w-full mt-1 hover:shadow-sm"
         label={isCollapsed ? "" : "Nytt prosjekt"}
         showIcon
       />

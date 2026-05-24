@@ -34,8 +34,7 @@ export function NavMain({
 }) {
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Platform</SidebarGroupLabel>
-      <SidebarMenu className="gap-1">
+      <SidebarMenu className="gap-0.5">
         {items.map((item) => {
           const hasSubItems = Boolean(item.items?.length)
           const isCollapsible = item.collapsible ?? hasSubItems
@@ -43,7 +42,7 @@ export function NavMain({
           if (!isCollapsible || !hasSubItems) {
             return (
               <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton asChild tooltip={item.title} className="text-[16px] font-[500] text-black/80">
+                <SidebarMenuButton asChild tooltip={item.title} className="text-sm font-medium">
                   <a href={item.url}>
                     {item.icon}
                     <span>{item.title}</span>
@@ -62,7 +61,7 @@ export function NavMain({
             >
               <SidebarMenuItem>
                 <CollapsibleTrigger asChild>
-                  <SidebarMenuButton tooltip={item.title} className="text-[16px] font-[500] text-black/80">
+                  <SidebarMenuButton tooltip={item.title} className="text-sm font-medium">
                     {item.icon}
                     <span>{item.title}</span>
                     <ChevronRightIcon className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
@@ -72,7 +71,7 @@ export function NavMain({
                   <SidebarMenuSub className="gap-1">
                     {item.items?.map((subItem) => (
                       <SidebarMenuSubItem key={subItem.title}>
-                        <SidebarMenuSubButton asChild className="text-[16px] font-[500] text-black/80">
+                        <SidebarMenuSubButton asChild className="text-sm">
                           <a href={subItem.url}>
                             <span>{subItem.title}</span>
                           </a>

@@ -152,7 +152,7 @@ export default async function Page({
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
-            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+            <p className="hidden text-xs uppercase tracking-[0.2em] text-muted-foreground">
               Dine Prosjekter
             </p>
             <h1 className="text-2xl font-semibold text-foreground">
@@ -174,7 +174,7 @@ export default async function Page({
           </CardHeader>
           <CardContent className="p-0">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-muted/60 border border-muted">
                 <TableRow>
                   <TableHead>Nummer</TableHead>
                   <TableHead>Prosjekt</TableHead>

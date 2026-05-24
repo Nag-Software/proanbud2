@@ -24,6 +24,7 @@ export function StepProgress({ currentStep, steps, errorSteps = [], onStepClick 
     <div className="space-y-4">
       <Progress value={progress} className="h-2" />
 
+{/*}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {steps.map((step, index) => {
           const isActive = currentStep === index
@@ -48,9 +49,9 @@ export function StepProgress({ currentStep, steps, errorSteps = [], onStepClick 
             >
               <div
                 className={cn(
-                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-base",
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-base",
                   isDone && "border-accent bg-accent text-accent-foreground",
-                  isActive && "border-primary bg-primary text-primary-foreground",
+                  isActive && "border-yellow-400 bg-yellow-400/20 text-primary-foreground",
                   hasError && !isDone && !isActive && "border-destructive bg-destructive/10 text-destructive",
                   !isDone && !isActive && "border-border bg-background"
                 )}
@@ -65,6 +66,7 @@ export function StepProgress({ currentStep, steps, errorSteps = [], onStepClick 
           )
         })}
       </div>
+      */}
     </div>
   )
 }

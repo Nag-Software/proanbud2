@@ -39,7 +39,7 @@ export const createProjectSchema = z
       .optional()
       .or(z.literal("")),
     start_date: isoDateString,
-    end_date: isoDateString,
+    end_date: isoDateString.optional(),
     budget_nok: z.coerce
       .number({ message: "Legg inn et gyldig budsjett" })
       .int("Budsjettet må være et helt tall")

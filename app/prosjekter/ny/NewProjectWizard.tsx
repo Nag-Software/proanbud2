@@ -18,13 +18,12 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { cn } from "@/lib/utils"
 import { ClientAutocomplete, type ClientOption } from "./components/client-autocomplete"
 import { DatePickerField } from "./components/date-picker-field"
-import { DynamicTaskList } from "./components/dynamic-task-list"
 import { EmployeeMultiSelect, type EmployeeOption } from "./components/employee-multi-select"
-import { FileDropzoneField } from "./components/file-dropzone-field"
 import { StepProgress } from "./components/step-progress"
 import { SuccessState } from "./components/success-state"
+import { Plus, PlusCircle } from "lucide-react"
 
-type StepIndex = 0 | 1 | 2 | 3
+type StepIndex = 0 | 1
 
 const categoryOptions = [
   { value: "nybygg", label: "Nybygg" },
@@ -41,10 +40,8 @@ const priceListOptions = [
 ] as const
 
 const stepDefinitions = [
-  { title: "Grunninfo", icon: "📊" },
-  { title: "Planlegging", icon: "👥" },
-  { title: "Oppgaver/Filer", icon: "✅" },
-  { title: "Økonomi/Kontrakt", icon: "💰" },
+  { title: "Grunninfo", icon: "🚀" },
+  { title: "Planlegging", icon: "🤔" },
 ] as const
 
 const wizardSchema = z
@@ -62,7 +59,7 @@ const wizardSchema = z
       .max(180, "Adresse/byggeplass kan ikke være lengre enn 180 tegn"),
     category: z.enum(categoryOptions.map((option) => option.value) as [string, ...string[]]),
     startDate: z.date({ message: "Velg startdato" }),
-    endDate: z.date({ message: "Velg sluttdato" }),
+    endDate: z.date().optional(),
     employeeIds: z.array(z.string()).default([]),
     tasks: z
       .array(
@@ -82,7 +79,7 @@ const wizardSchema = z
     priceListId: z.string().optional().default(""),
   })
   .superRefine((values, ctx) => {
-    if (isBefore(startOfDay(values.endDate), startOfDay(values.startDate))) {
+    if (values.endDate && isBefore(startOfDay(values.endDate), startOfDay(values.startDate))) {
       ctx.addIssue({
         code: "custom",
         path: ["endDate"],
@@ -99,50 +96,13 @@ type NewProjectWizardProps = {
   employees: EmployeeOption[]
 }
 
-const taskTemplatesByCategory: Record<WizardValues["category"], string[]> = {
-  nybygg: [
-    "Etablering og rigg",
-    "Grunnarbeid",
-    "Tett bygg",
-    "Innvendige arbeider",
-    "Sluttkontroll og overlevering",
-  ],
-  rehabilitering: [
-    "Befaring og kartlegging",
-    "Riving og avfallshandtering",
-    "Nodvendig oppretting",
-    "Montering og finish",
-    "FDV og overlevering",
-  ],
-  tilbygg: [
-    "Sikring av eksisterende bygg",
-    "Fundamentering",
-    "Reising av konstruksjon",
-    "Tak og tetting",
-    "Innvendig ferdigstillelse",
-  ],
-  vedlikehold: [
-    "Tilstandssjekk",
-    "Materialbestilling",
-    "Utforelse",
-    "Funksjonstest",
-    "Dokumentasjon",
-  ],
-  annet: [
-    "Oppstartsmote",
-    "Gjennomforing",
-    "Kvalitetskontroll",
-    "Kundegjennomgang",
-  ],
-}
-
 const defaultValues: WizardValues = {
   projectName: "",
   clientId: "",
   location: "",
   category: "nybygg",
   startDate: startOfDay(new Date()),
-  endDate: addDays(startOfDay(new Date()), 30),
+  endDate: undefined,
   employeeIds: [],
   tasks: [{ title: "" }],
   projectFiles: [],
@@ -154,11 +114,9 @@ const defaultValues: WizardValues = {
 const stepFields: Record<StepIndex, (keyof WizardValues)[]> = {
   0: ["projectName", "clientId", "location", "category"],
   1: ["startDate", "endDate"],
-  2: [],
-  3: [],
 }
 
-const stepForField: Record<keyof WizardValues, StepIndex> = {
+const stepForField: Partial<Record<keyof WizardValues, StepIndex>> = {
   projectName: 0,
   clientId: 0,
   location: 0,
@@ -166,11 +124,6 @@ const stepForField: Record<keyof WizardValues, StepIndex> = {
   startDate: 1,
   endDate: 1,
   employeeIds: 1,
-  tasks: 2,
-  projectFiles: 2,
-  budgetNok: 3,
-  contractFiles: 3,
-  priceListId: 3,
 }
 
 const orderedValidationFields: (keyof WizardValues)[] = [
@@ -181,11 +134,6 @@ const orderedValidationFields: (keyof WizardValues)[] = [
   "startDate",
   "endDate",
   "employeeIds",
-  "tasks",
-  "projectFiles",
-  "budgetNok",
-  "contractFiles",
-  "priceListId",
 ]
 
 function formatCurrency(value: number) {
@@ -385,24 +333,12 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
     const collected = new Set<number>()
 
     for (const field of Object.keys(errors) as (keyof WizardValues)[]) {
-      collected.add(stepForField[field])
+      const s = stepForField[field]
+      if (s !== undefined) collected.add(s)
     }
 
     return Array.from(collected)
   }, [form.formState.errors])
-
-  const handleApplyTaskTemplate = () => {
-    const category = form.getValues("category")
-    const template = taskTemplatesByCategory[category]
-
-    form.setValue(
-      "tasks",
-      template.map((title) => ({ title })),
-      { shouldDirty: true, shouldValidate: false }
-    )
-
-    toast.success(`La inn anbefalt byggemal for ${categoryLabel.toLowerCase()}`)
-  }
 
   const handleNext = async () => {
     const fields = stepFields[step]
@@ -411,17 +347,11 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
       if (!isValid) return
     }
 
-    setStep((prev) => Math.min(prev + 1, 3) as StepIndex)
+    setStep((prev) => Math.min(prev + 1, 1) as StepIndex)
   }
 
   const handleBack = () => {
     setStep((prev) => Math.max(prev - 1, 0) as StepIndex)
-  }
-
-  const handleSkip = () => {
-    if (step === 2) {
-      setStep(3)
-    }
   }
 
   const handleStepClick = async (targetStep: StepIndex) => {
@@ -465,7 +395,7 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
         status: "planning",
         description: composeDescription(formValues.location, formValues.tasks),
         start_date: format(formValues.startDate, "yyyy-MM-dd"),
-        end_date: format(formValues.endDate, "yyyy-MM-dd"),
+        end_date: formValues.endDate ? format(formValues.endDate, "yyyy-MM-dd") : undefined,
         budget_nok: Math.round(formValues.budgetNok || 0),
         lead_user_id: leadUserId,
         member_ids: memberIds,
@@ -496,7 +426,7 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
 
   const onInvalidSubmit = (errors: FieldErrors<WizardValues>) => {
     const nextStep = getFirstInvalidStep(errors)
-    if (nextStep !== null) {
+    if (nextStep !== null && nextStep !== undefined) {
       setStep(nextStep)
     }
   }
@@ -542,9 +472,9 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight text-foreground">Nytt prosjekt</h1>
-                <p className="text-sm text-muted-foreground">Steg {step + 1} av 4</p>
+                <p className="text-sm text-muted-foreground">Steg {step + 1} av 2</p>
               </div>
-              <Button asChild variant="ghost" className="h-11 rounded-lg px-4">
+              <Button asChild variant="ghost" className="h-9 rounded-lg px-4">
                 <Link href="/prosjekter">Avbryt</Link>
               </Button>
             </div>
@@ -570,14 +500,14 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
                   className="space-y-4"
                 >
                   {step === 0 ? (
-                    <div className="space-y-4">
+                    <div className="space-y-4 max-w-md">
                       <div>
                         <p className="mb-2 text-sm font-medium text-foreground">Prosjektnavn</p>
                         <Input
                           {...form.register("projectName")}
                           placeholder="F.eks. Totalrehabilitering av bad i Storgata 12"
                           className={cn(
-                            "text-base",
+                            "h-9 px-4 text-base",
                             form.formState.errors.projectName && "border-destructive"
                           )}
                         />
@@ -585,16 +515,32 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
                           <p className="mt-1 text-sm text-destructive">{form.formState.errors.projectName.message}</p>
                         ) : null}
                       </div>
+                      <div>
+                          <p className="mb-2 text-sm font-medium text-foreground">Adresse / byggeplass</p>
+                          <Input
+                            {...form.register("location")}
+                            placeholder="Gateadresse, bygg eller område"
+                            className={cn(
+                              "h-9 px-4 rounded-lg text-base",
+                              form.formState.errors.location && "border-destructive"
+                            )}
+                          />
+                          {form.formState.errors.location ? (
+                            <p className="mt-1 text-sm text-destructive">{form.formState.errors.location.message}</p>
+                          ) : null}
+                        </div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
-                          <div className="mb-2 flex items-center justify-between gap-2">
+                          <div className="mb-1 flex items-center justify-between gap-2">
                             <p className="text-sm font-medium text-foreground">Kunde</p>
                             <Button
                               type="button"
-                              variant="outline"
+                              variant="ghost"
                               onClick={() => setCustomerDrawerOpen(true)}
+                              className="h-6.5 px-2"
                             >
-                              Legg til kunde
+                              <Plus className="mr-1 h-3 w-3" />
+                              Ny kunde
                             </Button>
                           </div>
                           <Controller
@@ -610,30 +556,14 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
                             )}
                           />
                         </div>
-
                         <div>
-                          <p className="mb-2 text-sm font-medium text-foreground">Adresse / byggeplass</p>
-                          <Input
-                            {...form.register("location")}
-                            placeholder="Gateadresse, bygg eller område"
-                            className={cn(
-                              "h-10 rounded-lg text-base",
-                              form.formState.errors.location && "border-destructive"
-                            )}
-                          />
-                          {form.formState.errors.location ? (
-                            <p className="mt-1 text-sm text-destructive">{form.formState.errors.location.message}</p>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="mb-2 text-sm font-medium text-foreground">Kategori</p>
+                        <p className="mb-2.5 text-sm font-medium text-foreground">Kategori</p>
                         <Controller
                           control={form.control}
                           name="category"
                           render={({ field }) => (
                             <Select value={field.value} onValueChange={field.onChange}>
-                              <SelectTrigger className="h-10 min-w-[150px]">
+                              <SelectTrigger className="h-10! min-w-[150px] w-full">
                                 <SelectValue placeholder="Velg kategori" />
                               </SelectTrigger>
                               <SelectContent>
@@ -649,6 +579,7 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
                             </Select>
                           )}
                         />
+                      </div>
                       </div>
                     </div>
                   ) : null}
@@ -672,12 +603,24 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
                           control={form.control}
                           name="endDate"
                           render={({ field }) => (
-                            <DatePickerField
-                              label="Sluttdato"
-                              value={field.value}
-                              onChange={field.onChange}
-                              error={form.formState.errors.endDate?.message}
-                            />
+                            <div>
+                              <DatePickerField
+                                label="Sluttdato"
+                                value={field.value}
+                                onChange={field.onChange}
+                                error={form.formState.errors.endDate?.message}
+                                placeholder="Ingen dato valgt"
+                              />
+                              {field.value && (
+                                <button
+                                  type="button"
+                                  onClick={() => form.setValue("endDate", undefined, { shouldValidate: true, shouldDirty: true })}
+                                  className="mt-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                                >
+                                  Ingen sluttdato
+                                </button>
+                              )}
+                            </div>
                           )}
                         />
                       </div>
@@ -693,92 +636,6 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
                           />
                         )}
                       />
-                    </div>
-                  ) : null}
-
-                  {step === 2 ? (
-                    <div className="space-y-4">
-                      <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-                        Bransjemal: {categoryLabel}. Du kan fylle inn en anbefalt oppgaveliste og justere etter prosjektet.
-                      </div>
-
-                      <DynamicTaskList
-                        control={form.control as unknown as Control<{ tasks: { title: string }[] }>}
-                        onApplyTemplate={handleApplyTaskTemplate}
-                        templateLabel={`Bruk ${categoryLabel.toLowerCase()}-mal`}
-                      />
-
-                      <Controller
-                        control={form.control}
-                        name="projectFiles"
-                        render={({ field }) => (
-                          <FileDropzoneField
-                            label="Last opp prosjektfiler"
-                            files={field.value || []}
-                            onChange={field.onChange}
-                            hint="For eksempel tegninger, bilder og dokumentasjon (lagres under prosjektgrunnlag)"
-                          />
-                        )}
-                      />
-                    </div>
-                  ) : null}
-
-                  {step === 3 ? (
-                    <div className="space-y-4">
-                      <div>
-                        <p className="mb-2 text-sm font-medium text-foreground">Budsjett (NOK)</p>
-                        <Controller
-                          control={form.control}
-                          name="budgetNok"
-                          render={({ field }) => (
-                            <>
-                              <Input
-                                value={field.value > 0 ? formatCurrency(field.value).replace("kr", "") : ""}
-                                onChange={(event) => field.onChange(parseCurrencyInput(event.target.value))}
-                                placeholder="0"
-                                inputMode="numeric"
-                                className="h-12 rounded-lg text-base"
-                              />
-                              <p className="mt-1 text-sm text-muted-foreground">{formatCurrency(field.value || 0)}</p>
-                            </>
-                          )}
-                        />
-                      </div>
-
-                      <Controller
-                        control={form.control}
-                        name="contractFiles"
-                        render={({ field }) => (
-                          <FileDropzoneField
-                            label="Kontrakt"
-                            files={field.value || []}
-                            onChange={field.onChange}
-                            hint="Last opp signert kontrakt eller utkast (lagres i kontrakt-mappen)"
-                          />
-                        )}
-                      />
-
-                      <div>
-                        <p className="mb-2 text-sm font-medium text-foreground">Prisliste</p>
-                        <Controller
-                          control={form.control}
-                          name="priceListId"
-                          render={({ field }) => (
-                            <Select value={field.value} onValueChange={field.onChange}>
-                              <SelectTrigger className="h-12 rounded-lg text-base">
-                                <SelectValue placeholder="Velg prisliste" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {priceListOptions.map((option) => (
-                                  <SelectItem key={option.value} value={option.value}>
-                                    {option.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                        />
-                      </div>
                     </div>
                   ) : null}
                 </motion.section>
@@ -803,8 +660,10 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
                 <div>
                   <p className="text-muted-foreground">Dato</p>
                   <p className="font-semibold text-foreground">
-                    {values.startDate && values.endDate
-                      ? `${format(values.startDate, "dd.MM.yyyy")} - ${format(values.endDate, "dd.MM.yyyy")}`
+                    {values.startDate
+                      ? values.endDate
+                        ? `${format(values.startDate, "dd.MM.yyyy")} – ${format(values.endDate, "dd.MM.yyyy")}`
+                        : `Fra ${format(values.startDate, "dd.MM.yyyy")}`
                       : "Ikke satt"}
                   </p>
                 </div>
@@ -812,35 +671,19 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
                   <p className="text-muted-foreground">Team</p>
                   <p className="font-semibold text-foreground">{selectedEmployeeCount} valgt</p>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Budsjett</p>
-                  <p className="font-semibold text-foreground">{formatCurrency(values.budgetNok || 0)}</p>
-                </div>
               </div>
             </aside>
           </div>
 
-          <div className="flex flex-col gap-3 border-t p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div className="flex flex-col gap-3 border-t p-4 sm:flex-row sm:items-center sm:justify-between sm:p-4">
             <div className="min-h-5 text-sm text-destructive">{submitError}</div>
 
             <div className="flex flex-wrap items-center justify-end gap-2">
-              {step === 2 ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-12 rounded-lg px-5"
-                  onClick={handleSkip}
-                  disabled={form.formState.isSubmitting}
-                >
-                  Hopp over for nå
-                </Button>
-              ) : null}
-
               {step > 0 ? (
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-12 rounded-lg px-5"
+                  className="h-9 rounded-lg px-4"
                   onClick={handleBack}
                   disabled={form.formState.isSubmitting}
                 >
@@ -848,10 +691,10 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
                 </Button>
               ) : null}
 
-              {step < 3 ? (
+              {step < 1 ? (
                 <Button
                   type="button"
-                  className="h-12 rounded-lg px-5"
+                  className="h-9 rounded-lg px-4"
                   onClick={() => {
                     void handleNext()
                   }}
@@ -862,7 +705,7 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
               ) : (
                 <Button
                   type="submit"
-                  className="h-12 rounded-lg px-5"
+                  className="h-9 rounded-lg px-4"
                   disabled={form.formState.isSubmitting}
                   onClick={requestSubmit}
                 >

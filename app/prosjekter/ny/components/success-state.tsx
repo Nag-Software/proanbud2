@@ -40,10 +40,10 @@ export function SuccessState({ projectName, onGoToProject, onCreateAnother }: Su
           <span className="font-semibold">{projectName || "Prosjektet"}</span> er klart. Du kan gå rett til prosjektet eller opprette et nytt.
         </p>
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
-          <Button className="h-12 rounded-lg px-5" onClick={onGoToProject}>
+          <Button className="h-9 rounded-lg px-4" onClick={onGoToProject}>
             Gå til prosjekt
           </Button>
-          <Button type="button" variant="outline" className="h-12 rounded-lg px-5" onClick={onCreateAnother}>
+          <Button type="button" variant="outline" className="h-9 rounded-lg px-4" onClick={onCreateAnother}>
             Opprett et nytt
           </Button>
         </div>

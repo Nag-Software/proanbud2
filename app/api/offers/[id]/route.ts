@@ -35,6 +35,7 @@ function normalizeLineItems(input: unknown): OfferLineItem[] {
       quantity: Number(item.quantity || 0),
       unit: String(item.unit || "stk"),
       supplier: String(item.supplier || ""),
+      nobb: item.nobb ? String(item.nobb) : undefined,
       supplierSku: item.supplierSku ? String(item.supplierSku) : undefined,
       supplierUrl: item.supplierUrl ? String(item.supplierUrl) : undefined,
       unitPriceNok: Number(item.unitPriceNok || 0),

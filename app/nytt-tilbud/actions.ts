@@ -11,6 +11,12 @@ const sourceDocumentSchema = z.object({
   name: z.string().trim().min(1),
   sizeBytes: z.number().min(0),
   type: z.string().trim().optional(),
+  storageBucket: z.string().trim().optional(),
+  storagePath: z.string().trim().optional(),
+  signedUrl: z.string().trim().optional(),
+  uploadedAt: z.string().trim().optional(),
+  uploadStatus: z.enum(["pending", "uploading", "ready", "failed"]).optional(),
+  previewKind: z.enum(["image", "document"]).optional(),
 })
 
 const lineItemSchema = z.object({
@@ -21,6 +27,7 @@ const lineItemSchema = z.object({
   quantity: z.number().min(0),
   unit: z.string().trim().min(1),
   supplier: z.string().trim().default("Ukjent"),
+  nobb: z.string().trim().optional(),
   supplierSku: z.string().trim().optional(),
   supplierUrl: z.string().trim().optional(),
   unitPriceNok: z.number().min(0),

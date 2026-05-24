@@ -23,7 +23,9 @@ import { cn } from "@/lib/utils";
 import { 
   Select, 
   SelectContent, 
+  SelectGroup, 
   SelectItem, 
+  SelectLabel, 
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
@@ -190,34 +192,21 @@ export default function OppgaverTab({ projectId }: { projectId: string }) {
         
 
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <Button className="shrink-0 gap-2" onClick={() => setIsDialogOpen(true)}>
-            <Plus className="h-4 w-4" /> Ny Oppgave
-          </Button>
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input 
               type="search" 
               placeholder="Søk i oppgaver..." 
-              className="pl-9" 
+              className="pl-9 h-9" 
               value={search}
               onChange={(e) => setSearch(e.target.value)}              
             />
           </div>
-          
-          <Select defaultValue="all">
-            <SelectTrigger className="w-[140px] gap-2">
-              <Filter className="h-4 w-4"/> <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Alle</SelectItem>
-              <SelectItem value="Ikke startet">Ikke startet</SelectItem>
-              <SelectItem value="Pågår">Pågår</SelectItem>
-              <SelectItem value="Ferdig">Ferdig</SelectItem>
-            </SelectContent>
-          </Select>
-
           <Button variant="outline" size="icon">
             <ArrowUpDown className="h-4 w-4" />
+          </Button>
+          <Button className="shrink-0 gap-2" onClick={() => setIsDialogOpen(true)}>
+            <Plus className="h-4 w-4" /> Ny Oppgave
           </Button>
         </div>
       </div>

@@ -14,9 +14,10 @@ type DatePickerFieldProps = {
   value?: Date
   onChange: (date?: Date) => void
   error?: string
+  placeholder?: string
 }
 
-export function DatePickerField({ label, value, onChange, error }: DatePickerFieldProps) {
+export function DatePickerField({ label, value, onChange, error, placeholder = "Velg dato" }: DatePickerFieldProps) {
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium text-foreground">{label}</p>
@@ -31,7 +32,7 @@ export function DatePickerField({ label, value, onChange, error }: DatePickerFie
               error && "border-destructive"
             )}
           >
-            {value ? format(value, "PPP", { locale: nb }) : "Velg dato"}
+            {value ? format(value, "PPP", { locale: nb }) : placeholder}
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
           </Button>
         </PopoverTrigger>

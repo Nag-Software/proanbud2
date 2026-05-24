@@ -7,6 +7,12 @@ export type OfferSourceDocument = {
   name: string
   sizeBytes: number
   type?: string
+  storageBucket?: string
+  storagePath?: string
+  signedUrl?: string
+  uploadedAt?: string
+  uploadStatus?: "pending" | "uploading" | "ready" | "failed"
+  previewKind?: "image" | "document"
 }
 
 export type OfferLineItem = {
@@ -17,6 +23,7 @@ export type OfferLineItem = {
   quantity: number
   unit: string
   supplier: string
+  nobb?: string
   supplierSku?: string
   supplierUrl?: string
   unitPriceNok: number
@@ -53,6 +60,10 @@ export type OfferProjectOption = {
   customerName: string | null
   customerEmail: string | null
   customerPhone: string | null
+  description?: string | null
+  status?: string | null
+  projectType?: string | null
+  budgetNok?: number | null
 }
 
 export type OfferCustomerOption = {
@@ -61,6 +72,15 @@ export type OfferCustomerOption = {
   email: string | null
   phone: string | null
   city: string | null
+  address?: string | null
+  postalCode?: string | null
+  orgNumber?: string | null
+}
+
+export type OfferCompanyContext = {
+  id: string
+  name: string | null
+  orgNumber: string | null
 }
 
 export type SaveOfferPayload = {

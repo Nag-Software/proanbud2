@@ -58,7 +58,7 @@ function Button({
       data-slot="button"
       data-variant={variant}
       data-size={size}
-      className={cn(buttonVariants({ variant, size, className }), "cursor-pointer")}
+      className={cn(buttonVariants({ variant, size, className }), "h-9 cursor-pointer")}
       {...props}
     />
   )

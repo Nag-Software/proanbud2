@@ -85,25 +85,19 @@ export function ProsjekterFilters() {
     currentStatus !== "all" || currentSort !== "name" || currentQuery.trim().length > 0
 
   return (
-    <div className="rounded-xl max-w-4xl border bg-card/60 p-3 md:p-4">
-      <div className="grid gap-3 md:grid-cols-[1fr_1fr_2fr_auto] md:items-center">
+    <div className="rounded-xl max-w-4xl bg-card/60">
+      <div className="grid gap-3 max-w-2xl md:grid-cols-[3fr_1fr] md:items-center">
         <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Status</p>
-          <Select value={currentStatus} onValueChange={handleStatusChange} disabled={isPending}>
-            <SelectTrigger className="h-9 w-full">
-              <SelectValue placeholder="Velg status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectLabel>Filter på status</SelectLabel>
-                {statusFilters.map((status) => (
-                  <SelectItem key={status.value} value={status.value}>
-                    {status.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Søk</p>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="h-9 pl-9 w-full"
+              placeholder="Søk prosjekt, kunde eller ID"
+              defaultValue={currentQuery}
+              onChange={(event) => handleSearchChange(event.target.value)}
+            />
+          </div>
         </div>
 
         <div className="space-y-1">
@@ -124,33 +118,6 @@ export function ProsjekterFilters() {
             </SelectContent>
           </Select>
         </div>
-
-        <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Sok</p>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="h-9 pl-8"
-              placeholder="Sok prosjekt, kunde eller ID"
-              defaultValue={currentQuery}
-              onChange={(event) => handleSearchChange(event.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end mt-5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-9"
-            onClick={resetFilters}
-            disabled={!hasActiveFilters || isPending}
-          >
-            <X className="mr-2 size-4" />
-            Nullstill
-          </Button>
-        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
@@ -169,6 +136,19 @@ export function ProsjekterFilters() {
             </Button>
           )
         })}
+        <div className="flex items-center justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto cursor-pointer"
+            onClick={resetFilters}
+            disabled={!hasActiveFilters || isPending}
+          >
+            <X className="mr-2 size-4" />
+            Nullstill
+          </Button>
+        </div>
       </div>
     </div>
   )
