@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -352,6 +353,12 @@ export default function CreateCompanyClient() {
           </StepperPanel>
         </Stepper>
       </div>
+      <Link
+        href="/login"
+        className="mt-4 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+      >
+        tilbake til login
+      </Link>
     </div>
   )
 }

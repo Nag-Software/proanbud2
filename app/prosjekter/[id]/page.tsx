@@ -7,7 +7,6 @@ import { AppPageShell } from "@/components/app-page-shell"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import OppgaverTab from "./oppgaver-tab"
@@ -17,70 +16,40 @@ import { EditProjectDialog } from "./edit-project-dialog"
 import ProjectDocumentsTab from "./project-documents-tab"
 import TilbudTab from "./tilbud-tab"
 
-type ProjectRow = {
-  id: string
-  name: string
-  customer_id: string | null
-  customers?:
-    | {
-        id: string
-        name: string
-        email: string | null
-        phone: string | null
-      }
-    | {
-        id: string
-        name: string
-        email: string | null
-        phone: string | null
-      }[]
-    | null
-}
-
-function normalizeProjectCustomer(project: ProjectRow) {
-  const maybeArray = project.customers
-  if (Array.isArray(maybeArray)) {
-    return maybeArray[0] || null
-  }
-
-  return maybeArray || null
-}
-
-function formatFallbackDate(dateStr?: string | null) {
-  if (!dateStr) return ""
-  return new Date(dateStr).toLocaleDateString("no-NO", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  })
-}
-
 type StatusConfig = {
   label: string
   filledBars: number
   fillClass: string
 }
 
+type MemberUser = {
+  id: string
+  email: string | null
+  full_name: string | null
+  role: string | null
+}
+
+type MemberRow = {
+  access_level: string | null
+  users: MemberUser | MemberUser[] | null
+}
+
+type TaskRow = {
+  id: string
+  status: string | null
+  due_date: string | null
+}
+
+type OfferRow = {
+  status: string | null
+  amount_nok: number | null
+}
+
 const statusConfigByValue: Record<string, StatusConfig> = {
-  planning: { label: "Pågående", filledBars: 1, fillClass: "bg-amber-400" },
-  active: { label: "Aktiv", filledBars: 3, fillClass: "bg-[var(--accent)]" },
-  on_hold: { label: "Avventer", filledBars: 2, fillClass: "bg-slate-400" },
-  completed: { label: "Fullfort", filledBars: 3, fillClass: "bg-emerald-500" },
-}
-
-const totalBars = 3
-
-type OfferStatusConfig = {
-  label: string
-  filledBars: number
-  fillClass: string
-}
-
-const offerStatusConfigByValue: Record<string, OfferStatusConfig> = {
-  draft: { label: "Utkast", filledBars: 0, fillClass: "bg-muted" },
-  sent: { label: "Sendt", filledBars: 1, fillClass: "bg-rose-400" },
-  accepted: { label: "Godkjent", filledBars: 3, fillClass: "bg-emerald-500" },
-  rejected: { label: "Avvist", filledBars: 1, fillClass: "bg-slate-400" },
+  planning: { label: "Pågående", filledBars: 1, fillClass: "theme-progress-fill-planning" },
+  active: { label: "Aktiv", filledBars: 3, fillClass: "theme-progress-fill-active" },
+  on_hold: { label: "Avventer", filledBars: 2, fillClass: "theme-progress-fill-onhold" },
+  completed: { label: "Fullfort", filledBars: 3, fillClass: "theme-progress-fill-completed" },
 }
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
@@ -94,8 +63,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     { data: tasksData },
     { data: offersData },
     { data: membersData },
-    { data: projectLink },
-    { data: projectJobs },
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -105,35 +72,27 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     supabase.from("tasks").select("id, title, status, priority, due_date, assigned_to").eq("project_id", resolvedParams.id).order("due_date"),
     supabase.from("offers").select("*").eq("project_id", resolvedParams.id),
     supabase.from("project_members").select("access_level, users(id, email, full_name, role)").eq("project_id", resolvedParams.id),
-    supabase
-      .from("external_entity_links")
-      .select("local_id, external_url, last_synced_at")
-      .eq("provider", "tripletex")
-      .eq("entity_type", "project")
-      .eq("local_id", resolvedParams.id)
-      .maybeSingle(),
-    supabase
-      .from("integration_jobs")
-      .select("status")
-      .eq("provider", "tripletex")
-      .eq("job_type", "project.upsert")
-      .contains("payload", { projectId: resolvedParams.id }),
   ])
 
   if (!project) {
     notFound()
   }
 
-  const currentMember = (membersData || []).find((m: any) => m.users?.id === user.id)
+  const normalizedMembers = ((membersData || []) as MemberRow[]).map((member) => ({
+    ...member,
+    users: Array.isArray(member.users) ? member.users[0] ?? null : member.users,
+  }))
+
+  const currentMember = normalizedMembers.find((member) => member.users?.id === user.id)
   const normalizedRole = String(userRole || "").toLowerCase()
   const isProjectAdmin =
     ["admin", "administrator", "manager", "leder"].includes(normalizedRole) ||
     currentMember?.access_level === "manager"
 
   // Parse project assignments to participant list
-  const projectDeltakere = (membersData || []).map((member: any) => {
-     const memberUser = member.users;
-     const roleName = memberUser?.role || "Ukjent";
+  const projectDeltakere = normalizedMembers.map((member) => {
+     const memberUser = member.users
+     const roleName = memberUser?.role || "Ukjent"
 
      return {
         id: memberUser?.id || crypto.randomUUID(),
@@ -147,78 +106,27 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               ? "Kan redigere"
               : "Bare visning",
         avatar: memberUser?.full_name ? memberUser.full_name.substring(0, 2).toUpperCase() : "U"
-     };
-  });
+     }
+  })
 
-  const tasks = tasksData || []
-  const offers = offersData || []
-  const syncingJobs = (projectJobs || []).filter((job: any) => ["pending", "processing", "retry"].includes(job.status)).length
-  const failedJobs = (projectJobs || []).filter((job: any) => ["failed", "dead_letter"].includes(job.status)).length
-
-  const doneTasks = tasks.filter((task: any) => task.status === "done").length
-  const openTasks = tasks.filter((task: any) => task.status !== "done").length
-  const overdueTasks = tasks.filter((task: any) => {
+  const tasks = (tasksData || []) as TaskRow[]
+  const offers = (offersData || []) as OfferRow[]
+  const doneTasks = tasks.filter((task) => task.status === "done").length
+  const openTasks = tasks.filter((task) => task.status !== "done").length
+  const overdueTasks = tasks.filter((task) => {
     if (!task.due_date || task.status === "done") return false
     return new Date(task.due_date) < new Date()
   }).length
-  const dueSoonTasks = tasks.filter((task: any) => {
-    if (!task.due_date || task.status === "done") return false
-    const today = new Date()
-    const dueDate = new Date(task.due_date)
-    const daysUntilDue = (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-    return daysUntilDue >= 0 && daysUntilDue <= 7
-  }).length
   const progressPercent = tasks.length === 0 ? 0 : Math.round((doneTasks / tasks.length) * 100)
-  const taskPreview = tasks.filter((task: any) => task.status !== "done").slice(0, 4)
-  const offerPreview = offers.slice(0, 3)
-  const teamPreview = projectDeltakere.slice(0, 4)
-  const totalOfferValue = offers.reduce((sum: number, offer: any) => sum + Number(offer.amount_nok || 0), 0)
-  const acceptedOffers = offers.filter((offer: any) => offer.status === "accepted").length
-  const sentOffers = offers.filter((offer: any) => offer.status === "sent").length
+  const totalOfferValue = offers.reduce((sum: number, offer) => sum + Number(offer.amount_nok || 0), 0)
+  const acceptedOffers = offers.filter((offer) => offer.status === "accepted").length
+  const sentOffers = offers.filter((offer) => offer.status === "sent").length
   const offerAcceptancePercent = offers.length === 0 ? 0 : Math.round((acceptedOffers / offers.length) * 100)
-  const overduePercent = openTasks === 0 ? 0 : Math.round((overdueTasks / openTasks) * 100)
-  const dueSoonPercent = openTasks === 0 ? 0 : Math.round((dueSoonTasks / openTasks) * 100)
-  const syncLastDate = projectLink?.last_synced_at ? formatFallbackDate(projectLink.last_synced_at) : "Ikke synkronisert"
-  const driftRisk =
-    failedJobs > 0 || overdueTasks > 2
-      ? "Høy"
-      : overdueTasks > 0 || dueSoonTasks > 0 || syncingJobs > 0
-      ? "Middels"
-      : "Lav"
-
   const statusConfig = statusConfigByValue[project.status as string] || statusConfigByValue.planning
-
-  const riskTone =
-    driftRisk === "Høy"
-      ? "bg-rose-100 text-rose-900"
-      : driftRisk === "Middels"
-      ? "bg-amber-100 text-amber-900"
-      : "bg-emerald-100 text-emerald-900"
-
-  const syncTone =
-    failedJobs > 0
-      ? "bg-rose-100 text-rose-900"
-      : syncingJobs > 0
-      ? "bg-sky-100 text-sky-900"
-      : projectLink
-      ? "bg-emerald-100 text-emerald-900"
-      : "bg-slate-100 text-slate-900"
-
-  const syncLabel =
-    failedJobs > 0
-      ? "Feilet"
-      : syncingJobs > 0
-      ? "Pågår"
-      : projectLink
-      ? "Synkronisert"
-      : "Ikke koblet"
 
   const customerName = Array.isArray(project.customers)
     ? project.customers[0]?.name
     : project.customers?.name || "Ukjent kunde"
-
-  const projectRow = project as ProjectRow
-  const projectCustomer = normalizeProjectCustomer(projectRow)
 
   const totalramme = new Intl.NumberFormat("no-NO", {
     style: "currency",
@@ -298,7 +206,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
           <TabsContent value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
             <div className="grid gap-3 lg:grid-cols-12">
-              <Card className="border-l-4 border-l-slate-700 rounded-sm lg:col-span-12">
+              <Card className="theme-project-overview-rail border-l-4 rounded-sm lg:col-span-12">
                 <CardContent className="grid gap-3 px-4 py-0 md:grid-cols-3">
                   <div>
                     <p className="text-sm text-muted-foreground">Status</p>
@@ -352,7 +260,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                     </div>
                     <div className="mt-1 flex h-2.5 overflow-hidden rounded-sm bg-muted">
                       <span
-                        className="bg-emerald-500"
+                        className="theme-progress-fill-completed"
                         style={{ width: `${Math.min(100, offerAcceptancePercent)}%` }}
                       />
                     </div>

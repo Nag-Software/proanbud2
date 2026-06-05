@@ -48,6 +48,7 @@ export async function GET(request: Request) {
           { auth: { persistSession: false, autoRefreshToken: false } }
         )
 
+        // Only create missing rows; existing company_id must never be overwritten by OAuth bootstrap.
         const { error: bootstrapError } = await supabaseAdmin
           .from('users')
           .upsert(
@@ -57,7 +58,7 @@ export async function GET(request: Request) {
               full_name: fullName ?? user.email?.split('@')[0] ?? 'Ny Bruker',
               company_id: null,
             },
-            { onConflict: 'id' }
+            { onConflict: 'id', ignoreDuplicates: true }
           )
 
         if (bootstrapError) {

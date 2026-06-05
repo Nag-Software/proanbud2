@@ -94,11 +94,11 @@ function folderPathFromItem(item: DocumentItem) {
 }
 
 function itemAccentClass(item: DocumentItem) {
-  if (item.itemType === "folder") return "bg-amber-500"
-  if (item.extension === "pdf") return "bg-rose-500"
-  if (item.extension === "xlsx" || item.extension === "xls") return "bg-emerald-500"
-  if (item.extension === "docx" || item.extension === "doc") return "bg-blue-500"
-  return "bg-zinc-400"
+  if (item.itemType === "folder") return "theme-doc-accent-folder"
+  if (item.extension === "pdf") return "theme-doc-accent-pdf"
+  if (item.extension === "xlsx" || item.extension === "xls") return "theme-doc-accent-sheet"
+  if (item.extension === "docx" || item.extension === "doc") return "theme-doc-accent-doc"
+  return "theme-doc-accent-file"
 }
 
 export default function DocumentsManager() {
@@ -558,8 +558,8 @@ export default function DocumentsManager() {
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
-      <div className="shrink-0 bg-gradient-to-b from-zinc-100 to-zinc-50 shadow-sm dark:from-zinc-900 dark:to-zinc-950">
-        <div className="flex items-center justify-between border-b border-zinc-200/70 px-3 py-2 dark:border-zinc-800/70">
+      <div className="theme-docs-shell shrink-0 shadow-sm">
+        <div className="theme-docs-header theme-docs-divider flex items-center justify-between border-b px-3 py-2">
           <div className="flex items-center gap-1">
             <Button variant={provider === "supabase" ? "secondary" : "ghost"} onClick={() => setProvider("supabase")} size="sm" className="h-8 gap-2 rounded-md">
               <HardDrive className="h-4 w-4" />
@@ -602,19 +602,19 @@ export default function DocumentsManager() {
         </div>
 
         <div className="grid flex-1 grid-cols-[250px_minmax(0,1fr)] sm:min-h-100 overflow-hidden">
-          <aside className="border-r border-zinc-200/80 bg-zinc-50/90 p-3 pb-0 dark:border-zinc-800/80 dark:bg-zinc-900/60 overflow-y-auto">
+          <aside className="theme-docs-sidebar theme-docs-divider overflow-y-auto border-r p-3 pb-0">
             <div>
               <div className="mb-2 flex items-center justify-between px-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Områder</p>
-                <Button variant="ghost" size="icon" className="h-5 w-5 hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60" onClick={() => setNewAreaOpen(true)} title="Nytt område">
-                  <Plus className="h-3.5 w-3.5 text-zinc-500" />
+                <p className="theme-doc-area-label text-[11px] font-semibold uppercase tracking-wide">Områder</p>
+                <Button variant="ghost" size="icon" className="theme-hover-muted h-5 w-5" onClick={() => setNewAreaOpen(true)} title="Nytt område">
+                  <Plus className="theme-icon-muted h-3.5 w-3.5" />
                 </Button>
               </div>
               <div className="space-y-1">
                 <Button variant={currentPath.length === 1 && currentPath[0].id === null ? "secondary" : "ghost"} className="h-8 w-full justify-start gap-2 rounded-md" onClick={goHome}>
-                  <HardDrive className="h-4 w-4 text-sky-500" />
+                  <HardDrive className="theme-icon-brand h-4 w-4" />
                   <span
-                    className={`truncate ${dropTargetPath === null ? "font-semibold text-sky-700 dark:text-sky-300" : ""}`}
+                    className={`truncate ${dropTargetPath === null ? "font-semibold theme-doc-area-active-label" : ""}`}
                     onDragOver={(e) => onDragOverFolder(e, null)}
                     onDrop={(e) => void onDropToFolder(e, null)}
                   >
@@ -629,12 +629,12 @@ export default function DocumentsManager() {
                     <Button
                       key={`sidebar-${folder.id}`}
                       variant={isActiveArea ? "secondary" : "ghost"}
-                      className={`h-8 w-full justify-start gap-2 rounded-md pl-6 ${dropTargetPath === fPath ? "bg-sky-100 dark:bg-sky-900/30" : ""}`}
+                      className={`h-8 w-full justify-start gap-2 rounded-md pl-6 ${dropTargetPath === fPath ? "theme-doc-area-drop" : ""}`}
                       onClick={() => selectArea(folder)}
                       onDragOver={(e) => onDragOverFolder(e, fPath)}
                       onDrop={(e) => void onDropToFolder(e, fPath)}
                     >
-                      <Folder className={`h-4 w-4 ${isActiveArea ? "text-sky-600 dark:text-sky-400" : "text-amber-500"}`} />
+                      <Folder className={`h-4 w-4 ${isActiveArea ? "theme-doc-folder-active" : "theme-icon-folder"}`} />
                       <span className={`truncate ${isActiveArea ? "font-medium" : ""}`}>{folder.name}</span>
                     </Button>
                   )
@@ -644,7 +644,7 @@ export default function DocumentsManager() {
           </aside>
 
           <section 
-            className="group/section relative flex min-h-0 min-w-0 flex-col bg-white dark:bg-zinc-950/30"
+            className="theme-doc-content group/section relative flex min-h-0 min-w-0 flex-col"
             onContextMenu={openBlankContextMenu}
             onDragOver={(e) => {
               e.preventDefault()
@@ -666,22 +666,22 @@ export default function DocumentsManager() {
             }}
           >
             {isDraggingNative && (
-              <div className="pointer-events-none absolute inset-2 z-[60] flex items-center justify-center rounded-xl border-2 border-dashed border-sky-500 bg-sky-500/10">
-                <p className="rounded-lg bg-white/80 px-4 py-2 text-lg font-semibold text-sky-700 shadow-sm backdrop-blur-sm dark:bg-black/60 dark:text-sky-300">
+              <div className="theme-doc-drop-overlay pointer-events-none absolute inset-2 z-[60] flex items-center justify-center rounded-xl border-2 border-dashed border-primary/40">
+                <p className="theme-doc-drop-label rounded-lg bg-background/85 px-4 py-2 text-lg font-semibold shadow-sm backdrop-blur-sm">
                   Slipp filene her for å laste opp
                 </p>
               </div>
             )}
 
-            <div className="flex items-center gap-1 border-b border-zinc-200/80 px-3 py-2 dark:border-zinc-800/80">
+            <div className="theme-doc-breadcrumbs flex items-center gap-1 border-b px-3 py-2">
               <Button variant="ghost" size="icon" className="h-7 w-7" disabled={currentPath.length <= 1} onClick={goBackFolder}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
 
               {currentPath.map((node, index) => (
                 <div key={`${node.name}-${index}`} className="flex items-center">
-                  {index > 0 && <ChevronRight className="h-4 w-4 text-zinc-400" />}
-                  <Button variant="ghost" size="sm" className="h-7 px-2 text-zinc-700 dark:text-zinc-200" onClick={() => jumpToPathIndex(index)}>
+                  {index > 0 && <ChevronRight className="theme-icon-muted h-4 w-4" />}
+                  <Button variant="ghost" size="sm" className="theme-doc-breadcrumb h-7 px-2" onClick={() => jumpToPathIndex(index)}>
                     {node.name}
                   </Button>
                 </div>
@@ -701,7 +701,7 @@ export default function DocumentsManager() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-[minmax(0,1fr)_120px_140px_140px] gap-2 border-b border-zinc-200/80 bg-zinc-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:border-zinc-800/80 dark:bg-zinc-900/60">
+                <div className="theme-doc-table-head theme-docs-divider theme-doc-table-label grid grid-cols-[minmax(0,1fr)_120px_140px_140px] gap-2 border-b px-3 py-2 text-[11px] font-semibold uppercase tracking-wide">
                   <span>Navn</span>
                   <span>Type</span>
                   <span>Endret</span>
@@ -714,15 +714,15 @@ export default function DocumentsManager() {
                   ) : listItems.length === 0 ? (
                     <div className="p-6 text-sm text-muted-foreground">Tom mappe</div>
                   ) : (
-                    <div className="divide-y divide-zinc-200/80 dark:divide-zinc-800/80">
+                    <div className="theme-doc-row-list divide-y divide-border/80">
                     {listItems.map((item) => {
                       const isBusy = busyId === item.id
 
                       return (
                         <div
                           key={`${item.provider}-${item.id}`}
-                          className={`group grid cursor-default grid-cols-[minmax(0,1fr)_120px_140px_140px] items-center gap-2 px-3 py-2 hover:bg-sky-50/70 dark:hover:bg-zinc-900/70 ${
-                            dropTargetPath === folderPathFromItem(item) ? "bg-sky-100/80 dark:bg-sky-900/20" : ""
+                          className={`group grid cursor-default grid-cols-[minmax(0,1fr)_120px_140px_140px] items-center gap-2 px-3 py-2 hover:bg-muted/60 ${
+                            dropTargetPath === folderPathFromItem(item) ? "theme-doc-row-drop" : ""
                           }`}
                           draggable={item.itemType === "file"}
                           onDragStart={() => onRowDragStart(item)}
@@ -748,12 +748,12 @@ export default function DocumentsManager() {
                         >
                           <div className="flex min-w-0 items-center gap-2">
                             {item.itemType === "folder" ? (
-                              <Folder className="h-4 w-4 shrink-0 text-amber-500" />
+                              <Folder className="theme-icon-folder h-4 w-4 shrink-0" />
                             ) : (
-                              <FileText className="h-4 w-4 shrink-0 text-zinc-500" />
+                              <FileText className="theme-icon-file h-4 w-4 shrink-0" />
                             )}
 
-                            <span className="truncate text-sm text-zinc-800 dark:text-zinc-200">{item.name}</span>
+                            <span className="theme-doc-file-name truncate text-sm">{item.name}</span>
 
                             {item.itemType === "folder" && (
                               <Button variant="ghost" size="icon" className="ml-auto h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100" onClick={() => openFolder(item)}>
@@ -762,11 +762,11 @@ export default function DocumentsManager() {
                             )}
                           </div>
 
-                          <span className="text-xs text-zinc-500">{item.itemType === "folder" ? "Mappe" : "Fil"}</span>
-                          <span className="text-xs text-zinc-500">{item.lastModifiedAt ? new Date(item.lastModifiedAt).toLocaleDateString("nb-NO") : "-"}</span>
+                          <span className="theme-doc-meta text-xs">{item.itemType === "folder" ? "Mappe" : "Fil"}</span>
+                          <span className="theme-doc-meta text-xs">{item.lastModifiedAt ? new Date(item.lastModifiedAt).toLocaleDateString("nb-NO") : "-"}</span>
 
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs text-zinc-500">{formatBytes(item.sizeBytes)}</span>
+                            <span className="theme-doc-meta text-xs">{formatBytes(item.sizeBytes)}</span>
 
                             <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                               <Button size="icon" variant="ghost" className="h-7 w-7" disabled={isBusy || !(item.webUrl || item.downloadUrl)} asChild>
@@ -799,16 +799,16 @@ export default function DocumentsManager() {
       {contextMenu && (
         <div
           ref={contextMenuRef}
-          className="fixed z-[70] min-w-[220px] rounded-lg border bg-white p-1.5 shadow-xl dark:bg-zinc-900"
+          className="theme-doc-context-menu fixed z-[70] min-w-[220px] rounded-lg border p-1.5 shadow-xl"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           {contextMenu.type === "item" ? (
             <>
               <div className="mb-1 flex items-center gap-2 rounded-md px-2 py-1.5">
                 {contextMenu.item.itemType === "folder" ? (
-                  <Folder className="h-4 w-4 text-amber-500" />
+                  <Folder className="theme-icon-folder h-4 w-4" />
                 ) : (
-                  <FileText className="h-4 w-4 text-zinc-500" />
+                  <FileText className="theme-icon-file h-4 w-4" />
                 )}
                 <span className="truncate text-xs font-medium">{contextMenu.item.name}</span>
                 <span className={`ml-auto h-2.5 w-2.5 rounded-full ${itemAccentClass(contextMenu.item)}`} />
@@ -816,7 +816,7 @@ export default function DocumentsManager() {
 
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
                 onClick={() => {
                   setContextMenu(null)
                   void viewItem(contextMenu.item)
@@ -828,7 +828,7 @@ export default function DocumentsManager() {
 
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
                 onClick={() => {
                   setContextMenu(null)
                   setDetailsTarget(contextMenu.item)
@@ -840,7 +840,7 @@ export default function DocumentsManager() {
 
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
                 onClick={() => {
                   setContextMenu(null)
                   askRename(contextMenu.item)
@@ -852,7 +852,7 @@ export default function DocumentsManager() {
 
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-destructive hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="theme-doc-context-item theme-doc-context-item-danger flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
                 onClick={() => {
                   setContextMenu(null)
                   setDeleteTarget(contextMenu.item)
@@ -866,7 +866,7 @@ export default function DocumentsManager() {
             <>
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
                 onClick={() => {
                   setContextMenu(null)
                   setNewFolderOpen(true)
@@ -878,7 +878,7 @@ export default function DocumentsManager() {
 
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
                 onClick={() => {
                   setContextMenu(null)
                   fileInputRef.current?.click()
@@ -890,7 +890,7 @@ export default function DocumentsManager() {
 
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
                 onClick={() => {
                   setContextMenu(null)
                   jumpToPathIndex(0)
@@ -902,7 +902,7 @@ export default function DocumentsManager() {
 
               <button
                 type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
                 onClick={() => {
                   setContextMenu(null)
                   void refreshAll(provider, currentFolderId)
@@ -1057,9 +1057,9 @@ export default function DocumentsManager() {
           <div className="space-y-3 text-sm">
             <div className="flex items-center gap-2">
               {detailsTarget?.itemType === "folder" ? (
-                <Folder className="h-4 w-4 text-amber-500" />
+                <Folder className="theme-icon-folder h-4 w-4" />
               ) : (
-                <FileText className="h-4 w-4 text-zinc-500" />
+                <FileText className="theme-icon-file h-4 w-4" />
               )}
               <span className="font-medium">{detailsTarget?.name}</span>
               {detailsTarget && <span className={`ml-auto h-2.5 w-2.5 rounded-full ${itemAccentClass(detailsTarget)}`} />}

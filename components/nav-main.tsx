@@ -7,7 +7,6 @@ import {
 } from "@/components/ui/collapsible"
 import {
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -26,17 +25,20 @@ export function NavMain({
     icon?: React.ReactNode
     isActive?: boolean
     collapsible?: boolean
+    hidden?: boolean
     items?: {
       title: string
       url: string
+      hidden?: boolean
     }[]
   }[]
 }) {
   return (
     <SidebarGroup>
       <SidebarMenu className="gap-0.5">
-        {items.map((item) => {
-          const hasSubItems = Boolean(item.items?.length)
+        {items.filter((item) => !item.hidden).map((item) => {
+          const visibleSubItems = item.items?.filter((subItem) => !subItem.hidden)
+          const hasSubItems = Boolean(visibleSubItems?.length)
           const isCollapsible = item.collapsible ?? hasSubItems
 
           if (!isCollapsible || !hasSubItems) {
@@ -69,7 +71,7 @@ export function NavMain({
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <SidebarMenuSub className="gap-1">
-                    {item.items?.map((subItem) => (
+                    {visibleSubItems?.map((subItem) => (
                       <SidebarMenuSubItem key={subItem.title}>
                         <SidebarMenuSubButton asChild className="text-sm">
                           <a href={subItem.url}>

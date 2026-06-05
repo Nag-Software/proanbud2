@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import type { User } from "@supabase/supabase-js"
+import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 
 import {
@@ -9,6 +11,8 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,23 +39,51 @@ import {
 } from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 
-import { ChevronsUpDownIcon, BadgeCheckIcon, LogOutIcon, Loader2Icon } from "lucide-react"
+import {
+  BadgeCheckIcon,
+  Building2Icon,
+  ChevronsUpDownIcon,
+  CreditCardIcon,
+  ExternalLinkIcon,
+  Loader2Icon,
+  LogOutIcon,
+  ShieldCheckIcon,
+  UserIcon,
+} from "lucide-react"
+
+type UserProfileState = {
+  full_name: string
+  avatar_url: string
+  email: string
+  role: string
+  company_id: string | null
+  company_name: string
+  company_org_number: string
+  bio: string
+}
 
 export function NavUser() {
   const { isMobile } = useSidebar()
   const router = useRouter()
   const supabase = createClient()
 
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState<UserProfileState | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [editName, setEditName] = useState("")
   const [editAvatar, setEditAvatar] = useState("")
+  const [editBio, setEditBio] = useState("")
+  const [editCompanyName, setEditCompanyName] = useState("")
+  const [editCompanyOrgNumber, setEditCompanyOrgNumber] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [isOpeningSubscription, setIsOpeningSubscription] = useState(false)
+  const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() ?? ""
 
   useEffect(() => {
     async function fetchUser() {
@@ -64,34 +96,52 @@ export function NavUser() {
 
       const { data: userRow } = await supabase
         .from("users")
-        .select("full_name, email")
+        .select("full_name, email, role, company_id")
         .eq("id", session.user.id)
         .maybeSingle()
 
+      const { data: companyRow } = userRow?.company_id
+        ? await supabase
+            .from("companies")
+            .select("name, org_number")
+            .eq("id", userRow.company_id)
+            .maybeSingle()
+        : { data: null }
+
       const { data: profileData } = await supabase
         .from("user_profiles")
-        .select("avatar_url")
+        .select("avatar_url, bio")
         .eq("user_id", session.user.id)
         .maybeSingle()
 
-      if (profileData) {
-        setProfile({
-          full_name: userRow?.full_name || session.user.user_metadata?.full_name || "",
-          avatar_url: profileData.avatar_url || "",
-          email: userRow?.email || session.user.email || "",
-        })
-        setEditName(userRow?.full_name || session.user.user_metadata?.full_name || "")
-        setEditAvatar(profileData.avatar_url || "")
-      } else {
-        // Create empty profile metadata row.
-        const newProfile = { user_id: session.user.id, avatar_url: "" }
-        await supabase.from("user_profiles").upsert(newProfile)
-        setProfile({
-          full_name: userRow?.full_name || session.user.user_metadata?.full_name || "",
-          avatar_url: "",
-          email: userRow?.email || session.user.email || "",
-        })
+      const nextProfile: UserProfileState = {
+        full_name: userRow?.full_name || session.user.user_metadata?.full_name || session.user.user_metadata?.name || "",
+        avatar_url:
+          profileData?.avatar_url ||
+          session.user.user_metadata?.avatar_url ||
+          session.user.user_metadata?.picture ||
+          "",
+        email: userRow?.email || session.user.email || "",
+        role: userRow?.role || "worker",
+        company_id: userRow?.company_id || null,
+        company_name: companyRow?.name || "",
+        company_org_number: companyRow?.org_number || "",
+        bio: profileData?.bio || "",
       }
+
+      if (profileData) {
+        setProfile(nextProfile)
+      } else {
+        const newProfile = { user_id: session.user.id, avatar_url: nextProfile.avatar_url, bio: "" }
+        await supabase.from("user_profiles").upsert(newProfile)
+        setProfile(nextProfile)
+      }
+
+      setEditName(nextProfile.full_name)
+      setEditAvatar(nextProfile.avatar_url)
+      setEditBio(nextProfile.bio)
+      setEditCompanyName(nextProfile.company_name)
+      setEditCompanyOrgNumber(nextProfile.company_org_number)
 
       setIsLoading(false)
     }
@@ -105,8 +155,38 @@ export function NavUser() {
     router.refresh()
   }
 
+  const handleManageSubscription = () => {
+    if (!stripePublishableKey) {
+      toast.error("Stripe er ikke konfigurert ennå.")
+      return
+    }
+
+    setIsOpeningSubscription(true)
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/stripe/customer-portal", {
+          method: "POST",
+        })
+
+        const payload = (await response.json()) as { url?: string; error?: string }
+
+        if (!response.ok || !payload.url) {
+          throw new Error(payload.error || "Kunne ikke åpne Stripe-portalen.")
+        }
+
+        window.location.assign(payload.url)
+      } catch (error) {
+        console.error("Open Stripe portal error", error)
+        toast.error(error instanceof Error ? error.message : "Kunne ikke åpne Stripe-portalen.")
+      } finally {
+        setIsOpeningSubscription(false)
+      }
+    })()
+  }
+
   const saveProfile = async () => {
-    if (!user) return
+    if (!user || !profile) return
     setIsSaving(true)
     try {
       const { error } = await supabase
@@ -116,28 +196,72 @@ export function NavUser() {
           updated_at: new Date().toISOString(),
         })
         .eq("id", user.id)
-      
-      if (!error) {
-        await supabase
-          .from("user_profiles")
-          .upsert({ user_id: user.id, avatar_url: editAvatar, updated_at: new Date().toISOString() })
 
-        setProfile({ ...profile, full_name: editName, avatar_url: editAvatar })
-        setIsSettingsOpen(false)
+      if (error) {
+        throw error
       }
+
+      if (profile.company_id) {
+        const { error: companyError } = await supabase
+          .from("companies")
+          .update({
+            name: editCompanyName.trim(),
+            org_number: editCompanyOrgNumber.trim() || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", profile.company_id)
+
+        if (companyError) {
+          throw companyError
+        }
+      }
+
+      const { error: profileError } = await supabase
+        .from("user_profiles")
+        .upsert({
+          user_id: user.id,
+          avatar_url: editAvatar.trim(),
+          bio: editBio.trim(),
+          updated_at: new Date().toISOString(),
+        })
+
+      if (profileError) {
+        throw profileError
+      }
+
+      const nextProfile: UserProfileState = {
+        ...profile,
+        full_name: editName.trim(),
+        avatar_url: editAvatar.trim(),
+        bio: editBio.trim(),
+        company_name: editCompanyName.trim(),
+        company_org_number: editCompanyOrgNumber.trim(),
+      }
+
+      setProfile(nextProfile)
+      setIsSettingsOpen(false)
+      toast.success("Kontoinnstillingene er lagret.")
+      router.refresh()
     } catch (error) {
       console.error("Error saving profile", error)
+      toast.error("Kunne ikke lagre innstillingene.")
     } finally {
       setIsSaving(false)
     }
   }
+
+  const roleLabel = {
+    admin: "Admin",
+    manager: "Leder",
+    worker: "Bruker",
+  } as const
 
   if (isLoading) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton size="lg" className="justify-center">
-            <Loader2Icon className="animate-spin h-4 w-4" />
+            <Loader2Icon className="h-4 w-4 animate-spin" />
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
@@ -149,10 +273,28 @@ export function NavUser() {
   }
 
   const displayName = profile?.full_name || user.email?.split("@")[0] || "Bruker"
-  const displayEmail = user.email || ""
+  const displayEmail = profile?.email || user.email || ""
   const avatarUrl = profile?.avatar_url || ""
-  const initials = displayName.substring(0, 2).toUpperCase()
-
+  const initials = displayName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "PR"
+  const subscriptionConfigured = Boolean(stripePublishableKey)
+  const currentRole = profile?.role && profile.role in roleLabel
+    ? roleLabel[profile.role as keyof typeof roleLabel]
+    : "Bruker"
+  const companyName = profile?.company_name?.trim() || "Ikke satt"
+  const companyOrgNumber = profile?.company_org_number?.trim() || "Ikke satt"
+  const bioPreview = profile?.bio?.trim() || "Ingen kort beskrivelse lagt til ennå."
+  const hasChanges =
+    editName.trim() !== (profile?.full_name || "") ||
+    editAvatar.trim() !== (profile?.avatar_url || "") ||
+    editBio.trim() !== (profile?.bio || "") ||
+    editCompanyName.trim() !== (profile?.company_name || "") ||
+    editCompanyOrgNumber.trim() !== (profile?.company_org_number || "")
   return (
     <>
       <SidebarMenu>
@@ -198,6 +340,10 @@ export function NavUser() {
                   <BadgeCheckIcon className="mr-2 h-4 w-4" />
                   Min Konto
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleManageSubscription}>
+                  {isOpeningSubscription ? <Loader2Icon className="mr-2 h-4 w-4 animate-spin" /> : <CreditCardIcon className="mr-2 h-4 w-4" />}
+                  Abonnement
+                </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout}>
@@ -210,51 +356,192 @@ export function NavUser() {
       </SidebarMenu>
 
       <Drawer direction="right" open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DrawerContent className="flex flex-col w-full">
+        <DrawerContent className="flex w-full flex-col">
           <DrawerHeader>
             <DrawerTitle>Min Konto</DrawerTitle>
             <DrawerDescription>
-              Oppdater profilen din her. Endringer lagres automatisk når du trykker lagre.
+              Oppdater de viktigste bruker- og bedriftsinnstillingene for Proanbud-kontoen din.
             </DrawerDescription>
           </DrawerHeader>
-          
-          <div className="flex-1 overflow-y-auto px-4 py-6">
-            <div className="space-y-6">
-            <div className="flex flex-row space-x-6">
-              <div className="space-y-2 w-full">
-                <Label htmlFor="email">E-post (kan ikke endres)</Label>
-                <Input id="email" value={displayEmail} disabled className="bg-muted" />
-              </div>
-              
-              <div className="space-y-2 w-full">
-                <Label htmlFor="fullName">Fullt navn</Label>
-                <Input 
-                  id="fullName" 
-                  value={editName} 
-                  onChange={(e) => setEditName(e.target.value)} 
-                  placeholder="eks. Ola Nordmann"
-                />
-              </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="avatarUrl">Avatar-lenke (bilde)</Label>
-                <Input 
-                  id="avatarUrl" 
-                  value={editAvatar} 
-                  onChange={(e) => setEditAvatar(e.target.value)} 
-                  placeholder="https://..."
-                />
-                {editAvatar && (
-                  <div className="mt-4 flex items-center gap-4">
+          <div className="flex-1 overflow-y-auto px-4 py-6">
+            <div className="space-y-5">
+              <Card>
+                <CardHeader className="pb-4">
+                  <div className="flex items-start gap-4">
                     <Avatar className="h-16 w-16">
-                      <AvatarImage src={editAvatar} alt="Forhåndsvisning" />
+                      <AvatarImage src={avatarUrl} alt={displayName} />
                       <AvatarFallback>{initials}</AvatarFallback>
                     </Avatar>
-                    <span className="text-sm text-muted-foreground">Forhåndsvisning</span>
+                    <div className="space-y-2">
+                      <CardTitle className="text-xl">{displayName}</CardTitle>
+                      <CardDescription>{displayEmail}</CardDescription>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="outline">{currentRole}</Badge>
+                        <Badge variant="outline">{companyName}</Badge>
+                        <Badge variant={subscriptionConfigured ? "secondary" : "destructive"}>
+                          {subscriptionConfigured ? "Stripe klar" : "Stripe mangler"}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
-                )}
-              </div>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>{bioPreview}</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Firma</p>
+                      <p className="font-medium text-foreground">{companyName}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Org.nr.</p>
+                      <p className="font-medium text-foreground">{companyOrgNumber}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <UserIcon className="h-4 w-4" />
+                    Profil
+                  </CardTitle>
+                  <CardDescription>
+                    Dette er det andre i Proanbud ser når de samarbeider med deg.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="email">E-post</Label>
+                      <Input id="email" value={displayEmail} disabled className="bg-muted" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="role">Tilgangsnivå</Label>
+                      <Input id="role" value={currentRole} disabled className="bg-muted" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="fullName">Fullt navn</Label>
+                    <Input
+                      id="fullName"
+                      value={editName}
+                      onChange={(event) => setEditName(event.target.value)}
+                      placeholder="Eks. Ola Nordmann"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="avatarUrl">Avatar-lenke</Label>
+                    <Input
+                      id="avatarUrl"
+                      value={editAvatar}
+                      onChange={(event) => setEditAvatar(event.target.value)}
+                      placeholder="https://..."
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="bio">Kort beskrivelse</Label>
+                    <Textarea
+                      id="bio"
+                      value={editBio}
+                      onChange={(event) => setEditBio(event.target.value)}
+                      placeholder="Hva du gjør i Proanbud, fagområde eller kontaktpunkt."
+                      className="min-h-[96px]"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Building2Icon className="h-4 w-4" />
+                    Proanbud-bedrift
+                  </CardTitle>
+                  <CardDescription>
+                    Grunnleggende bedriftsinfo brukt på tvers av systemet.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="companyName">Firmanavn</Label>
+                    <Input
+                      id="companyName"
+                      value={editCompanyName}
+                      onChange={(event) => setEditCompanyName(event.target.value)}
+                      placeholder="Eks. Proanbud AS"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="companyOrgNumber">Organisasjonsnummer</Label>
+                    <Input
+                      id="companyOrgNumber"
+                      value={editCompanyOrgNumber}
+                      onChange={(event) => setEditCompanyOrgNumber(event.target.value)}
+                      placeholder="999 999 999"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CreditCardIcon className="h-4 w-4" />
+                    Abonnement
+                  </CardTitle>
+                  <CardDescription>
+                    Administrer plan, betalingsmetode og fakturering direkte i Stripe.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-start justify-between gap-3 rounded-md border px-3 py-3">
+                    <div className="space-y-1">
+                      <p className="font-medium text-foreground">Stripe kundeportal</p>
+                      <p className="text-sm text-muted-foreground">
+                        Åpner abonnementshåndtering uten en intern Proanbud-side.
+                      </p>
+                    </div>
+                    <Badge variant={subscriptionConfigured ? "secondary" : "destructive"}>
+                      {subscriptionConfigured ? "Klar" : "Mangler URL"}
+                    </Badge>
+                  </div>
+
+                  <Button type="button" className="w-full justify-between" onClick={handleManageSubscription}>
+                    {isOpeningSubscription ? "Åpner Stripe..." : "Gå til Stripe"}
+                    {isOpeningSubscription ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <ExternalLinkIcon className="h-4 w-4" />}
+                  </Button>
+
+                  {!subscriptionConfigured ? (
+                    <p className="text-sm text-muted-foreground">
+                      `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` må være satt for å aktivere abonnementshåndtering.
+                    </p>
+                  ) : null}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <ShieldCheckIcon className="h-4 w-4" />
+                    Hurtighandlinger
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Button type="button" variant="outline" className="w-full justify-between" onClick={handleLogout}>
+                    Logg ut av Proanbud
+                    <LogOutIcon className="h-4 w-4" />
+                  </Button>
+                  <Separator />
+                  <p className="text-sm text-muted-foreground">
+                    Kontooppdateringer lagres her. Abonnement endres direkte i Stripe.
+                  </p>
+                </CardContent>
+              </Card>
             </div>
           </div>
 
@@ -262,8 +549,8 @@ export function NavUser() {
             <DrawerClose asChild>
               <Button variant="outline">Avbryt</Button>
             </DrawerClose>
-            <Button onClick={saveProfile} disabled={isSaving}>
-              {isSaving && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
+            <Button onClick={saveProfile} disabled={isSaving || !hasChanges}>
+              {isSaving ? <Loader2Icon className="mr-2 h-4 w-4 animate-spin" /> : null}
               Lagre endringer
             </Button>
           </DrawerFooter>

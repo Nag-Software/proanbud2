@@ -83,9 +83,9 @@ function normalizeNumberInput(value: string, fallback: number) {
 }
 
 function scoreColor(score: number) {
-  if (score >= 80) return "text-green-600"
-  if (score >= 60) return "text-amber-600"
-  return "text-rose-600"
+  if (score >= 80) return "theme-score-high"
+  if (score >= 60) return "theme-score-medium"
+  return "theme-score-low"
 }
 
 function previewKindForFile(file: File): OfferSourceDocument["previewKind"] {
@@ -520,7 +520,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                 <div className="space-y-4">
                   <div className="grid grid-cols-[1fr_10fr] gap-5">
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-700">Prosjekt</label>
+                      <label className="theme-text-label mb-2 block text-sm font-medium">Prosjekt</label>
                       <Popover open={projectPopoverOpen} onOpenChange={setProjectPopoverOpen}>
                         <PopoverTrigger asChild>
                           <button
@@ -573,7 +573,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                       </Popover>
                     </div>
                     <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">Tilbudsnavn</label>
+                    <label className="theme-text-label mb-2 block text-sm font-medium">Tilbudsnavn</label>
                     <Input
                       className="h-9 text-sm"
                       value={title}
@@ -594,21 +594,21 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                   </div>
                   {/* HERHERHERHERHER */}
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">Vedlegg (bilder, PDF, DOCX etc.)</label>
-                    <label className="block cursor-pointer rounded-lg border-2 border-dashed border-gray-300 p-5 text-center transition-all hover:border-gray-400">
-                      <Upload className="mx-auto mb-2 h-7 w-7 text-gray-400" />
-                      <p className="mb-1 text-sm text-gray-600">Dra og slipp filer her, eller klikk for å velge</p>
-                      <p className="text-xs text-gray-500">Maks 10 vedlegg</p>
+                    <label className="theme-text-label mb-2 block text-sm font-medium">Vedlegg (bilder, PDF, DOCX etc.)</label>
+                    <label className="theme-upload-zone block cursor-pointer rounded-lg border-2 border-dashed p-5 text-center transition-all">
+                      <Upload className="theme-upload-icon mx-auto mb-2 h-7 w-7" />
+                      <p className="theme-upload-text mb-1 text-sm">Dra og slipp filer her, eller klikk for å velge</p>
+                      <p className="theme-upload-subtext text-xs">Maks 10 vedlegg</p>
                       <input id="source-files" type="file" multiple className="hidden" onChange={onDocumentsSelected} />
                     </label>
 
                     {sourceDocuments.length > 0 ? (
                       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                         {sourceDocuments.map((documentItem) => (
-                          <div key={documentItem.id} className="flex items-center justify-between rounded-lg border bg-gray-50 px-3 py-2">
+                          <div key={documentItem.id} className="theme-upload-item flex items-center justify-between rounded-lg border px-3 py-2">
                             <div className="min-w-0">
-                              <p className="truncate text-sm text-gray-700">{documentItem.name}</p>
-                              <p className="text-xs text-gray-500">
+                              <p className="theme-upload-item-title truncate text-sm">{documentItem.name}</p>
+                              <p className="theme-upload-item-meta text-xs">
                                 {Math.round(documentItem.sizeBytes / 1024)} KB
                                 {documentItem.uploadStatus === "uploading" ? " • laster opp" : null}
                                 {documentItem.uploadStatus === "ready" ? " • klar for KI" : null}
@@ -627,7 +627,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
 
                 <div className="space-y-4">
                   <div className="h-[90%]">
-                    <label className="mb-2 block text-sm font-medium text-gray-700">Jobbeskrivelse</label>
+                    <label className="theme-text-label mb-2 block text-sm font-medium">Jobbeskrivelse</label>
                     <Textarea
                       value={description}
                       onChange={(event) => setDescription(event.target.value)}
@@ -638,7 +638,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                 </div>
               </div>
 
-              {analysisError ? <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{analysisError}</div> : null}
+              {analysisError ? <div className="theme-alert-error rounded-lg border p-3 text-sm">{analysisError}</div> : null}
 
               <div className="mt-4 flex gap-2">
                 <Button
@@ -667,7 +667,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
               <div className="border-b pb-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">Prisforslag</h2>
+                    <h2 className="theme-heading-strong text-xl font-bold">Prisforslag</h2>
                     {analysisResult ? (
                       <p className="mt-1 max-w-prose text-sm text-muted-foreground">{analysisResult.summary}</p>
                     ) : null}
@@ -681,7 +681,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
 
               {/* Compact markup + add row toolbar */}
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">Påslag</span>
+                <span className="theme-text-label text-sm font-medium">Påslag</span>
                 <Input
                   type="number"
                   min={0}
@@ -707,7 +707,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
               <div className="flex items-center justify-between border-t pt-3">
                 <span className="text-sm text-muted-foreground">{lineItems.length} linjer</span>
                 <div>
-                  <span className="text-sm font-medium text-gray-700">Totalsum: </span>
+                  <span className="theme-text-label text-sm font-medium">Totalsum: </span>
                   <span className="text-base font-bold text-primary">{formatNok(totals.totalNok)}</span>
                 </div>
               </div>
@@ -729,21 +729,21 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
             <div className="space-y-5">
               <div className="rounded-lg border p-4">
                 <div className="mb-3">
-                  <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+                  <h3 className="theme-heading-strong flex items-center gap-2 text-lg font-semibold">
                     <Calculator className="h-5 w-5 text-primary" />
                     Prissammendrag
                   </h3>
                 </div>
                 <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-6">
-                  <div className="w-full flex-1 rounded-lg border bg-gradient-to-r from-primary/10 to-primary/5 p-4 text-center sm:p-6">
-                    <h3 className="mb-2 text-base font-semibold text-gray-900 sm:text-lg">Total tilbudssum</h3>
+                  <div className="theme-surface-success w-full flex-1 rounded-lg border p-4 text-center sm:p-6">
+                    <h3 className="theme-heading-strong mb-2 text-base font-semibold sm:text-lg">Total tilbudssum</h3>
                     <div className="whitespace-nowrap text-2xl font-bold text-primary sm:text-3xl lg:text-4xl">{formatNok(totals.totalNok)}</div>
                   </div>
 
-                  <div className="w-full rounded-lg border bg-gradient-to-r from-blue-50 to-indigo-50 p-4 text-center sm:w-auto">
+                  <div className="theme-surface-info w-full rounded-lg border p-4 text-center sm:w-auto">
                     <div className={`text-3xl font-bold ${scoreColor(aiScore)}`}>{aiScore}%</div>
-                    <div className="text-sm text-gray-600">KI-score</div>
-                    <div className="text-xs text-gray-500">
+                    <div className="theme-text-soft text-sm">KI-score</div>
+                    <div className="theme-text-subtle text-xs">
                       {aiComponents}/{lineItems.length} komponenter
                     </div>
                   </div>
@@ -752,7 +752,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
 
               <div className="rounded-lg border p-4">
                 <div className="mb-3">
-                  <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+                  <h3 className="theme-heading-strong flex items-center gap-2 text-lg font-semibold">
                     <Send className="h-5 w-5 text-primary" />
                     Klargjør kontrakt
                   </h3>
@@ -760,7 +760,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-700">Velg kunde</label>
+                      <label className="theme-text-label mb-2 block text-sm font-medium">Velg kunde</label>
                       <Select value={toValidSelectValue(customerId)} onValueChange={(value) => onCustomerChange(value === "none" ? "" : value)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Velg kunde" />
@@ -777,7 +777,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-700">Tilbudsnavn</label>
+                      <label className="theme-text-label mb-2 block text-sm font-medium">Tilbudsnavn</label>
                       <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Skriv inn tilbudsnavn..." />
                     </div>
                   </div>

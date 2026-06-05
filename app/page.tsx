@@ -9,7 +9,6 @@ import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "
 import { TrendingUp, FileText, FolderKanban, Users, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
 
 const formatNok = (val: number) =>
@@ -34,10 +33,10 @@ function greeting(): string {
 }
 
 const statusColor: Record<string, string> = {
-  draft: "bg-slate-50 text-slate-700 border-slate-200",
-  sent: "bg-blue-50 text-blue-700 border-blue-200",
-  accepted: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  rejected: "bg-rose-50 text-rose-700 border-rose-200",
+  draft: "theme-badge-status-draft",
+  sent: "theme-badge-status-sent",
+  accepted: "theme-badge-status-accepted",
+  rejected: "theme-badge-status-rejected",
 }
 const statusLabel: Record<string, string> = {
   draft: "Utkast",
@@ -47,16 +46,16 @@ const statusLabel: Record<string, string> = {
 }
 
 const companyStatusCfg = {
-  aktiv:       { label: "Aktiv",       badge: "bg-emerald-50 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" },
-  feil:        { label: "Feil",        badge: "bg-rose-50 text-rose-700 border-rose-200",          dot: "bg-rose-500" },
-  vedlikehold: { label: "Vedlikehold", badge: "bg-amber-50 text-amber-700 border-amber-200",       dot: "bg-amber-500" },
+  aktiv:       { label: "Aktiv",       badge: "theme-badge-company-active", dot: "theme-progress-fill-completed" },
+  feil:        { label: "Feil",        badge: "theme-badge-company-error", dot: "theme-progress-fill-danger" },
+  vedlikehold: { label: "Vedlikehold", badge: "theme-badge-company-maintenance", dot: "theme-progress-fill-warning" },
 } as const
 
 function StatusBadge({ status }: { status: "aktiv" | "feil" | "vedlikehold" }) {
   const cfg = companyStatusCfg[status]
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium border ${cfg.badge}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
+    <span className={`inline-flex items-center gap-2 border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.22em] ${cfg.badge}`}>
+      <span className={`h-2 w-2 ${cfg.dot}`} />
       {cfg.label}
     </span>
   )
@@ -298,20 +297,23 @@ export default function DashboardPage() {
 
   return (
     <AppPageShell segments={["Dashbord"]}>
-      <div className="flex flex-col gap-5 p-1 pb-10">
+      <div className="flex flex-col gap-5 pb-10">
 
-        {/* Welcome banner */}
         <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
           <div className="flex flex-col gap-4">
-            <Card className="shadow-sm rounded-2xl border-0 bg-gradient-to-br from-slate-50 to-white">
-              <CardContent className="flex items-center gap-6 px-5 py-2">
+            {/* Welcome banner */}
+            <Card className="hidden border-border theme-surface-hero">
+              <CardContent className="flex items-center gap-6 px-6 py-2">
                 {/* Col 1: greeting + company name */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-lg text-muted-foreground mb-1">
-                    {greeting()}{data?.userName ? `, ${data.userName}` : ""}
+                  <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                    Prosjektstyring for byggebransjen
                   </p>
-                  <h1 className="text-xl font-bold text-foreground truncate">
-                    {data?.companyName || "Proanbud"}
+                  <h1 className="max-w-xl text-2xl font-medium leading-none text-foreground md:text-3xl">
+                    {greeting()}{data?.userName ? `, ${data.userName}.` : "."}
+                    <span className="mt-2 block text-muted-foreground">
+                      {data?.companyName || "Proanbud"}.
+                    </span>
                   </h1>
                 </div>
                 {/* Col 2: status chip + action */}
@@ -319,12 +321,12 @@ export default function DashboardPage() {
                   {data ? (
                     <StatusBadge status={data.companyStatus} />
                   ) : (
-                    <span className="h-5 w-16 rounded-full bg-secondary animate-pulse" />
+                    <span className="h-6 w-20 bg-secondary animate-pulse" />
                   )}
                 </div>
                 {/* Col 3: company logo (only if available) */}
                 {data?.companyLogo && (
-                  <div className="shrink-0 h-12 w-12 rounded-xl overflow-hidden border border-border bg-white">
+                  <div className="h-12 w-12 shrink-0 overflow-hidden border border-border bg-white">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={data.companyLogo} alt="Firmalogo" className="h-full w-full object-contain p-1" />
                   </div>
@@ -336,49 +338,87 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
               {loading
                 ? Array.from({ length: 4 }).map((_, i) => (
-                  <Card key={i} className="shadow-sm rounded-2xl border border-border/60 animate-pulse">
-                    <CardContent className="p-5 space-y-3 ">
-                      <div className="w-9 h-9 rounded-2xl bg-muted" />
-                      <div className="h-3 bg-muted rounded w-2/3" />
-                      <div className="h-6 bg-muted rounded w-1/2" />
-                      <div className="h-3 bg-muted rounded w-3/4" />
+                  <Card key={i} className="animate-pulse">
+                    <CardContent className="p-0 space-y-1">
+                      <div className="h-8 w-8 bg-muted" />
+                      <div className="h-3 w-2/3 bg-muted" />
+                      <div className="h-6 w-1/2 bg-muted" />
+                      <div className="h-3 w-3/4 bg-muted" />
                     </CardContent>
                   </Card>
                 ))
                 : kpiCards.map((k) => (
-                  <Card key={k.label} className="shadow-sm rounded-2xl border border-border/60 overflow-hidden">
-                    <CardContent className="px-5 py-0 flex flex-col gap-3">
+                  <Card key={k.label} className="overflow-hidden bg-card/85">
+                    <CardContent className="flex flex-col gap-3 px-5 py-0">
                       <div className="flex flex-row items-center gap-3">
-                        <div className="w-9 h-9 hidden rounded-2xl bg-secondary flex items-center justify-center">
+                        <div className="hidden flex h-9 w-9 items-center justify-center border border-border bg-secondary">
                           <k.icon className="h-4 w-4 text-primary" strokeWidth={1.8} />
                         </div>
-                        <p className="text-md font-medium text-muted-foreground">{k.label}</p>
+                        <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">{k.label}</p>
                       </div>
-                      <p className="text-2xl font-bold text-foreground tracking-tight">{k.value}</p>
+                      <p className="text-2xl font-medium leading-none text-foreground tracking-tight">{k.value}</p>
                       <div className="flex items-center gap-1.5 mt-1">
                         <span className={cn(
-                          "text-[11px] font-bold",
+                          "border px-1.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em]",
                           k.up
-                            ? "text-accent-foreground bg-accent/40 px-1.5 py-1 rounded-sm"
-                            : "text-destructive bg-destructive/10 px-1.5 py-1 rounded-sm"
+                            ? "theme-trend-positive"
+                            : "theme-trend-negative"
                         )}>
                           {k.up ? "↑" : "↓"} {k.change}
                         </span>
-                        <span className="text-[11px] text-muted-foreground">Denne måneden</span>
+                        <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Denne måneden</span>
                       </div>
                     </CardContent>
                   </Card>
                 ))
               }
             </div>
+
+            {/* Chart + Live feed */}
+            <div className="grid gap-4 lg:grid-cols-1">
+              <Card className="bg-card/85">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Omsetning vs tilbud</CardTitle>
+                  <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 bg-primary" />Omsetning
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 bg-accent" />Tilbud
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent className="px-2 pb-0 pt-2">
+                  <ChartContainer config={areaChartConfig} className="h-[240px] w-full">
+                    <AreaChart data={data?.chartData || []} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="fillOmsetning" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.2} />
+                          <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="fillTilbud" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.2} />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--chart-axis-muted)" }} dy={8} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Area type="monotone" dataKey="omsetning" stroke="var(--color-primary)" strokeWidth={2.5} fill="url(#fillOmsetning)" dot={false} />
+                      <Area type="monotone" dataKey="tilbud" stroke="var(--color-accent)" strokeWidth={2.5} fill="url(#fillTilbud)" dot={false} />
+                    </AreaChart>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+            </div>
           </div>
 
           {/* Månedens ytelse */}
-          <Card className="shadow-sm rounded-2xl border border-border/60 flex flex-col">
+          <Card className="flex flex-col bg-card/85">
             <CardHeader className="">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-semibold">Månedens Ytelse</CardTitle>
-                <button className="text-xs text-primary font-medium hover:underline">Detaljer</button>
+                <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Månedens ytelse</CardTitle>
+                <button className="text-[10px] font-medium uppercase tracking-[0.18em] text-primary hover:underline">Detaljer</button>
               </div>
             </CardHeader>
             <CardContent className="flex flex-col items-center px-5 gap-0 flex-1">
@@ -390,22 +430,22 @@ export default function DashboardPage() {
                   </RadialBarChart>
                 </ChartContainer>
                 <div className="absolute bottom-4 flex flex-col items-center">
-                  <span className="text-2xl font-bold">{loading ? "—" : formatNok(data?.omsetning ?? 0)}</span>
-                  <span className="text-[11px] text-muted-foreground">Måneds omsetning</span>
+                  <span className="text-2xl font-medium">{loading ? "—" : formatNok(data?.omsetning ?? 0)}</span>
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Måneds omsetning</span>
                 </div>
               </div>
               <div className="w-full space-y-2 mt-2">
                 <div className="flex justify-between text-xs">
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <span className="w-2 h-2 rounded-full bg-primary inline-block" />Omsetning
+                  <span className="flex items-center gap-1.5 text-muted-foreground uppercase tracking-[0.14em]">
+                    <span className="inline-block h-2 w-2 bg-primary" />Omsetning
                   </span>
                   <span className="font-semibold">
                     {loading || !data ? "—" : pctChange(data.omsetning, data.omsetningPrev)}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <span className="w-2 h-2 rounded-full bg-accent inline-block" />Tilbud
+                  <span className="flex items-center gap-1.5 text-muted-foreground uppercase tracking-[0.14em]">
+                    <span className="inline-block h-2 w-2 bg-accent" />Tilbud
                   </span>
                   <span className="font-semibold">
                     {loading || !data ? "—" : pctChange(data.tilbudSendt, data.tilbudSentPrev)}
@@ -420,95 +460,23 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Chart + Live feed */}
         <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-          <Card className="shadow-sm rounded-2xl border border-border/60">
+          
+          <Card className="bg-card/85">
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-semibold">Omsetning VS Tilbud</CardTitle>
-              <div className="flex gap-3 text-xs text-muted-foreground items-center">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-primary inline-block" />Omsetning
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-accent inline-block" />Tilbud
-                </span>
-              </div>
-            </CardHeader>
-            <CardContent className="px-2 pb-0 pt-2">
-              <ChartContainer config={areaChartConfig} className="h-[240px] w-full">
-                <AreaChart data={data?.chartData || []} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="fillOmsetning" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="fillTilbud" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.2} />
-                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} dy={8} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Area type="monotone" dataKey="omsetning" stroke="var(--color-primary)" strokeWidth={2.5} fill="url(#fillOmsetning)" dot={false} />
-                  <Area type="monotone" dataKey="tilbud" stroke="var(--color-accent)" strokeWidth={2.5} fill="url(#fillTilbud)" dot={false} />
-                </AreaChart>
-              </ChartContainer>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm rounded-2xl border border-border/60 flex flex-col">
-            <CardHeader className="border-b mt-0">
-              <CardTitle className="text-sm font-semibold">Aktive Tilbud</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 flex-1 overflow-auto">
-              {loading ? (
-                <div className="divide-y">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="px-4 py-3 space-y-1.5 animate-pulse">
-                      <div className="h-3 bg-muted rounded w-1/2" />
-                      <div className="h-2.5 bg-muted rounded w-3/4" />
-                      <div className="h-2 bg-muted rounded w-1/3" />
-                    </div>
-                  ))}
-                </div>
-              ) : data?.recentOffers.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-8">Ingen aktive tilbud</p>
-              ) : (
-                <div className="divide-y">
-                  {data?.recentOffers.map((t, i) => (
-                    <div key={i} className="flex items-start justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-foreground truncate">{t.kunde}</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{t.title}</p>
-                        <p className="text-[10px] text-muted-foreground/70 mt-0.5">{t.tid}</p>
-                      </div>
-                      <button className="text-[11px] text-primary font-medium ml-3 mt-0.5 hover:underline shrink-0">Vis</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Table + Top projects */}
-        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-          <Card className="shadow-sm rounded-2xl border border-border/60">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-semibold">Siste Tilbud</CardTitle>
-              <button className="text-xs text-primary font-medium hover:underline">Vis alle</button>
+              <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Siste tilbud</CardTitle>
+              <button className="text-[10px] font-medium uppercase tracking-[0.18em] text-primary hover:underline">Vis alle</button>
             </CardHeader>
             <CardContent className="px-5 pb-5">
               <div className="w-full overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-muted-foreground border-b">
-                      <th className="text-left pb-2 font-medium">Tilbudsnavn</th>
-                      <th className="text-left pb-2 font-medium">ID</th>
-                      <th className="text-left pb-2 font-medium">Kunde</th>
-                      <th className="text-left pb-2 font-medium">Verdi</th>
-                      <th className="text-left pb-2 font-medium">Status</th>
+                    <tr className="border-b text-muted-foreground">
+                      <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.18em]">Tilbudsnavn</th>
+                      <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.18em]">ID</th>
+                      <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.18em]">Kunde</th>
+                      <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.18em]">Verdi</th>
+                      <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.18em]">Status</th>
                       <th className="text-right pb-2 font-medium"></th>
                     </tr>
                   </thead>
@@ -518,7 +486,7 @@ export default function DashboardPage() {
                         <tr key={i}>
                           {Array.from({ length: 6 }).map((_, j) => (
                             <td key={j} className="py-2.5 pr-3">
-                              <div className="h-3 bg-muted rounded animate-pulse" style={{ width: j === 5 ? "20px" : "70%" }} />
+                              <div className="h-3 bg-muted animate-pulse" style={{ width: j === 5 ? "20px" : "70%" }} />
                             </td>
                           ))}
                         </tr>
@@ -535,7 +503,7 @@ export default function DashboardPage() {
                             </Badge>
                           </td>
                           <td className="py-2.5 text-right">
-                            <button className="p-1 hover:bg-muted rounded-md">
+                            <button className="p-1 hover:bg-muted">
                               <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
                             </button>
                           </td>
@@ -551,12 +519,49 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm rounded-2xl border border-border/60">
+          <Card className="flex flex-col bg-card/85">
+            <CardHeader className="border-b mt-0">
+              <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Aktive tilbud</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 flex-1 overflow-auto">
+              {loading ? (
+                <div className="divide-y">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="px-4 py-3 space-y-1.5 animate-pulse">
+                      <div className="h-3 w-1/2 bg-muted" />
+                      <div className="h-2.5 w-3/4 bg-muted" />
+                      <div className="h-2 w-1/3 bg-muted" />
+                    </div>
+                  ))}
+                </div>
+              ) : data?.recentOffers.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-8">Ingen aktive tilbud</p>
+              ) : (
+                <div className="divide-y">
+                  {data?.recentOffers.map((t, i) => (
+                    <div key={i} className="flex items-start justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">{t.kunde}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{t.title}</p>
+                        <p className="text-[10px] text-muted-foreground/70 mt-0.5">{t.tid}</p>
+                      </div>
+                      <button className="ml-3 mt-0.5 shrink-0 text-[10px] font-medium uppercase tracking-[0.18em] text-primary hover:underline">Vis</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Table + Top projects */}
+        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+          <Card className="bg-card/85">
             <CardHeader className="border-b mt-0 py-0">
-              <CardTitle className="text-sm font-semibold">Topp Prosjekter</CardTitle>
+              <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Topp prosjekter</CardTitle>
             </CardHeader>
             <CardContent className="px-5 py-4 space-y-4">
-              <div className="flex justify-between text-[11px] text-muted-foreground font-medium pb-1 border-b">
+              <div className="flex justify-between border-b pb-1 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                 <span>Prosjektnavn</span>
                 <span>Tilbud sendt</span>
               </div>
@@ -564,10 +569,10 @@ export default function DashboardPage() {
                 ? Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="space-y-1.5 animate-pulse">
                     <div className="flex justify-between">
-                      <div className="h-3 bg-muted rounded w-2/3" />
-                      <div className="h-3 bg-muted rounded w-12" />
+                      <div className="h-3 w-2/3 bg-muted" />
+                      <div className="h-3 w-12 bg-muted" />
                     </div>
-                    <div className="w-full bg-muted rounded-full h-1.5" />
+                    <div className="h-1.5 w-full bg-muted" />
                   </div>
                 ))
                 : data?.topProjects.length === 0
@@ -578,8 +583,8 @@ export default function DashboardPage() {
                         <span className="text-xs font-medium text-foreground truncate max-w-[140px]">{p.navn}</span>
                         <span className="text-xs text-muted-foreground shrink-0 ml-2">{p.offers} tilbud</span>
                       </div>
-                      <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${p.pst}%` }} />
+                      <div className="h-1.5 w-full overflow-hidden bg-muted">
+                        <div className="h-full bg-primary transition-all" style={{ width: `${p.pst}%` }} />
                       </div>
                       <p className="text-[10px] text-muted-foreground text-right">{p.pst}%</p>
                     </div>

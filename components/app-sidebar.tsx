@@ -15,13 +15,19 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, Bell, CalendarDays, FolderIcon, ReceiptTextIcon, FilesIcon, SearchIcon } from "lucide-react"
+import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, Bell, CalendarDays, FolderIcon, FilesIcon, SearchIcon } from "lucide-react"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { useUserRole } from "@/hooks/use-user-role"
 import { useAuth } from "@/components/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { CreateProjectDrawer } from "@/app/prosjekter/create-project-dialog"
+
+type SidebarProject = {
+  name: string
+  url: string
+  icon: React.ReactNode
+}
 
 // This is sample data.
 const data = {
@@ -104,6 +110,7 @@ const data = {
         },
       ]
     },
+    /*
     {
       title: "Innstillinger",
       url: "/innstillinger",
@@ -112,6 +119,7 @@ const data = {
         {
           title: "Generelt",
           url: "/innstillinger/generelt",
+          hidden: true,
         },
         {
           title: "Brukere",
@@ -120,9 +128,10 @@ const data = {
         {
           title: "Betaling",
           url: "/innstillinger/betaling",
+          hidden: true,
         },
       ],
-    },
+    },*/
   ],
   projects: [
     {
@@ -199,7 +208,7 @@ function AppSidebarHeader() {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { role } = useUserRole();
   const { user } = useAuth();
-  const [activeProjects, setActiveProjects] = React.useState<any[]>([]);
+  const [activeProjects, setActiveProjects] = React.useState<SidebarProject[]>([]);
 
   React.useEffect(() => {
     async function fetchProjects() {
@@ -232,6 +241,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const isHandverker = role === "Håndverker";
   
   const filteredNavMain = data.navMain.filter(item => {
+    if (item.hidden) return false;
     if (!isHandverker) return true; // Show all if not Håndverker
     
     // Håndverker skal IKKE se disse

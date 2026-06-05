@@ -11,7 +11,6 @@ import {
   Eye,
   FileSpreadsheet,
   FileText,
-  Layers3,
   Link2,
   Mail,
   Plus,
@@ -19,7 +18,6 @@ import {
   Send,
   ShoppingCart,
   Sparkles,
-  UserRound,
   Wallet,
 } from "lucide-react"
 
@@ -30,8 +28,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { type OfferLineItem, calculateOfferTotals, formatNok } from "@/lib/tilbud/types"
@@ -151,26 +148,17 @@ function toInputDate(value?: string | null) {
 }
 
 function statusBadge(status: string) {
-  if (status === "accepted") return <Badge className="bg-emerald-600">Godkjent</Badge>
-  if (status === "sent") return <Badge className="bg-amber-600">Sendt</Badge>
+  if (status === "accepted") return <Badge className="theme-badge-status-accepted">Godkjent</Badge>
+  if (status === "sent") return <Badge className="theme-badge-status-sent">Sendt</Badge>
   if (status === "rejected") return <Badge variant="destructive">Avvist</Badge>
   return <Badge variant="secondary">Utkast</Badge>
 }
 
 function contractBadge(status?: string) {
-  if (status === "completed") return <Badge className="bg-emerald-600">Kontrakt signert</Badge>
-  if (status === "sent" || status === "delivered") return <Badge className="bg-blue-600">Kontrakt til signering</Badge>
+  if (status === "completed") return <Badge className="theme-badge-contract-completed">Kontrakt signert</Badge>
+  if (status === "sent" || status === "delivered") return <Badge className="theme-badge-contract-sent">Kontrakt til signering</Badge>
   if (status === "declined" || status === "voided" || status === "error") return <Badge variant="destructive">Kontrakt krever handling</Badge>
   return <Badge variant="secondary">Kontrakt ikke sendt</Badge>
-}
-
-function contractStatusLabel(status?: string) {
-  if (status === "completed") return "Signert"
-  if (status === "sent" || status === "delivered") return "Til signering"
-  if (status === "declined") return "Avvist"
-  if (status === "voided") return "Annullert"
-  if (status === "error") return "Krever handling"
-  return "Ikke sendt"
 }
 
 function formatOfferReference(id: string) {
@@ -187,9 +175,9 @@ function formatOfferReference(id: string) {
 
 function activityTone(status: string) {
   const value = status.toLowerCase()
-  if (value === "completed") return "bg-emerald-50/60"
-  if (value === "failed" || value === "dead_letter" || value === "error") return "bg-rose-50/60"
-  return "bg-blue-50/60"
+  if (value === "completed") return "theme-activity-success"
+  if (value === "failed" || value === "dead_letter" || value === "error") return "theme-activity-error"
+  return "theme-activity-info"
 }
 
 const mockSupplierMaterials = [
@@ -234,11 +222,13 @@ export function OfferDetailClient({
   const totals = useMemo(() => calculateOfferTotals(lineItems), [lineItems])
   const discountPercent = totals.subtotalNok > 0 ? Math.round((totals.discountNok / totals.subtotalNok) * 100) : 0
   const progress = offer.status === "accepted" ? 100 : offer.status === "sent" ? 65 : offer.status === "rejected" ? 100 : 25
+  const contractEnvelopeId = offer.contract?.envelopeId
+  const contractStatus = offer.contract?.status
   const statusSegments = useMemo(() => {
-    if (offer.status === "accepted") return ["bg-emerald-500", "bg-emerald-500", "bg-emerald-500"]
-    if (offer.status === "sent") return ["bg-emerald-500", "bg-amber-500", "bg-muted"]
-    if (offer.status === "rejected") return ["bg-rose-500", "bg-rose-500", "bg-rose-500"]
-    return ["bg-sky-500", "bg-muted", "bg-muted"]
+    if (offer.status === "accepted") return ["theme-progress-fill-completed", "theme-progress-fill-completed", "theme-progress-fill-completed"]
+    if (offer.status === "sent") return ["theme-progress-fill-completed", "theme-progress-fill-warning", "bg-muted"]
+    if (offer.status === "rejected") return ["theme-progress-fill-danger", "theme-progress-fill-danger", "theme-progress-fill-danger"]
+    return ["theme-progress-fill-info", "bg-muted", "bg-muted"]
   }, [offer.status])
 
   const saveSnapshot = useMemo<OfferSaveSnapshot>(
@@ -487,12 +477,11 @@ export function OfferDetailClient({
   }, [saveFingerprint, saveOfferSnapshot, saveSnapshot])
 
   useEffect(() => {
-    const contract = offer.contract
-    if (!contract?.envelopeId) {
+    if (!contractEnvelopeId) {
       return
     }
 
-    if (contract.status === "completed" || contract.status === "declined" || contract.status === "voided") {
+    if (contractStatus === "completed" || contractStatus === "declined" || contractStatus === "voided") {
       return
     }
 
@@ -504,20 +493,20 @@ export function OfferDetailClient({
     return () => {
       clearInterval(intervalId)
     }
-  }, [offer.contract?.envelopeId, offer.contract?.status, refreshContractStatus])
+  }, [contractEnvelopeId, contractStatus, refreshContractStatus])
 
   return (
     <div className="space-y-5 pb-10">
-      <section className="relative overflow-hidden rounded-2xl border bg-[linear-gradient(135deg,rgba(14,165,233,0.12),rgba(16,185,129,0.08),transparent_70%)] p-2">
-        <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-sky-400/10 blur-2xl" />
-        <div className="absolute -bottom-14 left-1/3 h-36 w-36 rounded-full bg-emerald-400/10 blur-2xl" />
+      <section className="theme-offer-hero relative overflow-hidden rounded-2xl border p-2">
+        <div className="theme-offer-hero-orb-info absolute -right-12 -top-12 h-36 w-36 rounded-full blur-2xl" />
+        <div className="theme-offer-hero-orb-success absolute -bottom-14 left-1/3 h-36 w-36 rounded-full blur-2xl" />
 
         <div className="relative grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-3 rounded-xl border bg-card/85 p-3 sm:p-4">
             <div className="flex flex-wrap items-center gap-2">
               {statusBadge(offer.status)}
               {contractBadge(offer.contract?.status)}
-              {tripletexState.paymentRegistered ? <Badge className="bg-emerald-700">Betaling registrert</Badge> : null}
+              {tripletexState.paymentRegistered ? <Badge className="theme-badge-payment-registered">Betaling registrert</Badge> : null}
               <Badge variant="outline" title={offer.id}>Tilbud #{formatOfferReference(offer.id)}</Badge>
             </div>
 
@@ -525,7 +514,7 @@ export function OfferDetailClient({
               <h2 className="truncate text-2xl font-semibold leading-tight text-foreground">
                 {offer.title?.trim() || `Tilbud #${formatOfferReference(offer.id)}`}
               </h2>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-primary/40 bg-primary/10 text-xs font-semibold text-primary">
+              <div className="theme-progress-chip flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 text-xs font-semibold">
                 {progress}%
               </div>
             </div>
@@ -587,7 +576,7 @@ export function OfferDetailClient({
           </div>
 
           <div className="space-y-3">
-            <article className="rounded-xl bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] p-4 shadow-sm">
+            <article className="theme-surface-document rounded-xl p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h3 className="text-base font-semibold text-foreground">Kundeinfo</h3>
                 <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Dokument</p>
@@ -657,7 +646,7 @@ export function OfferDetailClient({
                     />
                   </div>
                 </div>
-                <div className="space-y-2 border-t border-slate-200/60 pt-3">
+                <div className="theme-divider-soft space-y-2 border-t pt-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tilknytning</p>
                   <div className="grid grid-cols-[112px_1fr] gap-3">
                     <p className="text-muted-foreground">Prosjekt</p>
@@ -699,7 +688,7 @@ export function OfferDetailClient({
         </TabsList>
 
         <TabsContent value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-          <Card className="overflow-hidden bg-gradient-to-b from-sky-50/30 to-background">
+          <Card className="theme-surface-info overflow-hidden">
             <CardHeader>
               <CardTitle>Oversikt</CardTitle>
             </CardHeader>
@@ -712,7 +701,7 @@ export function OfferDetailClient({
                       value={offer.status}
                       onValueChange={(value) => setOffer((prev) => ({ ...prev, status: value as OfferPageModel["status"] }))}
                     >
-                      <SelectTrigger id="offer-status" className="mt-1 w-full bg-white">
+                      <SelectTrigger id="offer-status" className="mt-1 w-full bg-background">
                         <SelectValue placeholder="Velg status" />
                       </SelectTrigger>
                       <SelectContent>
@@ -730,7 +719,7 @@ export function OfferDetailClient({
                     <Input
                       id="valid-until"
                       type="date"
-                      className="mt-1 bg-white"
+                      className="mt-1 bg-background"
                       value={toInputDate(offer.quoteValidUntil)}
                       onChange={(event) => setOffer((prev) => ({ ...prev, quoteValidUntil: event.target.value || null }))}
                     />
@@ -742,7 +731,7 @@ export function OfferDetailClient({
                   <Label htmlFor="source-summary">Notat</Label>
                   <Textarea
                     id="source-summary"
-                    className="mt-1 min-h-[94px] bg-white"
+                    className="mt-1 min-h-[94px] bg-background"
                     value={offer.sourceSummary}
                     onChange={(event) => setOffer((prev) => ({ ...prev, sourceSummary: event.target.value }))}
                   />
@@ -750,17 +739,17 @@ export function OfferDetailClient({
               </div>
 
               <div className="space-y-3 lg:col-span-4">
-                <Card className="border-violet-200/70 bg-violet-50/30">
+                <Card className="theme-badge-violet">
                   <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-base">
-                      <CalendarClock className="h-4 w-4 text-violet-700" />
+                      <CalendarClock className="h-4 w-4 theme-badge-violet" />
                       Tidslinje
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between rounded-md border bg-white px-2.5 py-2"><span>Opprettet</span><strong>{dateLabel(offer.createdAt)}</strong></div>
-                    <div className="flex items-center justify-between rounded-md border bg-white px-2.5 py-2"><span>Sendt</span><strong>{dateLabel(offer.sentAt)}</strong></div>
-                    <div className="flex items-center justify-between rounded-md border bg-white px-2.5 py-2"><span>Gyldig</span><strong>{dateLabel(offer.quoteValidUntil)}</strong></div>
+                    <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Opprettet</span><strong>{dateLabel(offer.createdAt)}</strong></div>
+                    <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Sendt</span><strong>{dateLabel(offer.sentAt)}</strong></div>
+                    <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Gyldig</span><strong>{dateLabel(offer.quoteValidUntil)}</strong></div>
                   </CardContent>
                 </Card>
               </div>
@@ -927,7 +916,7 @@ export function OfferDetailClient({
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Rabatt</span>
-                  <span className="font-medium text-red-600 tabular-nums">-{formatNok(totals.discountNok)}</span>
+                  <span className="theme-text-danger font-medium tabular-nums">-{formatNok(totals.discountNok)}</span>
                 </div>
                 <div className="my-1 border-t border-border/80"></div>
                 <div className="flex items-center justify-between text-sm">
@@ -950,16 +939,16 @@ export function OfferDetailClient({
 
         <TabsContent value="dokumenter" className="m-0 focus-visible:outline-none focus-visible:ring-0">
           <div className="grid gap-3 lg:grid-cols-12">
-            <Card className="overflow-hidden bg-gradient-to-b from-blue-50/25 to-background lg:col-span-6">
+            <Card className="theme-surface-info overflow-hidden lg:col-span-6">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <FileSpreadsheet className="h-4 w-4 text-blue-700" />
+                  <FileSpreadsheet className="h-4 w-4 theme-badge-sync-pending" />
                   Tripletex
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-md border bg-white px-2.5 py-2">
+                  <div className="rounded-md border bg-background px-2.5 py-2">
                     <p className="text-[11px] text-muted-foreground">Status</p>
                     <div className="mt-1">
                       <Badge variant={tripletexState.connected ? "default" : "secondary"}>
@@ -967,15 +956,15 @@ export function OfferDetailClient({
                       </Badge>
                     </div>
                   </div>
-                  <div className="rounded-md border bg-white px-2.5 py-2">
+                  <div className="rounded-md border bg-background px-2.5 py-2">
                     <p className="text-[11px] text-muted-foreground">Betaling</p>
                     <p className="mt-1 font-medium">{tripletexState.paymentRegistered ? "Registrert" : "Ikke registrert"}</p>
                   </div>
-                  <div className="rounded-md border bg-white px-2.5 py-2">
+                  <div className="rounded-md border bg-background px-2.5 py-2">
                     <p className="text-[11px] text-muted-foreground">Order</p>
                     <p className="mt-1 font-medium">{tripletexState.orderExternalId || "-"}</p>
                   </div>
-                  <div className="rounded-md border bg-white px-2.5 py-2">
+                  <div className="rounded-md border bg-background px-2.5 py-2">
                     <p className="text-[11px] text-muted-foreground">Invoice</p>
                     <p className="mt-1 font-medium">{tripletexState.invoiceExternalId || "-"}</p>
                   </div>
@@ -1002,20 +991,20 @@ export function OfferDetailClient({
               </CardContent>
             </Card>
 
-            <Card className="overflow-hidden bg-gradient-to-b from-violet-50/25 to-background lg:col-span-6">
+            <Card className="theme-surface-violet overflow-hidden lg:col-span-6">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <FileText className="h-4 w-4 text-violet-700" />
+                  <FileText className="h-4 w-4 theme-badge-violet" />
                   Kontrakt
                 </CardTitle>
               </CardHeader>
               <CardContent className="grid gap-4 lg:grid-cols-2">
                 <div className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between rounded-md border bg-white px-2.5 py-2"><span>Provider</span><strong>{offer.contract?.provider || "docusign"}</strong></div>
-                  <div className="flex items-center justify-between rounded-md border bg-white px-2.5 py-2"><span>Status</span><div>{contractBadge(offer.contract?.status)}</div></div>
-                  <div className="flex items-center justify-between rounded-md border bg-white px-2.5 py-2"><span>Envelope</span><strong>{offer.contract?.envelopeId || "-"}</strong></div>
-                  <div className="flex items-center justify-between rounded-md border bg-white px-2.5 py-2"><span>Sendt</span><strong>{dateTimeLabel(offer.contract?.sentAt)}</strong></div>
-                  <div className="flex items-center justify-between rounded-md border bg-white px-2.5 py-2"><span>Signert</span><strong>{dateTimeLabel(offer.contract?.signedAt)}</strong></div>
+                  <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Provider</span><strong>{offer.contract?.provider || "docusign"}</strong></div>
+                  <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Status</span><div>{contractBadge(offer.contract?.status)}</div></div>
+                  <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Envelope</span><strong>{offer.contract?.envelopeId || "-"}</strong></div>
+                  <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Sendt</span><strong>{dateTimeLabel(offer.contract?.sentAt)}</strong></div>
+                  <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Signert</span><strong>{dateTimeLabel(offer.contract?.signedAt)}</strong></div>
                 </div>
 
                 <div className="space-y-2">
@@ -1053,10 +1042,10 @@ export function OfferDetailClient({
 
         <TabsContent value="epost" className="m-0 focus-visible:outline-none focus-visible:ring-0">
           <div className="grid gap-3 lg:grid-cols-12">
-            <Card className="overflow-hidden bg-gradient-to-b from-amber-50/20 to-background lg:col-span-6">
+            <Card className="theme-surface-warning overflow-hidden lg:col-span-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-amber-700" />
+                  <Mail className="h-4 w-4 theme-badge-contract-sent" />
                   E-post og mottaker
                 </CardTitle>
               </CardHeader>
@@ -1066,7 +1055,7 @@ export function OfferDetailClient({
                     <Label htmlFor="recipient-name">Navn</Label>
                     <Input
                       id="recipient-name"
-                      className="mt-1 bg-white"
+                      className="mt-1 bg-background"
                       value={offer.recipientName}
                       onChange={(event) => setOffer((prev) => ({ ...prev, recipientName: event.target.value }))}
                     />
@@ -1076,7 +1065,7 @@ export function OfferDetailClient({
                     <Label htmlFor="recipient-email">E-post</Label>
                     <Input
                       id="recipient-email"
-                      className="mt-1 bg-white"
+                      className="mt-1 bg-background"
                       value={offer.recipientEmail}
                       onChange={(event) => setOffer((prev) => ({ ...prev, recipientEmail: event.target.value }))}
                     />
@@ -1086,7 +1075,7 @@ export function OfferDetailClient({
                     <Label htmlFor="recipient-phone">Telefon</Label>
                     <Input
                       id="recipient-phone"
-                      className="mt-1 bg-white"
+                      className="mt-1 bg-background"
                       value={offer.recipientPhone}
                       onChange={(event) => setOffer((prev) => ({ ...prev, recipientPhone: event.target.value }))}
                     />
@@ -1110,10 +1099,10 @@ export function OfferDetailClient({
               </CardContent>
             </Card>
 
-            <Card className="overflow-hidden bg-gradient-to-b from-amber-50/30 to-background lg:col-span-6">
+            <Card className="theme-surface-warning overflow-hidden lg:col-span-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-amber-700" />
+                  <Activity className="h-4 w-4 theme-badge-contract-sent" />
                   Hendelser
                 </CardTitle>
               </CardHeader>
@@ -1144,16 +1133,16 @@ export function OfferDetailClient({
       </Tabs>
 
       <Sheet open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <SheetContent className="sm:max-w-[1000px] w-[95vw] overflow-y-auto bg-slate-200/80 sm:p-12 p-4 flex flex-col items-center justify-start">
+        <SheetContent className="theme-preview-shell sm:max-w-[1000px] w-[95vw] overflow-y-auto sm:p-12 p-4 flex flex-col items-center justify-start">
           <SheetHeader className="sr-only">
             <SheetTitle>Forhåndsvisning av tilbud</SheetTitle>
             <SheetDescription>Dette er en forhåndsvisning av hvordan tilbudet ser ut for kunden.</SheetDescription>
           </SheetHeader>
           
-          <div className="w-[210mm] min-h-[297mm] bg-white shadow-md ring-1 ring-black/5 flex flex-col px-[20mm] pt-[25mm] pb-[20mm] shrink-0 mb-8">
+          <div className="theme-preview-page w-[210mm] min-h-[297mm] shadow-md ring-1 ring-black/5 flex flex-col px-[20mm] pt-[25mm] pb-[20mm] shrink-0 mb-8">
             <div className="flex justify-between items-start mb-10">
               <div>
-                <div className="h-8 w-28 bg-slate-900 rounded flex items-center justify-center text-white font-bold tracking-widest uppercase text-[10px] mb-4">
+                <div className="theme-preview-logo h-8 w-28 rounded flex items-center justify-center font-bold tracking-widest uppercase text-[10px] mb-4">
                   DIN LOGO
                 </div>
                 <h1 className="text-xl font-light tracking-tight text-foreground mb-1">{offer.title || "Spesifisert Tilbud"}</h1>
@@ -1188,10 +1177,10 @@ export function OfferDetailClient({
               </div>
             )}
 
-            <div className="mb-8 border-t border-slate-200">
+            <div className="theme-divider-soft mb-8 border-t">
               <table className="w-full text-[12px]">
                 <thead>
-                  <tr className="border-b-2 border-slate-800">
+                  <tr className="theme-divider-strong border-b-2">
                     <th className="py-2.5 text-left font-semibold text-foreground w-[45%]">Beskrivelse</th>
                     <th className="py-2.5 text-right font-semibold text-foreground">Antall</th>
                     <th className="py-2.5 text-right font-semibold text-foreground">Pris</th>
@@ -1199,7 +1188,7 @@ export function OfferDetailClient({
                     <th className="py-2.5 text-right font-semibold text-foreground">Sum (eks. mva)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-border/70">
                   {lineItems.map((item) => {
                     const rowSum = item.quantity * item.unitPriceNok * (1 - item.discountPercent / 100);
                     return (
@@ -1218,7 +1207,7 @@ export function OfferDetailClient({
                 </tbody>
               </table>
               {lineItems.length === 0 && (
-                <div className="py-6 text-center text-[12px] text-muted-foreground border-b border-slate-100">
+                <div className="border-b border-border/70 py-6 text-center text-[12px] text-muted-foreground">
                   Ingen varer/tjenester spesifisert enda.
                 </div>
               )}
@@ -1233,10 +1222,10 @@ export function OfferDetailClient({
                 {totals.discountNok > 0 && (
                   <div className="flex justify-between text-[12px]">
                     <span className="text-foreground/80">Rabatt:</span>
-                    <span className="tabular-nums font-medium text-red-600">-{formatNok(totals.discountNok)}</span>
+                    <span className="theme-text-danger tabular-nums font-medium">-{formatNok(totals.discountNok)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-[12px] border-t border-slate-100 pt-1.5 mt-0.5">
+                <div className="mt-0.5 flex justify-between border-t border-border/70 pt-1.5 text-[12px]">
                   <span className="text-foreground/80">Total ekskl. mva:</span>
                   <span className="tabular-nums font-medium">{formatNok(totals.totalNok)}</span>
                 </div>
@@ -1244,14 +1233,14 @@ export function OfferDetailClient({
                   <span className="text-foreground/80">MVA (25%):</span>
                   <span className="tabular-nums font-medium">{formatNok(totals.totalNok * 0.25)}</span>
                 </div>
-                <div className="flex justify-between border-t-2 border-slate-800 pt-2 mt-1">
+                <div className="theme-divider-strong mt-1 flex justify-between border-t-2 pt-2">
                   <span className="font-bold text-[13px]">Sum inkl. mva:</span>
                   <span className="tabular-nums font-bold text-[13px]">{formatNok(totals.totalNok * 1.25)}</span>
                 </div>
               </div>
             </div>
             
-            <div className="mt-12 pt-6 border-t border-slate-200 justify-self-end text-center text-[10px] text-muted-foreground">
+            <div className="theme-divider-soft mt-12 justify-self-end border-t pt-6 text-center text-[10px] text-muted-foreground">
               Dette dokumentet er generert av Proanbud. Alle priser er veiledende inntil tilbudet er formelt akseptert og signert.
             </div>
           </div>
