@@ -7,16 +7,17 @@ import { PlusCircle, X } from "lucide-react"
 import { NewOfferWizard } from "@/components/tilbud/new-offer-wizard"
 import { Button } from "@/components/ui/button"
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer"
-import { type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
+import { type OfferCompanyContext, type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
 
 type NewOfferDrawerProps = {
   projects: OfferProjectOption[]
   customers: OfferCustomerOption[]
+  company: OfferCompanyContext | null
   initialProjectId?: string
   defaultOpen?: boolean
 }
 
-export function NewOfferDrawer({ projects, customers, initialProjectId, defaultOpen = false }: NewOfferDrawerProps) {
+export function NewOfferDrawer({ projects, customers, company, initialProjectId, defaultOpen = false }: NewOfferDrawerProps) {
   const router = useRouter()
   const [open, setOpen] = useState(defaultOpen)
 
@@ -45,6 +46,7 @@ export function NewOfferDrawer({ projects, customers, initialProjectId, defaultO
           <NewOfferWizard
             projects={projects}
             customers={customers}
+            company={company}
             initialProjectId={initialProjectId}
             onCompleted={() => {
               setOpen(false)

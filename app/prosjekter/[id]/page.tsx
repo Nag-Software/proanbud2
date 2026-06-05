@@ -40,7 +40,8 @@ type TaskRow = {
   due_date: string | null
 }
 
-type OfferRow = {
+type ProjectOfferRow = {
+  id: string
   status: string | null
   amount_nok: number | null
 }
@@ -110,7 +111,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   })
 
   const tasks = (tasksData || []) as TaskRow[]
-  const offers = (offersData || []) as OfferRow[]
+  const offers = (offersData || []) as ProjectOfferRow[]
   const doneTasks = tasks.filter((task) => task.status === "done").length
   const openTasks = tasks.filter((task) => task.status !== "done").length
   const overdueTasks = tasks.filter((task) => {

@@ -59,7 +59,7 @@ export const createProjectSchema = z
       .default([]),
   })
   .superRefine((values, ctx) => {
-    if (Date.parse(values.end_date) < Date.parse(values.start_date)) {
+    if (values.end_date && Date.parse(values.end_date) < Date.parse(values.start_date)) {
       ctx.addIssue({
         code: "custom",
         path: ["end_date"],

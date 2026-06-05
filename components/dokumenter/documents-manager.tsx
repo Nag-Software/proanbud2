@@ -221,7 +221,7 @@ export default function DocumentsManager() {
       }
     }
 
-    function onMouseDown(e: MouseEvent) {
+    function onMouseDown(e: Event) {
       if (contextMenuRef.current && contextMenuRef.current.contains(e.target as Node)) {
         return
       }

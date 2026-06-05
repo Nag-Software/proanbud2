@@ -88,7 +88,7 @@ const wizardSchema = z
     }
   })
 
-type WizardValues = z.infer<typeof wizardSchema>
+type WizardValues = z.input<typeof wizardSchema>
 
 type NewProjectWizardProps = {
   currentUserId: string
@@ -150,7 +150,7 @@ function parseCurrencyInput(input: string) {
   return Number(digits)
 }
 
-function composeDescription(location: string, tasks: WizardValues["tasks"]) {
+function composeDescription(location: string, tasks: WizardValues["tasks"] = []) {
   const normalizedTasks = tasks
     .map((task) => task.title?.trim())
     .filter((title): title is string => Boolean(title))
@@ -163,7 +163,7 @@ function composeDescription(location: string, tasks: WizardValues["tasks"]) {
   return parts.join("\n").slice(0, 1190)
 }
 
-function normalizeTaskTitles(tasks: WizardValues["tasks"]) {
+function normalizeTaskTitles(tasks: WizardValues["tasks"] = []) {
   const uniqueTaskTitles = Array.from(
     new Set(
       tasks
@@ -383,20 +383,22 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
   const submitWizard = async (formValues: WizardValues) => {
     setSubmitError(null)
 
-    const leadUserId = formValues.employeeIds[0] || currentUserId
-    const memberIds = formValues.employeeIds.filter((id) => id !== leadUserId)
-    const taskTitles = normalizeTaskTitles(formValues.tasks)
+    const parsedValues = wizardSchema.parse(formValues)
+
+    const leadUserId = parsedValues.employeeIds[0] || currentUserId
+    const memberIds = parsedValues.employeeIds.filter((id) => id !== leadUserId)
+    const taskTitles = normalizeTaskTitles(parsedValues.tasks)
 
     try {
       const result = await createProjectAction({
-        name: formValues.projectName,
-        customer_id: formValues.clientId,
-        project_type: formValues.category,
+        name: parsedValues.projectName,
+        customer_id: parsedValues.clientId,
+        project_type: parsedValues.category,
         status: "planning",
-        description: composeDescription(formValues.location, formValues.tasks),
-        start_date: format(formValues.startDate, "yyyy-MM-dd"),
-        end_date: formValues.endDate ? format(formValues.endDate, "yyyy-MM-dd") : undefined,
-        budget_nok: Math.round(formValues.budgetNok || 0),
+        description: composeDescription(parsedValues.location, parsedValues.tasks),
+        start_date: format(parsedValues.startDate, "yyyy-MM-dd"),
+        end_date: parsedValues.endDate ? format(parsedValues.endDate, "yyyy-MM-dd") : undefined,
+        budget_nok: Math.round(parsedValues.budgetNok || 0),
         lead_user_id: leadUserId,
         member_ids: memberIds,
         task_titles: taskTitles,
@@ -404,8 +406,8 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
 
       const uploadedDocuments = await uploadProjectDocuments(
         result.id,
-        formValues.projectFiles,
-        formValues.contractFiles
+        parsedValues.projectFiles,
+        parsedValues.contractFiles
       )
 
       if (uploadedDocuments.failed.length > 0) {
@@ -416,7 +418,7 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
         toast.success(`${uploadedDocuments.uploaded} vedlegg ble lagret i prosjektmappen.`)
       }
 
-      setDraft(formValues)
+      setDraft(parsedValues)
       setCreatedProjectId(result.id)
       setSuccessView(true)
     } catch (error) {
@@ -480,7 +482,7 @@ export function NewProjectWizard({ currentUserId, customers, employees }: NewPro
             </div>
             <StepProgress
               currentStep={step}
-              steps={stepDefinitions}
+              steps={[...stepDefinitions]}
               errorSteps={errorSteps}
               onStepClick={(target) => {
                 void handleStepClick(target as StepIndex)

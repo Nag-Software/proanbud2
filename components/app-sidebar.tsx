@@ -29,8 +29,29 @@ type SidebarProject = {
   icon: React.ReactNode
 }
 
+type NavMainItem = {
+  title: string
+  url: string
+  icon: React.ReactNode
+  isActive?: boolean
+  hidden?: boolean
+  items?: Array<{
+    title: string
+    url: string
+    hidden?: boolean
+  }>
+}
+
 // This is sample data.
-const data = {
+const data: {
+  user: {
+    name: string
+    email: string
+    avatar: string
+  }
+  navMain: NavMainItem[]
+  projects: SidebarProject[]
+} = {
   user: {
     name: "laster...",
     email: "laster...",
@@ -132,7 +153,7 @@ const data = {
         },
       ],
     },*/
-  ],
+  ] satisfies NavMainItem[],
   projects: [
     {
       name: "Oppussing Storgata",
@@ -240,7 +261,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Filter items for "Håndverker"
   const isHandverker = role === "Håndverker";
   
-  const filteredNavMain = data.navMain.filter(item => {
+  const filteredNavMain = data.navMain.filter((item) => {
     if (item.hidden) return false;
     if (!isHandverker) return true; // Show all if not Håndverker
     

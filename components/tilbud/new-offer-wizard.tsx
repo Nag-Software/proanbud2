@@ -701,7 +701,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
               </div>
 
               {/* Document-styled materials list */}
-              <NewOfferItemsTable items={lineItems} onItemsChange={setLineItems} subprojectSuggestions={subprojectSuggestions} supplierSuggestions={getDistinctSuppliers()} />
+              <NewOfferItemsTable items={lineItems} onItemsChange={setLineItems} supplierSuggestions={getDistinctSuppliers()} />
 
               {/* Totals footer */}
               <div className="flex items-center justify-between border-t pt-3">

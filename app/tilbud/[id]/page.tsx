@@ -19,6 +19,39 @@ type ContractState = {
   lastError?: string
 }
 
+type OfferRecord = {
+  id: string
+  customer_id: string | null
+  title: string | null
+  description: string | null
+  status: "draft" | "sent" | "accepted" | "rejected" | null
+  amount_nok: number | null
+  subtotal_nok: number | null
+  discount_nok: number | null
+  quote_valid_until: string | null
+  created_at: string | null
+  updated_at: string | null
+  sent_at: string | null
+  recipient_name: string | null
+  recipient_email: string | null
+  recipient_phone: string | null
+  source_summary: string | null
+  line_items: unknown
+  analysis_result: unknown
+  customers?: Array<{
+    name: string | null
+    email: string | null
+    phone: string | null
+    address: string | null
+    postal_code: string | null
+    city: string | null
+    org_number: string | null
+  }> | null
+  projects?: Array<{
+    name: string | null
+  }> | null
+}
+
 function extractInvoiceId(payload: unknown): number | null {
   if (!payload || typeof payload !== "object") {
     return null
@@ -173,12 +206,11 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
     notFound()
   }
 
-  const offer = offerResult.data as {
-    line_items: unknown
-    analysis_result: unknown
-  }
+  const offer = offerResult.data as OfferRecord
   const lineItems = toLineItems(offer.line_items)
   const contract = readContractState(offer.analysis_result)
+  const customer = offer.customers?.[0] || null
+  const project = offer.projects?.[0] || null
 
   const links = (linkRows.data || []) as Array<{
     entity_type: string
@@ -229,16 +261,16 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
           updatedAt: offer.updated_at || null,
           sentAt: offer.sent_at || null,
           recipientName: offer.recipient_name || "",
-          recipientEmail: offer.recipient_email || offer.customers?.email || "",
+          recipientEmail: offer.recipient_email || customer?.email || "",
           recipientPhone: offer.recipient_phone || "",
-          customerName: offer.customers?.name || "Ukjent kunde",
-          customerEmail: offer.customers?.email || "",
-          customerPhone: offer.customers?.phone || "",
-          customerAddress: offer.customers?.address || "",
-          customerPostalCode: offer.customers?.postal_code || "",
-          customerCity: offer.customers?.city || "",
-          customerOrgNumber: offer.customers?.org_number || "",
-          projectName: offer.projects?.name || "",
+          customerName: customer?.name || "Ukjent kunde",
+          customerEmail: customer?.email || "",
+          customerPhone: customer?.phone || "",
+          customerAddress: customer?.address || "",
+          customerPostalCode: customer?.postal_code || "",
+          customerCity: customer?.city || "",
+          customerOrgNumber: customer?.org_number || "",
+          projectName: project?.name || "",
           sourceSummary: offer.source_summary || "",
           lineItems,
           contract,

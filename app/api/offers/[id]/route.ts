@@ -104,7 +104,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     subtotal_nok: totals.subtotalNok,
     discount_nok: totals.discountNok,
     amount_nok: Math.round(totals.totalNok),
-    sent_at: payload.status === "sent" ? new Date().toISOString() : null,
+    sent_at: null,
     updated_at: new Date().toISOString(),
   }
 

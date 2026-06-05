@@ -6,12 +6,13 @@ import { columns, type Quota } from "@/components/tilbud/columns"
 import { DataTable } from "@/components/tilbud/data-table"
 import { NewOfferDrawer } from "@/components/tilbud/new-offer-drawer"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
+import { type OfferCompanyContext, type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
 
 type TilbudPageClientProps = {
   data: Quota[]
   projects: OfferProjectOption[]
   customers: OfferCustomerOption[]
+  company: OfferCompanyContext | null
   initialOpenNyttTilbud?: boolean
 }
 
@@ -19,6 +20,7 @@ export function TilbudPageClient({
   data,
   projects,
   customers,
+  company,
   initialOpenNyttTilbud = false,
 }: TilbudPageClientProps) {
   const totalOffers = data.length
@@ -48,6 +50,7 @@ export function TilbudPageClient({
           <NewOfferDrawer
             projects={projects}
             customers={customers}
+            company={company}
             defaultOpen={initialOpenNyttTilbud}
           />
         </div>

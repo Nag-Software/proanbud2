@@ -2,7 +2,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 import { type Quota } from "@/components/tilbud/columns"
 import { TilbudPageClient } from "@/components/tilbud/tilbud-page-client"
 import { createClient } from "@/lib/supabase/server"
-import { type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
+import { type OfferCompanyContext, type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
 
 async function getData(): Promise<Quota[]> {
   const supabase = await createClient()
@@ -146,6 +146,40 @@ async function getOfferAssignmentOptions() {
   return { projects, customers }
 }
 
+async function getCompanyContext() {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return null
+  }
+
+  const { data: companyRow } = await supabase
+    .from("users")
+    .select("company_id, companies(id, name, org_number)")
+    .eq("id", user.id)
+    .maybeSingle()
+
+  const companyEntity = Array.isArray(companyRow?.companies)
+    ? companyRow?.companies[0] || null
+    : companyRow?.companies || null
+
+  if (!companyRow?.company_id || !companyEntity) {
+    return null
+  }
+
+  const company: OfferCompanyContext = {
+    id: companyRow.company_id,
+    name: companyEntity.name,
+    orgNumber: companyEntity.org_number,
+  }
+
+  return company
+}
+
 type TilbudPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
@@ -153,6 +187,7 @@ type TilbudPageProps = {
 export default async function TilbudPage({ searchParams }: TilbudPageProps) {
   const data = await getData()
   const { projects, customers } = await getOfferAssignmentOptions()
+  const company = await getCompanyContext()
   const resolvedSearchParams = (await searchParams) || {}
   const openDrawerParam = resolvedSearchParams.nyttTilbud
   const initialOpenNyttTilbud =
@@ -166,6 +201,7 @@ export default async function TilbudPage({ searchParams }: TilbudPageProps) {
         data={data}
         projects={projects}
         customers={customers}
+        company={company}
         initialOpenNyttTilbud={initialOpenNyttTilbud}
       />
     </AppPageShell>
