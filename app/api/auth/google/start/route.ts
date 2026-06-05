@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from '@supabase/ssr'
 
+function getAppBaseUrl(request: Request) {
+  return process.env.NEXT_PUBLIC_APP_URL?.trim() || new URL(request.url).origin
+}
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url)
-    const redirectTo = process.env.GOOGLE_REDIRECT_URI ?? `${url.origin}/api/auth/google/callback`
+    const redirectTo = process.env.GOOGLE_REDIRECT_URI ?? `${getAppBaseUrl(request)}/api/auth/google/callback`
 
     // collect cookies that the Supabase client wants to set
     const pendingCookies: Array<{ name: string; value: string; options?: any }> = []

@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     }
 
     // 5. Generer URL som egentlig skal sendes på e-post
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || new URL(request.url).origin;
     const invitationUrl = `${baseUrl}/signup?invite=${rawToken}`;
     
     // Send invitasjon på e-post via Resend
