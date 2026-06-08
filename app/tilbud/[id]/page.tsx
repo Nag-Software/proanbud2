@@ -38,18 +38,42 @@ type OfferRecord = {
   source_summary: string | null
   line_items: unknown
   analysis_result: unknown
-  customers?: {
-    name: string | null
-    email: string | null
-    phone: string | null
-    address: string | null
-    postal_code: string | null
-    city: string | null
-    org_number: string | null
-  } | null
-  projects?: {
-    name: string | null
-  } | null
+  customers?:
+    | {
+        name: string | null
+        email: string | null
+        phone: string | null
+        address: string | null
+        postal_code: string | null
+        city: string | null
+        org_number: string | null
+      }
+    | {
+        name: string | null
+        email: string | null
+        phone: string | null
+        address: string | null
+        postal_code: string | null
+        city: string | null
+        org_number: string | null
+      }[]
+    | null
+  projects?:
+    | {
+        name: string | null
+      }
+    | {
+        name: string | null
+      }[]
+    | null
+}
+
+function normalizeRelatedRow<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) {
+    return value[0] || null
+  }
+
+  return value || null
 }
 
 function extractInvoiceId(payload: unknown): number | null {
@@ -209,8 +233,8 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
   const offer = offerResult.data as OfferRecord
   const lineItems = toLineItems(offer.line_items)
   const contract = readContractState(offer.analysis_result)
-  const customer = offer.customers || null
-  const project = offer.projects || null
+  const customer = normalizeRelatedRow(offer.customers)
+  const project = normalizeRelatedRow(offer.projects)
 
   const links = (linkRows.data || []) as Array<{
     entity_type: string
