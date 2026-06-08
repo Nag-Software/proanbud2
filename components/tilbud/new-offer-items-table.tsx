@@ -266,6 +266,7 @@ export function NewOfferItemsTable({ items, onItemsChange, supplierSuggestions }
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Antall</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Enhet</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Påslag</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rabatt</TableHead>
               <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Linjesum</TableHead>
               <TableHead className="w-8" />
             </TableRow>
@@ -273,7 +274,7 @@ export function NewOfferItemsTable({ items, onItemsChange, supplierSuggestions }
           <TableBody>
             {groupOrder.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-20 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={9} className="h-20 text-center text-sm text-muted-foreground">
                   Ingen elementer enda. Start med analyse eller legg til manuelt.
                 </TableCell>
               </TableRow>
@@ -287,7 +288,7 @@ export function NewOfferItemsTable({ items, onItemsChange, supplierSuggestions }
                       className="cursor-pointer bg-muted/50 hover:bg-muted/70 select-none"
                       onClick={() => toggleGroup(group)}
                     >
-                      <TableCell colSpan={8} className="py-2">
+                      <TableCell colSpan={9} className="py-2">
                         <div className="flex items-center gap-2">
                           <ChevronDown
                             className={cn(
@@ -327,7 +328,7 @@ export function NewOfferItemsTable({ items, onItemsChange, supplierSuggestions }
                                     event.stopPropagation()
                                     const nobb = resolveNobb(item)
                                     if (!nobb) return
-                                    window.open(`https://nobb.no/${encodeURIComponent(nobb)}`, "_blank", "noopener,noreferrer")
+                                    window.open(`https://nobb.no/item/${encodeURIComponent(nobb)}`, "_blank", "noopener,noreferrer")
                                   }}
                                   aria-label={`Åpne NOBB ${resolveNobb(item)}`}
                                 >
@@ -375,6 +376,17 @@ export function NewOfferItemsTable({ items, onItemsChange, supplierSuggestions }
                             <EditableNumber
                               value={item.markupPercent}
                               onChange={(v) => updateRow(item.id, { markupPercent: v })}
+                              format={(v) => v + "%"}
+                              min={0}
+                              max={100}
+                              step={0.1}
+                              className="w-16"
+                            />
+                          </TableCell>
+                          <TableCell className="py-1">
+                            <EditableNumber
+                              value={item.discountPercent}
+                              onChange={(v) => updateRow(item.id, { discountPercent: v })}
                               format={(v) => v + "%"}
                               min={0}
                               max={100}

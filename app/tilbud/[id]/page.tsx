@@ -38,7 +38,7 @@ type OfferRecord = {
   source_summary: string | null
   line_items: unknown
   analysis_result: unknown
-  customers?: Array<{
+  customers?: {
     name: string | null
     email: string | null
     phone: string | null
@@ -46,10 +46,10 @@ type OfferRecord = {
     postal_code: string | null
     city: string | null
     org_number: string | null
-  }> | null
-  projects?: Array<{
+  } | null
+  projects?: {
     name: string | null
-  }> | null
+  } | null
 }
 
 function extractInvoiceId(payload: unknown): number | null {
@@ -209,8 +209,8 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
   const offer = offerResult.data as OfferRecord
   const lineItems = toLineItems(offer.line_items)
   const contract = readContractState(offer.analysis_result)
-  const customer = offer.customers?.[0] || null
-  const project = offer.projects?.[0] || null
+  const customer = offer.customers || null
+  const project = offer.projects || null
 
   const links = (linkRows.data || []) as Array<{
     entity_type: string

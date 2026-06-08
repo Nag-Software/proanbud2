@@ -93,6 +93,68 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function load() {
+      // Temporary: support ?mock=1 to inject static mock data for screenshots.
+      // Remove this block once screenshots are captured.
+      try {
+        if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mock") === "1") {
+          // generate slightly varied mock data for more natural look
+          const rand = (v: number, pct = 0.12) => Math.round(v * (1 + (Math.random() * 2 - 1) * pct))
+          const months = ["jan", "feb", "mar", "apr", "mai", "jun"]
+          const base = [50000, 60000, 45000, 70000, 55000, 35000]
+          const chartData = months.map((m, i) => ({ date: m, omsetning: rand(base[i], 0.18), tilbud: rand(Math.round(base[i] * 0.84), 0.2) }))
+
+          const mkTime = (daysAgo: number, hour: number, min: number) => {
+            const d = new Date()
+            d.setDate(d.getDate() - daysAgo)
+            d.setHours(hour, min)
+            return d.toLocaleString("no-NO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+          }
+
+          const recentOffers = [
+            { id: "1", title: "Isolering loft - Glava", kunde: "Bygg AS", prosjekt: "Loftprosjekt", tid: mkTime(1, 14, 32) },
+            { id: "2", title: "Malearbeid - Fasadereparasjon", kunde: "Huspartner", prosjekt: "Fasade 2026", tid: mkTime(2, 9, 12) },
+            { id: "3", title: "Bytte bordkledning - service", kunde: "Eik Entreprenør", prosjekt: "Fasade 2026", tid: mkTime(3, 11, 5) },
+          ]
+
+          const tableOffers = [
+            { id: "a1", navn: "Loftisolering - Kunde A", shortId: "#A1B2C3D4", kunde: "Bygg AS", verdi: rand(123450, 0.08), status: "sent" },
+            { id: "b2", navn: "Fasade - Kunde B", shortId: "#B2C3D4E5", kunde: "Huspartner", verdi: rand(98765, 0.12), status: "draft" },
+            { id: "c3", navn: "Vindusskifte - Kunde C", shortId: "#C3D4E5F6", kunde: "Nord Bygg", verdi: rand(45230, 0.14), status: "sent" },
+          ]
+
+          const topProjects = [
+            { navn: "Loftprosjekt", offers: 12, pst: 100 },
+            { navn: "Fasade 2026", offers: 9, pst: 75 },
+            { navn: "Kundeoppgradering", offers: 6, pst: 50 },
+          ]
+
+          const mock: DashboardData = {
+            omsetning: chartData.reduce((s, r) => s + r.omsetning, 0),
+            omsetningPrev: Math.round(chartData.reduce((s, r) => s + Math.round(r.omsetning * 0.8), 0)),
+            activeProjects: 12,
+            activeProjectsPrev: 9,
+            tilbudSendt: 48,
+            tilbudSentPrev: 36,
+            kunders: 154,
+            kundersPrev: 140,
+            todayOmsetning: rand(12000, 0.2),
+            yesterdayOmsetning: rand(8500, 0.25),
+            chartData,
+            recentOffers,
+            tableOffers,
+            topProjects,
+            userName: "Ola",
+            companyName: "Demo Bygg AS",
+            companyLogo: null,
+            companyStatus: "aktiv",
+          }
+          setData(mock)
+          setLoading(false)
+          return
+        }
+      } catch (e) {
+        // ignore and continue to real load
+      }
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
@@ -393,11 +455,11 @@ export default function DashboardPage() {
                     <AreaChart data={data?.chartData || []} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                       <defs>
                         <linearGradient id="fillOmsetning" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.2} />
+                          <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.08} />
                           <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="fillTilbud" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3} />
+                          <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.32} />
                           <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
                         </linearGradient>
                       </defs>

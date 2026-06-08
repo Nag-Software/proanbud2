@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useMemo, useRef, useState, useTransition } from "react"
 
 import { AiChatPanel } from "@/components/tilbud/ai-chat-panel"
 import { useRouter } from "next/navigation"
@@ -11,6 +11,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Download,
   Edit3,
   LoaderCircle,
   Plus,
@@ -153,6 +154,9 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
   }, [lineItems])
 
   const totals = useMemo(() => calculateOfferTotals(lineItems), [lineItems])
+  const VAT_RATE = 0.25
+  const vatAmountNok = useMemo(() => Math.round(totals.subtotalNok * VAT_RATE * 100) / 100, [totals.subtotalNok])
+  const totalInclVatNok = useMemo(() => Math.round((totals.subtotalNok + vatAmountNok) * 100) / 100, [totals.subtotalNok, vatAmountNok])
 
   const groupedPreview = useMemo(() => {
     return lineItems.reduce<Record<string, OfferLineItem[]>>((groups, item) => {
@@ -437,8 +441,28 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
     })
   }
 
+  const pdfDocRef = useRef<HTMLDivElement>(null)
+  const handlePrintPdf = () => {
+    const node = pdfDocRef.current
+    if (!node) return
+    const cssLinks = Array.from(document.styleSheets)
+      .filter((s) => s.href)
+      .map((s) => `<link rel="stylesheet" href="${s.href}">`)
+      .join("\n")
+    const printWin = window.open("", "_blank", "width=900,height=1100")
+    if (!printWin) return
+    printWin.document.write(
+      `<!DOCTYPE html><html><head><meta charset="utf-8">${cssLinks}</head><body style="margin:0;background:#fff">${node.outerHTML}</body></html>`
+    )
+    printWin.document.close()
+    printWin.addEventListener("load", () => {
+      printWin.focus()
+      printWin.print()
+    })
+  }
+
   return (
-    <div className="mx-auto h-full min-h-0 w-full">
+    <div className="mx-auto h-full min-h-0 w-full max-w-[1600px]">
       {showAiChat ? (
         <AiChatPanel
           title={title}
@@ -739,18 +763,10 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                     <h3 className="theme-heading-strong mb-2 text-base font-semibold sm:text-lg">Total tilbudssum</h3>
                     <div className="whitespace-nowrap text-2xl font-bold text-primary sm:text-3xl lg:text-4xl">{formatNok(totals.totalNok)}</div>
                   </div>
-
-                  <div className="theme-surface-info w-full rounded-lg border p-4 text-center sm:w-auto">
-                    <div className={`text-3xl font-bold ${scoreColor(aiScore)}`}>{aiScore}%</div>
-                    <div className="theme-text-soft text-sm">KI-score</div>
-                    <div className="theme-text-subtle text-xs">
-                      {aiComponents}/{lineItems.length} komponenter
-                    </div>
-                  </div>
                 </div>
               </div>
 
-              <div className="rounded-lg border p-4">
+              <div className="rounded-lg border p-4 max-w-3xl">
                 <div className="mb-3">
                   <h3 className="theme-heading-strong flex items-center gap-2 text-lg font-semibold">
                     <Send className="h-5 w-5 text-primary" />
@@ -820,34 +836,140 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
               </div>
 
               <div className="rounded-lg border p-4">
-                <div className="mb-3">
+                <div className="mb-3 flex items-center justify-between gap-2">
                   <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
                     <CheckCircle2 className="h-5 w-5 text-primary" />
                     Forhåndsvisning
                   </h3>
+                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={handlePrintPdf}>
+                    <Download className="h-3.5 w-3.5" />
+                    Last ned PDF
+                  </Button>
                 </div>
-                <div>
-                  <div className="mb-3 rounded-lg border bg-gray-50 p-3">
-                    <p className="text-sm text-gray-600">Kunde: {selectedCustomer?.name || "Ikke valgt"}</p>
-                    {selectedProject ? <p className="text-sm text-gray-600">Prosjekt: {selectedProject.name}</p> : null}
-                  </div>
+                {/* ---- PDF-like document ---- */}
+                <div className="bg-[#e8e6e1] p-4 sm:p-6">
+                  <div ref={pdfDocRef} className="mx-auto w-[794px] min-w-[794px] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)]">
 
-                  <div className="max-h-[320px] space-y-3 overflow-auto pr-1">
-                    {Object.entries(groupedPreview).map(([groupName, items]) => (
-                      <div key={groupName} className="rounded-lg border p-3">
-                        <p className="text-sm font-semibold text-gray-900">{groupName}</p>
-                        <div className="mt-2 space-y-1.5">
-                          {items.map((item) => (
-                            <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
-                              <span className="text-gray-600">
-                                {item.title} ({item.quantity} {item.unit})
-                              </span>
-                              <span className="font-medium text-gray-900">{formatNok(calculateLineItemTotal(item))}</span>
-                            </div>
-                          ))}
+                    {/* Header: logo + company left, document meta right */}
+                    <div className="flex items-start justify-between gap-6 border-b border-gray-200 px-8 py-6">
+                      <div className="flex items-center gap-3">
+                        <img src="/favicon.ico" alt="Logo" className="h-10 w-10 object-contain" />
+                        <div>
+                          <p className="text-[15px] font-bold leading-tight text-gray-950">{company?.name || "Proanbud"}</p>
+                          {company?.orgNumber ? (
+                            <p className="text-[11px] text-gray-500">Org.nr. {company.orgNumber}</p>
+                          ) : null}
                         </div>
                       </div>
-                    ))}
+                      <div className="text-right">
+                        <p className="text-[22px] font-bold tracking-tight text-gray-950">TILBUD</p>
+                        <p className="mt-0.5 text-[12px] text-gray-500">{title.trim() || "Tilbud"}</p>
+                        <p className="text-[12px] text-gray-500">Dato: {new Date().toLocaleDateString("no-NO")}</p>
+                        <p className="text-[12px] text-gray-500">Gyldighet: {validityDays} dager</p>
+                      </div>
+                    </div>
+
+                    {/* Kunde / Prosjekt block */}
+                    <div className="grid grid-cols-2 gap-6 border-b border-gray-200 px-8 py-4 text-[12px]">
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Kunde</p>
+                        <p className="font-semibold text-gray-900">{selectedCustomer?.name || recipientName.trim() || "—"}</p>
+                        {(selectedCustomer?.address || selectedCustomer?.city) ? (
+                          <p className="text-gray-600">{[selectedCustomer.address, selectedCustomer.city].filter(Boolean).join(", ")}</p>
+                        ) : null}
+                        {(selectedCustomer?.email || recipientEmail) ? (
+                          <p className="text-gray-600">{selectedCustomer?.email || recipientEmail}</p>
+                        ) : null}
+                        {(selectedCustomer?.phone || recipientPhone) ? (
+                          <p className="text-gray-600">{selectedCustomer?.phone || recipientPhone}</p>
+                        ) : null}
+                      </div>
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Prosjekt</p>
+                        <p className="font-semibold text-gray-900">{selectedProject?.name || "—"}</p>
+                        {description.trim() ? (
+                          <p className="mt-1 text-gray-600 leading-4">{description.trim().slice(0, 140)}{description.trim().length > 140 ? "…" : ""}</p>
+                        ) : null}
+                        {quoteMessage.trim() ? (
+                          <p className="mt-2 italic text-gray-500 leading-4">"{quoteMessage.trim().slice(0, 100)}{quoteMessage.trim().length > 100 ? "…" : ""}"</p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* Line items table */}
+                    <div className="px-8 py-4">
+                      <table className="w-full border-collapse text-[11px]">
+                        <thead>
+                          <tr className="border-b-2 border-gray-900 text-left">
+                            <th className="pb-1.5 pr-3 font-semibold uppercase tracking-widest text-gray-500">Beskrivelse</th>
+                            <th className="pb-1.5 pr-3 text-right font-semibold uppercase tracking-widest text-gray-500">Antall</th>
+                            <th className="pb-1.5 pr-3 text-right font-semibold uppercase tracking-widest text-gray-500">Enhet</th>
+                            <th className="pb-1.5 pr-3 text-right font-semibold uppercase tracking-widest text-gray-500">Enhetspris</th>
+                            <th className="pb-1.5 text-right font-semibold uppercase tracking-widest text-gray-500">Rabatt</th>
+                            <th className="pb-1.5 pl-4 text-right font-semibold uppercase tracking-widest text-gray-500">Beløp</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(groupedPreview).map(([groupName, items]) => (
+                            <>
+                              <tr key={`g-${groupName}`}>
+                                <td colSpan={6} className="border-b border-gray-200 pb-1 pt-3">
+                                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{groupName}</span>
+                                </td>
+                              </tr>
+                              {items.map((item) => (
+                                <tr key={item.id} className="border-b border-gray-100">
+                                  <td className="py-1.5 pr-3 font-medium text-gray-900">
+                                    {item.title}
+                                    {item.description ? <span className="block text-[10px] font-normal text-gray-500 leading-3">{item.description.slice(0, 60)}{item.description.length > 60 ? "…" : ""}</span> : null}
+                                    {item.supplier ? <span className="block text-[10px] font-normal text-gray-400">{item.supplier}</span> : null}
+                                  </td>
+                                  <td className="py-1.5 pr-3 text-right tabular-nums text-gray-700">{item.quantity}</td>
+                                  <td className="py-1.5 pr-3 text-right text-gray-500">{item.unit}</td>
+                                  <td className="py-1.5 pr-3 text-right tabular-nums text-gray-700">{formatNok(item.unitPriceNok)}</td>
+                                  <td className="py-1.5 text-right text-gray-500">{item.discountPercent > 0 ? `${item.discountPercent}%` : "—"}</td>
+                                  <td className="py-1.5 pl-4 text-right tabular-nums font-semibold text-gray-900">{formatNok(calculateLineItemTotal(item))}</td>
+                                </tr>
+                              ))}
+                            </>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Totals */}
+                    <div className="border-t-2 border-gray-900 px-8 py-4">
+                      <div className="ml-auto w-56 text-[12px]">
+                        <div className="flex justify-between py-0.5">
+                          <span className="text-gray-600">Subtotal eks. mva</span>
+                          <span className="tabular-nums font-medium text-gray-900">{formatNok(totals.subtotalNok)}</span>
+                        </div>
+                        {totals.discountNok > 0 ? (
+                          <div className="flex justify-between py-0.5">
+                            <span className="text-gray-600">Rabatt</span>
+                            <span className="tabular-nums font-medium text-gray-900">- {formatNok(totals.discountNok)}</span>
+                          </div>
+                        ) : null}
+                        <div className="flex justify-between border-t border-dashed border-gray-300 py-1">
+                          <span className="text-gray-600">Grunnlag mva (25%)</span>
+                          <span className="tabular-nums text-gray-700">{formatNok(totals.subtotalNok)}</span>
+                        </div>
+                        <div className="flex justify-between py-0.5">
+                          <span className="text-gray-600">Mva 25%</span>
+                          <span className="tabular-nums text-gray-700">{formatNok(vatAmountNok)}</span>
+                        </div>
+                        <div className="flex justify-between border-t-2 border-gray-900 pt-1.5 mt-1">
+                          <span className="font-bold text-gray-950">Totalt inkl. mva</span>
+                          <span className="tabular-nums font-bold text-gray-950">{formatNok(totalInclVatNok)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="border-t border-gray-200 bg-gray-50 px-8 py-3 text-[10px] text-gray-400">
+                      <p>Dette tilbudet er gyldig i {validityDays} dager fra utstedelsesdato. Alle priser er oppgitt i NOK.</p>
+                    </div>
+
                   </div>
                 </div>
               </div>
@@ -863,7 +985,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                 <div className="order-2 sm:order-3 sm:basis-0 sm:flex-1">
                   <Button type="button" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleOpenContract} disabled={isPersisting || lineItems.length === 0}>
                     {isPersisting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    {isPersisting ? "Aapner..." : "Aapne kontrakt"}
+                    {isPersisting ? "Åpner..." : "Åpne kontrakt"}
                   </Button>
                 </div>
 
