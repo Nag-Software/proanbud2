@@ -442,104 +442,6 @@ export function NavUser() {
                       placeholder="https://..."
                     />
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="bio">Kort beskrivelse</Label>
-                    <Textarea
-                      id="bio"
-                      value={editBio}
-                      onChange={(event) => setEditBio(event.target.value)}
-                      placeholder="Hva du gjør i Proanbud, fagområde eller kontaktpunkt."
-                      className="min-h-[96px]"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Building2Icon className="h-4 w-4" />
-                    Proanbud-bedrift
-                  </CardTitle>
-                  <CardDescription>
-                    Grunnleggende bedriftsinfo brukt på tvers av systemet.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="companyName">Firmanavn</Label>
-                    <Input
-                      id="companyName"
-                      value={editCompanyName}
-                      onChange={(event) => setEditCompanyName(event.target.value)}
-                      placeholder="Eks. Proanbud AS"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="companyOrgNumber">Organisasjonsnummer</Label>
-                    <Input
-                      id="companyOrgNumber"
-                      value={editCompanyOrgNumber}
-                      onChange={(event) => setEditCompanyOrgNumber(event.target.value)}
-                      placeholder="999 999 999"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <CreditCardIcon className="h-4 w-4" />
-                    Abonnement
-                  </CardTitle>
-                  <CardDescription>
-                    Administrer plan, betalingsmetode og fakturering direkte i Stripe.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-start justify-between gap-3 rounded-md border px-3 py-3">
-                    <div className="space-y-1">
-                      <p className="font-medium text-foreground">Stripe kundeportal</p>
-                      <p className="text-sm text-muted-foreground">
-                        Åpner abonnementshåndtering uten en intern Proanbud-side.
-                      </p>
-                    </div>
-                    <Badge variant={subscriptionConfigured ? "secondary" : "destructive"}>
-                      {subscriptionConfigured ? "Klar" : "Mangler URL"}
-                    </Badge>
-                  </div>
-
-                  <Button type="button" className="w-full justify-between" onClick={handleManageSubscription}>
-                    {isOpeningSubscription ? "Åpner Stripe..." : "Gå til Stripe"}
-                    {isOpeningSubscription ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <ExternalLinkIcon className="h-4 w-4" />}
-                  </Button>
-
-                  {!subscriptionConfigured ? (
-                    <p className="text-sm text-muted-foreground">
-                      `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` må være satt for å aktivere abonnementshåndtering.
-                    </p>
-                  ) : null}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <ShieldCheckIcon className="h-4 w-4" />
-                    Hurtighandlinger
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Button type="button" variant="outline" className="w-full justify-between" onClick={handleLogout}>
-                    Logg ut av Proanbud
-                    <LogOutIcon className="h-4 w-4" />
-                  </Button>
-                  <Separator />
-                  <p className="text-sm text-muted-foreground">
-                    Kontooppdateringer lagres her. Abonnement endres direkte i Stripe.
-                  </p>
                 </CardContent>
               </Card>
             </div>
@@ -552,6 +454,9 @@ export function NavUser() {
             <Button onClick={saveProfile} disabled={isSaving || !hasChanges}>
               {isSaving ? <Loader2Icon className="mr-2 h-4 w-4 animate-spin" /> : null}
               Lagre endringer
+            </Button>
+            <Button type="button" variant="outline" className="w-full font-bold text-red-700 hover:text-red-bolder border-red-600 justify-center" onClick={handleLogout}>
+                Logg ut av Proanbud
             </Button>
           </DrawerFooter>
         </DrawerContent>
