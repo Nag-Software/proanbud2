@@ -5,7 +5,8 @@ import { ZodError } from "zod"
 
 import { createProjectSchema, type CreateProjectInput } from "./ny/removed-project-form-schema"
 import { createClient } from "@/lib/supabase/server"
-import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
+import { enqueueEntityTripletexSync, processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
+import { canManageProjects } from "@/lib/roles"
 
 const taskStatusToDb: Record<string, string> = {
   "Ikke startet": "todo",
@@ -34,6 +35,47 @@ function normalizeTaskStatus(status: string | undefined) {
 
 function normalizeTaskPriority(priority: string | undefined) {
   return taskPriorityToDb[priority || ""] || "medium"
+}
+
+async function getEffectiveRole(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
+  const { data: userRoleData } = await supabase
+    .from("user_roles")
+    .select("roles(name)")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  const { data: userTableData } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle()
+
+  // @ts-expect-error Supabase nested relation typing
+  return userRoleData?.roles?.name || userTableData?.role || null
+}
+
+async function assertCanManageProjectTasks(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  projectId: string
+) {
+  const effectiveRole = await getEffectiveRole(supabase, userId)
+  if (canManageProjects(effectiveRole)) {
+    return
+  }
+
+  const { data: membership } = await supabase
+    .from("project_members")
+    .select("access_level")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  if (membership?.access_level === "manager" || membership?.access_level === "write") {
+    return
+  }
+
+  throw new Error("Du har ikke tilgang til å administrere oppgaver i dette prosjektet")
 }
 
 function getValidationMessage(error: ZodError<CreateProjectInput>) {
@@ -88,6 +130,8 @@ export async function createTaskAction(taskData: {
   if (userError || !userData?.company_id) {
     throw new Error("Kunne ikke hente bedriftsinformasjon")
   }
+
+  await assertCanManageProjectTasks(supabase, user.id, taskData.project_id)
 
   const { data, error } = await supabase
     .from("tasks")
@@ -261,12 +305,13 @@ export async function createProjectAction(input: CreateProjectInput) {
   revalidatePath(`/prosjekter/${project.id}`)
   revalidatePath("/prosjekter/ny")
 
-  await enqueueIntegrationJob({
+  await enqueueEntityTripletexSync({
     companyId,
     jobType: "project.upsert",
-    payload: { companyId, projectId: project.id },
-    idempotencyKey: `project:${project.id}:created`,
+    payload: { projectId: project.id },
+    idempotencyKey: `project:${project.id}:upsert`,
   })
+  processTripletexQueueInBackground()
 
   return { id: project.id }
 }
@@ -307,10 +352,11 @@ export async function updateProjectAction(projectId: string, values: Record<stri
   revalidatePath(`/prosjekter/${projectId}`)
   revalidatePath(`/prosjekter`)
 
-  await enqueueIntegrationJob({
+  await enqueueEntityTripletexSync({
     companyId: userData.company_id,
     jobType: "project.upsert",
-    payload: { companyId: userData.company_id, projectId },
-    idempotencyKey: `project:${projectId}:${new Date().toISOString()}`,
+    payload: { projectId },
+    idempotencyKey: `project:${projectId}:upsert`,
   })
+  processTripletexQueueInBackground()
 }

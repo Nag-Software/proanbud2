@@ -5,6 +5,8 @@ import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
 import { calculateOfferTotals } from "@/lib/tilbud/types"
+import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
+import { resolveOfferSendCompany, sendOfferToCustomer } from "@/lib/tilbud/send-offer"
 
 const sourceDocumentSchema = z.object({
   id: z.string().trim().min(1),
@@ -150,7 +152,7 @@ async function resolveCompanyId() {
     throw new Error("Kunne ikke hente bedriftsinformasjon")
   }
 
-  return { supabase, companyId: userRow.company_id }
+  return { supabase, companyId: userRow.company_id, userId: user.id }
 }
 
 async function validateProjectAndCustomer(
@@ -213,7 +215,7 @@ function toOfferRow(input: SaveOfferInput, companyId: string, status: "draft" | 
     analysis_result: normalizeAnalysisResult(input.analysisResult),
     source_summary: input.sourceSummary,
     source_documents: input.sourceDocuments,
-    // Direct offer sending is disabled. Contracts must be sent from the offer detail page.
+    // Tilbud sendes via e-post. Kontrakt sendes separat via DocuSign.
     send_to_customer_direct: false,
     recipient_name: input.recipientName || null,
     recipient_email: input.recipientEmail || null,
@@ -225,9 +227,10 @@ function toOfferRow(input: SaveOfferInput, companyId: string, status: "draft" | 
 }
 
 async function persistOffer(input: SaveOfferInput, status: "draft" | "sent"): Promise<PersistedOfferResult> {
-  const { supabase, companyId } = await resolveCompanyId()
+  const { supabase, companyId, userId } = await resolveCompanyId()
   const { projectId, customerId } = await validateProjectAndCustomer(input, companyId, supabase)
   const row = toOfferRow(input, companyId, status)
+  const hasAiAnalysis = Boolean(input.analysisResult?.model && input.analysisResult.model !== "manual")
 
   if (input.id) {
     const { data, error } = await supabase
@@ -247,6 +250,18 @@ async function persistOffer(input: SaveOfferInput, status: "draft" | "sent"): Pr
       throw new Error(
         `Kunne ikke oppdatere tilbud: ${error?.message || "ukjent feil"}. Husk å kjøre db/07_nytt_tilbud_workflow.sql.`
       )
+    }
+
+    if (hasAiAnalysis) {
+      await logOfferActivity({
+        offerId: data.id,
+        companyId,
+        actorUserId: userId,
+        eventType: OFFER_ACTIVITY.AI_ANALYSIS,
+        title: "KI-kalkyle lagret",
+        description: input.title,
+        metadata: { lineItemCount: input.lineItems.length },
+      })
     }
 
     revalidatePath("/tilbud")
@@ -281,6 +296,28 @@ async function persistOffer(input: SaveOfferInput, status: "draft" | "sent"): Pr
     )
   }
 
+  await logOfferActivity({
+    offerId: data.id,
+    companyId,
+    actorUserId: userId,
+    eventType: OFFER_ACTIVITY.CREATED,
+    title: "Tilbud opprettet",
+    description: input.title,
+    metadata: { lineItemCount: input.lineItems.length },
+  })
+
+  if (hasAiAnalysis) {
+    await logOfferActivity({
+      offerId: data.id,
+      companyId,
+      actorUserId: userId,
+      eventType: OFFER_ACTIVITY.AI_ANALYSIS,
+      title: "KI-kalkyle generert",
+      description: input.title,
+      metadata: { lineItemCount: input.lineItems.length },
+    })
+  }
+
   revalidatePath("/tilbud")
   revalidatePath("/nytt-tilbud")
 
@@ -308,6 +345,32 @@ export async function saveOfferDraftAction(input: unknown) {
 }
 
 export async function sendOfferAction(input: unknown) {
-  void input
-  throw new Error("Direkte sending av tilbud er deaktivert. Send kontrakt fra tilbudssiden.")
+  const parsed = saveOfferSchema.safeParse(input)
+
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message || "Ugyldige tilbudsdata")
+  }
+
+  const result = await persistOffer(parsed.data, "draft")
+  const context = await resolveOfferSendCompany()
+
+  if (!context) {
+    throw new Error("Du må være logget inn for å sende tilbud")
+  }
+
+  await sendOfferToCustomer({
+    offerId: result.id,
+    companyId: context.companyId,
+    company: context.company,
+    recipientName: parsed.data.recipientName,
+    recipientEmail: parsed.data.recipientEmail,
+    recipientPhone: parsed.data.recipientPhone,
+    message: parsed.data.sourceSummary,
+    actorUserId: context.userId,
+  })
+
+  revalidatePath("/tilbud")
+  revalidatePath(`/tilbud/${result.id}`)
+
+  return result
 }

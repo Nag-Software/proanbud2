@@ -21,6 +21,7 @@ interface Customer {
 interface Message {
   id: string;
   customer_id: string;
+  offer_id?: string | null;
   sender_type: "company" | "customer";
   sender_id: string;
   content: string;
@@ -160,13 +161,17 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
       };
     }
 
+    const threadMessages = messages.filter((message) => message.customer_id === selectedCustomerId)
+    const threadOfferId =
+      [...threadMessages].reverse().find((message) => message.offer_id)?.offer_id || null
+
     const payload = {
-      company_id: companyId,
-      customer_id: selectedCustomerId,
-      sender_type: "company" as const,
-      sender_id: currentUserId,
+      customerId: selectedCustomerId,
+      offerId: threadOfferId,
       content: newMessage.trim(),
-      ...attachmentData
+      attachmentUrl: (attachmentData as { attachment_url?: string }).attachment_url || null,
+      attachmentType: (attachmentData as { attachment_type?: string }).attachment_type || null,
+      attachmentName: (attachmentData as { attachment_name?: string }).attachment_name || null,
     };
 
     setNewMessage("");
@@ -174,33 +179,42 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
     setIsUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (imageInputRef.current) imageInputRef.current.value = "";
-    // Reset textarea height if possible
+
     const textarea = document.getElementById("chat-textarea") as HTMLTextAreaElement;
     if (textarea) textarea.style.height = '44px';
 
-    // Optimistic UI update
     const tempId = crypto.randomUUID();
     const optimisticMsg: Message = {
       id: tempId,
-      ...payload,
+      customer_id: selectedCustomerId,
+      offer_id: threadOfferId,
+      sender_type: "company",
+      sender_id: currentUserId,
+      content: payload.content,
       created_at: new Date().toISOString(),
       read_at: null,
+      attachment_url: payload.attachmentUrl,
+      attachment_type: payload.attachmentType,
+      attachment_name: payload.attachmentName,
     };
     
     setMessages((prev) => [...prev, optimisticMsg]);
 
-    const { data: insertedData, error } = await supabase.from("messages").insert([payload]).select().single();
+    const response = await fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => ({}));
     
-    if (error) {
-      console.error("Failed to send message", error);
+    if (!response.ok) {
+      console.error("Failed to send message", result);
       toast.error("Kunne ikke sende melding", {
         description: "Vennligst prøv igjen senere."
       });
-      // Revert optimistic update
       setMessages((prev) => prev.filter(m => m.id !== tempId));
-    } else if (insertedData) {
-      // Replace optimistic temp id with actual database id to avoid duplication issues
-      setMessages((prev) => prev.map(m => m.id === tempId ? insertedData : m));
+    } else if (result.message) {
+      setMessages((prev) => prev.map(m => m.id === tempId ? result.message : m));
     }
   };
 

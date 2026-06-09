@@ -1,7 +1,8 @@
 import { AppPageShell } from "@/components/app-page-shell"
 import { NyttTilbudClient } from "@/components/tilbud/nytt-tilbud-client"
 import { createClient } from "@/lib/supabase/server"
-import { type OfferCompanyContext, type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
+import { fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
+import { type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
 
 type ProjectRow = {
   id: string
@@ -47,11 +48,7 @@ export default async function NyttTilbudPage({ searchParams }: Props) {
   } = await supabase.auth.getUser()
 
   const companyQuery = user
-    ? supabase
-        .from("users")
-        .select("company_id, companies(id, name, org_number)")
-        .eq("id", user.id)
-        .maybeSingle()
+    ? fetchOfferCompanyContext(supabase, user.id).then((company) => ({ data: company, error: null }))
     : Promise.resolve({ data: null, error: null })
 
   const [projectsResult, customersResult, companyResult] = await Promise.all([
@@ -92,18 +89,7 @@ export default async function NyttTilbudPage({ searchParams }: Props) {
     })
   )
 
-  const companyRow = (companyResult.data as {
-    company_id?: string | null
-    companies?: { id: string; name: string | null; org_number: string | null } | { id: string; name: string | null; org_number: string | null }[] | null
-  } | null) ?? null
-  const companyEntity = Array.isArray(companyRow?.companies) ? companyRow?.companies[0] || null : companyRow?.companies || null
-  const company: OfferCompanyContext | null = companyEntity && companyRow?.company_id
-    ? {
-        id: companyRow.company_id,
-        name: companyEntity.name,
-        orgNumber: companyEntity.org_number,
-      }
-    : null
+  const company = companyResult.data ?? null
 
   return (
     <AppPageShell segments={["Tilbud", "Nytt tilbud"]}>

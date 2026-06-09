@@ -1,50 +1,41 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
-  Activity,
-  ArrowUpRight,
   CalendarClock,
   CheckCircle2,
-  Clock3,
+  Download,
   Eye,
-  FileSpreadsheet,
+  FileImage,
   FileText,
   Link2,
   Mail,
   Plus,
-  Search,
   Send,
-  ShoppingCart,
   Sparkles,
-  Wallet,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { type OfferLineItem, calculateOfferTotals, formatNok } from "@/lib/tilbud/types"
+import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
 import { NewOfferItemsTable } from "@/components/tilbud/new-offer-items-table"
+import { formatOfferReference } from "@/lib/tilbud/offer-document"
+import { getOfferActivityTone, type OfferActivityEvent } from "@/lib/tilbud/offer-activity.shared"
+import { type OfferCompanyContext, type OfferLineItem, type OfferSourceDocument, calculateOfferTotals, formatNok } from "@/lib/tilbud/types"
 
-type OfferActivityItem = {
-  id: number
-  jobType: string
-  status: string
-  createdAt: string | null
-  updatedAt: string | null
-  errorMessage: string | null
-}
+type OfferActivityItem = OfferActivityEvent
 
 type OfferContractState = {
-  provider: "docusign"
+  provider: "docusign" | "tripletex"
   status: "draft" | "sent" | "delivered" | "completed" | "declined" | "voided" | "error"
   envelopeId?: string
   externalUrl?: string
@@ -53,11 +44,28 @@ type OfferContractState = {
   lastError?: string
 }
 
+type TripletexSyncLink = {
+  external_id?: number
+  external_url?: string | null
+  sync_status?: string
+  last_synced_at?: string | null
+} | null
+
+type TripletexSyncState = {
+  connected: boolean
+  customer: TripletexSyncLink
+  project: TripletexSyncLink
+  order: TripletexSyncLink
+  invoice: TripletexSyncLink
+  pendingJobs: Array<{ job_type: string; status: string; last_error_message: string | null }>
+} | null
+
 type OfferPageModel = {
   id: string
   customerId: string | null
   title: string
   description: string
+  projectSummary: string
   status: "draft" | "sent" | "accepted" | "rejected"
   amountNok: number
   subtotalNok: number
@@ -78,6 +86,7 @@ type OfferPageModel = {
   customerOrgNumber: string
   projectName: string
   sourceSummary: string
+  sourceDocuments: OfferSourceDocument[]
   lineItems: OfferLineItem[]
   contract: OfferContractState | null
 }
@@ -101,15 +110,10 @@ type OfferSaveSnapshot = {
   sourceSummary: string
 }
 
-type TripletexSnapshot = {
-  connected: boolean
-  syncState: string
-  orderExternalId: number | null
-  orderExternalUrl: string | null
-  invoiceExternalId: number | null
-  invoiceExternalUrl: string | null
-  paymentRegistered: boolean
-  paymentRegisteredAt: string | null
+function formatFileSize(sizeBytes: number) {
+  if (sizeBytes < 1024) return `${sizeBytes} B`
+  if (sizeBytes < 1024 * 1024) return `${Math.round(sizeBytes / 1024)} KB`
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 const statusOptions: Array<{
@@ -118,7 +122,7 @@ const statusOptions: Array<{
   disabled?: boolean
 }> = [
   { value: "draft", label: "Utkast" },
-  { value: "sent", label: "Sendt (via kontrakt)", disabled: true },
+  { value: "sent", label: "Tilbud sendt", disabled: true },
   { value: "accepted", label: "Godkjent" },
   { value: "rejected", label: "Avvist" },
 ]
@@ -150,9 +154,19 @@ function toInputDate(value?: string | null) {
 
 function statusBadge(status: string) {
   if (status === "accepted") return <Badge className="theme-badge-status-accepted">Godkjent</Badge>
-  if (status === "sent") return <Badge className="theme-badge-status-sent">Sendt</Badge>
+  if (status === "sent") return <Badge className="theme-badge-status-sent">Tilbud sendt</Badge>
   if (status === "rejected") return <Badge variant="destructive">Avvist</Badge>
-  return <Badge variant="secondary">Utkast</Badge>
+  return <Badge variant="secondary">Tilbud – utkast</Badge>
+}
+
+function tripletexSyncBadge(sync: TripletexSyncLink) {
+  if (!sync?.external_id) {
+    return <Badge variant="secondary">Ikke synket</Badge>
+  }
+  if (sync.sync_status === "synced") {
+    return <Badge className="theme-badge-status-accepted">Synket</Badge>
+  }
+  return <Badge variant="outline">{sync.sync_status || "Ukjent"}</Badge>
 }
 
 function contractBadge(status?: string) {
@@ -162,60 +176,40 @@ function contractBadge(status?: string) {
   return <Badge variant="secondary">Kontrakt ikke sendt</Badge>
 }
 
-function formatOfferReference(id: string) {
-  const normalized = id.trim()
-  if (!normalized) return "UKJENT"
-
-  const firstChunk = normalized.split("-")[0]
-  if (firstChunk) {
-    return firstChunk.toUpperCase()
-  }
-
-  return normalized.slice(0, 8).toUpperCase()
-}
-
-function activityTone(status: string) {
-  const value = status.toLowerCase()
-  if (value === "completed") return "theme-activity-success"
-  if (value === "failed" || value === "dead_letter" || value === "error") return "theme-activity-error"
-  return "theme-activity-info"
-}
-
 
 
 export function OfferDetailClient({
   initialOffer,
-  tripletex,
   activity,
+  company,
+  contractProvider = "docusign",
+  tripletexSync: initialTripletexSync = null,
 }: {
   initialOffer: OfferPageModel
-  tripletex: TripletexSnapshot
   activity: OfferActivityItem[]
+  company: OfferCompanyContext | null
+  contractProvider?: "docusign" | "tripletex"
+  tripletexSync?: TripletexSyncState
 }) {
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [offer, setOffer] = useState(initialOffer)
   const [lineItems, setLineItems] = useState<OfferLineItem[]>(initialOffer.lineItems)
+  const [tripletexSync, setTripletexSync] = useState<TripletexSyncState>(initialTripletexSync)
+  const [activityLog, setActivityLog] = useState<OfferActivityItem[]>(activity)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isAutoSaving, setIsAutoSaving] = useState(false)
+  const pdfDocRef = useRef<HTMLDivElement>(null)
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const [lastAutoSaveAt, setLastAutoSaveAt] = useState<string | null>(initialOffer.updatedAt)
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFirstAutosaveRunRef = useRef(true)
   const saveSequenceRef = useRef(0)
   const lastSavedFingerprintRef = useRef("")
 
-  const tripletexState = tripletex
-
   const totals = useMemo(() => calculateOfferTotals(lineItems), [lineItems])
-  const discountPercent = totals.subtotalNok > 0 ? Math.round((totals.discountNok / totals.subtotalNok) * 100) : 0
-  const progress = offer.status === "accepted" ? 100 : offer.status === "sent" ? 65 : offer.status === "rejected" ? 100 : 25
   const contractEnvelopeId = offer.contract?.envelopeId
   const contractStatus = offer.contract?.status
-  const statusSegments = useMemo(() => {
-    if (offer.status === "accepted") return ["theme-progress-fill-completed", "theme-progress-fill-completed", "theme-progress-fill-completed"]
-    if (offer.status === "sent") return ["theme-progress-fill-completed", "theme-progress-fill-warning", "bg-muted"]
-    if (offer.status === "rejected") return ["theme-progress-fill-danger", "theme-progress-fill-danger", "theme-progress-fill-danger"]
-    return ["theme-progress-fill-info", "bg-muted", "bg-muted"]
-  }, [offer.status])
 
   const saveSnapshot = useMemo<OfferSaveSnapshot>(
     () => ({
@@ -294,7 +288,10 @@ export function OfferDetailClient({
         const response = await fetch(`/api/offers/${offer.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(snapshot),
+          body: JSON.stringify({
+            ...snapshot,
+            activitySource: options?.silent ? "autosave" : "manual",
+          }),
         })
 
         const payload = await response.json()
@@ -316,6 +313,7 @@ export function OfferDetailClient({
 
         if (!options?.silent) {
           toast.success("Tilbud oppdatert")
+          router.refresh()
         }
 
         return true
@@ -328,21 +326,60 @@ export function OfferDetailClient({
         }
       }
     },
-    [offer.id]
+    [offer.id, router]
   )
 
-  const triggerTripletexSyncInBackground = useCallback(async () => {
-    if (!tripletexState.connected) return
+  const refreshActivity = useCallback(async () => {
+    router.refresh()
+  }, [router])
+
+  const handlePrintPdf = useCallback(async () => {
+    const node = pdfDocRef.current
+    if (!node) return
 
     try {
-      await fetch(`/api/offers/${offer.id}/tripletex-sync`, {
+      await fetch(`/api/offers/${offer.id}/pdf-export`, { method: "POST" })
+      void refreshActivity()
+    } catch {
+      // Logging should not block export.
+    }
+
+    const cssLinks = Array.from(document.styleSheets)
+      .filter((sheet) => sheet.href)
+      .map((sheet) => `<link rel="stylesheet" href="${sheet.href}">`)
+      .join("\n")
+    const printWin = window.open("", "_blank", "width=900,height=1100")
+    if (!printWin) {
+      toast.error("Kunne ikke åpne utskriftsvindu")
+      return
+    }
+    printWin.document.write(
+      `<!DOCTYPE html><html><head><meta charset="utf-8">${cssLinks}</head><body style="margin:0;background:#fff">${node.outerHTML}</body></html>`
+    )
+    printWin.document.close()
+    printWin.addEventListener("load", () => {
+      printWin.focus()
+      printWin.print()
+    })
+  }, [offer.id, refreshActivity])
+
+  const triggerTripletexSyncInBackground = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/offers/${offer.id}/tripletex-sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
+      if (!response.ok) return
+
+      const statusResponse = await fetch(`/api/offers/${offer.id}/tripletex-sync`)
+      if (statusResponse.ok) {
+        const payload = await statusResponse.json()
+        setTripletexSync(payload)
+      }
     } catch {
       // Non-blocking background sync.
     }
-  }, [offer.id, tripletexState.connected])
+  }, [offer.id])
 
   const refreshContractStatus = useCallback(async () => {
     try {
@@ -364,6 +401,51 @@ export function OfferDetailClient({
     }
   }, [offer.id])
 
+  const sendOffer = async () => {
+    const recipientEmail = offer.recipientEmail.trim() || offer.customerEmail.trim()
+    if (!recipientEmail) {
+      toast.error("Fyll inn mottaker-e-post før du sender tilbud")
+      return
+    }
+
+    startTransition(async () => {
+      try {
+        const saved = await saveOfferSnapshot(saveSnapshot, { silent: true })
+        if (!saved) {
+          throw new Error("Kunne ikke lagre endringer før sending")
+        }
+
+        const response = await fetch(`/api/offers/${offer.id}/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipientName: offer.recipientName.trim() || offer.customerName.trim(),
+            recipientEmail,
+            recipientPhone: offer.recipientPhone.trim() || offer.customerPhone.trim(),
+            message: offer.sourceSummary.trim(),
+          }),
+        })
+        const payload = await response.json()
+        if (!response.ok) {
+          throw new Error(payload.error || "Kunne ikke sende tilbud")
+        }
+
+        setOffer((prev) => ({
+          ...prev,
+          status: "sent",
+          sentAt: payload.offer.sentAt,
+          recipientEmail: payload.offer.recipientEmail,
+          recipientName: payload.offer.recipientName,
+        }))
+        void triggerTripletexSyncInBackground()
+        toast.success("Tilbud sendt til kunde på e-post")
+        void refreshActivity()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Kunne ikke sende tilbud")
+      }
+    })
+  }
+
   const sendContract = async () => {
     startTransition(async () => {
       try {
@@ -372,7 +454,12 @@ export function OfferDetailClient({
           throw new Error("Kunne ikke lagre endringer før sending")
         }
 
-        const response = await fetch(`/api/offers/${offer.id}/docusign`, {
+        const endpoint =
+          contractProvider === "tripletex"
+            ? `/api/offers/${offer.id}/tripletex-contract`
+            : `/api/offers/${offer.id}/docusign`
+
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         })
@@ -383,7 +470,12 @@ export function OfferDetailClient({
 
         setOffer((prev) => ({ ...prev, contract: payload.contract }))
         void triggerTripletexSyncInBackground()
-        toast.success("Kontrakt sendt via DocuSign")
+        toast.success(
+          contractProvider === "tripletex"
+            ? "Ordre opprettet i Tripletex"
+            : "Kontrakt sendt via DocuSign"
+        )
+        void refreshActivity()
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Kunne ikke sende kontrakt")
       }
@@ -409,11 +501,16 @@ export function OfferDetailClient({
           void triggerTripletexSyncInBackground()
         }
         toast.success("Kontraktstatus oppdatert")
+        void refreshActivity()
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Kunne ikke oppdatere kontraktstatus")
       }
     })
   }
+
+  useEffect(() => {
+    setActivityLog(activity)
+  }, [activity])
 
   useEffect(() => {
     if (isFirstAutosaveRunRef.current) {
@@ -461,6 +558,34 @@ export function OfferDetailClient({
     }
   }, [contractEnvelopeId, contractStatus, refreshContractStatus])
 
+  useEffect(() => {
+    if (offer.projectSummary.trim()) return
+
+    let cancelled = false
+    setIsGeneratingSummary(true)
+
+    void fetch(`/api/offers/${offer.id}/project-summary`, { method: "POST" })
+      .then(async (response) => {
+        const payload = await response.json()
+        if (!response.ok || cancelled) return
+        if (typeof payload.summary === "string" && payload.summary.trim()) {
+          setOffer((prev) => ({ ...prev, projectSummary: payload.summary.trim() }))
+        }
+      })
+      .catch(() => {
+        // Silent fallback.
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsGeneratingSummary(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [offer.id, offer.projectSummary])
+
   return (
     <div className="space-y-5 pb-10">
       <section className={`relative border bg-card border-l-4 ${
@@ -474,14 +599,19 @@ export function OfferDetailClient({
             <div className="flex flex-wrap items-center gap-2">
               {statusBadge(offer.status)}
               {contractBadge(offer.contract?.status)}
-              {tripletexState.paymentRegistered ? <Badge className="theme-badge-payment-registered">Betaling registrert</Badge> : null}
+              <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary">
+                Tilbud
+              </Badge>
               <span className="ml-auto text-[11px] text-muted-foreground">#{formatOfferReference(offer.id)}</span>
             </div>
 
             <div className="flex items-start justify-between gap-4">
-              <h2 className="text-xl font-semibold leading-tight text-foreground">
-                {offer.title?.trim() || `Tilbud #${formatOfferReference(offer.id)}`}
-              </h2>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Prisforslag til kunde</p>
+                <h2 className="text-xl font-semibold leading-tight text-foreground">
+                  {offer.title?.trim() || `Tilbud #${formatOfferReference(offer.id)}`}
+                </h2>
+              </div>
               <div className="shrink-0 text-right">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Total eks. mva</p>
                 <p className="text-2xl font-bold tabular-nums text-foreground">{formatNok(totals.totalNok)}</p>
@@ -502,7 +632,7 @@ export function OfferDetailClient({
               <Input type="date" className="h-8 w-36 bg-background text-xs" value={toInputDate(offer.quoteValidUntil)} onChange={(e) => setOffer((prev) => ({ ...prev, quoteValidUntil: e.target.value || null }))} />
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
               <div className="border border-border bg-background p-2">
                 <p className="flex items-center gap-1 text-[10px] text-muted-foreground"><CalendarClock className="h-3 w-3" />Opprettet</p>
                 <p className="mt-0.5 text-sm font-semibold text-foreground">{dateLabel(offer.createdAt)}</p>
@@ -512,23 +642,75 @@ export function OfferDetailClient({
                 <p className="mt-0.5 text-sm font-semibold text-foreground">{dateLabel(offer.quoteValidUntil)}</p>
               </div>
               <div className="border border-border bg-background p-2">
+                <p className="flex items-center gap-1 text-[10px] text-muted-foreground"><Mail className="h-3 w-3" />Tilbud sendt</p>
+                <p className="mt-0.5 text-sm font-semibold text-foreground">{offer.sentAt ? dateLabel(offer.sentAt) : "Ikke sendt"}</p>
+              </div>
+              <div className="border border-border bg-background p-2">
                 <p className="flex items-center gap-1 text-[10px] text-muted-foreground"><FileText className="h-3 w-3" />Kontrakt</p>
                 <p className="mt-0.5 text-sm font-semibold text-foreground">
                   {offer.contract?.status === "completed" ? "Signert" :
-                   offer.contract?.status && ["sent", "delivered"].includes(offer.contract.status) ? "Sendt" :
+                   offer.contract?.status && ["sent", "delivered"].includes(offer.contract.status) ? "Til signering" :
                    "Ikke sendt"}
                 </p>
               </div>
             </div>
 
+            <div className="rounded-md border border-dashed border-primary/20 bg-primary/5 px-3 py-2 text-[11px] text-muted-foreground">
+              <strong className="text-foreground">Tilbud</strong> sendes som prisforslag på e-post.
+              <strong className="text-foreground"> Kontrakt</strong> er et separat signeringsdokument via DocuSign.
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="header-recipient-name" className="text-[11px] text-muted-foreground">
+                  Mottaker
+                </Label>
+                <Input
+                  id="header-recipient-name"
+                  className="mt-1 h-8 bg-background text-xs"
+                  value={offer.recipientName}
+                  onChange={(event) => setOffer((prev) => ({ ...prev, recipientName: event.target.value }))}
+                  placeholder={offer.customerName || "Navn"}
+                />
+              </div>
+              <div>
+                <Label htmlFor="header-recipient-email" className="text-[11px] text-muted-foreground">
+                  E-post for tilbud
+                </Label>
+                <Input
+                  id="header-recipient-email"
+                  className="mt-1 h-8 bg-background text-xs"
+                  value={offer.recipientEmail}
+                  onChange={(event) => setOffer((prev) => ({ ...prev, recipientEmail: event.target.value }))}
+                  placeholder={offer.customerEmail || "kunde@firma.no"}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor="header-quote-message" className="text-[11px] text-muted-foreground">
+                  Melding til kunde (valgfri)
+                </Label>
+                <Textarea
+                  id="header-quote-message"
+                  className="mt-1 min-h-[64px] bg-background text-xs"
+                  value={offer.sourceSummary}
+                  onChange={(event) => setOffer((prev) => ({ ...prev, sourceSummary: event.target.value }))}
+                  placeholder="Kort melding som følger med tilbudet..."
+                />
+              </div>
+            </div>
+
             <div className="flex flex-wrap gap-2">
-              <Button onClick={sendContract} disabled={isPending || isAutoSaving} className="h-9">
+              <Button onClick={sendOffer} disabled={isPending || isAutoSaving || lineItems.length === 0} className="h-9">
                 <Send className="mr-2 h-4 w-4" />
-                Send kontrakt
+                Send tilbud
               </Button>
               <Button variant="outline" onClick={() => setIsPreviewOpen(true)} className="h-9">
                 <Eye className="mr-2 h-4 w-4" />
-                Forhåndsvis
+                Forhåndsvis tilbud
+              </Button>
+              <Button variant="outline" onClick={handlePrintPdf} disabled={lineItems.length === 0} className="h-9">
+                <Download className="mr-2 h-4 w-4" />
+                Last ned PDF
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground">
@@ -539,82 +721,25 @@ export function OfferDetailClient({
           </div>
 
           <div className="p-4 sm:p-5">
-            <article className="theme-surface-document p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h3 className="text-base font-semibold text-foreground">Kundeinfo</h3>
-                <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Dokument</p>
-              </div>
-
-              <div className="space-y-4 text-sm">
-                <div className="space-y-2">
-                  <div className="grid grid-cols-[112px_1fr] gap-3">
-                    <p className="text-muted-foreground">Bedrift</p>
-                    <Input
-                      className="h-8 bg-white"
-                      value={offer.customerName}
-                      onChange={(event) => setOffer((prev) => ({ ...prev, customerName: event.target.value }))}
-                      placeholder="Kundenavn"
-                    />
-                  </div>
-                  <div className="grid grid-cols-[112px_1fr] gap-3">
-                    <p className="text-muted-foreground">Org.nr</p>
-                    <Input
-                      className="h-8 bg-white"
-                      value={offer.customerOrgNumber}
-                      onChange={(event) => setOffer((prev) => ({ ...prev, customerOrgNumber: event.target.value }))}
-                      placeholder="999 999 999"
-                    />
-                  </div>
-                  <div className="grid grid-cols-[112px_1fr] gap-3">
-                    <p className="text-muted-foreground">Adresse</p>
-                    <div className="grid gap-2">
-                      <Input
-                        className="h-8 bg-white"
-                        value={offer.customerAddress}
-                        onChange={(event) => setOffer((prev) => ({ ...prev, customerAddress: event.target.value }))}
-                        placeholder="Gateadresse"
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          className="h-8 bg-white"
-                          value={offer.customerPostalCode}
-                          onChange={(event) => setOffer((prev) => ({ ...prev, customerPostalCode: event.target.value }))}
-                          placeholder="Postnr"
-                        />
-                        <Input
-                          className="h-8 bg-white"
-                          value={offer.customerCity}
-                          onChange={(event) => setOffer((prev) => ({ ...prev, customerCity: event.target.value }))}
-                          placeholder="Poststed"
-                        />
-                      </div>
+            <article className="theme-surface-document flex h-full flex-col p-4">
+              <div className="flex flex-1 flex-col gap-3 text-sm">
+                {offer.projectName ? (
+                  <div>
+                    <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Prosjekt</p>
+                    <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">KI-generert</p>
                     </div>
+                    <p className="mt-1 font-medium text-[15px] text-foreground">{offer.projectName}</p>
                   </div>
-                  <div className="grid grid-cols-[112px_1fr] gap-3">
-                    <p className="text-muted-foreground">E-post</p>
-                    <Input
-                      className="h-8 bg-white"
-                      value={offer.customerEmail}
-                      onChange={(event) => setOffer((prev) => ({ ...prev, customerEmail: event.target.value }))}
-                      placeholder="kunde@firma.no"
-                    />
-                  </div>
-                  <div className="grid grid-cols-[112px_1fr] gap-3">
-                    <p className="text-muted-foreground">Telefon</p>
-                    <Input
-                      className="h-8 bg-white"
-                      value={offer.customerPhone}
-                      onChange={(event) => setOffer((prev) => ({ ...prev, customerPhone: event.target.value }))}
-                      placeholder="+47..."
-                    />
-                  </div>
-                </div>
-                <div className="theme-divider-soft space-y-2 border-t pt-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tilknytning</p>
-                  <div className="grid grid-cols-[112px_1fr] gap-3">
-                    <p className="text-muted-foreground">Prosjekt</p>
-                    <p className="font-medium text-foreground">{offer.projectName || "Ikke koblet"}</p>
-                  </div>
+                ) : null}
+                <div className="flex-1">
+                  <p className="text-[15px] leading-relaxed text-foreground">
+                    {offer.projectSummary.trim()
+                      ? offer.projectSummary
+                      : isGeneratingSummary
+                        ? "Genererer kort oppsummering av prosjektet..."
+                        : "Kort KI-oppsummering av prosjektet vises her når den er klar."}
+                  </p>
                 </div>
               </div>
             </article>
@@ -631,16 +756,22 @@ export function OfferDetailClient({
             Komponenter
           </TabsTrigger>
           <TabsTrigger
+            value="kunde"
+            className="rounded-none border-b-3 border-b-transparent bg-transparent px-4 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-b-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
+          >
+            Kundeinfo
+          </TabsTrigger>
+          <TabsTrigger
             value="dokumenter"
             className="rounded-none border-b-3 border-b-transparent bg-transparent px-4 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-b-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
           >
             Dokumenter
           </TabsTrigger>
           <TabsTrigger
-            value="epost"
+            value="kontrakt"
             className="rounded-none border-b-3 border-b-transparent bg-transparent px-4 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-b-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
           >
-            Sending
+            Kontrakt
           </TabsTrigger>
           <TabsTrigger
             value="hendelser"
@@ -760,192 +891,243 @@ export function OfferDetailClient({
           </div>
         </TabsContent>
 
-        <TabsContent value="dokumenter" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-          <div className="grid gap-3 lg:grid-cols-12">
-            <Card className="theme-surface-info overflow-hidden lg:col-span-6">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <FileSpreadsheet className="h-4 w-4 theme-badge-sync-pending" />
-                  Tripletex
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-md border bg-background px-2.5 py-2">
-                    <p className="text-[11px] text-muted-foreground">Status</p>
-                    <div className="mt-1">
-                      <Badge variant={tripletexState.connected ? "default" : "secondary"}>
-                        {tripletexState.connected ? tripletexState.syncState : "Frakoblet"}
-                      </Badge>
+        <TabsContent value="kunde" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+          <div className="border border-border bg-background">
+            <div className="border-b border-border bg-muted/30 px-4 py-3">
+              <h3 className="text-sm font-semibold text-foreground">Kundeinfo</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Kontakt- og fakturainformasjon for tilbudet.</p>
+            </div>
+            <div className="p-4">
+              <article className="theme-surface-document mx-auto max-w-2xl p-4">
+                <div className="space-y-4 text-sm">
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-[112px_1fr] gap-3">
+                      <p className="text-muted-foreground">Bedrift</p>
+                      <Input
+                        className="h-8 bg-white"
+                        value={offer.customerName}
+                        onChange={(event) => setOffer((prev) => ({ ...prev, customerName: event.target.value }))}
+                        placeholder="Kundenavn"
+                      />
+                    </div>
+                    <div className="grid grid-cols-[112px_1fr] gap-3">
+                      <p className="text-muted-foreground">Org.nr</p>
+                      <Input
+                        className="h-8 bg-white"
+                        value={offer.customerOrgNumber}
+                        onChange={(event) => setOffer((prev) => ({ ...prev, customerOrgNumber: event.target.value }))}
+                        placeholder="999 999 999"
+                      />
+                    </div>
+                    <div className="grid grid-cols-[112px_1fr] gap-3">
+                      <p className="text-muted-foreground">Adresse</p>
+                      <div className="grid gap-2">
+                        <Input
+                          className="h-8 bg-white"
+                          value={offer.customerAddress}
+                          onChange={(event) => setOffer((prev) => ({ ...prev, customerAddress: event.target.value }))}
+                          placeholder="Gateadresse"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            className="h-8 bg-white"
+                            value={offer.customerPostalCode}
+                            onChange={(event) => setOffer((prev) => ({ ...prev, customerPostalCode: event.target.value }))}
+                            placeholder="Postnr"
+                          />
+                          <Input
+                            className="h-8 bg-white"
+                            value={offer.customerCity}
+                            onChange={(event) => setOffer((prev) => ({ ...prev, customerCity: event.target.value }))}
+                            placeholder="Poststed"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-[112px_1fr] gap-3">
+                      <p className="text-muted-foreground">E-post</p>
+                      <Input
+                        className="h-8 bg-white"
+                        value={offer.customerEmail}
+                        onChange={(event) => setOffer((prev) => ({ ...prev, customerEmail: event.target.value }))}
+                        placeholder="kunde@firma.no"
+                      />
+                    </div>
+                    <div className="grid grid-cols-[112px_1fr] gap-3">
+                      <p className="text-muted-foreground">Telefon</p>
+                      <Input
+                        className="h-8 bg-white"
+                        value={offer.customerPhone}
+                        onChange={(event) => setOffer((prev) => ({ ...prev, customerPhone: event.target.value }))}
+                        placeholder="+47..."
+                      />
                     </div>
                   </div>
-                  <div className="rounded-md border bg-background px-2.5 py-2">
-                    <p className="text-[11px] text-muted-foreground">Betaling</p>
-                    <p className="mt-1 font-medium">{tripletexState.paymentRegistered ? "Registrert" : "Ikke registrert"}</p>
-                  </div>
-                  <div className="rounded-md border bg-background px-2.5 py-2">
-                    <p className="text-[11px] text-muted-foreground">Order</p>
-                    <p className="mt-1 font-medium">{tripletexState.orderExternalId || "-"}</p>
-                  </div>
-                  <div className="rounded-md border bg-background px-2.5 py-2">
-                    <p className="text-[11px] text-muted-foreground">Invoice</p>
-                    <p className="mt-1 font-medium">{tripletexState.invoiceExternalId || "-"}</p>
+                  <div className="theme-divider-soft space-y-2 border-t pt-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tilknytning</p>
+                    <div className="grid grid-cols-[112px_1fr] gap-3">
+                      <p className="text-muted-foreground">Prosjekt</p>
+                      <p className="font-medium text-foreground">{offer.projectName || "Ikke koblet"}</p>
+                    </div>
                   </div>
                 </div>
-
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {tripletexState.orderExternalUrl ? (
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={tripletexState.orderExternalUrl} target="_blank" rel="noreferrer">
-                        Åpne ordre
-                        <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
-                      </a>
-                    </Button>
-                  ) : null}
-                  {tripletexState.invoiceExternalUrl ? (
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={tripletexState.invoiceExternalUrl} target="_blank" rel="noreferrer">
-                        Åpne faktura
-                        <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
-                      </a>
-                    </Button>
-                  ) : null}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="theme-surface-violet overflow-hidden lg:col-span-6">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <FileText className="h-4 w-4 theme-badge-violet" />
-                  Kontrakt
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4 lg:grid-cols-2">
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Provider</span><strong>{offer.contract?.provider || "docusign"}</strong></div>
-                  <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Status</span><div>{contractBadge(offer.contract?.status)}</div></div>
-                  <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Envelope</span><strong>{offer.contract?.envelopeId || "-"}</strong></div>
-                  <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Sendt</span><strong>{dateTimeLabel(offer.contract?.sentAt)}</strong></div>
-                  <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Signert</span><strong>{dateTimeLabel(offer.contract?.signedAt)}</strong></div>
-                </div>
-
-                <div className="space-y-2">
-                  <Button onClick={sendContract} disabled={isPending || isAutoSaving} className="w-full">
-                    <Send className="mr-2 h-4 w-4" />
-                    Send kontrakt
-                  </Button>
-                  <Button variant="secondary" onClick={() => setIsPreviewOpen(true)} className="w-full">
-                    <Eye className="mr-2 h-4 w-4" />
-                    Forhåndsvis
-                  </Button>
-                  <Button variant="outline" onClick={() => updateContractStatus("completed")} disabled={isPending} className="w-full">
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                    Marker signert
-                  </Button>
-                  <Button variant="outline" onClick={() => updateContractStatus("declined")} disabled={isPending} className="w-full">
-                    Avvist av kunde
-                  </Button>
-                  <Button variant="outline" onClick={() => updateContractStatus("voided")} disabled={isPending} className="w-full">
-                    Annuller
-                  </Button>
-                  {offer.contract?.externalUrl ? (
-                    <Button variant="outline" className="w-full" asChild>
-                      <a href={offer.contract.externalUrl} target="_blank" rel="noreferrer">
-                        Åpne i DocuSign
-                        <Link2 className="ml-2 h-4 w-4" />
-                      </a>
-                    </Button>
-                  ) : null}
-                </div>
-              </CardContent>
-            </Card>
+              </article>
+            </div>
           </div>
         </TabsContent>
 
-        <TabsContent value="epost" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-          <div className="grid gap-3 lg:grid-cols-12">
-            <Card className="theme-surface-warning overflow-hidden lg:col-span-12">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 theme-badge-contract-sent" />
-                  E-post og mottaker
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="recipient-name">Navn</Label>
-                    <Input
-                      id="recipient-name"
-                      className="mt-1 bg-background"
-                      value={offer.recipientName}
-                      onChange={(event) => setOffer((prev) => ({ ...prev, recipientName: event.target.value }))}
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="recipient-email">E-post</Label>
-                    <Input
-                      id="recipient-email"
-                      className="mt-1 bg-background"
-                      value={offer.recipientEmail}
-                      onChange={(event) => setOffer((prev) => ({ ...prev, recipientEmail: event.target.value }))}
-                    />
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <Label htmlFor="recipient-phone">Telefon</Label>
-                    <Input
-                      id="recipient-phone"
-                      className="mt-1 bg-background"
-                      value={offer.recipientPhone}
-                      onChange={(event) => setOffer((prev) => ({ ...prev, recipientPhone: event.target.value }))}
-                    />
-                  </div>
+        <TabsContent value="dokumenter" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+          <div className="border border-border bg-background">
+            <div className="border-b border-border bg-muted/30 px-4 py-3">
+              <h3 className="text-sm font-semibold text-foreground">Vedlegg til tilbudet</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Dokumenter lastet opp som grunnlag da tilbudet ble opprettet.
+              </p>
+            </div>
+            <div className="p-4">
+              {offer.sourceDocuments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Ingen dokumenter er knyttet til dette tilbudet.</p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {offer.sourceDocuments.map((document) => (
+                    <div key={document.id} className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="mt-0.5 rounded-md border bg-muted/40 p-2">
+                          {document.previewKind === "image" ? (
+                            <FileImage className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">{document.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatFileSize(document.sizeBytes)}
+                            {document.uploadedAt ? ` • ${dateLabel(document.uploadedAt)}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                      {document.signedUrl ? (
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={document.signedUrl} target="_blank" rel="noreferrer">
+                            <Download className="mr-1.5 h-3.5 w-3.5" />
+                            Åpne
+                          </a>
+                        </Button>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
-
-                <p className="text-xs text-muted-foreground">
-                  Mottakerinformasjonen brukes ved utsending av kontrakt via DocuSign.
-                </p>
-
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={sendContract} disabled={isPending || isAutoSaving}>
-                    <Send className="mr-2 h-4 w-4" />
-                    Send kontrakt
-                  </Button>
-                  <Button variant="secondary" onClick={() => setIsPreviewOpen(true)}>
-                    <Eye className="mr-2 h-4 w-4" />
-                    Forhåndsvis
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
+              )}
+            </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="kontrakt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+          <Card className="theme-surface-violet overflow-hidden">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileText className="h-4 w-4 theme-badge-violet" />
+                {contractProvider === "tripletex" ? "Ordre i Tripletex" : "Kontrakt (DocuSign)"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 lg:grid-cols-2">
+              <div className="space-y-2 text-sm">
+                <p className="rounded-md border bg-background px-2.5 py-2 text-xs text-muted-foreground">
+                  {contractProvider === "tripletex"
+                    ? "Oppretter kunde, prosjekt og ordre i Tripletex. Faktura kan opprettes automatisk hvis det er aktivert."
+                    : "Kontrakten er et signeringsdokument og sendes separat fra tilbudet."}
+                </p>
+                <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Provider</span><strong>{offer.contract?.provider || contractProvider}</strong></div>
+                <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Status</span><div>{contractBadge(offer.contract?.status)}</div></div>
+                <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>{contractProvider === "tripletex" ? "Ordre-ID" : "Envelope"}</span><strong>{offer.contract?.envelopeId || "-"}</strong></div>
+                <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Sendt</span><strong>{dateTimeLabel(offer.contract?.sentAt)}</strong></div>
+                {contractProvider === "docusign" ? (
+                  <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Signert</span><strong>{dateTimeLabel(offer.contract?.signedAt)}</strong></div>
+                ) : null}
+
+                {tripletexSync?.connected ? (
+                  <div className="mt-3 space-y-2 rounded-md border bg-background p-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tripletex-synk</p>
+                    <div className="flex items-center justify-between"><span>Kunde</span>{tripletexSyncBadge(tripletexSync.customer)}</div>
+                    <div className="flex items-center justify-between"><span>Prosjekt</span>{tripletexSyncBadge(tripletexSync.project)}</div>
+                    <div className="flex items-center justify-between"><span>Ordre</span>{tripletexSyncBadge(tripletexSync.order)}</div>
+                    <div className="flex items-center justify-between"><span>Faktura</span>{tripletexSyncBadge(tripletexSync.invoice)}</div>
+                    {tripletexSync.pendingJobs.length > 0 ? (
+                      <p className="text-xs text-muted-foreground">{tripletexSync.pendingJobs.length} synk-jobber i kø…</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Button onClick={sendContract} disabled={isPending || isAutoSaving} className="w-full">
+                  <Send className="mr-2 h-4 w-4" />
+                  {contractProvider === "tripletex" ? "Opprett ordre i Tripletex" : "Send kontrakt til signering"}
+                </Button>
+                <Button variant="outline" onClick={() => void triggerTripletexSyncInBackground()} disabled={isPending} className="w-full">
+                  Synk til Tripletex nå
+                </Button>
+                <Button variant="secondary" onClick={() => setIsPreviewOpen(true)} className="w-full">
+                  <Eye className="mr-2 h-4 w-4" />
+                  Forhåndsvis tilbud
+                </Button>
+                {contractProvider === "docusign" ? (
+                  <>
+                    <Button variant="outline" onClick={() => updateContractStatus("completed")} disabled={isPending} className="w-full">
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Marker signert
+                    </Button>
+                    <Button variant="outline" onClick={() => updateContractStatus("declined")} disabled={isPending} className="w-full">
+                      Avvist av kunde
+                    </Button>
+                    <Button variant="outline" onClick={() => updateContractStatus("voided")} disabled={isPending} className="w-full">
+                      Annuller
+                    </Button>
+                  </>
+                ) : null}
+                {offer.contract?.externalUrl ? (
+                  <Button variant="outline" className="w-full" asChild>
+                    <a href={offer.contract.externalUrl} target="_blank" rel="noreferrer">
+                      {contractProvider === "tripletex" ? "Åpne i Tripletex" : "Åpne i DocuSign"}
+                      <Link2 className="ml-2 h-4 w-4" />
+                    </a>
+                  </Button>
+                ) : null}
+                {tripletexSync?.order?.external_url ? (
+                  <Button variant="outline" className="w-full" asChild>
+                    <a href={tripletexSync.order.external_url} target="_blank" rel="noreferrer">
+                      Åpne ordre i Tripletex
+                      <Link2 className="ml-2 h-4 w-4" />
+                    </a>
+                  </Button>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="hendelser" className="m-0 focus-visible:outline-none focus-visible:ring-0">
           <div className="border border-border bg-background">
-            <div className="border-b border-border bg-muted/30 px-4 py-3">
+            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
               <h3 className="text-sm font-semibold text-foreground">Hendelser</h3>
+              <Button variant="outline" size="sm" onClick={handlePrintPdf} disabled={lineItems.length === 0}>
+                <Download className="mr-2 h-4 w-4" />
+                Last ned PDF
+              </Button>
             </div>
             <div className="p-4">
               <div className="space-y-2">
-                {activity.length === 0 ? (
+                {activityLog.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Ingen aktivitet enda.</p>
                 ) : (
-                  activity.map((item) => (
-                    <div key={item.id} className={`border p-3 text-sm ${activityTone(item.status)}`}>
+                  activityLog.map((item) => (
+                    <div key={item.id} className={`border p-3 text-sm ${getOfferActivityTone(item.eventType)}`}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <strong>{item.jobType}</strong>
-                        <Badge variant={item.status === "completed" ? "default" : "secondary"}>{item.status}</Badge>
+                        <strong>{item.title}</strong>
+                        <span className="text-xs text-muted-foreground">{dateTimeLabel(item.createdAt)}</span>
                       </div>
-                      <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
-                        <p>Opprettet {dateTimeLabel(item.createdAt)}</p>
-                        <p>Oppdatert {dateTimeLabel(item.updatedAt)}</p>
-                      </div>
-                      {item.errorMessage ? <p className="mt-1 text-xs text-destructive">{item.errorMessage}</p> : null}
+                      {item.description ? <p className="mt-1 text-xs text-muted-foreground">{item.description}</p> : null}
                     </div>
                   ))
                 )}
@@ -956,119 +1138,67 @@ export function OfferDetailClient({
       </Tabs>
 
       <Sheet open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <SheetContent className="theme-preview-shell sm:max-w-[1000px] w-[95vw] overflow-y-auto sm:p-12 p-4 flex flex-col items-center justify-start">
-          <SheetHeader className="sr-only">
-            <SheetTitle>Forhåndsvisning av tilbud</SheetTitle>
-            <SheetDescription>Dette er en forhåndsvisning av hvordan tilbudet ser ut for kunden.</SheetDescription>
+        <SheetContent className="theme-preview-shell !max-w-[min(1500px,96vw)] w-[96vw] overflow-y-auto p-4 sm:!max-w-[min(1500px,96vw)]">
+          <SheetHeader className="flex-row items-start justify-between gap-4 space-y-0">
+            <div>
+              <SheetTitle>Forhåndsvisning av tilbud</SheetTitle>
+              <SheetDescription>Slik ser tilbudet ut for kunden. Kontrakten er et separat dokument.</SheetDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={handlePrintPdf} disabled={lineItems.length === 0}>
+              <Download className="mr-2 h-4 w-4" />
+              Last ned PDF
+            </Button>
           </SheetHeader>
-          
-          <div className="theme-preview-page w-[210mm] min-h-[297mm] shadow-md ring-1 ring-black/5 flex flex-col px-[20mm] pt-[25mm] pb-[20mm] shrink-0 mb-8">
-            <div className="flex justify-between items-start mb-10">
-              <div>
-                <div className="theme-preview-logo h-8 w-28 rounded flex items-center justify-center font-bold tracking-widest uppercase text-[10px] mb-4">
-                  DIN LOGO
-                </div>
-                <h1 className="text-xl font-light tracking-tight text-foreground mb-1">{offer.title || "Spesifisert Tilbud"}</h1>
-                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-widest">Tilbudsnummer: {formatOfferReference(offer.id)}</p>
-              </div>
-              <div className="text-right text-[11px] text-muted-foreground flex flex-col gap-1">
-                <p>Dato: <strong>{dateLabel(offer.createdAt)}</strong></p>
-                <p>Gyldig til: <strong>{dateLabel(offer.quoteValidUntil)}</strong></p>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-12 mb-10">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2.5">Tilbud gitt til</p>
-                <p className="font-semibold text-[13px]">{offer.customerName || "Ukjent kunde"}</p>
-                <p className="text-[12px] text-foreground/80 leading-relaxed">{offer.customerOrgNumber ? `Org.nr: ${offer.customerOrgNumber}` : ""}</p>
-                {offer.recipientEmail && <p className="text-[12px] text-foreground/80 leading-relaxed">{offer.recipientEmail}</p>}
-                {offer.recipientPhone && <p className="text-[12px] text-foreground/80 leading-relaxed">{offer.recipientPhone}</p>}
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2.5">Leverandør</p>
-                <p className="font-semibold text-[13px]">Håndverkerbedriften AS</p>
-                <p className="text-[12px] text-foreground/80 leading-relaxed">Org.nr: 999 999 999 MVA</p>
-                <p className="text-[12px] text-foreground/80 mt-1.5 leading-relaxed">post@haandverker.no</p>
-              </div>
-            </div>
-
-            {offer.description && (
-              <div className="mb-10">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2.5">Beskrivelse</p>
-                <div className="text-[12px] text-foreground/90 whitespace-pre-wrap leading-relaxed">{offer.description}</div>
-              </div>
-            )}
-
-            <div className="theme-divider-soft mb-8 border-t">
-              <table className="w-full text-[12px]">
-                <thead>
-                  <tr className="theme-divider-strong border-b-2">
-                    <th className="py-2.5 text-left font-semibold text-foreground w-[45%]">Beskrivelse</th>
-                    <th className="py-2.5 text-right font-semibold text-foreground">Antall</th>
-                    <th className="py-2.5 text-right font-semibold text-foreground">Pris</th>
-                    <th className="py-2.5 text-right font-semibold text-foreground">Rabatt</th>
-                    <th className="py-2.5 text-right font-semibold text-foreground">Sum (eks. mva)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/70">
-                  {lineItems.map((item) => {
-                    const rowSum = item.quantity * item.unitPriceNok * (1 - item.discountPercent / 100);
-                    return (
-                      <tr key={item.id} className="group">
-                        <td className="py-2.5 pr-4">
-                          <p className="font-medium text-foreground">{item.title}</p>
-                          {item.subproject && <p className="text-[10px] text-muted-foreground mt-0.5">{item.subproject}</p>}
-                        </td>
-                        <td className="py-2.5 text-right text-foreground tabular-nums">{item.quantity > 0 ? `${item.quantity} ${item.unit}` : "-"}</td>
-                        <td className="py-2.5 text-right text-foreground tabular-nums">{formatNok(item.unitPriceNok)}</td>
-                        <td className="py-2.5 text-right text-foreground tabular-nums">{item.discountPercent > 0 ? `${item.discountPercent}%` : "-"}</td>
-                        <td className="py-2.5 text-right font-medium text-foreground tabular-nums">{formatNok(rowSum)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {lineItems.length === 0 && (
-                <div className="border-b border-border/70 py-6 text-center text-[12px] text-muted-foreground">
-                  Ingen varer/tjenester spesifisert enda.
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end mt-auto pt-6">
-              <div className="w-[260px] flex flex-col gap-1.5">
-                <div className="flex justify-between text-[12px]">
-                  <span className="text-foreground/80">Subtotal:</span>
-                  <span className="tabular-nums font-medium">{formatNok(totals.subtotalNok)}</span>
-                </div>
-                {totals.discountNok > 0 && (
-                  <div className="flex justify-between text-[12px]">
-                    <span className="text-foreground/80">Rabatt:</span>
-                    <span className="theme-text-danger tabular-nums font-medium">-{formatNok(totals.discountNok)}</span>
-                  </div>
-                )}
-                <div className="mt-0.5 flex justify-between border-t border-border/70 pt-1.5 text-[12px]">
-                  <span className="text-foreground/80">Total ekskl. mva:</span>
-                  <span className="tabular-nums font-medium">{formatNok(totals.totalNok)}</span>
-                </div>
-                <div className="flex justify-between text-[12px]">
-                  <span className="text-foreground/80">MVA (25%):</span>
-                  <span className="tabular-nums font-medium">{formatNok(totals.totalNok * 0.25)}</span>
-                </div>
-                <div className="theme-divider-strong mt-1 flex justify-between border-t-2 pt-2">
-                  <span className="font-bold text-[13px]">Sum inkl. mva:</span>
-                  <span className="tabular-nums font-bold text-[13px]">{formatNok(totals.totalNok * 1.25)}</span>
-                </div>
-              </div>
-            </div>
-            
-            <div className="theme-divider-soft mt-12 justify-self-end border-t pt-6 text-center text-[10px] text-muted-foreground">
-              Dette dokumentet er generert av Proanbud. Alle priser er veiledende inntil tilbudet er formelt akseptert og signert.
-            </div>
+          <div className="mx-auto w-fit max-w-full">
+            <OfferDocumentPreview
+              className="mt-0 bg-transparent p-0"
+              documentClassName="mx-auto w-[794px] max-w-none bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)]"
+              title={offer.title}
+              description={offer.description}
+              projectSummary={offer.projectSummary}
+              quoteMessage={offer.sourceSummary}
+              projectName={offer.projectName}
+              customer={{
+                name: offer.customerName,
+                email: offer.recipientEmail || offer.customerEmail,
+                phone: offer.recipientPhone || offer.customerPhone,
+                address: offer.customerAddress,
+                city: offer.customerCity,
+                orgNumber: offer.customerOrgNumber,
+              }}
+              lineItems={lineItems}
+              company={company}
+              issuedDate={offer.createdAt}
+              quoteValidUntil={offer.quoteValidUntil}
+            />
           </div>
         </SheetContent>
       </Sheet>
+
+      <div className="sr-only" aria-hidden="true">
+        <div ref={pdfDocRef}>
+          <OfferDocumentPreview
+            title={offer.title}
+            description={offer.description}
+            projectSummary={offer.projectSummary}
+            quoteMessage={offer.sourceSummary}
+            projectName={offer.projectName}
+            customer={{
+              name: offer.customerName,
+              email: offer.recipientEmail || offer.customerEmail,
+              phone: offer.recipientPhone || offer.customerPhone,
+              address: offer.customerAddress,
+              city: offer.customerCity,
+              orgNumber: offer.customerOrgNumber,
+            }}
+            lineItems={lineItems}
+            company={company}
+            issuedDate={offer.createdAt}
+            quoteValidUntil={offer.quoteValidUntil}
+          />
+        </div>
+      </div>
     </div>
   )
 }

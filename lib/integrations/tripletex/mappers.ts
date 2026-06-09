@@ -1,3 +1,5 @@
+import { calculateLineItemTotal, type OfferLineItem } from "@/lib/tilbud/types"
+
 export function mapCustomerToTripletex(customer: {
   name: string
   email: string | null
@@ -108,28 +110,109 @@ export function resolveProjectStartDateForTripletex(project: {
   return new Date().toISOString().slice(0, 10)
 }
 
+function normalizeOfferLineItems(input: unknown): OfferLineItem[] {
+  if (!Array.isArray(input)) {
+    return []
+  }
+
+  return input
+    .map((row) => {
+      const item = row as Partial<OfferLineItem>
+      return {
+        id: String(item.id || crypto.randomUUID()),
+        subproject: String(item.subproject || "Generelt"),
+        title: String(item.title || ""),
+        description: String(item.description || ""),
+        quantity: Number(item.quantity || 0),
+        unit: String(item.unit || "stk"),
+        supplier: String(item.supplier || ""),
+        nobb: item.nobb ? String(item.nobb) : undefined,
+        supplierSku: item.supplierSku ? String(item.supplierSku) : undefined,
+        supplierUrl: item.supplierUrl ? String(item.supplierUrl) : undefined,
+        unitPriceNok: Number(item.unitPriceNok || 0),
+        markupPercent: Number(item.markupPercent || 0),
+        discountPercent: Number(item.discountPercent || 0),
+      } satisfies OfferLineItem
+    })
+    .filter((item) => item.title.trim().length > 0 && item.quantity > 0)
+}
+
+function lineUnitPriceExVat(item: OfferLineItem) {
+  const quantity = item.quantity > 0 ? item.quantity : 1
+  const lineTotal = calculateLineItemTotal(item)
+  return Math.round((lineTotal / quantity + Number.EPSILON) * 100) / 100
+}
+
+function buildOrderLine(item: OfferLineItem, options?: { defaultVatTypeId?: number | null; defaultAccountId?: number | null }) {
+  const descriptionParts = [item.title.trim()]
+  if (item.description.trim()) {
+    descriptionParts.push(item.description.trim())
+  }
+  if (item.subproject && item.subproject !== "Generelt") {
+    descriptionParts.unshift(`[${item.subproject}]`)
+  }
+
+  const line: Record<string, unknown> = {
+    description: descriptionParts.join(" – "),
+    count: item.quantity,
+    unitPriceExcludingVatCurrency: lineUnitPriceExVat(item),
+  }
+
+  if (item.discountPercent > 0) {
+    line.discount = item.discountPercent
+  }
+
+  if (options?.defaultVatTypeId) {
+    line.vatType = { id: options.defaultVatTypeId }
+  }
+
+  if (options?.defaultAccountId) {
+    line.account = { id: options.defaultAccountId }
+  }
+
+  return line
+}
+
 /**
- * POST /order — Tripletex binds nested refs (`customer`, `project`) and order lines use `count`
- * (see OpenAPI `Order` / `OrderLine`). Flat `customerId` / `projectId` and `quantity` cause 422 mapping errors.
+ * POST/PUT /order — Tripletex binds nested refs (`customer`, `project`) and order lines use `count`.
  */
-export function mapOrderFromOffer(offer: {
-  id: string
-  title: string | null
-  description: string | null
-  amount_nok: number | null
-}, customerExternalId: number, projectExternalId: number) {
+export function mapOrderFromOffer(
+  offer: {
+    id: string
+    title: string | null
+    description: string | null
+    amount_nok: number | null
+    line_items?: unknown
+  },
+  customerExternalId: number,
+  projectExternalId: number,
+  options?: {
+    defaultVatTypeId?: number | null
+    defaultAccountId?: number | null
+  }
+) {
+  const lineItems = normalizeOfferLineItems(offer.line_items)
+  const orderDate = new Date().toISOString().slice(0, 10)
+
+  const orderLines =
+    lineItems.length > 0
+      ? lineItems.map((item) => buildOrderLine(item, options))
+      : [
+          {
+            description: offer.title || offer.description || `Tilbud ${offer.id}`,
+            count: 1,
+            unitPriceExcludingVatCurrency: Number(offer.amount_nok || 0),
+            ...(options?.defaultVatTypeId ? { vatType: { id: options.defaultVatTypeId } } : {}),
+            ...(options?.defaultAccountId ? { account: { id: options.defaultAccountId } } : {}),
+          },
+        ]
+
   return {
     customer: { id: customerExternalId },
     project: { id: projectExternalId },
-    orderDate: new Date().toISOString().slice(0, 10),
-    deliveryDate: new Date().toISOString().slice(0, 10),
+    orderDate,
+    deliveryDate: orderDate,
     isPrioritizeAmountsIncludingVat: false,
-    orderLines: [
-      {
-        description: offer.title || offer.description || `Tilbud ${offer.id}`,
-        count: 1,
-        unitPriceExcludingVatCurrency: Number(offer.amount_nok || 0),
-      },
-    ],
+    orderLines,
   }
 }

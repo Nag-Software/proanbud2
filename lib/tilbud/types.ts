@@ -81,6 +81,16 @@ export type OfferCompanyContext = {
   id: string
   name: string | null
   orgNumber: string | null
+  logoUrl?: string | null
+  email?: string | null
+  phone?: string | null
+  address?: string | null
+  postalCode?: string | null
+  city?: string | null
+  website?: string | null
+  quoteValidityDays?: number
+  priceLevel?: "low" | "normal" | "high"
+  industry?: string | null
 }
 
 export type SaveOfferPayload = {

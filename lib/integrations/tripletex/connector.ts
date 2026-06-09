@@ -169,6 +169,40 @@ export async function upsertTripletexProject(
   })
 }
 
+export async function upsertTripletexOrder(
+  connection: TripletexConnectionRow,
+  payload: Record<string, unknown>,
+  externalId?: number
+) {
+  if (externalId) {
+    return tripletexRequest(connection, {
+      method: "PUT",
+      path: `/order/${externalId}`,
+      body: { ...payload, id: externalId },
+    })
+  }
+
+  return tripletexRequest(connection, {
+    method: "POST",
+    path: "/order",
+    body: payload,
+  })
+}
+
+export async function createTripletexInvoiceFromOrder(
+  connection: TripletexConnectionRow,
+  orderExternalId: number,
+  options?: { sendToCustomer?: boolean }
+) {
+  const invoiceDate = new Date().toISOString().slice(0, 10)
+  const sendToCustomer = options?.sendToCustomer === true ? "TRUE" : "FALSE"
+
+  return tripletexRequest(connection, {
+    method: "PUT",
+    path: `/order/${orderExternalId}/:invoice?invoiceDate=${invoiceDate}&sendToCustomer=${sendToCustomer}`,
+  })
+}
+
 export async function getTripletexSessionEmployeeId(connection: TripletexConnectionRow) {
   const response = await tripletexRequest(connection, {
     path: "/token/session/>whoAmI",

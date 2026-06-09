@@ -2,8 +2,9 @@ import { Buffer } from "buffer"
 import { NextResponse } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
-import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
 import { getDocusignAuthContext } from "@/lib/integrations/docusign/client"
+import { enqueueOfferTripletexSyncAndProcess } from "@/lib/integrations/tripletex/sync"
+import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 import { type OfferLineItem } from "@/lib/tilbud/types"
 
 async function resolveContext() {
@@ -21,7 +22,7 @@ async function resolveContext() {
     return { error: NextResponse.json({ error: "Company context missing" }, { status: 400 }) }
   }
 
-  return { supabase, companyId: userRow.company_id }
+  return { supabase, companyId: userRow.company_id, userId: user.id }
 }
 
 function toLineItems(input: unknown): OfferLineItem[] {
@@ -230,39 +231,25 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: updateError.message }, { status: 400 })
   }
 
+  await logOfferActivity({
+    offerId: offer.id,
+    companyId: ctx.companyId,
+    actorUserId: ctx.userId,
+    eventType: OFFER_ACTIVITY.CONTRACT_SENT,
+    title: "Kontrakt sendt til signering",
+    description: `DocuSign til ${recipientEmail}`,
+    metadata: { envelopeId, recipientEmail, recipientName },
+  })
+
   // Keep Tripletex order sync fully automatic once a contract is sent.
   if (offer.customer_id && offer.project_id) {
-    const { data: connection } = await ctx.supabase
-      .from("tripletex_connections")
-      .select("sync_state")
-      .eq("company_id", ctx.companyId)
-      .maybeSingle()
-
-    if (connection && connection.sync_state !== "disconnected") {
-      const customerId = String(offer.customer_id)
-      const projectId = String(offer.project_id)
-
-      await enqueueIntegrationJob({
-        companyId: ctx.companyId,
-        jobType: "customer.upsert",
-        payload: { customerId },
-        idempotencyKey: `offer:${offer.id}:customer:${customerId}`,
-      })
-
-      await enqueueIntegrationJob({
-        companyId: ctx.companyId,
-        jobType: "project.upsert",
-        payload: { projectId },
-        idempotencyKey: `offer:${offer.id}:project:${projectId}`,
-      })
-
-      await enqueueIntegrationJob({
-        companyId: ctx.companyId,
-        jobType: "order.create_from_offer",
-        payload: { offerId: offer.id, customerId, projectId },
-        idempotencyKey: `offer:${offer.id}:order:contract-send`,
-      })
-    }
+    await enqueueOfferTripletexSyncAndProcess({
+      companyId: ctx.companyId,
+      offerId: offer.id,
+      customerId: String(offer.customer_id),
+      projectId: String(offer.project_id),
+      source: "docusign-contract",
+    })
   }
 
   return NextResponse.json({ ok: true, contract })

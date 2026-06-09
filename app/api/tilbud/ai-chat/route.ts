@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
+import type { CompanyPriceLevel } from "@/lib/tilbud/company-profile"
 import {
   buildAiPriceSelectionContext,
   finalizeGeneratedOfferLineItems,
@@ -10,6 +11,19 @@ import {
   type CompanyPriceRow,
 } from "@/lib/tilbud/company-price-utils"
 import { matchNorwegianSupplierPrices } from "@/lib/tilbud/supplier-prices"
+import {
+  formatNormalPriceForPrompt,
+  mapNormalPriceRows,
+  pickBestNormalPrice,
+} from "@/lib/tilbud/normal-prices"
+import {
+  applySavedJobsToOfferLineItems,
+  formatMatchedSavedJobForPrompt,
+  formatSavedJobsForPrompt,
+  mapSavedJobRows,
+  pickRelevantSavedJobs,
+  type SavedJobRow,
+} from "@/lib/tilbud/saved-jobs"
 import { type OfferAnalysisResult, type OfferLineItem } from "@/lib/tilbud/types"
 
 const sourceDocumentSchema = z.object({
@@ -169,6 +183,10 @@ type PriceContext = {
   allRows: DbPriceRow[]
   priceFileAttachments: CompanyPricePromptAttachment[]
   fallbackMatches: ReturnType<typeof matchNorwegianSupplierPrices>
+  normalPriceIndicator: ReturnType<typeof formatNormalPriceForPrompt> | null
+  savedJobs: SavedJobRow[]
+  relevantSavedJobs: SavedJobRow[]
+  companyId: string | null
 }
 
 const QUESTION_SYSTEM_INSTRUCTION = [
@@ -198,6 +216,11 @@ const ANALYSIS_SYSTEM_INSTRUCTION = [
   "4. Økonomi og markup: Arbeid og transport skal alltid ha markupPercent: 0.",
   "Produkter/materialer skal ha default markupPercent: 15, med mindre annet er eksplisitt begrunnet. Totaltilbudet skal være konkurransedyktig, men lønnsomt i det norske markedet.",
   "5. Output-regler: Du svarer alltid kun med gyldig JSON. Ingen tekst utenfor JSON-objektet.",
+  "6. Kategorisering (subproject): Bruk kun brede bygningsdeler som kategori, f.eks. Tak, Yttervegger, Gulv, Bad, Rør, Elektro, Annet. ALDRI bruk underkategorier som 'Tak - undertak' eller 'Yttervegger - isolasjon'. Produktnavn og detaljer skal stå i title/description.",
+  "7. Enheter: unit må ALLTID matche enheten i bedriftens prisfil for valgt produkt (m2, stk, lm, pose, time, etc.). Ikke bruk m2 på produkter som prises per stk i prisfilen.",
+  "8. Prisrealisme: Når normalPrisIndikator finnes i oppdragsgrunnlaget, bruk normalPerEnhet som mål for total m²-pris og sørg for at kalkylen ikke blir for lav.",
+  "9. Lagrede jobber: Når lagredeJobber/relevanteLagredeJobber inneholder en jobb som matcher oppdraget, bruk fastprisNok som totalpris for den jobben.",
+  "Da skal du bruke quantity: 1, unit: fastpris, markupPercent: 0 og unitPriceNok lik fastprisNok. Ikke legg til separat arbeidstid når fastprisen dekker hele jobben.",
   "Svar alltid med gyldig JSON og ingenting utenfor JSON-objektet.",
 ].join(" ")
 
@@ -292,6 +315,71 @@ async function callOpenAiResponses(body: Record<string, unknown>): Promise<Respo
   return response.json() as Promise<ResponsesPayload>
 }
 
+async function resolveNormalPriceIndicator(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  body: RequestPayload,
+  priceLevel: CompanyPriceLevel = "normal"
+) {
+  const { data } = await supabase
+    .from("normal_prices")
+    .select("id, project_type, slug, price_low_nok, price_normal_nok, price_high_nok, typical_total_min_nok, typical_total_max_nok, unit")
+    .order("sort_order", { ascending: true })
+
+  const rows = mapNormalPriceRows((data || []) as unknown[])
+  if (rows.length === 0) return null
+
+  const query = [
+    body.project?.projectType || "",
+    body.project?.name || "",
+    body.title,
+    body.description,
+  ]
+    .filter(Boolean)
+    .join("\n")
+
+  const matched = pickBestNormalPrice(rows, query)
+  return matched ? formatNormalPriceForPrompt(matched, priceLevel) : null
+}
+
+function buildSavedJobQuery(body: RequestPayload) {
+  return [
+    body.project?.projectType || "",
+    body.project?.name || "",
+    body.title,
+    body.description,
+    body.phase === "answer"
+      ? body.clarifications
+          .map((item) => `${item.question}: ${item.customAnswer?.trim() || item.answerLabel}`)
+          .join("\n")
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
+async function resolveSavedJobs(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  companyId: string | null,
+  query: string
+) {
+  if (!companyId) {
+    return { savedJobs: [] as SavedJobRow[], relevantSavedJobs: [] as SavedJobRow[] }
+  }
+
+  const { data } = await supabase
+    .from("saved_jobs")
+    .select("id, name, price_nok")
+    .eq("company_id", companyId)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true })
+
+  const savedJobs = mapSavedJobRows((data || []) as unknown[])
+  return {
+    savedJobs,
+    relevantSavedJobs: pickRelevantSavedJobs(savedJobs, query),
+  }
+}
+
 async function resolvePriceContext(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
@@ -300,12 +388,28 @@ async function resolvePriceContext(
   const { data: userRow } = await supabase.from("users").select("company_id").eq("id", userId).maybeSingle()
   const companyId = (userRow as { company_id?: string } | null)?.company_id ?? null
 
+  let priceLevel: CompanyPriceLevel = "normal"
+  if (companyId) {
+    const { data: companyRow } = await supabase.from("companies").select("price_level").eq("id", companyId).maybeSingle()
+    if (companyRow?.price_level === "low" || companyRow?.price_level === "high") {
+      priceLevel = companyRow.price_level
+    }
+  }
+
+  const savedJobQuery = buildSavedJobQuery(body)
+  const normalPriceIndicator = await resolveNormalPriceIndicator(supabase, body, priceLevel)
+  const { savedJobs, relevantSavedJobs } = await resolveSavedJobs(supabase, companyId, savedJobQuery)
+
   if (!companyId) {
     return {
       files: [],
       allRows: [],
       priceFileAttachments: [],
       fallbackMatches: matchNorwegianSupplierPrices({ description: `${body.title}\n${body.description}`, subprojects: [] }).slice(0, 20),
+      normalPriceIndicator,
+      savedJobs,
+      relevantSavedJobs,
+      companyId: null,
     }
   }
 
@@ -348,6 +452,10 @@ async function resolvePriceContext(
     allRows: aiPriceSelectionContext.allCompanyPrices,
     priceFileAttachments: aiPriceSelectionContext.attachments,
     fallbackMatches: matchNorwegianSupplierPrices({ description: `${body.title}\n${body.description}`, subprojects: [] }).slice(0, 20),
+    normalPriceIndicator,
+    savedJobs,
+    relevantSavedJobs,
+    companyId,
   }
 }
 
@@ -440,7 +548,11 @@ async function resolveAttachmentContext(
   return { attachments, imageInputs }
 }
 
-function buildContextEnvelope(body: RequestPayload, priceContext: PriceContext, attachments: AttachmentSummary[]) {
+function buildContextEnvelope(
+  body: RequestPayload,
+  priceContext: PriceContext,
+  attachments: AttachmentSummary[]
+) {
   return {
     oppdrag: {
       tittel: body.title,
@@ -449,6 +561,9 @@ function buildContextEnvelope(body: RequestPayload, priceContext: PriceContext, 
       kunde: body.customer,
       egetFirma: body.company,
     },
+    normalPrisIndikator: priceContext.normalPriceIndicator,
+    lagredeJobber: formatSavedJobsForPrompt(priceContext.savedJobs),
+    relevanteLagredeJobber: priceContext.relevantSavedJobs.map((job) => formatMatchedSavedJobForPrompt(job)),
     avklaringer:
       body.phase === "answer"
         ? body.clarifications.map((item) => ({
@@ -496,9 +611,11 @@ function analysisPrompt(context: ReturnType<typeof buildContextEnvelope>) {
     "Hvis prisfilvedlegg er tilgjengelige, skal du selv lese hele prisfilen og velge korrekte produkter derfra. Ikke stol på lokal forhåndsfiltrering.",
     "Du skal selv avgjøre hvilke produkter som er relevante ved å vurdere hele prisfilvedlegget.",
     "Inkluder nobb når det finnes for valgt produkt.",
+    "Bruk KUN brede kategorier i subproject (Tak, Yttervegger, Gulv, Bad, Rør, Elektro, Annet). Aldri 'Kategori - underkategori'.",
+    "unit må matche prisfilens enhet for hvert produkt.",
     "Ved etterisolering/isolasjon skal undertak/taktekking-produkter ikke velges med mindre oppdraget eksplisitt krever det.",
     "Returner kun gyldig JSON i dette eksakte formatet:",
-    '{"message":"Kalkyle generert","summary":"Kort, profesjonelt sammendrag av tilbudet (1-2 setninger)","reasoning":"Kort teknisk begrunnelse for viktige valg","warnings":["Kun reelle usikkerheter"],"lineItems":[{"subproject":"Loftsisolering","title":"Glava Proff 34 150mm","description":"150mm mineralull i CC60, inkl. nødvendig kutt og montering på 47m²","quantity":52,"unit":"m2","supplier":"Byggmakker","nobb":"12345678","supplierSku":"","supplierUrl":"","unitPriceNok":123.04,"markupPercent":15,"discountPercent":0}]}',
+    '{"message":"Kalkyle generert","summary":"Kort, profesjonelt sammendrag av tilbudet (1-2 setninger)","reasoning":"Kort teknisk begrunnelse for viktige valg","warnings":["Kun reelle usikkerheter"],"lineItems":[{"subproject":"Tak","title":"Undertak 22mm","description":"150mm mineralull i CC60, inkl. nødvendig kutt og montering på 47m²","quantity":52,"unit":"m2","supplier":"Byggmakker","nobb":"12345678","supplierSku":"","supplierUrl":"","unitPriceNok":123.04,"markupPercent":15,"discountPercent":0}]}',
     "Oppdragsgrunnlag:",
     JSON.stringify(context),
   ].join("\n\n")
@@ -580,6 +697,35 @@ function toSupplierSnapshots(items: OfferLineItem[]): OfferAnalysisResult["suppl
     }))
 }
 
+function finalizeOfferLineItems(
+  requestBody: RequestPayload,
+  generatedItems: OfferLineItem[],
+  priceContext: PriceContext
+) {
+  const query = buildSavedJobQuery(requestBody)
+  const finalized = finalizeGeneratedOfferLineItems({
+    generatedItems,
+    companyRows: priceContext.allRows,
+    query,
+    subprojects: requestBody.project?.name ? [requestBody.project.name] : [],
+    companyName: requestBody.company?.name,
+    preserveAiMaterialSelections: true,
+  })
+
+  const savedJobResult = applySavedJobsToOfferLineItems({
+    lineItems: finalized.lineItems,
+    savedJobs: priceContext.savedJobs,
+    query,
+    subprojects: requestBody.project?.name ? [requestBody.project.name] : [],
+    companyName: requestBody.company?.name,
+  })
+
+  return {
+    lineItems: savedJobResult.lineItems,
+    warnings: Array.from(new Set([...finalized.warnings, ...savedJobResult.warnings])),
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -613,14 +759,7 @@ export async function POST(request: Request) {
 
       if (!clarificationResult.data.questions.length) {
         const finalResult = await generateAnalysis(model, context, imageInputs, priceContext.priceFileAttachments)
-        const finalized = finalizeGeneratedOfferLineItems({
-          generatedItems: toLineItems(finalResult.data.lineItems),
-          companyRows: priceContext.allRows,
-          query: `${requestBody.title}\n${requestBody.description}`,
-          subprojects: requestBody.project?.name ? [requestBody.project.name] : [],
-          companyName: requestBody.company?.name,
-          preserveAiMaterialSelections: true,
-        })
+        const finalized = finalizeOfferLineItems(requestBody, toLineItems(finalResult.data.lineItems), priceContext)
         const lineItems = finalized.lineItems
         return NextResponse.json({
           phase: "result",
@@ -647,16 +786,7 @@ export async function POST(request: Request) {
     }
 
     const finalResult = await generateAnalysis(model, context, imageInputs, priceContext.priceFileAttachments)
-    const finalized = finalizeGeneratedOfferLineItems({
-      generatedItems: toLineItems(finalResult.data.lineItems),
-      companyRows: priceContext.allRows,
-      query: `${requestBody.title}\n${requestBody.description}\n${requestBody.clarifications
-        .map((item) => `${item.question}: ${item.customAnswer?.trim() || item.answerLabel}`)
-        .join("\n")}`,
-      subprojects: requestBody.project?.name ? [requestBody.project.name] : [],
-      companyName: requestBody.company?.name,
-      preserveAiMaterialSelections: true,
-    })
+    const finalized = finalizeOfferLineItems(requestBody, toLineItems(finalResult.data.lineItems), priceContext)
     const lineItems = finalized.lineItems
 
     return NextResponse.json({

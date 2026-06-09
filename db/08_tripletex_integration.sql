@@ -1,5 +1,7 @@
 -- 08_tripletex_integration.sql
 -- Hardening + RLS + helper RPCs for Tripletex integration tables.
+-- Forutsetter at tripletex_connections, external_entity_links,
+-- integration_jobs og integration_webhook_events allerede er opprettet.
 -- Safe to run even if base tables already exist.
 
 ALTER TABLE IF EXISTS public.tripletex_connections

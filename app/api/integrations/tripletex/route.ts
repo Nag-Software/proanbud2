@@ -8,6 +8,7 @@ import {
 } from "@/lib/integrations/tripletex/connector"
 import { decryptSecret, encryptSecret } from "@/lib/integrations/tripletex/crypto"
 import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
+import { processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
 
 type KnownErrorShape = Error & {
   status?: number
@@ -284,6 +285,8 @@ export async function POST(request: Request) {
       idempotencyKey: `reconcile:${ctx.companyId}:${new Date().toISOString()}`,
     })
 
+    processTripletexQueueInBackground({ batchSize: 30, maxBatches: 10 })
+
     return NextResponse.json({ ok: true })
   } catch (error) {
     const mapped = toClientError(error)
@@ -391,7 +394,35 @@ export async function PATCH(request: Request) {
         idempotencyKey: `reconcile:${ctx.companyId}:${new Date().toISOString()}`,
       })
 
+      processTripletexQueueInBackground({ batchSize: 30, maxBatches: 10 })
+
       return NextResponse.json({ ok: true })
+    }
+
+    if (action === "update_scope") {
+      const scopeConfig = {
+        customers: body.scopeCustomers !== false,
+        projects: body.scopeProjects !== false,
+        offers: body.scopeOffers !== false,
+        invoices: body.scopeInvoices !== false,
+        employees: body.scopeEmployees === true,
+        calendar: body.scopeCalendar === true,
+        documents: body.scopeDocuments === true,
+      }
+
+      const { error: scopeError } = await admin
+        .from("tripletex_connections")
+        .update({ scope_config: scopeConfig })
+        .eq("company_id", ctx.companyId)
+
+      if (scopeError) {
+        return NextResponse.json(
+          { error: `Kunne ikke oppdatere synkomfang: ${scopeError.message}`, code: "scope_update_failed" },
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json({ ok: true, scopeConfig })
     }
 
     return NextResponse.json({ error: "Ugyldig handling", code: "invalid_action" }, { status: 400 })

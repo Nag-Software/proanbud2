@@ -7,7 +7,17 @@ import { createClient as createServerSupabase } from "@/lib/supabase/server"
 async function isAuthorizedWorker(request: Request) {
   const configured = process.env.INTEGRATION_WORKER_SECRET
   if (configured) {
-    return request.headers.get("x-integration-worker-secret") === configured
+    if (request.headers.get("x-integration-worker-secret") === configured) {
+      return true
+    }
+  }
+
+  const cronSecret = process.env.CRON_SECRET
+  if (cronSecret) {
+    const authHeader = request.headers.get("authorization")
+    if (authHeader === `Bearer ${cronSecret}`) {
+      return true
+    }
   }
 
   const supabase = await createServerSupabase()

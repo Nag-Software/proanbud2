@@ -38,15 +38,13 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
         body: JSON.stringify({ email: inviteEmail, role_ids: [inviteRole] })
       });
 
+      const data = await resp.json().catch(() => ({}));
+
       if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        console.error("API Error details:", errData);
-        throw new Error(errData.error || "Feil under utsendelse av invitasjon");
+        console.error("API Error details:", data);
+        throw new Error(data.error || "Feil under utsendelse av invitasjon");
       }
-      
-      const data = await resp.json();
-      console.log("Invitation created. Mock URL (sendt på epost egentlig):", data.invitationUrl);
-      
+
       setEmployees([...employees, {
         id: Math.random().toString(),
         name: "Avventer Registrering",
@@ -58,7 +56,7 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
       setInviteLink(data.invitationUrl);
     } catch (error) {
       console.error(error);
-      alert("Kunne ikke sende invitasjon.");
+      alert(error instanceof Error ? error.message : "Kunne ikke sende invitasjon.");
     } finally {
       setIsSubmitting(false);
     }

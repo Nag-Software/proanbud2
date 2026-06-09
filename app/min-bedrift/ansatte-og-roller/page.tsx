@@ -1,7 +1,7 @@
 import { AppPageShell } from "@/components/app-page-shell"
 import { AnsatteClient } from "./ansatte-client"
 import { createClient } from "@/lib/supabase/server"
-import { Button } from "@/components/ui/button";
+import { getRoleDisplayName } from "@/lib/roles"
 
 export default async function Page() {
   const supabase = await createClient();
@@ -18,6 +18,7 @@ export default async function Page() {
       email,
       full_name,
       is_active,
+      role,
       user_roles (
         role_id,
         roles:role_id (name)
@@ -44,7 +45,7 @@ export default async function Page() {
   if (usersData) {
     usersData.forEach((u: any) => {
       // Finn første rolle (for enkelhetens skyld)
-      let roleName = "Ukjent";
+      let roleName = getRoleDisplayName(u.role);
       if (u.user_roles && u.user_roles.length > 0 && u.user_roles[0].roles) {
          // @ts-ignore
          roleName = u.user_roles[0].roles.name || roleName;

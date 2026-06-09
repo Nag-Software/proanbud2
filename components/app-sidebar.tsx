@@ -102,10 +102,6 @@ const data: {
           title: "Lagrede jobber",
           url: "/mine-priser/lagrede-jobber",
         },
-        {
-          title: "Timepriser",
-          url: "/mine-priser/timepriser",
-        }
       ]
     },
     {
@@ -118,12 +114,12 @@ const data: {
           url: "/min-bedrift/bedriftsprofil",
         },
         {
-          title: "Bedriftsinnstillinger",
-          url: "/min-bedrift/bedriftsinnstillinger",
-        },
-        {
           title: "Ansatte og roller",
           url: "/min-bedrift/ansatte-og-roller",
+        },
+        {
+          title: "Timeføring",
+          url: "/min-bedrift/timeforing",
         },
         {
           title: "Integrasjoner",
@@ -258,22 +254,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     fetchProjects();
   }, [user, role]);
 
-  // Filter items for "Håndverker"
-  const isHandverker = role === "Håndverker";
-  
-  const filteredNavMain = data.navMain.filter((item) => {
+  const { canonicalRole } = useUserRole();
+  const isWorker = canonicalRole === "worker";
+
+  const filteredNavMain = data.navMain
+    .map((item) => {
+      if (item.title === "Min bedrift" && isWorker && item.items) {
+        return {
+          ...item,
+          items: item.items.filter((subItem) => subItem.title === "Timeføring"),
+        };
+      }
+      return item;
+    })
+    .filter((item) => {
     if (item.hidden) return false;
-    if (!isHandverker) return true; // Show all if not Håndverker
-    
-    // Håndverker skal IKKE se disse
-    const hiddenForHandverker = [
-      "Salg & Økonomi", 
-      "Kunder", 
-      "Mine priser", 
-      "Min bedrift", 
-      "Innstillinger"
+    if (!isWorker) return true;
+
+    const hiddenForWorker = [
+      "Salg & Økonomi",
+      "Kunder",
+      "Mine priser",
+      "Innstillinger",
     ];
-    return !hiddenForHandverker.includes(item.title);
+    return !hiddenForWorker.includes(item.title);
   });
 
   return (

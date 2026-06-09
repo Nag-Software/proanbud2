@@ -1,3 +1,4 @@
+import { normalizeQuoteLineItems } from "@/lib/tilbud/normalize-quote-line-items"
 import { type OfferLineItem } from "@/lib/tilbud/types"
 
 export type CompanyPriceRow = {
@@ -750,8 +751,13 @@ export function finalizeGeneratedOfferLineItems(input: {
     serviceItems.push(createTransportLineItem(input.subprojects, input.companyName))
   }
 
-  return {
+  const normalized = normalizeQuoteLineItems({
     lineItems: [...materialItems, ...serviceItems],
-    warnings: Array.from(new Set(warnings)),
+    companyRows: input.companyRows,
+  })
+
+  return {
+    lineItems: normalized.lineItems,
+    warnings: Array.from(new Set([...warnings, ...normalized.warnings])),
   }
 }

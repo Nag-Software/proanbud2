@@ -10,6 +10,15 @@ import {
 } from "@/lib/tilbud/company-price-utils"
 import { createClient } from "@/lib/supabase/server"
 import { matchNorwegianSupplierPrices } from "@/lib/tilbud/supplier-prices"
+import { formatNormalPriceForPrompt, mapNormalPriceRows, pickBestNormalPrice } from "@/lib/tilbud/normal-prices"
+import {
+  applySavedJobsToOfferLineItems,
+  formatMatchedSavedJobForPrompt,
+  formatSavedJobsForPrompt,
+  mapSavedJobRows,
+  pickRelevantSavedJobs,
+  type SavedJobRow,
+} from "@/lib/tilbud/saved-jobs"
 import { calculateOfferTotals, type OfferAnalysisResult, type OfferLineItem } from "@/lib/tilbud/types"
 
 const analysisRequestSchema = z.object({
@@ -109,7 +118,10 @@ function buildFallbackLineItems(input: {
 
 async function runOpenAiAnalysis(
   input: z.infer<typeof analysisRequestSchema>,
-  priceFileAttachments: CompanyPricePromptAttachment[]
+  priceFileAttachments: CompanyPricePromptAttachment[],
+  normalPriceIndicator: ReturnType<typeof formatNormalPriceForPrompt> | null,
+  savedJobs: SavedJobRow[],
+  relevantSavedJobs: SavedJobRow[]
 ) {
   if (!process.env.OPENAI_API_KEY) {
     return null
@@ -149,10 +161,19 @@ async function runOpenAiAnalysis(
     "- Arbeid og transport skal alltid ha markupPercent: 0.",
     "- Produkter/materialer skal ha default markupPercent: 15, med mindre annet er eksplisitt begrunnet.",
     "- Totaltilbudet skal ligge på et nivå som er konkurransedyktig, men lønnsomt i det norske markedet.",
-    "5. Output-regler",
+    "5. Kategorisering (subproject)",
+    "- Bruk kun brede bygningsdeler: Tak, Yttervegger, Gulv, Bad, Rør, Elektro, Annet.",
+    "- ALDRI bruk 'Kategori - underkategori'. Produktnavn skal stå i title.",
+    "6. Enheter",
+    "- unit må matche prisfilens enhet for hvert produkt (m2, stk, lm, time, etc.).",
+    "7. Output-regler",
     "- Du svarer ALLTID kun med gyldig JSON. Ingen tekst utenfor JSON-objektet.",
+    "8. Lagrede jobber",
+    "- Når lagredeJobber/relevanteLagredeJobber inneholder en jobb som matcher oppdraget, bruk fastprisNok som totalpris for den jobben.",
+    "- Da skal du bruke quantity: 1, unit: fastpris, markupPercent: 0 og unitPriceNok lik fastprisNok.",
+    "- Ikke legg til separat arbeidstid når fastprisen dekker hele jobben.",
     "- JSON skal følge dette eksakte formatet:",
-    '{"message":"Kalkyle generert","summary":"Kort, profesjonelt sammendrag av tilbudet (1-2 setninger)","reasoning":"Kort teknisk begrunnelse for viktige valg","warnings":["Kun reelle usikkerheter"],"lineItems":[{"subproject":"Loftsisolering","title":"Glava Proff 34 150mm","description":"150mm mineralull i CC60, inkl. nødvendig kutt og montering på 47m²","quantity":52,"unit":"m2","supplier":"Byggmakker","nobb":"12345678","supplierSku":"","supplierUrl":"","unitPriceNok":123.04,"markupPercent":15,"discountPercent":0}]}'
+    '{"message":"Kalkyle generert","summary":"Kort, profesjonelt sammendrag av tilbudet (1-2 setninger)","reasoning":"Kort teknisk begrunnelse for vigtige valg","warnings":["Kun reelle usikkerheter"],"lineItems":[{"subproject":"Tak","title":"Glava Proff 34 150mm","description":"150mm mineralull i CC60, inkl. nødvendig kutt og montering på 47m²","quantity":52,"unit":"m2","supplier":"Byggmakker","nobb":"12345678","supplierSku":"","supplierUrl":"","unitPriceNok":123.04,"markupPercent":15,"discountPercent":0}]}'
   ].join("\n")
   
   const userPrompt = [
@@ -176,6 +197,9 @@ async function runOpenAiAnalysis(
         })),
         fallbackProdukter: supplierMatches,
       },
+      normalPrisIndikator: normalPriceIndicator,
+      lagredeJobber: formatSavedJobsForPrompt(savedJobs),
+      relevanteLagredeJobber: relevantSavedJobs.map((job) => formatMatchedSavedJobForPrompt(job)),
       outputRequirements: {
         minLineItems: 6,
         maxLineItems: 30,
@@ -269,6 +293,7 @@ export async function POST(request: Request) {
     let allCompanyPrices: CompanyPriceRow[] = []
     let priceFileAttachments: CompanyPricePromptAttachment[] = []
     let companyName: string | null = null
+    let savedJobs: SavedJobRow[] = []
 
     if (companyId) {
       const [{ data: fileRows }, { data: companyRow }] = await Promise.all([
@@ -312,7 +337,28 @@ export async function POST(request: Request) {
       allCompanyPrices = aiPriceSelectionContext.allCompanyPrices
       priceFileAttachments = aiPriceSelectionContext.attachments
       companyName = (companyRow as { name?: string | null } | null)?.name ?? null
+
+      const { data: savedJobRows } = await supabase
+        .from("saved_jobs")
+        .select("id, name, price_nok")
+        .eq("company_id", companyId)
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true })
+
+      savedJobs = mapSavedJobRows((savedJobRows || []) as unknown[])
     }
+
+    const normalPriceQuery = `${input.title}\n${input.description}\n${input.sourceSummary}`
+    const relevantSavedJobs = pickRelevantSavedJobs(savedJobs, normalPriceQuery)
+
+    const { data: normalPriceRows } = await supabase
+      .from("normal_prices")
+      .select("id, project_type, slug, price_low_nok, price_normal_nok, price_high_nok, typical_total_min_nok, typical_total_max_nok, unit")
+      .order("sort_order", { ascending: true })
+
+    const mappedNormalPrices = mapNormalPriceRows((normalPriceRows || []) as unknown[])
+    const matchedNormalPrice = pickBestNormalPrice(mappedNormalPrices, normalPriceQuery)
+    const normalPriceIndicator = matchedNormalPrice ? formatNormalPriceForPrompt(matchedNormalPrice) : null
 
     let lineItems: OfferLineItem[] = []
     let summary = ""
@@ -321,7 +367,13 @@ export async function POST(request: Request) {
     let model = "fallback-rules"
 
     try {
-      const aiResult = await runOpenAiAnalysis(input, priceFileAttachments)
+      const aiResult = await runOpenAiAnalysis(
+        input,
+        priceFileAttachments,
+        normalPriceIndicator,
+        savedJobs,
+        relevantSavedJobs
+      )
       if (aiResult) {
         model = aiResult.model
         lineItems = toOfferLineItems(aiResult.data.lineItems)
@@ -349,13 +401,20 @@ export async function POST(request: Request) {
     const finalized = finalizeGeneratedOfferLineItems({
       generatedItems: lineItems,
       companyRows: allCompanyPrices,
-      query: `${input.title}\n${input.description}\n${input.sourceSummary}`,
+      query: normalPriceQuery,
       subprojects: input.subprojects,
       companyName,
       preserveAiMaterialSelections: true,
     })
-    lineItems = finalized.lineItems
-    warnings = Array.from(new Set([...warnings, ...finalized.warnings]))
+    const savedJobResult = applySavedJobsToOfferLineItems({
+      lineItems: finalized.lineItems,
+      savedJobs,
+      query: normalPriceQuery,
+      subprojects: input.subprojects,
+      companyName,
+    })
+    lineItems = savedJobResult.lineItems
+    warnings = Array.from(new Set([...warnings, ...finalized.warnings, ...savedJobResult.warnings]))
 
     const totals = calculateOfferTotals(lineItems)
     const supplierSnapshots = lineItems

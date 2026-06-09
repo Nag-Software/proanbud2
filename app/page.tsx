@@ -203,7 +203,7 @@ export default function DashboardPage() {
         supabase.from("offers").select("id, title, status, created_at, amount_nok, project_id").eq("company_id", companyId).neq("status", "draft").order("created_at", { ascending: false }).limit(5),
         supabase.from("offers").select("id, title, status, amount_nok, created_at, project_id").eq("company_id", companyId).order("created_at", { ascending: false }).limit(6),
         supabase.from("projects").select("id, name, customer_id").eq("company_id", companyId).eq("status", "active").limit(6),
-        supabase.from("companies").select("name").eq("id", companyId).single(),
+        supabase.from("companies").select("name, logo_url").eq("id", companyId).single(),
       ])
 
       // KPI values
@@ -248,7 +248,7 @@ export default function DashboardPage() {
 
       const userName = firstName
       const companyName = companyRes.data?.name || "Proanbud"
-      const companyLogo: string | null = null
+      const companyLogo = companyRes.data?.logo_url?.trim() || null
       const companyStatus = "aktiv" as const
 
       if (uniqueProjectIds.length) {

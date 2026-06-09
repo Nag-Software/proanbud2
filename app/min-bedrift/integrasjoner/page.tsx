@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/server"
+import { checkRoleAccess } from "@/lib/auth-utils"
 import Image from "next/image"
 
 export const integrations = [
@@ -32,6 +33,7 @@ export const integrations = [
 ];
 
 export default async function IntegrasjonerPage() {
+  await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
   const supabase = await createClient()
 
   const {

@@ -1,9 +1,11 @@
 import { AppPageShell } from "@/components/app-page-shell"
 import { createClient } from "@/lib/supabase/server"
+import { checkRoleAccess } from "@/lib/auth-utils"
 
 import { TripletexClient } from "./tripletex-client"
 
 export default async function TripletexPage() {
+  await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
   const supabase = await createClient()
 
   const {

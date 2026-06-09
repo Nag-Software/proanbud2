@@ -1,9 +1,11 @@
 import { AppPageShell } from "@/components/app-page-shell"
 import { createClient } from "@/lib/supabase/server"
+import { checkRoleAccess } from "@/lib/auth-utils"
 
 import { DocusignTesterClient } from "./docusign-tester-client"
 
 export default async function DocusignPage() {
+  await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
   const supabase = await createClient()
 
   const {

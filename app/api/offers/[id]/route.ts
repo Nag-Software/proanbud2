@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
+import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 import { calculateOfferTotals, type OfferLineItem } from "@/lib/tilbud/types"
 
 type UpdatePayload = {
+  activitySource?: "autosave" | "manual"
   title?: string
   description?: string
   status?: "draft" | "sent" | "accepted" | "rejected"
@@ -60,7 +62,14 @@ async function resolveContext() {
     return { error: NextResponse.json({ error: "Company context missing" }, { status: 400 }) }
   }
 
-  return { supabase, companyId: userRow.company_id }
+  return { supabase, companyId: userRow.company_id, userId: user.id }
+}
+
+const statusLabels: Record<string, string> = {
+  draft: "Utkast",
+  sent: "Tilbud sendt",
+  accepted: "Godkjent",
+  rejected: "Avvist",
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -72,20 +81,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const { data: existingOffer, error: existingOfferError } = await ctx.supabase
     .from("offers")
-    .select("id, customer_id")
+    .select("id, customer_id, status, title")
     .eq("id", id)
     .eq("company_id", ctx.companyId)
     .maybeSingle()
 
   if (existingOfferError || !existingOffer) {
     return NextResponse.json({ error: existingOfferError?.message || "Offer not found" }, { status: 404 })
-  }
-
-  if (payload.status === "sent") {
-    return NextResponse.json(
-      { error: "Direkte sending av tilbud er deaktivert. Send kontrakt fra tilbudssiden." },
-      { status: 400 }
-    )
   }
 
   const lineItems = normalizeLineItems(payload.lineItems)
@@ -104,7 +106,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     subtotal_nok: totals.subtotalNok,
     discount_nok: totals.discountNok,
     amount_nok: Math.round(totals.totalNok),
-    sent_at: null,
     updated_at: new Date().toISOString(),
   }
 
@@ -118,6 +119,28 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (error || !data) {
     return NextResponse.json({ error: error?.message || "Offer not found" }, { status: 400 })
+  }
+
+  const previousStatus = existingOffer.status || "draft"
+  const nextStatus = updateRow.status
+  const statusChanged = nextStatus !== previousStatus
+  const shouldLogUpdate = payload.activitySource !== "autosave" || statusChanged
+
+  if (shouldLogUpdate) {
+    await logOfferActivity({
+      offerId: id,
+      companyId: ctx.companyId,
+      actorUserId: ctx.userId,
+      eventType: OFFER_ACTIVITY.UPDATED,
+      title: statusChanged ? `Status endret til ${statusLabels[nextStatus] || nextStatus}` : "Tilbud oppdatert",
+      description: statusChanged ? `Tilbud «${updateRow.title}»` : `${lineItems.length} ordrelinjer`,
+      metadata: {
+        status: nextStatus,
+        previousStatus,
+        lineItemCount: lineItems.length,
+        activitySource: payload.activitySource || "manual",
+      },
+    })
   }
 
   if (existingOffer.customer_id) {

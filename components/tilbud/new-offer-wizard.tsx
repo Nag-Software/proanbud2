@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from "react"
 
 import { AiChatPanel } from "@/components/tilbud/ai-chat-panel"
+import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
@@ -32,7 +33,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { getDistinctSuppliers } from "@/lib/tilbud/supplier-prices"
 import {
-  calculateLineItemTotal,
   calculateOfferTotals,
   formatNok,
   type OfferAnalysisResult,
@@ -128,7 +128,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
   const [recipientName, setRecipientName] = useState(initialCustomer?.name || "")
   const [recipientEmail, setRecipientEmail] = useState(initialCustomer?.email || "")
   const [recipientPhone, setRecipientPhone] = useState(initialCustomer?.phone || "")
-  const [validityDays, setValidityDays] = useState(30)
+  const [validityDays, setValidityDays] = useState(company?.quoteValidityDays ?? 30)
   const [quoteMessage, setQuoteMessage] = useState("")
 
   const [isPersisting, startPersisting] = useTransition()
@@ -154,20 +154,6 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
   }, [lineItems])
 
   const totals = useMemo(() => calculateOfferTotals(lineItems), [lineItems])
-  const VAT_RATE = 0.25
-  const vatAmountNok = useMemo(() => Math.round(totals.subtotalNok * VAT_RATE * 100) / 100, [totals.subtotalNok])
-  const totalInclVatNok = useMemo(() => Math.round((totals.subtotalNok + vatAmountNok) * 100) / 100, [totals.subtotalNok, vatAmountNok])
-
-  const groupedPreview = useMemo(() => {
-    return lineItems.reduce<Record<string, OfferLineItem[]>>((groups, item) => {
-      const key = item.subproject || "Generelt"
-      if (!groups[key]) {
-        groups[key] = []
-      }
-      groups[key].push(item)
-      return groups
-    }, {})
-  }, [lineItems])
 
   const aiComponents = useMemo(() => lineItems.filter((item) => item.supplier?.trim()).length, [lineItems])
   const aiScore = useMemo(() => {
@@ -847,130 +833,27 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                   </Button>
                 </div>
                 {/* ---- PDF-like document ---- */}
-                <div className="bg-[#e8e6e1] p-4 sm:p-6">
-                  <div ref={pdfDocRef} className="mx-auto w-[794px] min-w-[794px] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)]">
-
-                    {/* Header: logo + company left, document meta right */}
-                    <div className="flex items-start justify-between gap-6 border-b border-gray-200 px-8 py-6">
-                      <div className="flex items-center gap-3">
-                        <img src="/favicon.ico" alt="Logo" className="h-10 w-10 object-contain" />
-                        <div>
-                          <p className="text-[15px] font-bold leading-tight text-gray-950">{company?.name || "Proanbud"}</p>
-                          {company?.orgNumber ? (
-                            <p className="text-[11px] text-gray-500">Org.nr. {company.orgNumber}</p>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[22px] font-bold tracking-tight text-gray-950">TILBUD</p>
-                        <p className="mt-0.5 text-[12px] text-gray-500">{title.trim() || "Tilbud"}</p>
-                        <p className="text-[12px] text-gray-500">Dato: {new Date().toLocaleDateString("no-NO")}</p>
-                        <p className="text-[12px] text-gray-500">Gyldighet: {validityDays} dager</p>
-                      </div>
-                    </div>
-
-                    {/* Kunde / Prosjekt block */}
-                    <div className="grid grid-cols-2 gap-6 border-b border-gray-200 px-8 py-4 text-[12px]">
-                      <div>
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Kunde</p>
-                        <p className="font-semibold text-gray-900">{selectedCustomer?.name || recipientName.trim() || "—"}</p>
-                        {(selectedCustomer?.address || selectedCustomer?.city) ? (
-                          <p className="text-gray-600">{[selectedCustomer.address, selectedCustomer.city].filter(Boolean).join(", ")}</p>
-                        ) : null}
-                        {(selectedCustomer?.email || recipientEmail) ? (
-                          <p className="text-gray-600">{selectedCustomer?.email || recipientEmail}</p>
-                        ) : null}
-                        {(selectedCustomer?.phone || recipientPhone) ? (
-                          <p className="text-gray-600">{selectedCustomer?.phone || recipientPhone}</p>
-                        ) : null}
-                      </div>
-                      <div>
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Prosjekt</p>
-                        <p className="font-semibold text-gray-900">{selectedProject?.name || "—"}</p>
-                        {description.trim() ? (
-                          <p className="mt-1 text-gray-600 leading-4">{description.trim().slice(0, 140)}{description.trim().length > 140 ? "…" : ""}</p>
-                        ) : null}
-                        {quoteMessage.trim() ? (
-                          <p className="mt-2 italic text-gray-500 leading-4">"{quoteMessage.trim().slice(0, 100)}{quoteMessage.trim().length > 100 ? "…" : ""}"</p>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {/* Line items table */}
-                    <div className="px-8 py-4">
-                      <table className="w-full border-collapse text-[11px]">
-                        <thead>
-                          <tr className="border-b-2 border-gray-900 text-left">
-                            <th className="pb-1.5 pr-3 font-semibold uppercase tracking-widest text-gray-500">Beskrivelse</th>
-                            <th className="pb-1.5 pr-3 text-right font-semibold uppercase tracking-widest text-gray-500">Antall</th>
-                            <th className="pb-1.5 pr-3 text-right font-semibold uppercase tracking-widest text-gray-500">Enhet</th>
-                            <th className="pb-1.5 pr-3 text-right font-semibold uppercase tracking-widest text-gray-500">Enhetspris</th>
-                            <th className="pb-1.5 text-right font-semibold uppercase tracking-widest text-gray-500">Rabatt</th>
-                            <th className="pb-1.5 pl-4 text-right font-semibold uppercase tracking-widest text-gray-500">Beløp</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.entries(groupedPreview).map(([groupName, items]) => (
-                            <>
-                              <tr key={`g-${groupName}`}>
-                                <td colSpan={6} className="border-b border-gray-200 pb-1 pt-3">
-                                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{groupName}</span>
-                                </td>
-                              </tr>
-                              {items.map((item) => (
-                                <tr key={item.id} className="border-b border-gray-100">
-                                  <td className="py-1.5 pr-3 font-medium text-gray-900">
-                                    {item.title}
-                                    {item.description ? <span className="block text-[10px] font-normal text-gray-500 leading-3">{item.description.slice(0, 60)}{item.description.length > 60 ? "…" : ""}</span> : null}
-                                    {item.supplier ? <span className="block text-[10px] font-normal text-gray-400">{item.supplier}</span> : null}
-                                  </td>
-                                  <td className="py-1.5 pr-3 text-right tabular-nums text-gray-700">{item.quantity}</td>
-                                  <td className="py-1.5 pr-3 text-right text-gray-500">{item.unit}</td>
-                                  <td className="py-1.5 pr-3 text-right tabular-nums text-gray-700">{formatNok(item.unitPriceNok)}</td>
-                                  <td className="py-1.5 text-right text-gray-500">{item.discountPercent > 0 ? `${item.discountPercent}%` : "—"}</td>
-                                  <td className="py-1.5 pl-4 text-right tabular-nums font-semibold text-gray-900">{formatNok(calculateLineItemTotal(item))}</td>
-                                </tr>
-                              ))}
-                            </>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Totals */}
-                    <div className="border-t-2 border-gray-900 px-8 py-4">
-                      <div className="ml-auto w-56 text-[12px]">
-                        <div className="flex justify-between py-0.5">
-                          <span className="text-gray-600">Subtotal eks. mva</span>
-                          <span className="tabular-nums font-medium text-gray-900">{formatNok(totals.subtotalNok)}</span>
-                        </div>
-                        {totals.discountNok > 0 ? (
-                          <div className="flex justify-between py-0.5">
-                            <span className="text-gray-600">Rabatt</span>
-                            <span className="tabular-nums font-medium text-gray-900">- {formatNok(totals.discountNok)}</span>
-                          </div>
-                        ) : null}
-                        <div className="flex justify-between border-t border-dashed border-gray-300 py-1">
-                          <span className="text-gray-600">Grunnlag mva (25%)</span>
-                          <span className="tabular-nums text-gray-700">{formatNok(totals.subtotalNok)}</span>
-                        </div>
-                        <div className="flex justify-between py-0.5">
-                          <span className="text-gray-600">Mva 25%</span>
-                          <span className="tabular-nums text-gray-700">{formatNok(vatAmountNok)}</span>
-                        </div>
-                        <div className="flex justify-between border-t-2 border-gray-900 pt-1.5 mt-1">
-                          <span className="font-bold text-gray-950">Totalt inkl. mva</span>
-                          <span className="tabular-nums font-bold text-gray-950">{formatNok(totalInclVatNok)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Footer */}
-                    <div className="border-t border-gray-200 bg-gray-50 px-8 py-3 text-[10px] text-gray-400">
-                      <p>Dette tilbudet er gyldig i {validityDays} dager fra utstedelsesdato. Alle priser er oppgitt i NOK.</p>
-                    </div>
-
-                  </div>
+                <div ref={pdfDocRef}>
+                  <OfferDocumentPreview
+                    title={title}
+                    description={description}
+                    projectSummary={analysisResult?.summary}
+                    quoteMessage={quoteMessage}
+                  projectName={selectedProject?.name || undefined}
+                  customer={{
+                    name: selectedCustomer?.name || recipientName.trim() || "—",
+                    email: selectedCustomer?.email || recipientEmail,
+                    phone: selectedCustomer?.phone || recipientPhone,
+                    address: selectedCustomer?.address,
+                    city: selectedCustomer?.city,
+                    orgNumber: selectedCustomer?.orgNumber,
+                  }}
+                  lineItems={lineItems}
+                  company={company}
+                  issuedDate={new Date()}
+                  validityDays={validityDays}
+                  documentClassName="mx-auto w-[794px] min-w-[794px] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)]"
+                  />
                 </div>
               </div>
 

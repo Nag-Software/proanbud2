@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getDocusignAuthContext } from "@/lib/integrations/docusign/client"
+import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 import { createClient } from "@/lib/supabase/server"
 
 type ContractStatus = "completed" | "declined" | "voided"
@@ -32,7 +33,21 @@ async function resolveContext() {
     return { error: NextResponse.json({ error: "Company context missing" }, { status: 400 }) }
   }
 
-  return { supabase, companyId: userRow.company_id }
+  return { supabase, companyId: userRow.company_id, userId: user.id }
+}
+
+function contractActivityEvent(status: ContractStatus | StoredContractStatus) {
+  if (status === "completed") return OFFER_ACTIVITY.CONTRACT_COMPLETED
+  if (status === "declined") return OFFER_ACTIVITY.CONTRACT_DECLINED
+  if (status === "voided") return OFFER_ACTIVITY.CONTRACT_VOIDED
+  return null
+}
+
+function contractActivityTitle(status: ContractStatus | StoredContractStatus) {
+  if (status === "completed") return "Kontrakt signert"
+  if (status === "declined") return "Kontrakt avslått"
+  if (status === "voided") return "Kontrakt annullert"
+  return "Kontraktstatus oppdatert"
 }
 
 function patchContract(analysisResult: unknown, status: ContractStatus) {
@@ -209,6 +224,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       .update(updateRow)
       .eq("id", id)
       .eq("company_id", ctx.companyId)
+
+    const activityEvent = contractActivityEvent(refreshed.status)
+    if (activityEvent && refreshed.status !== currentContract.status) {
+      await logOfferActivity({
+        offerId: id,
+        companyId: ctx.companyId,
+        actorUserId: ctx.userId,
+        eventType: activityEvent,
+        title: contractActivityTitle(refreshed.status),
+        metadata: { envelopeId: refreshed.envelopeId, status: refreshed.status },
+      })
+    }
   }
 
   return NextResponse.json({
@@ -252,6 +279,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (error || !data) {
     return NextResponse.json({ error: error?.message || "Kunne ikke oppdatere" }, { status: 400 })
+  }
+
+  const activityEvent = contractActivityEvent(body.status)
+  if (activityEvent) {
+    await logOfferActivity({
+      offerId: id,
+      companyId: ctx.companyId,
+      actorUserId: ctx.userId,
+      eventType: activityEvent,
+      title: contractActivityTitle(body.status),
+      metadata: { status: body.status, source: "manual" },
+    })
   }
 
   const contract = (data.analysis_result as Record<string, unknown>)?.contract || null

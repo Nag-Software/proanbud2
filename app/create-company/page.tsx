@@ -3,6 +3,7 @@
 import { useState, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { completeClientLogin } from "@/lib/auth/client-login"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -128,8 +129,7 @@ export default function CreateCompanyClient() {
       }
 
       // Navigate to dashboard
-      router.push("/")
-      router.refresh()
+      completeClientLogin(router)
     } catch (e: any) {
       console.error(e)
       setError(e.message || "En ukjent feil oppsto under opprettelsen av bedriften. Kontakt support hvis problemet vedvarer.")

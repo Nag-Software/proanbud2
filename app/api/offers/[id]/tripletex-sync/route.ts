@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
-import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
+import {
+  enqueueOfferTripletexSyncAndProcess,
+  fetchOfferTripletexSyncStatus,
+} from "@/lib/integrations/tripletex/sync"
 
 async function resolveContext() {
   const supabase = await createClient()
@@ -19,6 +22,33 @@ async function resolveContext() {
   }
 
   return { supabase, companyId: userRow.company_id }
+}
+
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await resolveContext()
+  if ("error" in ctx) return ctx.error
+
+  const { id } = await params
+
+  const { data: offer } = await ctx.supabase
+    .from("offers")
+    .select("id, customer_id, project_id")
+    .eq("id", id)
+    .eq("company_id", ctx.companyId)
+    .maybeSingle()
+
+  if (!offer) {
+    return NextResponse.json({ error: "Offer not found" }, { status: 404 })
+  }
+
+  const status = await fetchOfferTripletexSyncStatus(
+    ctx.companyId,
+    offer.id,
+    offer.customer_id,
+    offer.project_id
+  )
+
+  return NextResponse.json({ ok: true, ...status })
 }
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -45,28 +75,17 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     )
   }
 
-  const nonce = Date.now()
-
-  await enqueueIntegrationJob({
+  const enqueued = await enqueueOfferTripletexSyncAndProcess({
     companyId: ctx.companyId,
-    jobType: "customer.upsert",
-    payload: { customerId: offer.customer_id },
-    idempotencyKey: `offer:${offer.id}:customer:${offer.customer_id}:${nonce}`,
+    offerId: offer.id,
+    customerId: offer.customer_id,
+    projectId: offer.project_id,
+    source: "manual",
   })
 
-  await enqueueIntegrationJob({
-    companyId: ctx.companyId,
-    jobType: "project.upsert",
-    payload: { projectId: offer.project_id },
-    idempotencyKey: `offer:${offer.id}:project:${offer.project_id}:${nonce}`,
-  })
-
-  await enqueueIntegrationJob({
-    companyId: ctx.companyId,
-    jobType: "order.create_from_offer",
-    payload: { offerId: offer.id, customerId: offer.customer_id, projectId: offer.project_id },
-    idempotencyKey: `offer:${offer.id}:order:${nonce}`,
-  })
+  if (!enqueued) {
+    return NextResponse.json({ error: "Tripletex er ikke tilkoblet for denne bedriften." }, { status: 400 })
+  }
 
   return NextResponse.json({ ok: true })
 }

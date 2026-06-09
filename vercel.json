@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/integrations/tripletex/worker",
+      "schedule": "*/2 * * * *"
+    }
+  ]
+}

@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { Resend } from 'resend';
+import { canInviteEmployees, normalizeRole } from '@/lib/roles';
+import { ensureCompanyRoles, resolveRoleNamesForCompany } from '@/lib/company-roles';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 're_defaultkey');
 
@@ -10,72 +13,125 @@ export async function POST(request: Request) {
     const { email, role_ids, project_ids } = await request.json();
 
     if (!email) {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+      return NextResponse.json({ error: 'E-post er påkrevd' }, { status: 400 });
     }
 
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    let invitedBy = user?.id;
-    let companyId = null;
-
-    if (invitedBy) {
-       const { data: dbUser } = await supabase.from('users').select('company_id').eq('id', invitedBy).single();
-       if (dbUser) companyId = dbUser.company_id;
+    if (!user) {
+      return NextResponse.json({ error: 'Du må være logget inn' }, { status: 401 });
     }
 
-    if (!companyId || !invitedBy) {
-      console.log("No companyId or invitedBy. invitedBy:", invitedBy, "companyId:", companyId);
-      return NextResponse.json({ error: 'Brukeren må tilhøre en bedrift for å kunne invitere andre.', details: {invitedBy, companyId} }, { status: 403 });
+    const { data: dbUser, error: dbUserError } = await supabase
+      .from('users')
+      .select('company_id, role')
+      .eq('id', user.id)
+      .single();
+
+    if (dbUserError || !dbUser?.company_id) {
+      return NextResponse.json(
+        { error: 'Brukeren må tilhøre en bedrift for å kunne invitere andre.' },
+        { status: 403 }
+      );
     }
 
-    // Generer et 32-bytes kryptografisk sikkert token
+    const { data: userRoleData } = await supabase
+      .from('user_roles')
+      .select('roles(name)')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    // @ts-expect-error Supabase nested relation typing
+    const effectiveRole = userRoleData?.roles?.name || dbUser.role;
+
+    if (!canInviteEmployees(effectiveRole)) {
+      return NextResponse.json(
+        { error: 'Kun administratorer kan invitere ansatte.' },
+        { status: 403 }
+      );
+    }
+
+    const companyId = dbUser.company_id;
+    const admin = createAdminClient();
+
+    await ensureCompanyRoles(admin, companyId);
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const { data: existingUser } = await admin
+      .from('users')
+      .select('id')
+      .eq('company_id', companyId)
+      .ilike('email', normalizedEmail)
+      .maybeSingle();
+
+    if (existingUser) {
+      return NextResponse.json({ error: 'Denne e-postadressen er allerede registrert i bedriften.' }, { status: 400 });
+    }
+
+    const { data: pendingInvite } = await admin
+      .from('invitations')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('email', normalizedEmail)
+      .eq('status', 'pending')
+      .maybeSingle();
+
+    if (pendingInvite) {
+      return NextResponse.json({ error: 'Det finnes allerede en ventende invitasjon for denne e-postadressen.' }, { status: 400 });
+    }
+
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    // Sett inn i databasen
-    const { data: invitation, error: inviteError } = await supabase
+    const { data: invitation, error: inviteError } = await admin
       .from('invitations')
       .insert({
         company_id: companyId,
-        invited_by: invitedBy,
-        email,
+        invited_by: user.id,
+        email: normalizedEmail,
         token_hash: tokenHash,
-        expires_at: expiresAt.toISOString()
+        expires_at: expiresAt.toISOString(),
       })
       .select()
       .single();
 
-    if (inviteError) {
-      console.error("Invite error:", inviteError);
+    if (inviteError || !invitation) {
+      console.error('Invite error:', inviteError);
       return NextResponse.json({ error: 'Kunne ikke opprette invitasjon' }, { status: 500 });
     }
 
-    // Håndter roller (klienten sender inn rollenavn i array, f.eks ["Håndverker"])
-    if (role_ids && role_ids.length > 0) {
-       const { data: roles } = await supabase
-         .from('roles')
-         .select('id')
-         .in('name', role_ids);
+    const requestedRoles = Array.isArray(role_ids) && role_ids.length > 0 ? role_ids : ['Håndverker'];
+    const roles = await resolveRoleNamesForCompany(admin, companyId, requestedRoles);
 
-       if (roles && roles.length > 0) {
-          const roleInserts = roles.map(r => ({ invitation_id: invitation.id, role_id: r.id }));
-          await supabase.from('invitation_roles').insert(roleInserts);
-       }
+    if (roles.length > 0) {
+      const roleInserts = roles.map((role) => ({
+        invitation_id: invitation.id,
+        role_id: role.id,
+      }));
+
+      const { error: roleInsertError } = await admin.from('invitation_roles').insert(roleInserts);
+      if (roleInsertError) {
+        console.error('Invitation role error:', roleInsertError);
+      }
     }
 
-    // 5. Generer URL som egentlig skal sendes på e-post
+    if (Array.isArray(project_ids) && project_ids.length > 0) {
+      // Reserved for future project-scoped invites
+      console.log('Project assignment on invite not yet implemented', project_ids);
+    }
+
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || new URL(request.url).origin;
     const invitationUrl = `${baseUrl}/signup?invite=${rawToken}`;
-    
-    // Send invitasjon på e-post via Resend
+
     try {
       await resend.emails.send({
-        from: 'Proanbud <onboarding@resend.dev>', // Bruk en verifisert sending-adresse senere (f.eks info@proanbud.no)
-        to: email, // I test-modus med resend.dev vil denne bare kunne sende til deg (hittil du setter opp domene) 
+        from: 'Proanbud <onboarding@resend.dev>',
+        to: normalizedEmail,
         subject: 'Du er invitert til Proanbud',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
@@ -91,20 +147,17 @@ export async function POST(request: Request) {
           </div>
         `,
       });
-      console.log(`Email sent successfully to ${email}`);
     } catch (emailError) {
-      console.error("Failed to send email:", emailError);
-      // We still return 201 because the database invite was generated
-      // The user can optionally copy it from the UI.
+      console.error('Failed to send email:', emailError);
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: 'Invitation sent successfully',
-      invitationUrl, // Kun for test
-      expiresAt 
+      invitationUrl,
+      expiresAt,
+      invitedRole: requestedRoles.map((role: string) => normalizeRole(role) || role),
     }, { status: 201 });
-
   } catch (error) {
     console.error('Error generating invitation:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Search, Plus, MoreHorizontal, Shield, ExternalLink, Mail } from "lucide-react";
+import { Search, Plus, MoreHorizontal, Shield, ExternalLink, Mail, Clock } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,14 +25,36 @@ import { useUserRole } from "@/hooks/use-user-role";
 import { AddParticipantDialog } from "./add-participant-dialog";
 import { removeProjectParticipantAction } from "./deltakere-actions";
 
-export default function DeltakereTab({ projectId, initialParticipants, isProjectAdmin }: { projectId: string, initialParticipants?: any[], isProjectAdmin?: boolean }) {
+import { formatHours } from "@/lib/time-tracking";
+
+type ParticipantHours = {
+  userId: string
+  name: string
+  email: string
+  totalHours: number
+  entryCount: number
+}
+
+export default function DeltakereTab({
+  projectId,
+  initialParticipants,
+  isProjectAdmin,
+  participantHours = [],
+}: {
+  projectId: string
+  initialParticipants?: any[]
+  isProjectAdmin?: boolean
+  participantHours?: ParticipantHours[]
+}) {
   const [search, setSearch] = useState("");
-  const { role } = useUserRole();
-  const isAdmin = role === "Administrator" || role === "admin" || role === "manager" || isProjectAdmin;
+  const { isAdmin, isManager } = useUserRole();
+  const isAdminUser = isAdmin || isManager || isProjectAdmin;
 
   const participants = initialParticipants || [];
 
-  const filteredParticipants = participants.filter((p) => 
+  const hoursByUserId = new Map(participantHours.map((entry) => [entry.userId, entry]));
+
+  const filteredParticipants = participants.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()) || 
     p.email.toLowerCase().includes(search.toLowerCase())
   );
@@ -51,7 +73,7 @@ export default function DeltakereTab({ projectId, initialParticipants, isProject
           />
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          {isAdmin && (
+          {isAdminUser && (
             <AddParticipantDialog projectId={projectId} currentParticipants={participants} />
           )}
         </div>
@@ -63,13 +85,14 @@ export default function DeltakereTab({ projectId, initialParticipants, isProject
                 <th className="p-3 font-medium">Navn</th>
                 <th className="p-3 font-medium">Rolle</th>
                 <th className="p-3 font-medium">Tilgangsnivå</th>
+                {isAdminUser && <th className="p-3 font-medium">Arbeidstimer</th>}
                 <th className="p-3 font-medium text-right">Handlinger</th>
               </tr>
             </thead>
             <tbody>
               {filteredParticipants.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center p-8 text-muted-foreground">Ingen deltakere funnet.</td>
+                  <td colSpan={isAdminUser ? 5 : 4} className="text-center p-8 text-muted-foreground">Ingen deltakere funnet.</td>
                 </tr>
               ) : (
                 filteredParticipants.map((p) => (
@@ -98,6 +121,17 @@ export default function DeltakereTab({ projectId, initialParticipants, isProject
                           {p.accessLevel}
                         </span>
                     </td>
+                    {isAdminUser && (
+                      <td className="px-3 py-2">
+                        <span className="inline-flex items-center gap-1.5 font-medium">
+                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                          {formatHours(hoursByUserId.get(p.id)?.totalHours || 0)}
+                        </span>
+                        <div className="text-xs text-muted-foreground">
+                          {hoursByUserId.get(p.id)?.entryCount || 0} økter
+                        </div>
+                      </td>
+                    )}
                     <td className="px-3 py-2 text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -107,7 +141,7 @@ export default function DeltakereTab({ projectId, initialParticipants, isProject
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="min-w-40">
                           <DropdownMenuItem><Mail className="mr-2 h-4 w-4" /> Send e-post</DropdownMenuItem>
-                          {isAdmin && (
+                          {isAdminUser && (
                             <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem 
@@ -134,6 +168,35 @@ export default function DeltakereTab({ projectId, initialParticipants, isProject
             </tbody>
           </table>
       </div>
+      {isAdminUser && (
+        <Card className="border-dashed">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Clock className="h-4 w-4 text-primary" />
+              Timeføring per prosjekt (automatisk)
+            </CardTitle>
+            <CardDescription>
+              Arbeidstimer samles automatisk når ansatte avslutter arbeid på prosjektet.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {participantHours.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Ingen timer registrert på dette prosjektet ennå.</p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {participantHours.map((entry) => (
+                  <div key={entry.userId} className="rounded-md border px-3 py-2">
+                    <p className="font-medium text-sm">{entry.name}</p>
+                    <p className="text-xs text-muted-foreground">{entry.email}</p>
+                    <p className="mt-2 text-lg font-semibold">{formatHours(entry.totalHours)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Access Control Information */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
         <Card className="bg-muted/40 border-dashed gap-1">

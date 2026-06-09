@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createClient as createServerSupabase } from '@/lib/supabase/server'
+import { assignUserRole, ensureCompanyRoles } from '@/lib/company-roles'
 
 export async function POST(request: Request) {
   try {
@@ -58,6 +59,17 @@ export async function POST(request: Request) {
     if (userError) {
       console.error('Upsert public.users error i ruten:', userError)
       return NextResponse.json({ error: 'Kunne ikke knytte bruker til bedrift: ' + JSON.stringify(userError) }, { status: 500 })
+    }
+
+    try {
+      await ensureCompanyRoles(supabaseAdmin, companyData.id)
+      await assignUserRole(supabaseAdmin, {
+        userId: user.id,
+        companyId: companyData.id,
+        roleName: 'Administrator',
+      })
+    } catch (roleSetupError) {
+      console.error('Role setup error:', roleSetupError)
     }
 
     return NextResponse.json({ success: true, company: companyData }, { status: 201 })

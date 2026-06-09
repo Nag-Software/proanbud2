@@ -2,17 +2,39 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { assignUserRole } from "@/lib/company-roles"
+import { canInviteEmployees } from "@/lib/roles"
+
+async function getEffectiveRole(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
+  const { data: userRoleData } = await supabase
+    .from("user_roles")
+    .select("roles(name)")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  const { data: userTableData } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle()
+
+  // @ts-expect-error Supabase nested relation typing
+  return userRoleData?.roles?.name || userTableData?.role || null
+}
 
 export async function updateUserRole(userId: string, newRoleName: string) {
   const supabase = await createClient()
 
-  // First, get the current user to verify access
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
     return { error: "Ikke autorisert" }
   }
 
-  // Find the company id for the user we are updating
+  const effectiveRole = await getEffectiveRole(supabase, user.id)
+  if (!canInviteEmployees(effectiveRole)) {
+    return { error: "Kun administratorer kan endre roller" }
+  }
+
   const { data: targetUser, error: targetError } = await supabase
     .from("users")
     .select("company_id")
@@ -23,7 +45,6 @@ export async function updateUserRole(userId: string, newRoleName: string) {
     return { error: "Bruker ikke funnet" }
   }
 
-  // Validate the executing user has access to this company
   const { data: execUser } = await supabase
     .from("users")
     .select("company_id")
@@ -34,38 +55,14 @@ export async function updateUserRole(userId: string, newRoleName: string) {
     return { error: "Ikke autorisert til å endre denne brukeren" }
   }
 
-  // Get the role ID for the new role name
-  const { data: newRole, error: roleError } = await supabase
-    .from("roles")
-    .select("id")
-    .eq("company_id", targetUser.company_id)
-    .eq("name", newRoleName)
-    .single()
-
-  if (roleError || !newRole) {
-    return { error: "Rolle ikke funnet" }
-  }
-
-  // Delete all existing roles for this user
-  const { error: deleteError } = await supabase
-    .from("user_roles")
-    .delete()
-    .eq("user_id", userId)
-
-  if (deleteError) {
-    return { error: "Klarte ikke fjerne eksisterende roller" }
-  }
-
-  // Insert the new role
-  const { error: insertError } = await supabase
-    .from("user_roles")
-    .insert({
-      user_id: userId,
-      role_id: newRole.id
+  try {
+    await assignUserRole(supabase, {
+      userId,
+      companyId: targetUser.company_id,
+      roleName: newRoleName,
     })
-
-  if (insertError) {
-    return { error: "Klarte ikke å lagre ny rolle" }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Klarte ikke å lagre ny rolle" }
   }
 
   revalidatePath("/min-bedrift/ansatte-og-roller")

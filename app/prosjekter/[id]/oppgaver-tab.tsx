@@ -49,7 +49,13 @@ const priorityToLabel: Record<string, string> = {
   urgent: "Kritisk",
 };
 
-export default function OppgaverTab({ projectId }: { projectId: string }) {
+export default function OppgaverTab({
+  projectId,
+  canManageTasks = true,
+}: {
+  projectId: string
+  canManageTasks?: boolean
+}) {
   const [view, setView] = useState<"liste" | "kanban" | "gantt">("liste");
   const [search, setSearch] = useState("");
   const [tasks, setTasks] = useState<any[]>([]);
@@ -205,9 +211,11 @@ export default function OppgaverTab({ projectId }: { projectId: string }) {
           <Button variant="outline" size="icon">
             <ArrowUpDown className="h-4 w-4" />
           </Button>
-          <Button className="shrink-0 gap-2" onClick={() => setIsDialogOpen(true)}>
-            <Plus className="h-4 w-4" /> Ny Oppgave
-          </Button>
+          {canManageTasks && (
+            <Button className="shrink-0 gap-2" onClick={() => setIsDialogOpen(true)}>
+              <Plus className="h-4 w-4" /> Ny Oppgave
+            </Button>
+          )}
         </div>
       </div>
 
@@ -293,12 +301,14 @@ export default function OppgaverTab({ projectId }: { projectId: string }) {
                           </Draggable>
                         ))}
                         {provided.placeholder}
-                        <Button variant="ghost" className="w-full justify-start text-muted-foreground mt-2" size="sm" onClick={() => {
-                            setNewTaskStatus(col);
-                            setIsDialogOpen(true);
-                        }}>
-                          <Plus className="mr-2 h-4 w-4"/> Legg til kort
-                        </Button>
+                        {canManageTasks && (
+                          <Button variant="ghost" className="w-full justify-start text-muted-foreground mt-2" size="sm" onClick={() => {
+                              setNewTaskStatus(col);
+                              setIsDialogOpen(true);
+                          }}>
+                            <Plus className="mr-2 h-4 w-4"/> Legg til kort
+                          </Button>
+                        )}
                       </div>
                     )}
                   </Droppable>

@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
+import { enqueueEntityTripletexSync, processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
 import { revalidatePath } from "next/cache"
 
 export async function createCustomerAction(formData: FormData) {
@@ -47,12 +47,13 @@ export async function createCustomerAction(formData: FormData) {
     throw new Error(error.message)
   }
 
-  await enqueueIntegrationJob({
+  await enqueueEntityTripletexSync({
     companyId: userData.company_id,
     jobType: "customer.upsert",
-    payload: { companyId: userData.company_id, customerId: data.id },
-    idempotencyKey: `customer:${data.id}:${new Date().toISOString()}`,
+    payload: { customerId: data.id },
+    idempotencyKey: `customer:${data.id}:upsert`,
   })
+  processTripletexQueueInBackground()
 
   revalidatePath("/kunder")
   return data.id
@@ -109,12 +110,13 @@ export async function updateCustomerAction(input: {
     throw new Error(error.message)
   }
 
-  await enqueueIntegrationJob({
+  await enqueueEntityTripletexSync({
     companyId: userData.company_id,
     jobType: "customer.upsert",
-    payload: { companyId: userData.company_id, customerId: input.id },
-    idempotencyKey: `customer:${input.id}:${new Date().toISOString()}`,
+    payload: { customerId: input.id },
+    idempotencyKey: `customer:${input.id}:upsert`,
   })
+  processTripletexQueueInBackground()
 
   revalidatePath("/kunder")
   revalidatePath(`/kunder/${input.id}`)

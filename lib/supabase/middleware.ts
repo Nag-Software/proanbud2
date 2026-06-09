@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { LOGIN_PATH, SIGNUP_PATH } from '@/lib/constants'
+import { isAuthEntryRoute, isPublicAuthRoute } from '@/lib/auth/routes'
+import { LOGIN_PATH } from '@/lib/constants'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -39,17 +40,18 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const pathname = request.nextUrl.pathname
+  const isPublic = isPublicAuthRoute(pathname)
 
-  const publicRoutes = [
-    LOGIN_PATH,
-    SIGNUP_PATH,
-    '/forgot-password',
-    '/api', // Adjust if you want some APIs protected in middleware
-    '/create-company',
-    '/auth/callback'
-  ]
-
-  const isPublic = publicRoutes.some((route) => pathname.startsWith(route))
+  if (user && isAuthEntryRoute(pathname)) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/'
+    url.search = ''
+    const redirect = NextResponse.redirect(url)
+    supabaseResponse.cookies.getAll().forEach(({ name, value }) => {
+      redirect.cookies.set(name, value)
+    })
+    return redirect
+  }
 
   if (!user && !isPublic) {
     // No active session: redirect protected routes to login.

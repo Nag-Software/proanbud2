@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { assignUserRole } from '@/lib/company-roles';
+import { ROLE_DB_VALUES, normalizeRole, roleNameToDisplay } from '@/lib/roles';
 
 export async function POST(request: Request) {
   try {
@@ -13,7 +15,6 @@ export async function POST(request: Request) {
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-    // 1. Get the invite
     const { data: invite, error: inviteError } = await supabaseAdmin
       .from('invitations')
       .select('*')
@@ -29,9 +30,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invitasjonen har utløpt' }, { status: 400 });
     }
 
-    const targetEmail = email || invite.email;
+    const targetEmail = (email || invite.email).trim().toLowerCase();
 
-    // 2. Create the user using Admin API (auto-confirms email)
     const { data: authRecord, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: targetEmail,
       password: password,
@@ -46,41 +46,49 @@ export async function POST(request: Request) {
 
     const newUserId = authRecord.user.id;
 
-    // 3. Insert into public.users
+    const { data: inviteRoles } = await supabaseAdmin
+      .from('invitation_roles')
+      .select('role_id, roles(name)')
+      .eq('invitation_id', invite.id);
+
+    const invitedRoleName =
+      // @ts-expect-error Supabase nested relation typing
+      inviteRoles?.[0]?.roles?.name || 'Håndverker';
+    const canonicalRole = normalizeRole(invitedRoleName) || 'worker';
+
     const { error: userError } = await supabaseAdmin.from('users').insert({
       id: newUserId,
       email: targetEmail,
       full_name: fullName,
       company_id: invite.company_id,
+      role: ROLE_DB_VALUES[canonicalRole],
       is_active: true
     });
-    
+
     if (userError) {
        console.error('Insert user error:', userError);
-       // Ideally rollback on fail, but let's continue to roles
+       return NextResponse.json({ error: 'Kunne ikke opprette brukerprofil' }, { status: 500 });
     }
 
-    // 4. Get pre-assigned roles and insert to user_roles
-    const { data: inviteRoles } = await supabaseAdmin
-      .from('invitation_roles')
-      .select('role_id')
-      .eq('invitation_id', invite.id);
-
-    if (inviteRoles && inviteRoles.length > 0) {
-      const roleInserts = inviteRoles.map(r => ({ user_id: newUserId, role_id: r.role_id }));
-      await supabaseAdmin.from('user_roles').insert(roleInserts);
+    try {
+      await assignUserRole(supabaseAdmin, {
+        userId: newUserId,
+        companyId: invite.company_id,
+        roleName: roleNameToDisplay(canonicalRole),
+      });
+    } catch (roleError) {
+      console.error('Assign role error:', roleError);
     }
 
-    // 5. Update invite status
     await supabaseAdmin
       .from('invitations')
       .update({ status: 'accepted' })
       .eq('id', invite.id);
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: 'Bruker registrert og tilgang tildelt',
-      userId: newUserId 
+      userId: newUserId
     }, { status: 201 });
 
   } catch (error) {

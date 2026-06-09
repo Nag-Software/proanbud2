@@ -130,6 +130,37 @@ export async function getTripletexConnection(companyId: string) {
   return data
 }
 
+export async function updateTripletexConnectionHealth(input: {
+  companyId: string
+  success: boolean
+  errorMessage?: string | null
+}) {
+  const supabase = createAdminClient()
+  const now = new Date().toISOString()
+
+  if (input.success) {
+    await supabase
+      .from("tripletex_connections")
+      .update({
+        sync_state: "connected",
+        last_success_at: now,
+        last_error_at: null,
+        last_error_message: null,
+      })
+      .eq("company_id", input.companyId)
+    return
+  }
+
+  await supabase
+    .from("tripletex_connections")
+    .update({
+      sync_state: "degraded",
+      last_error_at: now,
+      last_error_message: input.errorMessage ? input.errorMessage.slice(0, 1000) : "Sync failed",
+    })
+    .eq("company_id", input.companyId)
+}
+
 export async function upsertExternalEntityLink(input: {
   companyId: string
   entityType: string
