@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server"
-import mammoth from "mammoth"
-import { PDFParse } from "pdf-parse"
 import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
@@ -371,17 +369,19 @@ async function extractAttachmentText(fileData: Blob, type?: string) {
   }
 
   if (type === "application/pdf") {
-    const parser = new PDFParse({ data: new Uint8Array(await fileData.arrayBuffer()) })
     try {
+      const { PDFParse } = await import("pdf-parse")
+      const parser = new PDFParse({ data: new Uint8Array(await fileData.arrayBuffer()) })
       const result = await parser.getText()
       return result.text.slice(0, 12000)
-    } finally {
-      await parser.destroy()
+    } catch {
+      return ""
     }
   }
 
   if (type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
     const buffer = Buffer.from(await fileData.arrayBuffer())
+    const mammoth = await import("mammoth")
     const result = await mammoth.extractRawText({ buffer })
     return result.value.slice(0, 12000)
   }
