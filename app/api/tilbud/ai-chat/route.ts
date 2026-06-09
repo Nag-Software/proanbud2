@@ -398,18 +398,27 @@ async function resolveAttachmentContext(
 
   for (const doc of sourceDocuments) {
     let signedUrl = doc.signedUrl
-
-    if (!signedUrl && doc.storageBucket && doc.storagePath) {
-      const { data: signed } = await supabase.storage.from(doc.storageBucket).createSignedUrl(doc.storagePath, 60 * 60)
-      signedUrl = signed?.signedUrl
-    }
-
     let extractedText = ""
-    if (doc.storageBucket && doc.storagePath) {
-      const { data } = await supabase.storage.from(doc.storageBucket).download(doc.storagePath)
-      if (data) {
-        extractedText = await extractAttachmentText(data, doc.type)
+
+    try {
+      if (!signedUrl && doc.storageBucket && doc.storagePath) {
+        const { data: signed } = await supabase.storage.from(doc.storageBucket).createSignedUrl(doc.storagePath, 60 * 60)
+        signedUrl = signed?.signedUrl
       }
+
+      if (doc.storageBucket && doc.storagePath) {
+        const { data } = await supabase.storage.from(doc.storageBucket).download(doc.storagePath)
+        if (data) {
+          extractedText = await extractAttachmentText(data, doc.type)
+        }
+      }
+    } catch (error) {
+      console.warn("[ai-chat attachments] failed to process attachment", {
+        documentId: doc.id,
+        name: doc.name,
+        type: doc.type,
+        error: error instanceof Error ? error.message : error,
+      })
     }
 
     const previewKind = doc.previewKind || (doc.type?.startsWith("image/") ? "image" : "document")
