@@ -63,17 +63,6 @@ type ResultResponse = {
 
 type AiChatApiResponse = QuestionResponse | ResultResponse
 
-async function readAiChatResponse(response: Response) {
-  const contentType = response.headers.get("content-type") || ""
-
-  if (contentType.includes("application/json")) {
-    return (await response.json()) as AiChatApiResponse & { error?: string }
-  }
-
-  const text = await response.text()
-  return { error: text || "Ukjent feil" }
-}
-
 type ChatPhase = "loading" | "clarifying" | "generating" | "done" | "error"
 
 export type AiChatPanelProps = {
@@ -162,7 +151,7 @@ export function AiChatPanel({
         }),
       })
 
-      const payload = await readAiChatResponse(response)
+      const payload = (await response.json()) as AiChatApiResponse
       if (!response.ok) {
         throw new Error(payload.error || "Analyse feilet")
       }
@@ -316,7 +305,7 @@ export function AiChatPanel({
         }),
       })
 
-      const payload = await readAiChatResponse(response)
+      const payload = (await response.json()) as AiChatApiResponse
       if (!response.ok) {
         throw new Error(payload.error || "Kalkyle feilet")
       }
