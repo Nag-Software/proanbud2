@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server"
-import mammoth from "mammoth"
-import { PDFParse } from "pdf-parse"
 import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
@@ -13,6 +11,9 @@ import {
 } from "@/lib/tilbud/company-price-utils"
 import { matchNorwegianSupplierPrices } from "@/lib/tilbud/supplier-prices"
 import { type OfferAnalysisResult, type OfferLineItem } from "@/lib/tilbud/types"
+
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
 const sourceDocumentSchema = z.object({
   id: z.string().min(1),
@@ -371,17 +372,19 @@ async function extractAttachmentText(fileData: Blob, type?: string) {
   }
 
   if (type === "application/pdf") {
-    const parser = new PDFParse({ data: new Uint8Array(await fileData.arrayBuffer()) })
     try {
+      const { PDFParse } = await import("pdf-parse")
+      const parser = new PDFParse({ data: new Uint8Array(await fileData.arrayBuffer()) })
       const result = await parser.getText()
       return result.text.slice(0, 12000)
     } finally {
-      await parser.destroy()
+      // PDF parser teardown is best-effort; extraction already succeeded or failed by this point.
     }
   }
 
   if (type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
     const buffer = Buffer.from(await fileData.arrayBuffer())
+    const mammoth = await import("mammoth")
     const result = await mammoth.extractRawText({ buffer })
     return result.value.slice(0, 12000)
   }
