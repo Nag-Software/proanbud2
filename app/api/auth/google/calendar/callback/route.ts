@@ -1,0 +1,43 @@
+import { NextResponse } from "next/server"
+import {
+  exchangeGoogleCalendarCode,
+  verifyCalendarOAuthState,
+} from "@/lib/calendar/oauth-flow"
+import { upsertCalendarIntegration } from "@/lib/calendar/store-integration"
+import { getAppBaseUrl } from "@/lib/calendar/oauth-config"
+
+export async function GET(request: Request) {
+  try {
+    const url = new URL(request.url)
+    const code = url.searchParams.get("code")
+    const state = url.searchParams.get("state")
+    const oauthError = url.searchParams.get("error")
+
+    if (oauthError) {
+      const description = url.searchParams.get("error_description") ?? oauthError
+      return NextResponse.redirect(
+        `${getAppBaseUrl(request)}/kalender?calendar_error=${encodeURIComponent(description)}`
+      )
+    }
+
+    if (!code) {
+      return NextResponse.json({ error: "missing code" }, { status: 400 })
+    }
+
+    const userId = await verifyCalendarOAuthState(state, "google")
+    if (!userId) {
+      return NextResponse.json({ error: "invalid or expired oauth state" }, { status: 400 })
+    }
+
+    const tokens = await exchangeGoogleCalendarCode(request, code)
+    await upsertCalendarIntegration(userId, "google", tokens)
+
+    return NextResponse.redirect(`${getAppBaseUrl(request)}/kalender?calendar_connected=google`)
+  } catch (e) {
+    console.error("OAuth callback (google calendar) error:", e)
+    const message = e instanceof Error ? e.message : "internal error"
+    return NextResponse.redirect(
+      `${getAppBaseUrl(request)}/kalender?calendar_error=${encodeURIComponent(message)}`
+    )
+  }
+}

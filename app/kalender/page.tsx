@@ -3,22 +3,24 @@
 import { AppPageShell } from "@/components/app-page-shell"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect, useCallback, useMemo } from "react"
+import { useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { LOGIN_PATH } from '@/lib/constants'
 
-// UI for creating events
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-// react-big-calendar
 import { momentLocalizer, Views } from "react-big-calendar"
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop"
 import ShadcnBigCalendar from "@/components/ui/shadcn-big-calendar"
 import moment from "moment"
-import "moment/locale/nb" // Norsk lokal tid
+import "moment/locale/nb"
+
+import { CalendarToolbar, type CalendarView } from "./calendar-toolbar"
+import { MonthCalendar } from "./month-calendar"
 
 moment.locale("nb");
 const localizer = momentLocalizer(moment);
@@ -35,26 +37,30 @@ type CalendarEvent = {
   extendedProps?: any
 }
 
+function defaultSlotTimes(day: Date) {
+  const start = new Date(day)
+  start.setHours(9, 0, 0, 0)
+  const end = new Date(day)
+  end.setHours(10, 0, 0, 0)
+  return { start, end }
+}
+
 export default function Page() {
   const [integrations, setIntegrations] = useState<{ provider: string }[]>([])
   const [loggedIn, setLoggedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  
-  // Big Calendar State
-  const [view, setView] = useState(Views.WEEK)
+
+  const [view, setView] = useState<CalendarView>(Views.MONTH)
   const [date, setDate] = useState(new Date())
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [fetchRange, setFetchRange] = useState<{start: string, end: string} | null>(null)
-  
-  // View Settings
+
   const [timeRange, setTimeRange] = useState<"work" | "full">("work")
   const [visibleProvider, setVisibleProvider] = useState<"all" | "google" | "microsoft">("all")
 
-  // Dialog states for Create and Edit
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  
-  // Create / Edit Form State
+
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const [activeEventProvider, setActiveEventProvider] = useState<string | null>(null)
   const [eventTitle, setEventTitle] = useState("")
@@ -65,9 +71,10 @@ export default function Page() {
   const [linkedProject, setLinkedProject] = useState<string>("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isDisconnecting, setIsDisconnecting] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const searchParams = useSearchParams()
 
-  // Configure visible hours
-  
   const minTime = useMemo(() => {
     const d = new Date()
     d.setHours(timeRange === "work" ? 6 : 0, 0, 0, 0)
@@ -101,37 +108,55 @@ export default function Page() {
     }
   }, [])
 
-  useEffect(() => {
+  const loadIntegrations = useCallback(async () => {
     const supabase = createClient()
-    ;(async () => {
-      try {
-        const { data: userData } = await supabase.auth.getUser()
-        if (userData?.user) {
-          setLoggedIn(true)
-          const { data } = await supabase
-            .from('calendar_integrations')
-            .select('provider')
-            .eq('user_id', userData.user.id)
-            
-          if (data) {
-             setIntegrations(data)
-          }
-        }
-      } catch (e) {
+    try {
+      const { data: userData } = await supabase.auth.getUser()
+      if (userData?.user) {
+        setLoggedIn(true)
+        const { data } = await supabase
+          .from('calendar_integrations')
+          .select('provider')
+          .eq('user_id', userData.user.id)
+
+        setIntegrations(data ?? [])
+      } else {
         setLoggedIn(false)
-      } finally {
-        setIsLoading(false)
+        setIntegrations([])
       }
-    })()
+    } catch {
+      setLoggedIn(false)
+      setIntegrations([])
+    } finally {
+      setIsLoading(false)
+    }
   }, [])
 
-  // Auto-fetch events when the view range changes
+  useEffect(() => {
+    loadIntegrations()
+  }, [loadIntegrations])
+
+  useEffect(() => {
+    const connected = searchParams.get("calendar_connected")
+    const error = searchParams.get("calendar_error")
+
+    if (connected === "google") {
+      setStatusMessage("Google Calendar er tilkoblet.")
+      loadIntegrations()
+    } else if (connected === "microsoft") {
+      setStatusMessage("Outlook Calendar er tilkoblet.")
+      loadIntegrations()
+    } else if (error) {
+      setStatusMessage(`Kunne ikke koble til kalender: ${error}`)
+    }
+  }, [searchParams, loadIntegrations])
+
   useEffect(() => {
     if (!loggedIn || integrations.length === 0) return
-    
-    let startD = moment(date).startOf('month').subtract(1, 'month').toDate()
-    let endD = moment(date).endOf('month').add(1, 'month').toDate()
-    
+
+    const startD = moment(date).startOf('month').subtract(1, 'month').toDate()
+    const endD = moment(date).endOf('month').add(1, 'month').toDate()
+
     setFetchRange({
        start: startD.toISOString(),
        end: endD.toISOString()
@@ -155,7 +180,7 @@ export default function Page() {
       window.location.href = LOGIN_PATH
       return
     }
-    window.location.href = "/api/auth/google/start"
+    window.location.href = "/api/auth/google/calendar/start"
   }
 
   const handleOutlookAuth = () => {
@@ -163,7 +188,29 @@ export default function Page() {
       window.location.href = LOGIN_PATH
       return
     }
-    window.location.href = "/api/auth/microsoft/start"
+    window.location.href = "/api/auth/microsoft/calendar/start"
+  }
+
+  const handleDisconnect = async (provider: "google" | "microsoft") => {
+    if (!confirm(`Koble fra ${provider === "google" ? "Google" : "Outlook"} Calendar?`)) return
+    setIsDisconnecting(true)
+    try {
+      const res = await fetch(`/api/integrations/calendar/revoke?provider=${provider}`, {
+        method: "DELETE",
+      })
+      if (res.ok) {
+        setStatusMessage(`${provider === "google" ? "Google" : "Outlook"} Calendar er frakoblet.`)
+        await loadIntegrations()
+        setEvents([])
+      } else {
+        const data = await res.json()
+        setStatusMessage(data.error ?? "Kunne ikke koble fra kalender.")
+      }
+    } catch {
+      setStatusMessage("Kunne ikke koble fra kalender.")
+    } finally {
+      setIsDisconnecting(false)
+    }
   }
 
   const hasIntegration = integrations.length > 0;
@@ -176,14 +223,28 @@ export default function Page() {
     return events;
   }, [events, visibleProvider]);
 
-  const handleSlotSelect = (slotInfo: any) => {
+  const openCreateDialog = (start: Date, end: Date) => {
     setEventTitle("")
     setEventDescription("")
-    setEventStart(slotInfo.start)
-    setEventEnd(slotInfo.end)
+    setEventStart(start)
+    setEventEnd(end)
     setEventColor("")
     setLinkedProject("")
     setIsCreateDialogOpen(true)
+  }
+
+  const handleDayClick = (day: Date) => {
+    const { start, end } = defaultSlotTimes(day)
+    openCreateDialog(start, end)
+  }
+
+  const handleAddEvent = () => {
+    const { start, end } = defaultSlotTimes(date)
+    openCreateDialog(start, end)
+  }
+
+  const handleSlotSelect = (slotInfo: any) => {
+    openCreateDialog(slotInfo.start, slotInfo.end)
   }
 
   const handleEventClick = (event: CalendarEvent) => {
@@ -194,18 +255,18 @@ export default function Page() {
     setEventEnd(event.end || event.start)
     setEventColor(event.backgroundColor || "")
     setLinkedProject(event.extendedProps?.projectId || "")
-    
-    const provider = event.id.startsWith("google-") ? "google" : 
+
+    const provider = event.id.startsWith("google-") ? "google" :
                     event.id.startsWith("ms-") ? "microsoft" : null
     setActiveEventProvider(provider)
-    
+
     setIsEditDialogOpen(true)
   }
 
   const handleCreateEvent = async () => {
     if (!eventTitle.trim() || !eventStart || !eventEnd) return
     setIsSubmitting(true)
-    
+
     try {
       const res = await fetch("/api/calendar/events", {
         method: "POST",
@@ -235,7 +296,7 @@ export default function Page() {
   const handleUpdateEventDetails = async () => {
     if (!activeEventId || !eventTitle.trim() || !eventStart || !eventEnd) return
     setIsSubmitting(true)
-    
+
     try {
       const res = await fetch("/api/calendar/events", {
         method: "PATCH",
@@ -270,7 +331,7 @@ export default function Page() {
     if (!activeEventId) return
     if (!confirm("Er du sikker på at du vil slette dette eventet?")) return
     setIsDeleting(true)
-    
+
     try {
       const res = await fetch(`/api/calendar/events?eventId=${activeEventId}`, {
         method: "DELETE",
@@ -320,169 +381,159 @@ export default function Page() {
       style: {
         backgroundColor: event.backgroundColor || 'var(--primary)',
         borderColor: event.backgroundColor || 'var(--primary)',
-        color: event.textColor || 'var(--primary-foreground)'
+        color: event.textColor || 'var(--primary-foreground)',
+        borderRadius: 0,
       }
     }
   }
 
   return (
-    <AppPageShell segments={["Kalender"]}>
-      <div className="flex flex-col gap-2 w-full h-full max-w-6xl mx-auto mb-4">
-
-        {/* Header / Connect buttons */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2 border rounded-xl bg-card">
-            <div className="flex flex-col">
-              <h2 className="text-xl font-semibold">Din Kalender</h2>
-              <p className="text-sm text-muted-foreground" hidden>
-                Koble til kontoene dine for å se og administrere møter.
-            </p>
+    <AppPageShell segments={["Kalender"]} noPadding>
+      <div className="flex h-full min-h-0 flex-1 flex-col">
+        {statusMessage && (
+          <div className="border-b border-border bg-muted/40 px-4 py-2 text-sm text-muted-foreground">
+            {statusMessage}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={timeRange} onValueChange={(v: any) => setTimeRange(v)}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Visningsperiode" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectLabel>Visningsperiode</SelectLabel>
-                  <SelectItem value="work">Arbeidstid (06:00-18:00)</SelectItem>
-                  <SelectItem value="full">Hele døgnet (00:00-24:00)</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+        )}
 
-            {(hasBothIntegrations) && (
-              <Select value={visibleProvider} onValueChange={(v: any) => setVisibleProvider(v)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Innholdskilde" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectLabel>Velg kilde</SelectLabel>
-                    <SelectItem value="all">Begge integrasjoner</SelectItem>
-                    <SelectItem value="google">Google</SelectItem>
-                    <SelectItem value="microsoft">Microsoft</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            )}
+        <CalendarToolbar
+          date={date}
+          view={view}
+          onDateChange={setDate}
+          onViewChange={setView}
+          onAddEvent={handleAddEvent}
+          timeRange={timeRange}
+          onTimeRangeChange={setTimeRange}
+          visibleProvider={visibleProvider}
+          onVisibleProviderChange={setVisibleProvider}
+          hasBothIntegrations={hasBothIntegrations}
+          integrations={integrations}
+          onGoogleAuth={handleGoogleAuth}
+          onOutlookAuth={handleOutlookAuth}
+          onDisconnect={handleDisconnect}
+          isDisconnecting={isDisconnecting}
+        />
 
-            {!integrations.some(i => i.provider === 'google') && (
-              <Button onClick={handleGoogleAuth} variant="outline" className="flex items-center gap-2">
-                <img src="https://www.gstatic.com/images/branding/product/1x/calendar_48dp.png" alt="Google" className="w-5 h-5" />
-                Koble til Google
-              </Button>
-            )}
-            {!integrations.some(i => i.provider === 'microsoft') && (
-              <Button onClick={handleOutlookAuth} variant="outline" className="flex items-center gap-2">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Microsoft_365_%282022%29.svg/330px-Microsoft_365_%282022%29.svg.png" alt="Outlook" className="w-5 h-5" />
-                 Koble til Outlook
-              </Button>
-            )}
-          </div>
-        </div>
-
-        <div className="w-full bg-card rounded-xl flex flex-col h-[calc(100vh-200px)]">
+        <div className="min-h-0 flex-1 overflow-hidden">
           {isLoading ? (
-            <div className="w-full flex-grow flex items-center justify-center">Laster inn...</div>
-          ) : !hasIntegration ? (
-            <div className="w-full flex-grow flex flex-col items-center justify-center text-muted-foreground">
-               Ingen kalender tilkoblet enda. Koble til Google eller Outlook over for å se hendelsene dine.
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Laster inn...
             </div>
+          ) : !hasIntegration ? (
+            <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+              <p className="max-w-md text-sm text-muted-foreground">
+                Ingen kalender tilkoblet enda. Koble til Google eller Outlook for å se og administrere hendelsene dine.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button variant="outline" className="rounded-none" onClick={handleGoogleAuth}>
+                  Koble til Google
+                </Button>
+                <Button variant="outline" className="rounded-none" onClick={handleOutlookAuth}>
+                  Koble til Outlook
+                </Button>
+              </div>
+            </div>
+          ) : view === Views.MONTH ? (
+            <MonthCalendar
+              date={date}
+              events={filteredEvents}
+              onDayClick={handleDayClick}
+              onEventClick={handleEventClick}
+            />
           ) : (
-             <div className="flex-grow w-full h-fit border rounded-lg">
-                <DnDCalendar
-                  localizer={localizer}
-                  events={filteredEvents}
-                  style={{ height: '100%' }}
-                  date={date}
-                  view={view}
-                  onNavigate={(newDate: Date) => setDate(newDate)}
-                  onView={(newView: any) => setView(newView)}
-                  min={minTime}
-                  max={maxTime}
-                  selectable
-                  resizable
-                  onSelectSlot={handleSlotSelect}
-                  onSelectEvent={handleEventClick}
-                  onEventDrop={handleEventDropOrResize}
-                  onEventResize={handleEventDropOrResize}
-                  eventPropGetter={eventPropGetter}
-                  className="rounded-lg"
-                  messages={{
-                    today: "I dag",
-                    previous: "Forrige",
-                    next: "Neste",
-                    month: "Måned",
-                    week: "Uke",
-                    day: "Dag",
-                    agenda: "Agenda",
-                    date: "Dato",
-                    time: "Tid",
-                    event: "Hendelse",
-                    allDay: "Hele dagen",
-                    noEventsInRange: "Ingen hendelser i denne perioden.",
-                    showMore: (total) => `+${total} flere`
-                  }}
-                />
-             </div>
+            <div className="h-full min-h-0">
+              <DnDCalendar
+                localizer={localizer}
+                events={filteredEvents}
+                style={{ height: "100%" }}
+                date={date}
+                view={view}
+                onNavigate={(newDate: Date) => setDate(newDate)}
+                onView={(newView) => setView(newView as CalendarView)}
+                min={minTime}
+                max={maxTime}
+                selectable
+                resizable
+                onSelectSlot={handleSlotSelect}
+                onSelectEvent={handleEventClick}
+                onEventDrop={handleEventDropOrResize}
+                onEventResize={handleEventDropOrResize}
+                eventPropGetter={eventPropGetter}
+                messages={{
+                  today: "I dag",
+                  previous: "Forrige",
+                  next: "Neste",
+                  month: "Måned",
+                  week: "Uke",
+                  day: "Dag",
+                  agenda: "Agenda",
+                  date: "Dato",
+                  time: "Tid",
+                  event: "Hendelse",
+                  allDay: "Hele dagen",
+                  noEventsInRange: "Ingen hendelser i denne perioden.",
+                  showMore: (total) => `+${total} flere`
+                }}
+              />
+            </div>
           )}
         </div>
       </div>
 
-      {/* New Event Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent>
+        <DialogContent className="rounded-none sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Nytt event</DialogTitle>
+            <DialogTitle>Ny hendelse</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="title">Tittel</Label>
-              <Input 
-                id="title" 
-                placeholder="F.eks. Møte med kunde" 
+              <Input
+                id="title"
+                placeholder="F.eks. Møte med kunde"
                 value={eventTitle}
                 onChange={e => setEventTitle(e.target.value)}
                 autoFocus
+                className="rounded-none"
               />
               <Textarea
                 id="description"
                 placeholder="Beskrivelse (valgfritt)"
                 value={eventDescription}
                 onChange={e => setEventDescription(e.target.value)}
+                className="rounded-none"
               />
             </div>
-            
-            <div className="space-y-2 text-sm text-muted-foreground p-3 bg-muted rounded-lg border">
-              <p>📍 <strong>Starter:</strong> {eventStart?.toLocaleString("no-NB")}</p>
-              <p>📌 <strong>Slutter:</strong> {eventEnd?.toLocaleString("no-NB")}</p>
+
+            <div className="space-y-2 border border-border p-3 text-sm text-muted-foreground">
+              <p><strong>Starter:</strong> {eventStart?.toLocaleString("no-NB")}</p>
+              <p><strong>Slutter:</strong> {eventEnd?.toLocaleString("no-NB")}</p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>Avbryt</Button>
-            <Button onClick={handleCreateEvent} disabled={!eventTitle.trim() || isSubmitting}>
+            <Button variant="outline" className="rounded-none" onClick={() => setIsCreateDialogOpen(false)}>Avbryt</Button>
+            <Button className="rounded-none" onClick={handleCreateEvent} disabled={!eventTitle.trim() || isSubmitting}>
               {isSubmitting ? "Lagrer..." : "Lagre avtale"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Se/Endre Møte Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
+        <DialogContent className="rounded-none sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Møtedetaljer</DialogTitle>
+            <DialogTitle>Hendelsesdetaljer</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="edit-title">Tittel</Label>
-              <Input 
-                id="edit-title" 
-                placeholder="Tittel" 
+              <Input
+                id="edit-title"
+                placeholder="Tittel"
                 value={eventTitle}
                 onChange={e => setEventTitle(e.target.value)}
                 autoFocus
+                className="rounded-none"
               />
             </div>
 
@@ -493,24 +544,25 @@ export default function Page() {
                 placeholder="Beskrivelse"
                 value={eventDescription}
                 onChange={e => setEventDescription(e.target.value)}
+                className="rounded-none"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Starttidspunkt</Label>
-                <Input type="datetime-local" value={eventStart ? new Date(eventStart.getTime() - eventStart.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEventStart(new Date(e.target.value))} />
+                <Input type="datetime-local" className="rounded-none" value={eventStart ? new Date(eventStart.getTime() - eventStart.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEventStart(new Date(e.target.value))} />
               </div>
               <div className="space-y-2">
                 <Label>Sluttidspunkt</Label>
-                <Input type="datetime-local" value={eventEnd ? new Date(eventEnd.getTime() - eventEnd.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEventEnd(new Date(e.target.value))} />
+                <Input type="datetime-local" className="rounded-none" value={eventEnd ? new Date(eventEnd.getTime() - eventEnd.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEventEnd(new Date(e.target.value))} />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label>Koble til prosjekt</Label>
               <Select value={linkedProject} onValueChange={setLinkedProject}>
-                <SelectTrigger>
+                <SelectTrigger className="rounded-none">
                   <SelectValue placeholder="Velg et prosjekt (valgfritt)" />
                 </SelectTrigger>
                 <SelectContent>
@@ -529,7 +581,7 @@ export default function Page() {
                     key={color}
                     onClick={() => setEventColor(color)}
                     style={{ backgroundColor: color }}
-                    className={`w-8 h-8 rounded-full border-2 ${eventColor === color ? 'border-foreground' : 'border-transparent'}`}
+                    className={`size-8 border-2 ${eventColor === color ? 'border-foreground' : 'border-transparent'}`}
                     aria-label={`Velg farge ${color}`}
                   />
                 ))}
@@ -540,13 +592,13 @@ export default function Page() {
               Vises på: {activeEventProvider === 'google' ? 'Google Calendar' : activeEventProvider === 'microsoft' ? 'Outlook Calendar' : 'Ukjent kalender'}
             </div>
           </div>
-          <DialogFooter className="flex justify-between sm:justify-between items-center w-full">
-            <Button variant="destructive" onClick={handleDeleteEvent} disabled={isDeleting || isSubmitting}>
-              {isDeleting ? "Sletter..." : "Slett møte"}
+          <DialogFooter className="flex w-full items-center justify-between sm:justify-between">
+            <Button variant="destructive" className="rounded-none" onClick={handleDeleteEvent} disabled={isDeleting || isSubmitting}>
+              {isDeleting ? "Sletter..." : "Slett hendelse"}
             </Button>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isDeleting || isSubmitting}>Avbryt</Button>
-              <Button onClick={handleUpdateEventDetails} disabled={!eventTitle.trim() || isSubmitting || isDeleting}>
+              <Button variant="outline" className="rounded-none" onClick={() => setIsEditDialogOpen(false)} disabled={isDeleting || isSubmitting}>Avbryt</Button>
+              <Button className="rounded-none" onClick={handleUpdateEventDetails} disabled={!eventTitle.trim() || isSubmitting || isDeleting}>
                 {isSubmitting ? "Lagrer..." : "Lagre endringer"}
               </Button>
             </div>

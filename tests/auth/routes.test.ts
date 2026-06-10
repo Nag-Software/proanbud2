@@ -2,27 +2,33 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
-const googleStart = readFileSync(resolve(__dirname, '../../app/api/auth/google/start/route.ts'), 'utf-8')
-const googleCallback = readFileSync(resolve(__dirname, '../../app/api/auth/google/callback/route.ts'), 'utf-8')
-const microsoftStart = readFileSync(resolve(__dirname, '../../app/api/auth/microsoft/start/route.ts'), 'utf-8')
-const microsoftCallback = readFileSync(resolve(__dirname, '../../app/api/auth/microsoft/callback/route.ts'), 'utf-8')
+const googleCalendarStart = readFileSync(resolve(__dirname, '../../app/api/auth/google/calendar/start/route.ts'), 'utf-8')
+const googleCalendarCallback = readFileSync(resolve(__dirname, '../../app/api/auth/google/calendar/callback/route.ts'), 'utf-8')
+const microsoftCalendarStart = readFileSync(resolve(__dirname, '../../app/api/auth/microsoft/calendar/start/route.ts'), 'utf-8')
+const microsoftCalendarCallback = readFileSync(resolve(__dirname, '../../app/api/auth/microsoft/calendar/callback/route.ts'), 'utf-8')
 
-describe('auth routes', () => {
-  it('google start uses signInWithOAuth', () => {
-    expect(googleStart).toContain('signInWithOAuth')
+describe('calendar auth routes', () => {
+  it('google calendar start requires login and uses direct oauth', () => {
+    expect(googleCalendarStart).toContain('getUser')
+    expect(googleCalendarStart).toContain('beginCalendarOAuth')
+    expect(googleCalendarStart).toContain('buildGoogleCalendarAuthUrl')
   })
 
-  it('google callback exchanges code for session and upserts profile', () => {
-    expect(googleCallback).toContain('exchangeCodeForSession')
-    expect(googleCallback).toContain('user_profiles')
+  it('google calendar callback verifies state and stores calendar tokens', () => {
+    expect(googleCalendarCallback).toContain('verifyCalendarOAuthState')
+    expect(googleCalendarCallback).toContain('exchangeGoogleCalendarCode')
+    expect(googleCalendarCallback).toContain('upsertCalendarIntegration')
   })
 
-  it('microsoft start uses signInWithOAuth', () => {
-    expect(microsoftStart).toContain('signInWithOAuth')
+  it('microsoft calendar start requires login and uses direct oauth', () => {
+    expect(microsoftCalendarStart).toContain('getUser')
+    expect(microsoftCalendarStart).toContain('beginCalendarOAuth')
+    expect(microsoftCalendarStart).toContain('buildMicrosoftCalendarAuthUrl')
   })
 
-  it('microsoft callback exchanges code for session and upserts profile', () => {
-    expect(microsoftCallback).toContain('exchangeCodeForSession')
-    expect(microsoftCallback).toContain('user_profiles')
+  it('microsoft calendar callback verifies state and stores calendar tokens', () => {
+    expect(microsoftCalendarCallback).toContain('verifyCalendarOAuthState')
+    expect(microsoftCalendarCallback).toContain('exchangeMicrosoftCalendarCode')
+    expect(microsoftCalendarCallback).toContain('upsertCalendarIntegration')
   })
 })

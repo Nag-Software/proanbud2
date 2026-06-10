@@ -5,7 +5,7 @@ import InboxClient from "./inbox-client";
 import { AppPageShell } from "@/components/app-page-shell";
 
 export const metadata = {
-  title: "Innboks - Proanbud",
+  title: "Meldinger - Proanbud",
 };
 
 export default async function Page() {
@@ -31,7 +31,7 @@ export default async function Page() {
 
   return (
 
-    <AppPageShell segments={["Meldinger"]}>
+    <AppPageShell segments={["Meldinger"]} noPadding>
       <InboxClient companyId={userData.company_id} currentUserId={user.id} />
     </AppPageShell>
   );

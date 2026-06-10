@@ -81,22 +81,74 @@ type PriceRow = {
 // ─── Known suppliers ────────────────────────────────────────────────────────
 
 const SUPPLIERS = [
-  { id: "byggmakker",  name: "Byggmakker",    logo: "byggmakker.svg" },
-  { id: "maxbo",       name: "Maxbo",          logo: "maxbo.svg" },
-  { id: "optimera",   name: "Optimera",       logo: "optimera.svg" },
-  { id: "byggtorget", name: "Byggtorget",     logo: "byggtorget.svg" },
-  { id: "xl-bygg",    name: "XL-Bygg",        logo: "xl-bygg.svg" },
+  { id: "byggmakker", name: "Byggmakker", logo: "byggmakker.svg" },
+  { id: "maxbo", name: "Maxbo", logo: "maxbo.svg" },
+  { id: "optimera", name: "Optimera", logo: "optimera.svg" },
+  { id: "byggtorget", name: "Byggtorget", logo: "byggtorget.svg" },
+  { id: "xl-bygg", name: "XL-Bygg", logo: "xl-bygg.svg" },
   { id: "brodrenedahl", name: "Brødrene Dahl", logo: "brodrenedahl.svg" },
-  { id: "ahlsell",    name: "Ahlsell",        logo: "ahlsell.svg" },
-  { id: "onninen",    name: "Onninen",        logo: "onninen.svg" },
+  { id: "onninen", name: "Onninen", logo: "onninen.svg" },
 ] as const
 
+type Supplier = (typeof SUPPLIERS)[number]
+
+function normalizeSupplierKey(value: string) {
+  return value.toLowerCase().replace(/[^a-zæøå0-9]/g, "")
+}
+
+function findSupplier(value: string): Supplier | null {
+  const key = normalizeSupplierKey(value)
+  if (!key) return null
+  return (
+    SUPPLIERS.find((s) => {
+      const idKey = normalizeSupplierKey(s.id)
+      const nameKey = normalizeSupplierKey(s.name)
+      return key === idKey || key === nameKey || key.includes(idKey) || idKey.includes(key)
+    }) ?? null
+  )
+}
+
 function matchKnownSupplier(filename: string): string | null {
-  const n = filename.toLowerCase().replace(/[^a-zæøå0-9]/g, "")
-  for (const s of SUPPLIERS) {
-    if (n.includes(s.id.replace(/[^a-zæøå0-9]/g, ""))) return s.name
+  return findSupplier(filename)?.name ?? null
+}
+
+function SupplierLogo({
+  supplier,
+  className,
+  imgClassName,
+}: {
+  supplier: Supplier | null
+  className?: string
+  imgClassName?: string
+}) {
+  if (!supplier) {
+    return (
+      <div
+        className={cn(
+          "flex items-center justify-center rounded-md border border-border/60 bg-muted/40",
+          className
+        )}
+      >
+        <FileText className="h-4 w-4 text-muted-foreground" />
+      </div>
+    )
   }
-  return null
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-center overflow-hidden rounded-md border border-border/60 bg-white",
+        className
+      )}
+    >
+      <img
+        src={`/prisfil-logo/${supplier.logo}`}
+        alt={supplier.name}
+        className={cn("h-full w-full object-contain object-center p-1.5", imgClassName)}
+        draggable={false}
+      />
+    </div>
+  )
 }
 // ─── Column field definitions ────────────────────────────────────────────────
 
@@ -234,47 +286,49 @@ const STEPS = ["Last opp", "Kolonner", "Bekreft"] as const
 
 function WizardStepper({ step }: { step: number }) {
   return (
-    <div className="flex items-center justify-between">
-      {STEPS.map((label, i) => {
-        const s = i + 1
-        const done = step > s
-        const active = step === s
-        return (
-          <div key={s} className="flex flex-1 items-center">
-            <div className="flex flex-col items-center gap-1.5">
-              <div
-                className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold transition-all ring-offset-background",
-                  done
-                    ? "bg-primary text-primary-foreground"
-                    : active
-                    ? "ring-2 ring-primary ring-offset-2 bg-primary text-primary-foreground"
-                    : "border border-border bg-background text-muted-foreground"
-                )}
-              >
-                {done ? <Check className="h-3 w-3" strokeWidth={2.5} /> : s}
-              </div>
-              <span
-                className={cn(
-                  "text-[10px] font-medium whitespace-nowrap",
-                  active ? "text-primary" : done ? "text-muted-foreground" : "text-muted-foreground/40"
-                )}
-              >
-                {label}
-              </span>
-            </div>
-            {i < STEPS.length - 1 && (
-              <div className="relative mx-2 mb-4 h-px flex-1">
-                <div className="absolute inset-0 bg-border" />
+    <div className="flex justify-center">
+      <div className="flex items-start">
+        {STEPS.map((label, i) => {
+          const s = i + 1
+          const done = step > s
+          const active = step === s
+          return (
+            <div key={s} className="flex items-center">
+              <div className="flex w-[4.5rem] flex-col items-center gap-1.5 sm:w-[5.5rem]">
                 <div
-                  className="absolute inset-y-0 left-0 bg-primary transition-all duration-300"
-                  style={{ width: done ? "100%" : "0%" }}
-                />
+                  className={cn(
+                    "flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold transition-all ring-offset-background",
+                    done
+                      ? "bg-primary text-primary-foreground"
+                      : active
+                        ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2"
+                        : "border border-border bg-background text-muted-foreground"
+                  )}
+                >
+                  {done ? <Check className="h-3 w-3" strokeWidth={2.5} /> : s}
+                </div>
+                <span
+                  className={cn(
+                    "text-center text-[10px] font-medium whitespace-nowrap",
+                    active ? "text-primary" : done ? "text-muted-foreground" : "text-muted-foreground/40"
+                  )}
+                >
+                  {label}
+                </span>
               </div>
-            )}
-          </div>
-        )
-      })}
+              {i < STEPS.length - 1 && (
+                <div className="relative mx-2 mb-4 h-px w-10 sm:w-14">
+                  <div className="absolute inset-0 bg-border" />
+                  <div
+                    className="absolute inset-y-0 left-0 bg-primary transition-all duration-300"
+                    style={{ width: done ? "100%" : "0%" }}
+                  />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -513,32 +567,22 @@ export function PrisfilerPage() {
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {files.map((file) => (
-            <div
-              key={file.id}
-              className="group relative rounded-xl border bg-card p-4 transition-shadow hover:shadow-sm cursor-pointer"
-              onClick={() => openViewer(file)}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg overflow-hidden border bg-white">
-                    {(() => {
-                      const s = SUPPLIERS.find((s) => s.name === file.supplier_name)
-                      return s
-                        ? <img src={`/prisfil-logo/${s.logo}`} alt={s.name} className="h-full w-full object-cover" draggable={false} />
-                        : <FileText className="h-4 w-4 text-muted-foreground" />
-                    })()}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{file.supplier_name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{file.original_filename}</p>
-                  </div>
-                </div>
+          {files.map((file) => {
+            const supplier = findSupplier(file.supplier_name)
+            return (
+              <div
+                key={file.id}
+                className="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border border-border/60 bg-card transition-colors hover:border-primary/25 hover:bg-card/95"
+                onClick={() => openViewer(file)}
+              >
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); handleDelete(file.id) }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDelete(file.id)
+                  }}
                   disabled={deletingId === file.id}
-                  className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 disabled:opacity-40"
+                  className="absolute right-2 top-2 z-10 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted/80 hover:text-destructive group-hover:opacity-100 disabled:opacity-40"
                 >
                   {deletingId === file.id ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -546,18 +590,36 @@ export function PrisfilerPage() {
                     <Trash2 className="h-4 w-4" />
                   )}
                 </button>
-              </div>
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="text-xs">
-                    {file.row_count.toLocaleString("no-NO")} produkter
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">{fmtDate(file.created_at)}</span>
+
+                <SupplierLogo
+                  supplier={supplier}
+                  className="h-14 w-full rounded-none border-0 border-b border-border/50"
+                  imgClassName="p-2.5"
+                />
+
+                <div className="flex flex-1 flex-col p-3.5 pr-10">
+                  <p className="truncate text-sm font-semibold leading-snug text-foreground group-hover:text-primary">
+                    {file.supplier_name}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{file.original_filename}</p>
+
+                  <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span className="tabular-nums">
+                      {file.row_count.toLocaleString("no-NO")} produkter
+                    </span>
+                    <span className="tabular-nums">{fmtDate(file.created_at)}</span>
+                  </div>
                 </div>
-                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50 transition-opacity opacity-0 group-hover:opacity-100" />
+
+                <div className="flex items-center justify-between border-t border-border/50 bg-muted/25 px-3.5 py-2">
+                  <Badge variant="secondary" className="text-[10px] font-medium uppercase tracking-[0.12em]">
+                    Klar
+                  </Badge>
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -566,9 +628,10 @@ export function PrisfilerPage() {
         <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-3xl" side="right">
           <SheetHeader className="border-b px-6 py-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <FileText className="h-4 w-4" />
-              </div>
+              <SupplierLogo
+                supplier={viewerFile ? findSupplier(viewerFile.supplier_name) : null}
+                className="h-10 w-[5.5rem] shrink-0"
+              />
               <div className="min-w-0">
                 <SheetTitle className="truncate text-sm font-semibold leading-tight">
                   {viewerFile?.supplier_name}
@@ -673,7 +736,7 @@ export function PrisfilerPage() {
       >
         <DialogContent className="flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-2xl">
           {/* Header + stepper */}
-          <div className="border-b px-6 pb-4 pt-6">
+          <div className="border-b px-6 pb-4 pt-6 text-center">
             <DialogTitle className="mb-4 text-base font-semibold">Last opp prisfil</DialogTitle>
             <WizardStepper step={step} />
           </div>
@@ -790,7 +853,7 @@ export function PrisfilerPage() {
                           type="button"
                           onClick={() => { setSupplierName(s.name); setCustomSupplierMode(false) }}
                           className={cn(
-                            "relative overflow-hidden rounded-lg border-2 transition-all",
+                            "relative overflow-hidden rounded-lg border-2 bg-white transition-all",
                             selected
                               ? "border-primary ring-2 ring-primary/20"
                               : "border-border hover:border-primary/40"
@@ -799,7 +862,7 @@ export function PrisfilerPage() {
                           <img
                             src={`/prisfil-logo/${s.logo}`}
                             alt={s.name}
-                            className="h-12 w-full object-cover"
+                            className="h-12 w-full object-contain object-center p-2"
                             draggable={false}
                           />
                           {selected && (

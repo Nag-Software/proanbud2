@@ -1,0 +1,28 @@
+import { NextResponse } from "next/server"
+import { createClient as createServerSupabase } from "@/lib/supabase/server"
+import { LOGIN_PATH } from "@/lib/constants"
+import {
+  beginCalendarOAuth,
+  buildGoogleCalendarAuthUrl,
+} from "@/lib/calendar/oauth-flow"
+
+export async function GET(request: Request) {
+  try {
+    const supabase = await createServerSupabase()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.redirect(new URL(LOGIN_PATH, request.url))
+    }
+
+    const state = await beginCalendarOAuth(user.id, "google")
+    const authUrl = buildGoogleCalendarAuthUrl(request, state)
+    return NextResponse.redirect(authUrl)
+  } catch (e) {
+    console.error("OAuth start (google calendar) error:", e)
+    const message = e instanceof Error ? e.message : "internal error"
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}

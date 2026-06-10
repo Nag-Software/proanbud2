@@ -22,6 +22,7 @@ import { useUserRole } from "@/hooks/use-user-role"
 import { useAuth } from "@/components/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { CreateProjectDrawer } from "@/app/prosjekter/create-project-dialog"
+import { useUnreadMessages } from "@/hooks/use-unread-messages"
 
 type SidebarProject = {
   name: string
@@ -35,6 +36,7 @@ type NavMainItem = {
   icon: React.ReactNode
   isActive?: boolean
   hidden?: boolean
+  badge?: number
   items?: Array<{
     title: string
     url: string
@@ -179,7 +181,7 @@ const data: {
 }
 
 
-function AppSidebarHeader() {
+function AppSidebarHeader({ unreadCount }: { unreadCount: number }) {
   const { state } = useSidebar()
   const router = useRouter();
   const isCollapsed = state === "collapsed"
@@ -196,9 +198,19 @@ function AppSidebarHeader() {
           onClick={() => router.push("/")}
         />
         {!isCollapsed && (
-          <Button variant="ghost" size="icon">
-            <Bell className="h-4 w-4" />
-          </Button>
+          <div className="relative shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.push("/meldinger")}
+              aria-label={unreadCount > 0 ? `${unreadCount} uleste meldinger` : "Meldinger"}
+            >
+              <Bell className="h-4 w-4" />
+            </Button>
+            {unreadCount > 0 && (
+              <span className="pointer-events-none absolute right-1.5 top-1.5 size-2 rounded-full bg-primary ring-2 ring-sidebar" />
+            )}
+          </div>
         )}
       </div>
       <CreateProjectDrawer
@@ -225,6 +237,7 @@ function AppSidebarHeader() {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { role } = useUserRole();
   const { user } = useAuth();
+  const unreadCount = useUnreadMessages();
   const [activeProjects, setActiveProjects] = React.useState<SidebarProject[]>([]);
 
   React.useEffect(() => {
@@ -259,6 +272,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const filteredNavMain = data.navMain
     .map((item) => {
+      if (item.title === "Meldinger" && unreadCount > 0) {
+        return { ...item, badge: unreadCount };
+      }
       if (item.title === "Min bedrift" && isWorker && item.items) {
         return {
           ...item,
@@ -282,7 +298,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <AppSidebarHeader />
+      <AppSidebarHeader unreadCount={unreadCount} />
       <SidebarContent>
         <NavMain items={filteredNavMain} />
         <NavProjects projects={activeProjects} />

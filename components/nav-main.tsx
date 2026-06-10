@@ -8,6 +8,7 @@ import {
 import {
   SidebarGroup,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -26,6 +27,7 @@ export function NavMain({
     isActive?: boolean
     collapsible?: boolean
     hidden?: boolean
+    badge?: number
     items?: {
       title: string
       url: string
@@ -50,6 +52,11 @@ export function NavMain({
                     <span>{item.title}</span>
                   </a>
                 </SidebarMenuButton>
+                {item.badge != null && item.badge > 0 && (
+                  <SidebarMenuBadge className="rounded-full bg-primary text-[10px] text-primary-foreground">
+                    {item.badge > 99 ? "99+" : item.badge}
+                  </SidebarMenuBadge>
+                )}
               </SidebarMenuItem>
             )
           }

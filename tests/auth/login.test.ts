@@ -46,27 +46,15 @@ describe('auth UI', () => {
 describe('auth OAuth routes', () => {
   const googleStart = readFileSync(resolve(__dirname, '../../app/api/auth/google/start/route.ts'), 'utf-8')
   const googleCallback = readFileSync(resolve(__dirname, '../../app/api/auth/google/callback/route.ts'), 'utf-8')
-  const microsoftStart = readFileSync(resolve(__dirname, '../../app/api/auth/microsoft/start/route.ts'), 'utf-8')
-  const microsoftCallback = readFileSync(resolve(__dirname, '../../app/api/auth/microsoft/callback/route.ts'), 'utf-8')
 
-  it('google start uses signInWithOAuth', () => {
+  it('google login start uses signInWithOAuth', () => {
     expect(googleStart).toContain('signInWithOAuth')
     expect(googleStart).toContain('provider: "google"')
   })
 
-  it('google callback exchanges code for session and attaches cookies', () => {
+  it('google login callback exchanges code for session and attaches cookies', () => {
     expect(googleCallback).toContain('exchangeCodeForSession')
     expect(googleCallback).toContain('pendingCookies')
     expect(googleCallback).toContain('user_profiles')
-  })
-
-  it('microsoft start uses signInWithOAuth', () => {
-    expect(microsoftStart).toContain('signInWithOAuth')
-  })
-
-  it('microsoft callback exchanges code for session and attaches cookies', () => {
-    expect(microsoftCallback).toContain('exchangeCodeForSession')
-    expect(microsoftCallback).toContain('pendingCookies')
-    expect(microsoftCallback).toContain('user_profiles')
   })
 })

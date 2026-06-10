@@ -38,7 +38,7 @@ export function AppPageShell({ segments, children, noPadding }: AppPageShellProp
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="h-svh min-h-0 overflow-hidden">
         <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
           <div className="flex items-center gap-2 px-4">
             <SidebarTrigger className="-ml-1" />
@@ -66,7 +66,7 @@ export function AppPageShell({ segments, children, noPadding }: AppPageShellProp
         </header>
         <div
           className={cn(
-            "flex flex-1 min-h-0 flex-col w-full min-w-0 max-w-full mx-auto",
+            "flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col",
             noPadding ? "overflow-hidden" : "gap-4 p-4 pt-0"
           )}
         >

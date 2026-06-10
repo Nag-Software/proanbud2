@@ -35,6 +35,57 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
+## Kalender (Google + Outlook)
+
+Kalenderen bruker direkte OAuth mot Google Calendar og Microsoft Graph (Outlook). Du trenger **ikke** å konfigurere Google/Azure som Supabase Auth-providers for kalenderkobling.
+
+### 1. Database
+
+`calendar_integrations`-tabellen finnes i `db/00_proanbud_supabase_v2.sql`. Kjør denne i Supabase hvis den ikke allerede er på plass.
+
+### 2. Environment variables
+
+Kopier `.env.example` til `.env.local` og fyll inn:
+
+```bash
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_CALENDAR_REDIRECT_URI=http://localhost:3000/api/auth/google/calendar/callback
+
+MICROSOFT_CLIENT_ID=
+MICROSOFT_CLIENT_SECRET=
+MICROSOFT_CALENDAR_REDIRECT_URI=http://localhost:3000/api/auth/microsoft/calendar/callback
+```
+
+### 3. Google Cloud Console
+
+1. Opprett et OAuth 2.0 Client ID (Web application).
+2. Legg til redirect URI: `http://localhost:3000/api/auth/google/calendar/callback` (og produksjons-URL).
+3. Aktiver **Google Calendar API**.
+4. OAuth consent screen: scopes `calendar` og `calendar.events`.
+
+### 4. Microsoft Entra (Azure AD)
+
+1. Registrer en app under **App registrations**.
+2. Legg til redirect URI: `http://localhost:3000/api/auth/microsoft/calendar/callback`.
+3. Opprett en **Client secret**.
+4. API permissions (delegated):
+   - `Calendars.ReadWrite`
+   - `User.Read`
+   - `offline_access`, `openid`, `profile`, `email`
+5. Grant admin consent hvis organisasjonen krever det.
+
+### 5. Bruk i appen
+
+1. Logg inn i Proanbud.
+2. Gå til `/kalender`.
+3. Klikk tannhjul → **Koble til Google** / **Koble til Outlook**.
+4. Godkjenn tilgang. Hendelser synkroniseres via `/api/calendar/events`.
+
+Tokens lagres i `calendar_integrations` og fornyes automatisk med refresh token.
+
 ## Dokumenter Module Setup
 
 The Dokumenter page now includes a full file manager with:

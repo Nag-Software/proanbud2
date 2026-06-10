@@ -324,12 +324,16 @@ export default function DashboardPage() {
       ? Math.min(100, Math.round((data.omsetning / data.omsetningPrev) * 100))
       : data.omsetning > 0 ? 75 : 10
 
+  const formatter = new Intl.NumberFormat('default', {
+        style: 'currency',
+        currency: 'NOK',
+        maximumFractionDigits: 0,
+      });
+
   const kpiCards = data ? [
     {
       label: "Total Omsetning",
-      value: data.omsetning >= 1_000_000
-        ? `${(data.omsetning / 1_000_000).toFixed(2).replace(".", ",")} mill`
-        : data.omsetning >= 1_000 ? `${Math.round(data.omsetning / 1_000)}k` : `${data.omsetning}`,
+      value: `${formatter.format(data.omsetning)}`,
       icon: TrendingUp,
       change: pctChange(data.omsetning, data.omsetningPrev),
       up: isUp(data.omsetning, data.omsetningPrev),
@@ -419,15 +423,20 @@ export default function DashboardPage() {
                         <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">{k.label}</p>
                       </div>
                       <p className="text-2xl font-medium leading-none text-foreground tracking-tight">{k.value}</p>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className={cn(
-                          "border px-1.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em]",
+                      <div className="flex flex-row items-center gap-1.5 mt-1">
+                        <div className={cn(
+                          "border px-1.5 py-1 w-fit! grid grid-cols-2 gap-3 items-center text-[10px] font-medium uppercase tracking-[0.16em]",
                           k.up
                             ? "theme-trend-positive"
                             : "theme-trend-negative"
                         )}>
-                          {k.up ? "↑" : "↓"} {k.change}
-                        </span>
+                          <div className="flex items-center justify-start">
+                            {k.up ? "↑" : "↓"}
+                          </div>
+                          <div className="flex items-center justify-end">
+                            {k.change}
+                          </div>
+                        </div>
                         <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Denne måneden</span>
                       </div>
                     </CardContent>

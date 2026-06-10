@@ -21,11 +21,13 @@ const statusFilters = [
   { value: "planning", label: "Planlegges" },
   { value: "active", label: "Aktiv" },
   { value: "on_hold", label: "Avventer" },
-  { value: "completed", label: "Fullfort" },
+  { value: "completed", label: "Fullført" },
+  { value: "rejected", label: "Avvist" },
+  { value: "archived", label: "Arkivert" },
 ] as const
+
 const sortOptions = [
   { key: "name", label: "Navn" },
-  { key: "budget_nok", label: "Totalramme" },
   { key: "updated_at", label: "Sist oppdatert" },
 ] as const
 
@@ -85,14 +87,14 @@ export function ProsjekterFilters() {
     currentStatus !== "all" || currentSort !== "name" || currentQuery.trim().length > 0
 
   return (
-    <div className="rounded-xl max-w-4xl bg-card/60">
-      <div className="grid gap-3 max-w-2xl md:grid-cols-[3fr_1fr] md:items-center">
+    <div className="rounded-xl border border-border/60 bg-card/60 p-4">
+      <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
         <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Søk</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Søk</p>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="h-9 pl-9 w-full"
+              className="h-9 pl-9"
               placeholder="Søk prosjekt, kunde eller ID"
               defaultValue={currentQuery}
               onChange={(event) => handleSearchChange(event.target.value)}
@@ -101,26 +103,26 @@ export function ProsjekterFilters() {
         </div>
 
         <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Sorter</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Sorter</p>
           <Select value={currentSort} onValueChange={handleSortChange} disabled={isPending}>
-            <SelectTrigger className="h-9 w-full">
+            <SelectTrigger className="h-9 w-full md:w-[180px]">
               <SelectValue placeholder="Sorter etter" />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
                 <SelectLabel>Sorter etter</SelectLabel>
-              {sortOptions.map((option) => (
-                <SelectItem key={option.key} value={option.key}>
-                  {option.label}
-                </SelectItem>
-              ))}
+                {sortOptions.map((option) => (
+                  <SelectItem key={option.key} value={option.key}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectGroup>
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         {statusFilters.map((status) => {
           const isActive = currentStatus === status.value
 
@@ -136,19 +138,17 @@ export function ProsjekterFilters() {
             </Button>
           )
         })}
-        <div className="flex items-center justify-end">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-auto cursor-pointer"
-            onClick={resetFilters}
-            disabled={!hasActiveFilters || isPending}
-          >
-            <X className="mr-2 size-4" />
-            Nullstill
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-auto cursor-pointer"
+          onClick={resetFilters}
+          disabled={!hasActiveFilters || isPending}
+        >
+          <X className="mr-2 size-4" />
+          Nullstill
+        </Button>
       </div>
     </div>
   )
