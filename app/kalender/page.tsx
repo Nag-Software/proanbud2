@@ -2,7 +2,7 @@
 
 import { AppPageShell } from "@/components/app-page-shell"
 import { Button } from "@/components/ui/button"
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { Suspense, useState, useEffect, useCallback, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { LOGIN_PATH } from '@/lib/constants'
@@ -45,7 +45,7 @@ function defaultSlotTimes(day: Date) {
   return { start, end }
 }
 
-export default function Page() {
+function KalenderPage() {
   const [integrations, setIntegrations] = useState<{ provider: string }[]>([])
   const [loggedIn, setLoggedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -606,5 +606,23 @@ export default function Page() {
         </DialogContent>
       </Dialog>
     </AppPageShell>
+  )
+}
+
+function KalenderFallback() {
+  return (
+    <AppPageShell segments={["Kalender"]} noPadding>
+      <div className="flex h-full min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
+        Laster kalender…
+      </div>
+    </AppPageShell>
+  )
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<KalenderFallback />}>
+      <KalenderPage />
+    </Suspense>
   )
 }
