@@ -1,10 +1,33 @@
 import { AppPageShell } from "@/components/app-page-shell"
-import { checkRoleAccess } from "@/lib/auth-utils"
+import { ModuleGate } from "@/components/billing/module-gate"
 import { getCompanyTimeOverviewAction } from "@/app/timeforing/actions"
+import { checkRoleAccess } from "@/lib/auth-utils"
+import { companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
+import { MODULE_PRICING } from "@/lib/billing/plans"
+import { createClient } from "@/lib/supabase/server"
 import { TimeforingClient } from "./timeforing-client"
 
 export default async function Page() {
   await checkRoleAccess(["admin", "manager", "worker"])
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  const companyId = user ? await getCurrentCompanyIdForUser(user.id) : null
+  const hasTimeforing = companyId ? await companyHasModule(companyId, "timeforing") : false
+
+  if (!hasTimeforing) {
+    return (
+      <AppPageShell segments={["Min bedrift", "Timeføring"]}>
+        <ModuleGate
+          moduleName="Timeføring"
+          monthlyPriceNok={MODULE_PRICING.timeforing}
+          description="Registrer og følg arbeidstimer for ansatte og prosjekter."
+        />
+      </AppPageShell>
+    )
+  }
 
   const overview = await getCompanyTimeOverviewAction()
 

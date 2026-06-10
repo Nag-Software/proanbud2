@@ -85,6 +85,13 @@ export async function POST(request: Request) {
       .update({ status: 'accepted' })
       .eq('id', invite.id);
 
+    try {
+      const { syncSeatQuantity } = await import('@/lib/billing/sync');
+      await syncSeatQuantity(invite.company_id);
+    } catch (seatSyncError) {
+      console.error('Seat sync error after invite:', seatSyncError);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Bruker registrert og tilgang tildelt',

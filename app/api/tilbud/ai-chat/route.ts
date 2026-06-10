@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { recordUsageEvent, requireActiveSubscription } from "@/lib/billing/guards"
 import { createClient } from "@/lib/supabase/server"
 import type { CompanyPriceLevel } from "@/lib/tilbud/company-profile"
 import {
@@ -24,6 +25,11 @@ import {
   pickRelevantSavedJobs,
   type SavedJobRow,
 } from "@/lib/tilbud/saved-jobs"
+import { ANALYSIS_SYSTEM_PROMPT, buildAnalysisUserPromptSections } from "@/lib/tilbud/analysis-system-prompt"
+import {
+  formatMaterialSearchHitsForPrompt,
+  searchMaterialPricesForOffer,
+} from "@/lib/tilbud/material-web-search"
 import { type OfferAnalysisResult, type OfferLineItem } from "@/lib/tilbud/types"
 
 const sourceDocumentSchema = z.object({
@@ -86,6 +92,7 @@ const clarificationSchema = z.object({
 const baseRequestSchema = z.object({
   title: z.string().trim().min(2),
   description: z.string().trim().min(20),
+  generationId: z.string().uuid(),
   company: companySchema,
   project: projectSchema,
   customer: customerSchema,
@@ -107,6 +114,7 @@ const lineItemSchema = z.object({
   subproject: z.string().default("Generelt"),
   title: z.string().min(1),
   description: z.string().default(""),
+  reasoning: z.string().default(""),
   quantity: z.number().min(0),
   unit: z.string().default("stk"),
   supplier: z.string().default(""),
@@ -196,33 +204,7 @@ const QUESTION_SYSTEM_INSTRUCTION = [
   "Svar alltid med gyldig JSON og ingenting utenfor JSON-objektet.",
 ].join(" ")
 
-const ANALYSIS_SYSTEM_INSTRUCTION = [
-  "Du er Norges fremste senior kalkulatør og tilbudsgenerator for bygge- og håndverksbedrifter. Du kombinerer høy faglig ekspertise, nøyaktig mengdeberegning, realistisk tidsestimering og markedskorrekt prising.",
-  "Kjerneoppdrag: Lag profesjonelle, komplette og markedstilpassede kalkyler basert på oppdragsbeskrivelse, prisfiler og prosjektinformasjon.",
-  "STRATEGIER OG REGLER (høyeste prioritet):",
-  "1. Materialvalg - Vær ekstremt presis.",
-  "Når du lager kalkyle skal du prioritere bedriftens egne prisfiler før generiske fallback-priser.",
-  "Bruk kun produkter fra bedriftens prisfiler (relevantePrisrader) når de er relevante.",
-  "Inkluder nobb på produktlinjer når tilgjengelig i prisfil.",
-  "Velg alltid det mest korrekte produktet til jobben (tykkelse, type, kvalitet, bruksområde).",
-  "Ved etterisolering/isolasjon skal du ikke velge undertak/taktekking-produkter (f.eks. undertak, Tyvek, takpapp) med mindre oppdraget eksplisitt ber om det.",
-  "Kun bruk fallback-produkter hvis det absolutt ikke finnes noe relevant i prisfilen.",
-  "Ikke legg til festemidler, tape, fugemasse, lim, skruer, sparkel eller annet tilbehør med mindre det er eksplisitt nevnt i oppdraget.",
-  "2. Mengdeberegning: Beregn realistiske og litt romslige (men ikke overdrevne) mengder. Ta hensyn til svinn, kutt, og praktisk utførelse, særlig på loft, rehab og trange plasser.",
-  "Description skal tydelig forklare hva som er inkludert i mengden.",
-  "3. Arbeidstid og timeforbruk: Beregn realistisk timeforbruk basert på norsk håndverksstandard 2025/2026.",
-  "Ta hensyn til antall arbeidere, adkomst, tilgjengelighet, prosjektets kompleksitet, opprydding og bortkjøring.",
-  "Bruk unit: time på alle arbeidsposter og transport.",
-  "4. Økonomi og markup: Arbeid og transport skal alltid ha markupPercent: 0.",
-  "Produkter/materialer skal ha default markupPercent: 15, med mindre annet er eksplisitt begrunnet. Totaltilbudet skal være konkurransedyktig, men lønnsomt i det norske markedet.",
-  "5. Output-regler: Du svarer alltid kun med gyldig JSON. Ingen tekst utenfor JSON-objektet.",
-  "6. Kategorisering (subproject): Bruk kun brede bygningsdeler som kategori, f.eks. Tak, Yttervegger, Gulv, Bad, Rør, Elektro, Annet. ALDRI bruk underkategorier som 'Tak - undertak' eller 'Yttervegger - isolasjon'. Produktnavn og detaljer skal stå i title/description.",
-  "7. Enheter: unit må ALLTID matche enheten i bedriftens prisfil for valgt produkt (m2, stk, lm, pose, time, etc.). Ikke bruk m2 på produkter som prises per stk i prisfilen.",
-  "8. Prisrealisme: Når normalPrisIndikator finnes i oppdragsgrunnlaget, bruk normalPerEnhet som mål for total m²-pris og sørg for at kalkylen ikke blir for lav.",
-  "9. Lagrede jobber: Når lagredeJobber/relevanteLagredeJobber inneholder en jobb som matcher oppdraget, bruk fastprisNok som totalpris for den jobben.",
-  "Da skal du bruke quantity: 1, unit: fastpris, markupPercent: 0 og unitPriceNok lik fastprisNok. Ikke legg til separat arbeidstid når fastprisen dekker hele jobben.",
-  "Svar alltid med gyldig JSON og ingenting utenfor JSON-objektet.",
-].join(" ")
+const ANALYSIS_SYSTEM_INSTRUCTION = ANALYSIS_SYSTEM_PROMPT
 
 function extractTextFromOutput(output: ResponsesPayload["output"]): string {
   let lastText = ""
@@ -274,6 +256,7 @@ function toLineItems(items: z.infer<typeof lineItemSchema>[]): OfferLineItem[] {
     subproject: item.subproject,
     title: item.title,
     description: item.description,
+    reasoning: item.reasoning || undefined,
     quantity: item.quantity,
     unit: item.unit,
     supplier: item.supplier,
@@ -551,7 +534,8 @@ async function resolveAttachmentContext(
 function buildContextEnvelope(
   body: RequestPayload,
   priceContext: PriceContext,
-  attachments: AttachmentSummary[]
+  attachments: AttachmentSummary[],
+  externalPrices: ReturnType<typeof formatMaterialSearchHitsForPrompt>
 ) {
   return {
     oppdrag: {
@@ -590,6 +574,7 @@ function buildContextEnvelope(
       })),
       fallbackProdukter: priceContext.fallbackMatches,
     },
+    eksternePriser: externalPrices,
   }
 }
 
@@ -605,20 +590,27 @@ function questionPrompt(context: ReturnType<typeof buildContextEnvelope>) {
   ].join("\n\n")
 }
 
-function analysisPrompt(context: ReturnType<typeof buildContextEnvelope>) {
-  return [
-    "Bruk oppdragsgrunnlaget under til å generere en komplett kalkyle.",
-    "Hvis prisfilvedlegg er tilgjengelige, skal du selv lese hele prisfilen og velge korrekte produkter derfra. Ikke stol på lokal forhåndsfiltrering.",
-    "Du skal selv avgjøre hvilke produkter som er relevante ved å vurdere hele prisfilvedlegget.",
-    "Inkluder nobb når det finnes for valgt produkt.",
-    "Bruk KUN brede kategorier i subproject (Tak, Yttervegger, Gulv, Bad, Rør, Elektro, Annet). Aldri 'Kategori - underkategori'.",
-    "unit må matche prisfilens enhet for hvert produkt.",
-    "Ved etterisolering/isolasjon skal undertak/taktekking-produkter ikke velges med mindre oppdraget eksplisitt krever det.",
-    "Returner kun gyldig JSON i dette eksakte formatet:",
-    '{"message":"Kalkyle generert","summary":"Kort, profesjonelt sammendrag av tilbudet (1-2 setninger)","reasoning":"Kort teknisk begrunnelse for viktige valg","warnings":["Kun reelle usikkerheter"],"lineItems":[{"subproject":"Tak","title":"Undertak 22mm","description":"150mm mineralull i CC60, inkl. nødvendig kutt og montering på 47m²","quantity":52,"unit":"m2","supplier":"Byggmakker","nobb":"12345678","supplierSku":"","supplierUrl":"","unitPriceNok":123.04,"markupPercent":15,"discountPercent":0}]}',
-    "Oppdragsgrunnlag:",
-    JSON.stringify(context),
-  ].join("\n\n")
+function analysisPrompt(
+  context: ReturnType<typeof buildContextEnvelope>,
+  priceFileAttachments: CompanyPricePromptAttachment[]
+) {
+  return buildAnalysisUserPromptSections({
+    contextJson: {
+      ...context,
+      outputRequirements: {
+        minLineItems: 6,
+        maxLineItems: 30,
+        includeWarnings: true,
+        requireLineItemReasoning: true,
+      },
+    },
+    priceFileAttachments: priceFileAttachments.map((attachment) => ({
+      fileName: attachment.fileName,
+      supplierName: attachment.supplierName,
+      rowCount: attachment.rowCount,
+      content: attachment.content,
+    })),
+  }).join("\n\n")
 }
 
 async function generateClarifications(
@@ -662,11 +654,7 @@ async function generateAnalysis(
       {
         role: "user",
         content: [
-          { type: "input_text", text: analysisPrompt(context) },
-          ...priceFileAttachments.map((attachment) => ({
-            type: "input_text" as const,
-            text: `Prisfilvedlegg: ${attachment.fileName} | Leverandør: ${attachment.supplierName} | Rader: ${attachment.rowCount}\n${attachment.content}`,
-          })),
+          { type: "input_text", text: analysisPrompt(context, priceFileAttachments) },
           ...imageInputs,
         ],
       },
@@ -726,6 +714,35 @@ function finalizeOfferLineItems(
   }
 }
 
+async function buildResultPayload(input: {
+  companyId: string
+  userId: string
+  generationId: string
+  projectId: string | null
+  model: string
+  payload: Record<string, unknown>
+}) {
+  const usage = await recordUsageEvent({
+    companyId: input.companyId,
+    eventType: "ai_tilbud",
+    idempotencyKey: `ai_tilbud:${input.generationId}`,
+    metadata: {
+      user_id: input.userId,
+      project_id: input.projectId,
+      model: input.model,
+    },
+  })
+
+  return {
+    ...input.payload,
+    usage: {
+      used: usage.used,
+      quota_limit: usage.quota_limit,
+      overage: usage.overage,
+    },
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -736,6 +753,9 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: "Ikke autentisert" }, { status: 401 })
     }
+
+    const subscription = await requireActiveSubscription()
+    if (!subscription.ok) return subscription.response
 
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ error: "OpenAI API-nøkkel er ikke konfigurert" }, { status: 503 })
@@ -752,7 +772,13 @@ export async function POST(request: Request) {
 
     const priceContext = await resolvePriceContext(supabase, user.id, requestBody)
     const { attachments, imageInputs } = await resolveAttachmentContext(supabase, requestBody.sourceDocuments)
-    const context = buildContextEnvelope(requestBody, priceContext, attachments)
+    const materialSearchHits = await searchMaterialPricesForOffer({
+      title: requestBody.title,
+      description: [requestBody.description, requestBody.project?.description ?? ""].filter(Boolean).join("\n"),
+      subprojects: [],
+    })
+    const externalPrices = formatMaterialSearchHitsForPrompt(materialSearchHits)
+    const context = buildContextEnvelope(requestBody, priceContext, attachments, externalPrices)
 
     if (requestBody.phase === "start") {
       const clarificationResult = await generateClarifications(model, context, imageInputs)
@@ -761,18 +787,27 @@ export async function POST(request: Request) {
         const finalResult = await generateAnalysis(model, context, imageInputs, priceContext.priceFileAttachments)
         const finalized = finalizeOfferLineItems(requestBody, toLineItems(finalResult.data.lineItems), priceContext)
         const lineItems = finalized.lineItems
-        return NextResponse.json({
-          phase: "result",
-          message: finalResult.data.message,
-          summary: finalResult.data.summary,
-          reasoning: finalResult.data.reasoning,
-          warnings: Array.from(new Set([...finalResult.data.warnings, ...finalized.warnings])),
-          lineItems,
-          supplierSnapshots: toSupplierSnapshots(lineItems),
-          model: finalResult.model,
-          priceFileCount: priceContext.files.length,
-          attachmentCount: attachments.length,
-        })
+        return NextResponse.json(
+          await buildResultPayload({
+            companyId: subscription.context.companyId,
+            userId: user.id,
+            generationId: requestBody.generationId,
+            projectId: requestBody.project?.id ?? null,
+            model: finalResult.model,
+            payload: {
+              phase: "result",
+              message: finalResult.data.message,
+              summary: finalResult.data.summary,
+              reasoning: finalResult.data.reasoning,
+              warnings: Array.from(new Set([...finalResult.data.warnings, ...finalized.warnings])),
+              lineItems,
+              supplierSnapshots: toSupplierSnapshots(lineItems),
+              model: finalResult.model,
+              priceFileCount: priceContext.files.length,
+              attachmentCount: attachments.length,
+            },
+          })
+        )
       }
 
       return NextResponse.json({
@@ -789,18 +824,27 @@ export async function POST(request: Request) {
     const finalized = finalizeOfferLineItems(requestBody, toLineItems(finalResult.data.lineItems), priceContext)
     const lineItems = finalized.lineItems
 
-    return NextResponse.json({
-      phase: "result",
-      message: finalResult.data.message,
-      summary: finalResult.data.summary,
-      reasoning: finalResult.data.reasoning,
-      warnings: Array.from(new Set([...finalResult.data.warnings, ...finalized.warnings])),
-      lineItems,
-      supplierSnapshots: toSupplierSnapshots(lineItems),
-      model: finalResult.model,
-      priceFileCount: priceContext.files.length,
-      attachmentCount: attachments.length,
-    })
+    return NextResponse.json(
+      await buildResultPayload({
+        companyId: subscription.context.companyId,
+        userId: user.id,
+        generationId: requestBody.generationId,
+        projectId: requestBody.project?.id ?? null,
+        model: finalResult.model,
+        payload: {
+          phase: "result",
+          message: finalResult.data.message,
+          summary: finalResult.data.summary,
+          reasoning: finalResult.data.reasoning,
+          warnings: Array.from(new Set([...finalResult.data.warnings, ...finalized.warnings])),
+          lineItems,
+          supplierSnapshots: toSupplierSnapshots(lineItems),
+          model: finalResult.model,
+          priceFileCount: priceContext.files.length,
+          attachmentCount: attachments.length,
+        },
+      })
+    )
   } catch (error) {
     console.error("[ai-chat POST]", error)
     return NextResponse.json(

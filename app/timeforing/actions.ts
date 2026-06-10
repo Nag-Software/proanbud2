@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { createClient } from "@/lib/supabase/server"
+import { assertCompanyHasModule, companyHasModule } from "@/lib/billing/server-modules"
 import {
   buildEmployeeSummaries,
   buildProjectSummaries,
@@ -10,6 +11,8 @@ import {
   type TimeEntryRow,
 } from "@/lib/time-tracking"
 import { canManageProjects, normalizeRole } from "@/lib/roles"
+
+const TIMEFORING_MODULE = "timeforing" as const
 
 async function getEffectiveRole(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const { data: userRoleData } = await supabase
@@ -33,6 +36,11 @@ async function getEffectiveRole(supabase: Awaited<ReturnType<typeof createClient
   }
 }
 
+async function hasTimeforingModule(companyId: string | null): Promise<boolean> {
+  if (!companyId) return false
+  return companyHasModule(companyId, TIMEFORING_MODULE)
+}
+
 function completedEntriesQuery(supabase: Awaited<ReturnType<typeof createClient>>) {
   return supabase
     .from("time_entries")
@@ -50,6 +58,9 @@ export async function getActiveWorkSessionAction(projectId: string) {
   } = await supabase.auth.getUser()
 
   if (!user) return null
+
+  const { companyId } = await getEffectiveRole(supabase, user.id)
+  if (!(await hasTimeforingModule(companyId))) return null
 
   const { data, error } = await supabase
     .from("time_entries")
@@ -81,6 +92,8 @@ export async function startWorkSessionAction(projectId: string, description?: st
   if (!companyId) {
     throw new Error("Kunne ikke hente bedriftsinformasjon")
   }
+
+  await assertCompanyHasModule(companyId, TIMEFORING_MODULE, "Timeføring")
 
   const { data: existingActive } = await supabase
     .from("time_entries")
@@ -139,6 +152,9 @@ export async function stopWorkSessionAction(projectId: string) {
     throw new Error("Du må være logget inn")
   }
 
+  const { companyId } = await getEffectiveRole(supabase, user.id)
+  await assertCompanyHasModule(companyId, TIMEFORING_MODULE, "Timeføring")
+
   const { data: activeSession, error: activeError } = await supabase
     .from("time_entries")
     .select("id, started_at")
@@ -184,6 +200,9 @@ export async function getProjectTimeEntriesAction(projectId: string, viewAll = f
 
   if (!user) return []
 
+  const { companyId } = await getEffectiveRole(supabase, user.id)
+  if (!(await hasTimeforingModule(companyId))) return []
+
   let query = completedEntriesQuery(supabase)
     .eq("project_id", projectId)
     .order("ended_at", { ascending: false })
@@ -210,7 +229,8 @@ export async function getProjectParticipantHoursAction(projectId: string) {
 
   if (!user) return []
 
-  const { role } = await getEffectiveRole(supabase, user.id)
+  const { role, companyId } = await getEffectiveRole(supabase, user.id)
+  if (!(await hasTimeforingModule(companyId))) return []
   if (!canManageProjects(role)) {
     return []
   }
@@ -250,7 +270,7 @@ export async function getCompanyTimeOverviewAction() {
   }
 
   const { role, companyId } = await getEffectiveRole(supabase, user.id)
-  if (!companyId) {
+  if (!companyId || !(await hasTimeforingModule(companyId))) {
     return {
       canViewAll: false,
       totalHours: 0,

@@ -19,6 +19,14 @@ import {
   pickRelevantSavedJobs,
   type SavedJobRow,
 } from "@/lib/tilbud/saved-jobs"
+import {
+  ANALYSIS_SYSTEM_PROMPT,
+  buildAnalysisUserPromptSections,
+} from "@/lib/tilbud/analysis-system-prompt"
+import {
+  formatMaterialSearchHitsForPrompt,
+  searchMaterialPricesForOffer,
+} from "@/lib/tilbud/material-web-search"
 import { calculateOfferTotals, type OfferAnalysisResult, type OfferLineItem } from "@/lib/tilbud/types"
 
 const analysisRequestSchema = z.object({
@@ -32,6 +40,7 @@ const analysisRequestSchema = z.object({
 const aiLineItemSchema = z.object({
   title: z.string().trim().min(1),
   description: z.string().trim().default(""),
+  reasoning: z.string().trim().default(""),
   quantity: z.number().min(0).default(1),
   unit: z.string().trim().default("stk"),
   subproject: z.string().trim().default("Generelt"),
@@ -68,6 +77,7 @@ function toOfferLineItems(items: z.infer<typeof aiLineItemSchema>[]): OfferLineI
     subproject: item.subproject || "Generelt",
     title: item.title,
     description: item.description,
+    reasoning: item.reasoning || undefined,
     quantity: item.quantity,
     unit: item.unit,
     supplier: item.supplier,
@@ -121,7 +131,8 @@ async function runOpenAiAnalysis(
   priceFileAttachments: CompanyPricePromptAttachment[],
   normalPriceIndicator: ReturnType<typeof formatNormalPriceForPrompt> | null,
   savedJobs: SavedJobRow[],
-  relevantSavedJobs: SavedJobRow[]
+  relevantSavedJobs: SavedJobRow[],
+  externalPrices: ReturnType<typeof formatMaterialSearchHitsForPrompt>
 ) {
   if (!process.env.OPENAI_API_KEY) {
     return null
@@ -135,53 +146,8 @@ async function runOpenAiAnalysis(
           subprojects: input.subprojects,
         })
 
-  const systemPrompt = [
-    "Du er Norges fremste senior kalkulatør og tilbudsgenerator for bygge- og håndverksbedrifter. Du kombinerer høy faglig ekspertise, nøyaktig mengdeberegning, realistisk tidsestimering og markedskorrekt prising.",
-    "",
-    "Kjerneoppdrag:",
-    "Lag profesjonelle, komplette og markedstilpassede kalkyler basert på oppdragsbeskrivelse, prisfiler og prosjektinformasjon.",
-    "",
-    "STRATEGIER OG REGLER (høyeste prioritet):",
-    "1. Materialvalg - Vær ekstremt presis",
-    "- Bruk kun produkter fra bedriftens prisfiler (relevantePrisrader) når de er relevante.",
-    "- Inkluder nobb på produktlinjer når tilgjengelig i prisfil.",
-    "- Velg alltid det mest korrekte produktet til jobben (tykkelse, type, kvalitet, bruksområde).",
-    "- Ved etterisolering/isolasjon skal du ikke velge undertak/taktekking-produkter (f.eks. undertak, Tyvek, takpapp) med mindre oppdraget eksplisitt ber om det.",
-    "- Kun bruk fallback-produkter hvis det absolutt ikke finnes noe relevant i prisfilen.",
-    "- Ikke legg til festemidler, tape, fugemasse, lim, skruer, sparkel eller annet tilbehør med mindre det er eksplisitt nevnt i oppdraget.",
-    "2. Mengdeberegning",
-    "- Beregn realistiske og litt romslige (men ikke overdrevne) mengder.",
-    "- Ta hensyn til svinn, kutt, og praktisk utførelse (spesielt på loft, rehab og trange plasser).",
-    "- Vis tydelig i description hva som er inkludert i mengden.",
-    "3. Arbeidstid og timeforbruk",
-    "- Beregn realistisk timeforbruk basert på norsk håndverksstandard 2025/2026.",
-    "- Ta hensyn til: antall arbeidere, adkomst, tilgjengelighet, prosjektets kompleksitet, opprydding og bortkjøring.",
-    "- Bruk unit: time på alle arbeidsposter og transport.",
-    "4. Økonomi og markup",
-    "- Arbeid og transport skal alltid ha markupPercent: 0.",
-    "- Produkter/materialer skal ha default markupPercent: 15, med mindre annet er eksplisitt begrunnet.",
-    "- Totaltilbudet skal ligge på et nivå som er konkurransedyktig, men lønnsomt i det norske markedet.",
-    "5. Kategorisering (subproject)",
-    "- Bruk kun brede bygningsdeler: Tak, Yttervegger, Gulv, Bad, Rør, Elektro, Annet.",
-    "- ALDRI bruk 'Kategori - underkategori'. Produktnavn skal stå i title.",
-    "6. Enheter",
-    "- unit må matche prisfilens enhet for hvert produkt (m2, stk, lm, time, etc.).",
-    "7. Output-regler",
-    "- Du svarer ALLTID kun med gyldig JSON. Ingen tekst utenfor JSON-objektet.",
-    "8. Lagrede jobber",
-    "- Når lagredeJobber/relevanteLagredeJobber inneholder en jobb som matcher oppdraget, bruk fastprisNok som totalpris for den jobben.",
-    "- Da skal du bruke quantity: 1, unit: fastpris, markupPercent: 0 og unitPriceNok lik fastprisNok.",
-    "- Ikke legg til separat arbeidstid når fastprisen dekker hele jobben.",
-    "- JSON skal følge dette eksakte formatet:",
-    '{"message":"Kalkyle generert","summary":"Kort, profesjonelt sammendrag av tilbudet (1-2 setninger)","reasoning":"Kort teknisk begrunnelse for vigtige valg","warnings":["Kun reelle usikkerheter"],"lineItems":[{"subproject":"Tak","title":"Glava Proff 34 150mm","description":"150mm mineralull i CC60, inkl. nødvendig kutt og montering på 47m²","quantity":52,"unit":"m2","supplier":"Byggmakker","nobb":"12345678","supplierSku":"","supplierUrl":"","unitPriceNok":123.04,"markupPercent":15,"discountPercent":0}]}'
-  ].join("\n")
-  
-  const userPrompt = [
-    "Bruk oppdragsgrunnlaget under til å generere en komplett kalkyle.",
-    "Hvis prisfilvedlegg er tilgjengelige, skal du selv lese hele prisfilen og velge korrekte produkter derfra. Ikke stol på lokal forhåndsfiltrering.",
-    "Du skal selv avgjøre hvilke produkter som er relevante ved å vurdere hele prisfilvedlegget.",
-    "Returner kun gyldig JSON i det eksakte formatet definert i systemprompten.",
-    JSON.stringify({
+  const userPrompt = buildAnalysisUserPromptSections({
+    contextJson: {
       request: {
         title: input.title,
         description: input.description,
@@ -197,6 +163,7 @@ async function runOpenAiAnalysis(
         })),
         fallbackProdukter: supplierMatches,
       },
+      eksternePriser: externalPrices,
       normalPrisIndikator: normalPriceIndicator,
       lagredeJobber: formatSavedJobsForPrompt(savedJobs),
       relevanteLagredeJobber: relevantSavedJobs.map((job) => formatMatchedSavedJobForPrompt(job)),
@@ -204,13 +171,16 @@ async function runOpenAiAnalysis(
         minLineItems: 6,
         maxLineItems: 30,
         includeWarnings: true,
+        requireLineItemReasoning: true,
       },
-    }),
-    ...priceFileAttachments.map(
-      (attachment) =>
-        `Prisfilvedlegg: ${attachment.fileName} | Leverandør: ${attachment.supplierName} | Rader: ${attachment.rowCount}\n${attachment.content}`
-    ),
-  ].join("\n\n")
+    },
+    priceFileAttachments: priceFileAttachments.map((attachment) => ({
+      fileName: attachment.fileName,
+      supplierName: attachment.supplierName,
+      rowCount: attachment.rowCount,
+      content: attachment.content,
+    })),
+  }).join("\n\n")
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -222,7 +192,7 @@ async function runOpenAiAnalysis(
       model: process.env.OPENAI_MODEL || "gpt-5.2-mini",
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
     }),
@@ -350,6 +320,13 @@ export async function POST(request: Request) {
 
     const normalPriceQuery = `${input.title}\n${input.description}\n${input.sourceSummary}`
     const relevantSavedJobs = pickRelevantSavedJobs(savedJobs, normalPriceQuery)
+    const materialSearchHits = await searchMaterialPricesForOffer({
+      title: input.title,
+      description: input.description,
+      sourceSummary: input.sourceSummary,
+      subprojects: input.subprojects,
+    })
+    const externalPrices = formatMaterialSearchHitsForPrompt(materialSearchHits)
 
     const { data: normalPriceRows } = await supabase
       .from("normal_prices")
@@ -372,7 +349,8 @@ export async function POST(request: Request) {
         priceFileAttachments,
         normalPriceIndicator,
         savedJobs,
-        relevantSavedJobs
+        relevantSavedJobs,
+        externalPrices
       )
       if (aiResult) {
         model = aiResult.model

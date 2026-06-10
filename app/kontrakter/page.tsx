@@ -103,9 +103,6 @@ export default async function KontrakterPage() {
                 <Button asChild>
                   <Link href="/prosjekter">Gå til prosjekter</Link>
                 </Button>
-                <Button variant="secondary" asChild>
-                  <Link href="/tilbud">Gå til tilbud</Link>
-                </Button>
               </div>
             </CardContent>
           </Card>

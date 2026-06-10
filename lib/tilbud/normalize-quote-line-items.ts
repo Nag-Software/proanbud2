@@ -2,15 +2,19 @@ import { type OfferLineItem } from "@/lib/tilbud/types"
 import { type CompanyPriceRow } from "@/lib/tilbud/company-price-utils"
 
 const BROAD_CATEGORY_HINTS = [
+  "Arbeid",
+  "Transport",
   "Tak",
   "Yttervegger",
   "Innervegger",
   "Gulv",
   "Bad",
+  "Terrasse",
   "Kjøkken",
   "Rør",
   "Elektro",
   "Grunnmur",
+  "Grunnarbeid",
   "Isolering",
   "Vinduer",
   "Dører",

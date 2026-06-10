@@ -20,6 +20,7 @@ export type OfferLineItem = {
   subproject: string
   title: string
   description: string
+  reasoning?: string
   quantity: number
   unit: string
   supplier: string
@@ -97,9 +98,7 @@ export type SaveOfferPayload = {
   id?: string
   title: string
   description: string
-  assignmentMode: OfferAssignmentMode
-  projectId: string | null
-  customerId: string
+  projectId: string
   sourceSummary: string
   sourceDocuments: OfferSourceDocument[]
   lineItems: OfferLineItem[]

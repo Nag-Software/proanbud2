@@ -4,11 +4,14 @@ import { notFound } from "next/navigation"
 import { PlusCircle } from "lucide-react"
 
 import { AppPageShell } from "@/components/app-page-shell"
+import { ModuleGate } from "@/components/billing/module-gate"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
+import { companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
+import { MODULE_PRICING } from "@/lib/billing/plans"
 import { getProjectParticipantHoursAction } from "@/app/timeforing/actions"
 import OppgaverTab from "./oppgaver-tab"
 import { KontrakterTab } from "./kontrakter-tab"
@@ -92,7 +95,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     canonicalRole === "manager" ||
     currentMember?.access_level === "manager"
   const isWorker = canonicalRole === "worker"
-  const participantHours = isProjectAdmin ? await getProjectParticipantHoursAction(resolvedParams.id) : []
+  const companyId = await getCurrentCompanyIdForUser(user.id)
+  const hasTimeforing = companyId ? await companyHasModule(companyId, "timeforing") : false
+  const participantHours =
+    hasTimeforing && isProjectAdmin ? await getProjectParticipantHoursAction(resolvedParams.id) : []
 
   // Parse project assignments to participant list
   const projectDeltakere = normalizedMembers.map((member) => {
@@ -313,7 +319,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           </TabsContent>
 
           <TabsContent value="timeforing">
-            <TimeforingTab projectId={project.id} canViewAllEntries={isProjectAdmin} />
+            {hasTimeforing ? (
+              <TimeforingTab projectId={project.id} canViewAllEntries={isProjectAdmin} />
+            ) : (
+              <ModuleGate
+                moduleName="Timeføring"
+                monthlyPriceNok={MODULE_PRICING.timeforing}
+                description="Registrer og følg arbeidstimer direkte på prosjektet."
+              />
+            )}
           </TabsContent>
 
           {!isWorker && (

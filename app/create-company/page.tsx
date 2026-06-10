@@ -128,8 +128,7 @@ export default function CreateCompanyClient() {
         throw new Error(errorMessage)
       }
 
-      // Navigate to dashboard
-      completeClientLogin(router)
+      completeClientLogin(router, "/onboarding/abonnement")
     } catch (e: any) {
       console.error(e)
       setError(e.message || "En ukjent feil oppsto under opprettelsen av bedriften. Kontakt support hvis problemet vedvarer.")

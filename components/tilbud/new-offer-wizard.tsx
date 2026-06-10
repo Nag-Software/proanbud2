@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 
 import { AiChatPanel } from "@/components/tilbud/ai-chat-panel"
 import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
@@ -11,7 +11,6 @@ import {
   Calculator,
   Check,
   CheckCircle2,
-  ChevronDown,
   Download,
   Edit3,
   LoaderCircle,
@@ -29,8 +28,6 @@ import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { getDistinctSuppliers } from "@/lib/tilbud/supplier-prices"
 import {
@@ -46,10 +43,9 @@ import {
 } from "@/lib/tilbud/types"
 
 type NewOfferWizardProps = {
-  projects: OfferProjectOption[]
+  project: OfferProjectOption
   customers: OfferCustomerOption[]
   company: OfferCompanyContext | null
-  initialProjectId?: string
   onCompleted?: () => void
 }
 
@@ -74,10 +70,6 @@ const steps = [
   },
 ] as const
 
-function toValidSelectValue(value: string) {
-  return value || "none"
-}
-
 function normalizeNumberInput(value: string, fallback: number) {
   const parsed = Number(value.replace(",", "."))
   if (!Number.isFinite(parsed)) return fallback
@@ -94,15 +86,11 @@ function previewKindForFile(file: File): OfferSourceDocument["previewKind"] {
   return file.type.startsWith("image/") ? "image" : "document"
 }
 
-export function NewOfferWizard({ projects, customers, company, initialProjectId, onCompleted }: NewOfferWizardProps) {
+export function NewOfferWizard({ project, customers, company, onCompleted }: NewOfferWizardProps) {
   const router = useRouter()
-  const initialProject = useMemo(
-    () => (initialProjectId ? projects.find((project) => project.id === initialProjectId) || null : null),
-    [initialProjectId, projects]
-  )
   const initialCustomer = useMemo(
-    () => (initialProject?.customerId ? customers.find((customer) => customer.id === initialProject.customerId) || null : null),
-    [customers, initialProject?.customerId]
+    () => (project.customerId ? customers.find((customer) => customer.id === project.customerId) || null : null),
+    [customers, project.customerId]
   )
 
   const [step, setStep] = useState<(typeof steps)[number]["id"]>(1)
@@ -111,9 +99,8 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
 
-  const [assignmentMode] = useState<"project" | "customer">("project")
-  const [projectId, setProjectId] = useState<string>(initialProject?.id || "")
-  const [customerId, setCustomerId] = useState<string>(initialProject?.customerId || "")
+  const projectId = project.id
+  const customerId = project.customerId || ""
 
   const [sourceDocuments, setSourceDocuments] = useState<OfferSourceDocument[]>([])
   const [sourceFiles, setSourceFiles] = useState<Record<string, File>>({})
@@ -136,13 +123,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
   const [isPersisting, startPersisting] = useTransition()
   const [feedback, setFeedback] = useState<string | null>(null)
 
-  const [projectSearch, setProjectSearch] = useState("")
-  const [projectPopoverOpen, setProjectPopoverOpen] = useState(false)
-
-  const selectedProject = useMemo(
-    () => projects.find((project) => project.id === projectId) || null,
-    [projectId, projects]
-  )
+  const selectedProject = project
 
   const selectedCustomer = useMemo(
     () => customers.find((customer) => customer.id === customerId) || null,
@@ -187,20 +168,11 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
     }
   }
 
-  const onProjectChange = (nextProjectId: string) => {
-    setProjectId(nextProjectId)
-    const project = projects.find((item) => item.id === nextProjectId)
-
-    if (project?.customerId) {
-      setCustomerId(project.customerId)
-      autoFillRecipientFromCustomer(project.customerId)
+  useEffect(() => {
+    if (initialCustomer) {
+      autoFillRecipientFromCustomer(initialCustomer.id)
     }
-  }
-
-  const onCustomerChange = (nextCustomerId: string) => {
-    setCustomerId(nextCustomerId)
-    autoFillRecipientFromCustomer(nextCustomerId)
-  }
+  }, [initialCustomer])
 
   const onDocumentsSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!event.target.files?.length) return
@@ -307,9 +279,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
       id: offerId,
       title,
       description,
-      assignmentMode,
-      projectId: assignmentMode === "project" ? projectId || null : null,
-      customerId,
+      projectId,
       sourceSummary: "",
       sourceDocuments,
       lineItems,
@@ -325,8 +295,8 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
   const validateStepOne = () => {
     if (!title.trim()) return "Legg inn en tittel på tilbudet"
     if (description.trim().length < 20) return "Beskriv prosjektet med minst 20 tegn"
-    if (assignmentMode === "project" && !projectId) return "Velg prosjekt"
-    if (!customerId) return "Velg kunde"
+    if (!projectId) return "Prosjekt mangler"
+    if (!customerId) return "Prosjektet mangler kunde"
     return null
   }
 
@@ -519,61 +489,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
             <div className="space-y-5">
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <div className="space-y-4">
-                  <div className="grid grid-cols-[1fr_10fr] gap-5">
-                    <div>
-                      <label className="theme-text-label mb-2 block text-sm font-medium">Prosjekt</label>
-                      <Popover open={projectPopoverOpen} onOpenChange={setProjectPopoverOpen}>
-                        <PopoverTrigger asChild>
-                          <button
-                            type="button"
-                            className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm hover:bg-accent/30 focus:outline-none focus:ring-1 focus:ring-ring"
-                          >
-                            <span className="truncate text-left">{selectedProject?.name ?? <span className="text-muted-foreground">Velg prosjekt</span>}</span>
-                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-72 p-0" align="start">
-                          <div className="border-b p-2">
-                            <Input
-                              autoFocus
-                              placeholder="Søk i prosjekter..."
-                              value={projectSearch}
-                              onChange={(e) => setProjectSearch(e.target.value)}
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                          <div className="max-h-56 overflow-y-auto p-1">
-                            {projects
-                              .filter((p) => p.name.toLowerCase().includes(projectSearch.toLowerCase()))
-                              .map((project) => (
-                                <button
-                                  key={project.id}
-                                  type="button"
-                                  onClick={() => {
-                                    onProjectChange(project.id)
-                                    setProjectSearch("")
-                                    setProjectPopoverOpen(false)
-                                  }}
-                                  className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent/50 ${
-                                    projectId === project.id ? "font-medium" : ""
-                                  }`}
-                                >
-                                  <Check className={`h-4 w-4 shrink-0 ${
-                                    projectId === project.id ? "opacity-100 text-primary" : "opacity-0"
-                                  }`} />
-                                  <span className="truncate text-left">{project.name}</span>
-                                </button>
-                              ))}
-                            {projects.filter((p) =>
-                              p.name.toLowerCase().includes(projectSearch.toLowerCase())
-                            ).length === 0 && (
-                              <p className="px-2 py-3 text-center text-xs text-muted-foreground">Ingen prosjekter funnet</p>
-                            )}
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    <div>
+                  <div>
                     <label className="theme-text-label mb-2 block text-sm font-medium">Tilbudsnavn</label>
                     <Input
                       className="h-9 text-sm"
@@ -581,7 +497,6 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                       onChange={(event) => setTitle(event.target.value)}
                       placeholder="Skriv inn tilbudsnavn..."
                     />
-                  </div>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                     <div className="rounded-lg border bg-card px-3 py-2">
@@ -593,7 +508,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                       <p className="truncate text-sm font-medium">{selectedCustomer?.name || "Ikke valgt"}</p>
                     </div>
                   </div>
-                  {/* HERHERHERHERHER */}
+                  {/* Vedlegg */}
                   <div>
                     <label className="theme-text-label mb-2 block text-sm font-medium">Vedlegg (bilder, PDF, DOCX etc.)</label>
                     <label className="theme-upload-zone block cursor-pointer rounded-lg border-2 border-dashed p-5 text-center transition-all">
@@ -788,23 +703,6 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                 </div>
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="theme-text-label mb-2 block text-sm font-medium">Velg kunde</label>
-                      <Select value={toValidSelectValue(customerId)} onValueChange={(value) => onCustomerChange(value === "none" ? "" : value)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Velg kunde" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Ingen valgt</SelectItem>
-                          {customers.map((customer) => (
-                            <SelectItem key={customer.id} value={customer.id}>
-                              {customer.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
                     <div>
                       <label className="theme-text-label mb-2 block text-sm font-medium">Tilbudsnavn</label>
                       <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Skriv inn tilbudsnavn..." />

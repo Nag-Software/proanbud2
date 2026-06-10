@@ -1,4 +1,8 @@
+"use client"
+
 import { AppSidebar } from "@/components/app-sidebar"
+import { useAppShell } from "@/components/app-shell-context"
+import { TrialBanner } from "@/components/billing/trial-banner"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -12,7 +16,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { Fragment, type ReactNode } from "react"
+import { Fragment, useLayoutEffect, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
 type AppPageShellProps = {
@@ -34,11 +38,12 @@ function DefaultCanvas() {
   )
 }
 
-export function AppPageShell({ segments, children, noPadding }: AppPageShellProps) {
+function LegacyAppPageShell({ segments, children, noPadding }: AppPageShellProps) {
   return (
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="h-svh min-h-0 overflow-hidden">
+        <TrialBanner />
         <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
           <div className="flex items-center gap-2 px-4">
             <SidebarTrigger className="-ml-1" />
@@ -49,8 +54,8 @@ export function AppPageShell({ segments, children, noPadding }: AppPageShellProp
             <Breadcrumb>
               <BreadcrumbList>
                 {segments.map((segment, index) => {
-                  const href = '#'; //`/${segments.slice(0, index + 1).join("/")}`
-                  
+                  const href = "#"
+
                   return (
                     <Fragment key={segment + index}>
                       {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
@@ -74,5 +79,30 @@ export function AppPageShell({ segments, children, noPadding }: AppPageShellProp
         </div>
       </SidebarInset>
     </SidebarProvider>
+  )
+}
+
+export function AppPageShell({ segments, children, noPadding }: AppPageShellProps) {
+  const shell = useAppShell()
+  const insideShell = shell?.insideShell ?? false
+  const setPageMeta = shell?.setPageMeta
+  const segmentsKey = segments.join("\u0000")
+
+  useLayoutEffect(() => {
+    if (!insideShell || !setPageMeta) return
+    setPageMeta({
+      segments,
+      noPadding: Boolean(noPadding),
+    })
+  }, [insideShell, setPageMeta, segmentsKey, noPadding])
+
+  if (shell?.insideShell) {
+    return <>{children ?? <DefaultCanvas />}</>
+  }
+
+  return (
+    <LegacyAppPageShell segments={segments} noPadding={noPadding}>
+      {children}
+    </LegacyAppPageShell>
   )
 }

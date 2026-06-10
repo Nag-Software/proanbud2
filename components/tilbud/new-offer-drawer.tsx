@@ -10,14 +10,13 @@ import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle, DrawerTr
 import { type OfferCompanyContext, type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
 
 type NewOfferDrawerProps = {
-  projects: OfferProjectOption[]
+  project: OfferProjectOption
   customers: OfferCustomerOption[]
   company: OfferCompanyContext | null
-  initialProjectId?: string
   defaultOpen?: boolean
 }
 
-export function NewOfferDrawer({ projects, customers, company, initialProjectId, defaultOpen = false }: NewOfferDrawerProps) {
+export function NewOfferDrawer({ project, customers, company, defaultOpen = false }: NewOfferDrawerProps) {
   const router = useRouter()
   const [open, setOpen] = useState(defaultOpen)
 
@@ -44,10 +43,9 @@ export function NewOfferDrawer({ projects, customers, company, initialProjectId,
 
         <div className="h-[calc(100vh)] mx-auto w-full overflow-hidden">
           <NewOfferWizard
-            projects={projects}
+            project={project}
             customers={customers}
             company={company}
-            initialProjectId={initialProjectId}
             onCompleted={() => {
               setOpen(false)
               router.refresh()

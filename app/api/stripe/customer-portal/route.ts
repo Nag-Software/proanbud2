@@ -1,47 +1,23 @@
 import { NextResponse } from "next/server"
-import { createClient as createServerSupabase } from "@/lib/supabase/server"
 
-type StripeCustomer = {
-  id: string
-}
-
-type StripeListResponse<T> = {
-  data: T[]
-}
+import { getAuthenticatedCompanyContext } from "@/lib/billing/guards"
+import { isStripeConfigured } from "@/lib/stripe/server"
+import { getStripe } from "@/lib/stripe/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient } from "@/lib/supabase/server"
 
 function getBaseUrl(request: Request) {
   const origin = request.headers.get("origin")
   if (origin) return origin
+
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim()
+  if (configured) return configured.replace(/\/$/, "")
 
   const host = request.headers.get("host")
   if (!host) return "http://localhost:3000"
 
   const protocol = process.env.NODE_ENV === "development" ? "http" : "https"
   return `${protocol}://${host}`
-}
-
-async function stripeRequest<T>(path: string, init?: RequestInit) {
-  const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim()
-  if (!stripeSecretKey) {
-    throw new Error("STRIPE_SECRET_KEY mangler")
-  }
-
-  const response = await fetch(`https://api.stripe.com/v1${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${stripeSecretKey}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      ...(init?.headers || {}),
-    },
-  })
-
-  const data = await response.json()
-  if (!response.ok) {
-    const message = typeof data?.error?.message === "string" ? data.error.message : "Stripe-feil"
-    throw new Error(message)
-  }
-
-  return data as T
 }
 
 async function findOrCreateStripeCustomer(input: {
@@ -51,91 +27,92 @@ async function findOrCreateStripeCustomer(input: {
   email: string
   fullName: string
 }) {
-  const searchParams = new URLSearchParams()
-  searchParams.set("query", `metadata['company_id']:'${input.companyId}'`)
+  const stripe = getStripe()
+  const admin = createAdminClient()
 
-  const existing = await stripeRequest<StripeListResponse<StripeCustomer>>(
-    `/customers/search?${searchParams.toString()}`,
-    { method: "GET", headers: { "Content-Type": "application/json" } }
-  )
+  const { data: billing } = await admin
+    .from("company_billing")
+    .select("stripe_customer_id")
+    .eq("company_id", input.companyId)
+    .maybeSingle()
 
-  if (existing.data[0]) {
-    return existing.data[0].id
+  if (billing?.stripe_customer_id) {
+    return billing.stripe_customer_id
   }
 
-  const createParams = new URLSearchParams()
-  createParams.set("email", input.email)
-  createParams.set("name", input.companyName || input.fullName || input.email)
-  createParams.set("metadata[company_id]", input.companyId)
-  createParams.set("metadata[user_name]", input.fullName)
-  if (input.companyOrgNumber) {
-    createParams.set("metadata[org_number]", input.companyOrgNumber)
-  }
-
-  const customer = await stripeRequest<StripeCustomer>("/customers", {
-    method: "POST",
-    body: createParams.toString(),
+  const search = await stripe.customers.search({
+    query: `metadata['company_id']:'${input.companyId}'`,
+    limit: 1,
   })
+
+  if (search.data[0]) {
+    const customerId = search.data[0].id
+    await admin
+      .from("company_billing")
+      .upsert(
+        {
+          company_id: input.companyId,
+          stripe_customer_id: customerId,
+        },
+        { onConflict: "company_id" }
+      )
+    return customerId
+  }
+
+  const customer = await stripe.customers.create({
+    email: input.email,
+    name: input.companyName || input.fullName || input.email,
+    metadata: {
+      company_id: input.companyId,
+      user_name: input.fullName,
+      ...(input.companyOrgNumber ? { org_number: input.companyOrgNumber } : {}),
+    },
+  })
+
+  await admin
+    .from("company_billing")
+    .upsert(
+      {
+        company_id: input.companyId,
+        stripe_customer_id: customer.id,
+      },
+      { onConflict: "company_id" }
+    )
 
   return customer.id
 }
 
 export async function POST(request: Request) {
   try {
-    const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim()
-    const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim()
-
-    if (!stripePublishableKey || !stripeSecretKey) {
+    if (!isStripeConfigured()) {
       return NextResponse.json(
         { error: "Stripe er ikke konfigurert på serveren." },
         { status: 500 }
       )
     }
 
-    const supabase = await createServerSupabase()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const auth = await getAuthenticatedCompanyContext()
+    if (!auth.ok) return auth.response
 
-    if (!user) {
-      return NextResponse.json({ error: "Du er ikke logget inn." }, { status: 401 })
-    }
-
-    const { data: userRow, error: userError } = await supabase
-      .from("users")
-      .select("company_id, full_name, email")
-      .eq("id", user.id)
-      .maybeSingle()
-
-    if (userError || !userRow?.company_id) {
-      return NextResponse.json(
-        { error: "Fant ikke aktiv Proanbud-bedrift for brukeren." },
-        { status: 400 }
-      )
-    }
-
+    const supabase = await createClient()
     const { data: companyRow } = await supabase
       .from("companies")
       .select("name, org_number")
-      .eq("id", userRow.company_id)
+      .eq("id", auth.context.companyId)
       .maybeSingle()
 
     const customerId = await findOrCreateStripeCustomer({
-      companyId: userRow.company_id,
-      companyName: companyRow?.name || userRow.full_name || user.email || "Proanbud kunde",
+      companyId: auth.context.companyId,
+      companyName: companyRow?.name || auth.context.fullName,
       companyOrgNumber: companyRow?.org_number || null,
-      email: userRow.email || user.email || "",
-      fullName: userRow.full_name || user.user_metadata?.full_name || user.email || "",
+      email: auth.context.email,
+      fullName: auth.context.fullName,
     })
 
-    const returnUrl = `${getBaseUrl(request)}/`
-    const portalParams = new URLSearchParams()
-    portalParams.set("customer", customerId)
-    portalParams.set("return_url", returnUrl)
-
-    const portalSession = await stripeRequest<{ url: string }>("/billing_portal/sessions", {
-      method: "POST",
-      body: portalParams.toString(),
+    const stripe = getStripe()
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${getBaseUrl(request)}/innstillinger/betaling`,
     })
 
     return NextResponse.json({ url: portalSession.url })

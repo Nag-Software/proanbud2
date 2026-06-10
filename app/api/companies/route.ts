@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createClient as createServerSupabase } from '@/lib/supabase/server'
 import { assignUserRole, ensureCompanyRoles } from '@/lib/company-roles'
+import { ensureCompanyBillingRow } from '@/lib/billing/sync'
 
 export async function POST(request: Request) {
   try {
@@ -70,6 +71,12 @@ export async function POST(request: Request) {
       })
     } catch (roleSetupError) {
       console.error('Role setup error:', roleSetupError)
+    }
+
+    try {
+      await ensureCompanyBillingRow(companyData.id)
+    } catch (billingSetupError) {
+      console.error('Billing setup error:', billingSetupError)
     }
 
     return NextResponse.json({ success: true, company: companyData }, { status: 201 })

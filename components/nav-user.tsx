@@ -82,7 +82,6 @@ export function NavUser() {
   const [editCompanyName, setEditCompanyName] = useState("")
   const [editCompanyOrgNumber, setEditCompanyOrgNumber] = useState("")
   const [isSaving, setIsSaving] = useState(false)
-  const [isOpeningSubscription, setIsOpeningSubscription] = useState(false)
   const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() ?? ""
 
   useEffect(() => {
@@ -156,33 +155,7 @@ export function NavUser() {
   }
 
   const handleManageSubscription = () => {
-    if (!stripePublishableKey) {
-      toast.error("Stripe er ikke konfigurert ennå.")
-      return
-    }
-
-    setIsOpeningSubscription(true)
-
-    void (async () => {
-      try {
-        const response = await fetch("/api/stripe/customer-portal", {
-          method: "POST",
-        })
-
-        const payload = (await response.json()) as { url?: string; error?: string }
-
-        if (!response.ok || !payload.url) {
-          throw new Error(payload.error || "Kunne ikke åpne Stripe-portalen.")
-        }
-
-        window.location.assign(payload.url)
-      } catch (error) {
-        console.error("Open Stripe portal error", error)
-        toast.error(error instanceof Error ? error.message : "Kunne ikke åpne Stripe-portalen.")
-      } finally {
-        setIsOpeningSubscription(false)
-      }
-    })()
+    router.push("/innstillinger/betaling")
   }
 
   const saveProfile = async () => {
@@ -341,7 +314,7 @@ export function NavUser() {
                   Min Konto
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleManageSubscription}>
-                  {isOpeningSubscription ? <Loader2Icon className="mr-2 h-4 w-4 animate-spin" /> : <CreditCardIcon className="mr-2 h-4 w-4" />}
+                  <CreditCardIcon className="mr-2 h-4 w-4" />
                   Abonnement
                 </DropdownMenuItem>
               </DropdownMenuGroup>

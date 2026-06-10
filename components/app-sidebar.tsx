@@ -129,7 +129,6 @@ const data: {
         },
       ]
     },
-    /*
     {
       title: "Innstillinger",
       url: "/innstillinger",
@@ -143,14 +142,14 @@ const data: {
         {
           title: "Brukere",
           url: "/innstillinger/brukere",
+          hidden: true,
         },
         {
           title: "Betaling",
           url: "/innstillinger/betaling",
-          hidden: true,
         },
       ],
-    },*/
+    },
   ] satisfies NavMainItem[],
   projects: [
     {

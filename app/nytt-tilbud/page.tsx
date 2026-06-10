@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation"
+
 import { AppPageShell } from "@/components/app-page-shell"
 import { NyttTilbudClient } from "@/components/tilbud/nytt-tilbud-client"
 import { createClient } from "@/lib/supabase/server"
@@ -39,65 +41,92 @@ type Props = {
 }
 
 export default async function NyttTilbudPage({ searchParams }: Props) {
-  const supabase = await createClient()
   const resolved = (await searchParams) || {}
   const projectIdParam = Array.isArray(resolved.projectId) ? resolved.projectId[0] : resolved.projectId
+
+  if (!projectIdParam) {
+    redirect("/prosjekter")
+  }
+
+  const supabase = await createClient()
 
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const companyQuery = user
-    ? fetchOfferCompanyContext(supabase, user.id).then((company) => ({ data: company, error: null }))
-    : Promise.resolve({ data: null, error: null })
-
-  const [projectsResult, customersResult, companyResult] = await Promise.all([
+  const [projectResult, company] = await Promise.all([
     supabase
       .from("projects")
       .select("id, name, customer_id, description, status, project_type, budget_nok, customers(id, name, email, phone)")
-      .order("updated_at", { ascending: false }),
-    supabase.from("customers").select("id, name, email, phone, city, address, postal_code, org_number").order("name"),
-    companyQuery,
+      .eq("id", projectIdParam)
+      .maybeSingle(),
+    user ? fetchOfferCompanyContext(supabase, user.id) : Promise.resolve(null),
   ])
 
-  const projects = ((projectsResult.data || []) as ProjectRow[]).map((p): OfferProjectOption => {
-    const c = normalizeCustomer(p)
-    return {
-      id: p.id,
-      name: p.name,
-      customerId: p.customer_id,
-      customerName: c?.name || null,
-      customerEmail: c?.email || null,
-      customerPhone: c?.phone || null,
-      description: p.description,
-      status: p.status,
-      projectType: p.project_type,
-      budgetNok: p.budget_nok,
-    }
-  })
+  const projectRow = projectResult.data as ProjectRow | null
+  if (!projectRow) {
+    redirect("/prosjekter")
+  }
 
-  const customers = ((customersResult.data || []) as CustomerRow[]).map(
-    (c): OfferCustomerOption => ({
-      id: c.id,
-      name: c.name,
-      email: c.email,
-      phone: c.phone,
-      city: c.city,
-      address: c.address,
-      postalCode: c.postal_code,
-      orgNumber: c.org_number,
-    })
-  )
+  const joinedCustomer = normalizeCustomer(projectRow)
 
-  const company = companyResult.data ?? null
+  const { data: customerRow } = projectRow.customer_id
+    ? await supabase
+        .from("customers")
+        .select("id, name, email, phone, city, address, postal_code, org_number")
+        .eq("id", projectRow.customer_id)
+        .maybeSingle()
+    : { data: null }
+
+  const resolvedCustomer = customerRow ?? joinedCustomer
+
+  const project: OfferProjectOption = {
+    id: projectRow.id,
+    name: projectRow.name,
+    customerId: projectRow.customer_id,
+    customerName: resolvedCustomer?.name || null,
+    customerEmail: resolvedCustomer?.email || null,
+    customerPhone: resolvedCustomer?.phone || null,
+    description: projectRow.description,
+    status: projectRow.status,
+    projectType: projectRow.project_type,
+    budgetNok: projectRow.budget_nok,
+  }
+
+  const customers: OfferCustomerOption[] = customerRow
+    ? [
+        {
+          id: customerRow.id,
+          name: customerRow.name,
+          email: customerRow.email,
+          phone: customerRow.phone,
+          city: customerRow.city,
+          address: customerRow.address,
+          postalCode: customerRow.postal_code,
+          orgNumber: customerRow.org_number,
+        },
+      ]
+    : joinedCustomer
+      ? [
+          {
+            id: joinedCustomer.id,
+            name: joinedCustomer.name,
+            email: joinedCustomer.email,
+            phone: joinedCustomer.phone,
+            city: null,
+            address: null,
+            postalCode: null,
+            orgNumber: null,
+          },
+        ]
+      : []
 
   return (
-    <AppPageShell segments={["Tilbud", "Nytt tilbud"]}>
+    <AppPageShell segments={["Prosjekter", project.name, "Nytt tilbud"]}>
       <NyttTilbudClient
-        projects={projects}
+        project={project}
         customers={customers}
         company={company}
-        initialProjectId={projectIdParam}
       />
     </AppPageShell>
   )

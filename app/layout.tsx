@@ -1,6 +1,8 @@
 import type { Metadata } from "next"
 import localFont from "next/font/local"
 import "./globals.css"
+import { AppShellLayout } from "@/components/app-shell-layout"
+import { BillingSummaryProvider } from "@/components/billing/billing-summary-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import AuthProvider from "@/components/auth-provider"
 
@@ -37,7 +39,9 @@ export default function RootLayout({
       >
         <TooltipProvider>
           <AuthProvider>
-            {children}
+            <BillingSummaryProvider>
+              <AppShellLayout>{children}</AppShellLayout>
+            </BillingSummaryProvider>
           </AuthProvider>
         </TooltipProvider>
       </body>

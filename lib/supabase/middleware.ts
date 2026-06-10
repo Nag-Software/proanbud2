@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { isAuthEntryRoute, isPublicAuthRoute } from '@/lib/auth/routes'
+import { isAuthEntryRoute, isPublicAuthRoute, isSubscriptionExemptRoute } from '@/lib/auth/routes'
+import { isActiveSubscriptionStatus } from '@/lib/billing/plans'
 import { LOGIN_PATH } from '@/lib/constants'
 
 export async function updateSession(request: NextRequest) {
@@ -102,6 +103,36 @@ export async function updateSession(request: NextRequest) {
       url.pathname = '/create-company'
       url.searchParams.set('reason', 'missing-company')
       return NextResponse.redirect(url)
+    }
+
+    if (companyId && !isSubscriptionExemptRoute(pathname)) {
+      let subscriptionStatus: string | null = null
+
+      const { data: rpcStatus, error: statusError } = await supabase.rpc(
+        'get_current_subscription_status'
+      )
+
+      if (statusError) {
+        console.error('Middleware get_current_subscription_status RPC failed', {
+          userId: user.id,
+          pathname,
+          code: statusError.code,
+          message: statusError.message,
+        })
+      } else {
+        subscriptionStatus = rpcStatus ?? 'incomplete'
+      }
+
+      if (subscriptionStatus && !isActiveSubscriptionStatus(subscriptionStatus)) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/onboarding/abonnement'
+        url.searchParams.set('reason', 'missing-subscription')
+        const redirect = NextResponse.redirect(url)
+        supabaseResponse.cookies.getAll().forEach(({ name, value }) => {
+          redirect.cookies.set(name, value)
+        })
+        return redirect
+      }
     }
   }
 

@@ -12,10 +12,18 @@ import {
   type MouseEvent,
 } from "react"
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd"
-import { ChevronDown, ExternalLink, GripVertical, Trash2 } from "lucide-react"
+import { ChevronDown, ExternalLink, GripVertical, Info, Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { calculateLineItemTotal, formatNok, type OfferLineItem } from "@/lib/tilbud/types"
@@ -229,6 +237,51 @@ function EditableText({
     >
       {value || placeholder}
     </span>
+  )
+}
+
+function LineItemInfoButton({ item }: { item: OfferLineItem }) {
+  const reasoning = item.reasoning?.trim()
+  const description = item.description?.trim()
+  const hasContent = Boolean(reasoning || description)
+
+  if (!hasContent) return null
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+          aria-label={`Begrunnelse for ${item.title}`}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Info className="h-3.5 w-3.5" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{item.title}</DialogTitle>
+          <DialogDescription>Begrunnelse for valg av produkt, pris og mengde.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          {reasoning ? (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Begrunnelse</p>
+              <p className="leading-relaxed text-foreground">{reasoning}</p>
+            </div>
+          ) : null}
+          {description ? (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Innhold</p>
+              <p className="whitespace-pre-line leading-relaxed text-foreground">{description}</p>
+            </div>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -572,6 +625,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                                               className="font-medium"
                                             />
                                           </div>
+                                          <LineItemInfoButton item={item} />
                                           {resolveNobb(item) ? (
                                             <Button
                                               type="button"

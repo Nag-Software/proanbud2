@@ -26,6 +26,7 @@ const lineItemSchema = z.object({
   subproject: z.string().trim().default("Generelt"),
   title: z.string().trim().min(1),
   description: z.string().trim().default(""),
+  reasoning: z.string().trim().optional(),
   quantity: z.number().min(0),
   unit: z.string().trim().min(1),
   supplier: z.string().trim().default("Ukjent"),
@@ -79,9 +80,7 @@ const saveOfferSchema = z
     id: z.string().uuid().optional(),
     title: z.string().trim().min(2, "Tittel mangler"),
     description: z.string().trim().min(20, "Beskrivelse må være minst 20 tegn"),
-    assignmentMode: z.enum(["project", "customer"]),
-    projectId: z.string().uuid().nullable(),
-    customerId: z.string().uuid(),
+    projectId: z.string().uuid("Prosjekt må velges"),
     sourceSummary: z.string().trim().default(""),
     sourceDocuments: z.array(sourceDocumentSchema).default([]),
     lineItems: z.array(lineItemSchema).min(1, "Tilbudet må inneholde minst ett produkt"),
@@ -93,14 +92,6 @@ const saveOfferSchema = z
     validityDays: z.number().int().min(1).max(365).default(30),
   })
   .superRefine((value, ctx) => {
-    if (value.assignmentMode === "project" && !value.projectId) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["projectId"],
-        message: "Prosjekt må velges",
-      })
-    }
-
     if (value.sendDirectlyToCustomer && !value.recipientEmail) {
       ctx.addIssue({
         code: "custom",
@@ -128,7 +119,7 @@ type PersistedOfferResult = {
   status: "draft" | "sent"
   companyId: string
   projectId: string | null
-  customerId: string
+  customerId: string | null
 }
 
 async function resolveCompanyId() {
@@ -160,43 +151,33 @@ async function validateProjectAndCustomer(
   companyId: string,
   supabase: Awaited<ReturnType<typeof createClient>>
 ) {
-  let projectId = input.projectId
-  let customerId = input.customerId
-
-  if (input.assignmentMode === "project") {
-    const { data: project, error: projectError } = await supabase
-      .from("projects")
-      .select("id, customer_id")
-      .eq("id", input.projectId)
-      .eq("company_id", companyId)
-      .maybeSingle()
-
-    if (projectError || !project) {
-      throw new Error("Prosjektet finnes ikke i bedriften")
-    }
-
-    projectId = project.id
-    customerId = customerId || project.customer_id
-
-    if (!customerId) {
-      throw new Error("Prosjektet mangler kunde. Velg en kunde for tilbudet.")
-    }
-  } else {
-    projectId = null
-  }
-
-  const { data: customer, error: customerError } = await supabase
-    .from("customers")
-    .select("id")
-    .eq("id", customerId)
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("id, customer_id")
+    .eq("id", input.projectId)
     .eq("company_id", companyId)
     .maybeSingle()
 
-  if (customerError || !customer) {
-    throw new Error("Kunden finnes ikke i bedriften")
+  if (projectError || !project) {
+    throw new Error("Prosjektet finnes ikke i bedriften")
   }
 
-  return { projectId, customerId }
+  const customerId = project.customer_id
+
+  if (customerId) {
+    const { data: customer, error: customerError } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("id", customerId)
+      .eq("company_id", companyId)
+      .maybeSingle()
+
+    if (customerError || !customer) {
+      throw new Error("Kunden finnes ikke i bedriften")
+    }
+  }
+
+  return { projectId: project.id, customerId: customerId ?? null }
 }
 
 function toOfferRow(input: SaveOfferInput, companyId: string, status: "draft" | "sent") {
@@ -264,12 +245,8 @@ async function persistOffer(input: SaveOfferInput, status: "draft" | "sent"): Pr
       })
     }
 
-    revalidatePath("/tilbud")
     revalidatePath("/nytt-tilbud")
-
-    if (data.project_id) {
-      revalidatePath(`/prosjekter/${data.project_id}`)
-    }
+    revalidatePath(`/prosjekter/${data.project_id}`)
 
     return {
       id: data.id,
@@ -318,12 +295,8 @@ async function persistOffer(input: SaveOfferInput, status: "draft" | "sent"): Pr
     })
   }
 
-  revalidatePath("/tilbud")
   revalidatePath("/nytt-tilbud")
-
-  if (data.project_id) {
-    revalidatePath(`/prosjekter/${data.project_id}`)
-  }
+  revalidatePath(`/prosjekter/${data.project_id}`)
 
   return {
     id: data.id,
@@ -369,8 +342,10 @@ export async function sendOfferAction(input: unknown) {
     actorUserId: context.userId,
   })
 
-  revalidatePath("/tilbud")
   revalidatePath(`/tilbud/${result.id}`)
+  if (result.projectId) {
+    revalidatePath(`/prosjekter/${result.projectId}`)
+  }
 
   return result
 }

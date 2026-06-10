@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useEffectEvent, useState } from "react"
+import { useEffect, useEffectEvent, useRef, useState } from "react"
 import { ArrowLeft, ArrowRight, CheckCircle2, LoaderCircle, Sparkles, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -96,6 +96,11 @@ export function AiChatPanel({
   const [questionIndex, setQuestionIndex] = useState(0)
   const [customAnswer, setCustomAnswer] = useState("")
   const [errorText, setErrorText] = useState<string | null>(null)
+  const generationIdRef = useRef(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `gen-${Date.now()}`
+  )
 
   const currentQuestion = questions[questionIndex] || null
   const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined
@@ -142,6 +147,7 @@ export function AiChatPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phase: "start",
+          generationId: generationIdRef.current,
           title,
           description,
           company,
@@ -295,6 +301,7 @@ export function AiChatPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phase: "answer",
+          generationId: generationIdRef.current,
           title,
           description,
           company,
