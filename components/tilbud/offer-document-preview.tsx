@@ -9,7 +9,7 @@ import {
   groupLineItemsBySubproject,
   type OfferDocumentData,
 } from "@/lib/tilbud/offer-document"
-import { calculateLineItemTotal, formatNok } from "@/lib/tilbud/types"
+import { calculateLineItemTotal, calculateLineItemUnitPriceWithMarkup, formatNok } from "@/lib/tilbud/types"
 
 type OfferDocumentPreviewProps = OfferDocumentData & {
   className?: string
@@ -131,7 +131,7 @@ export function OfferDocumentPreview({
                       </td>
                       <td className="py-1.5 pr-3 text-right tabular-nums text-gray-700">{item.quantity}</td>
                       <td className="py-1.5 pr-3 text-right text-gray-500">{item.unit}</td>
-                      <td className="py-1.5 pr-3 text-right tabular-nums text-gray-700">{formatNok(item.unitPriceNok)}</td>
+                      <td className="py-1.5 pr-3 text-right tabular-nums text-gray-700">{formatNok(calculateLineItemUnitPriceWithMarkup(item))}</td>
                       <td className="py-1.5 text-right text-gray-500">{item.discountPercent > 0 ? `${item.discountPercent}%` : "—"}</td>
                       <td className="py-1.5 pl-4 text-right tabular-nums font-semibold text-gray-900">
                         {formatNok(calculateLineItemTotal(item))}

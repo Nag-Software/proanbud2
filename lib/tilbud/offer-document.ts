@@ -1,5 +1,6 @@
 import {
   calculateLineItemTotal,
+  calculateLineItemUnitPriceWithMarkup,
   calculateOfferTotals,
   formatNok,
   type OfferCompanyContext,
@@ -130,7 +131,7 @@ export function buildOfferEmailHtml(data: OfferDocumentData & { offerReference?:
               </td>
               <td style="padding:8px 12px 8px 0;border-bottom:1px solid #f3f4f6;font-size:11px;text-align:right;color:#374151;">${item.quantity}</td>
               <td style="padding:8px 12px 8px 0;border-bottom:1px solid #f3f4f6;font-size:11px;text-align:right;color:#6b7280;">${escapeHtml(item.unit)}</td>
-              <td style="padding:8px 12px 8px 0;border-bottom:1px solid #f3f4f6;font-size:11px;text-align:right;color:#374151;">${escapeHtml(formatNok(item.unitPriceNok))}</td>
+              <td style="padding:8px 12px 8px 0;border-bottom:1px solid #f3f4f6;font-size:11px;text-align:right;color:#374151;">${escapeHtml(formatNok(calculateLineItemUnitPriceWithMarkup(item)))}</td>
               <td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:11px;text-align:right;color:#6b7280;">${item.discountPercent > 0 ? `${item.discountPercent}%` : "—"}</td>
               <td style="padding:8px 0 8px 16px;border-bottom:1px solid #f3f4f6;font-size:11px;text-align:right;font-weight:600;color:#111827;">${escapeHtml(formatNok(calculateLineItemTotal(item)))}</td>
             </tr>`

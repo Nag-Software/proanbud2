@@ -196,7 +196,7 @@ export function LagredeJobberPage() {
         </div>
         <Button onClick={openCreateDialog} className="w-full sm:w-auto gap-2">
           <Plus className="h-4 w-4" />
-          Ny jobb
+          Ny fast jobb
         </Button>
       </div>
 

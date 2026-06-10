@@ -74,7 +74,7 @@ export default async function IntegrasjonerPage() {
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {integrations.map((integration) => {
                 const isTripletex = integration.name === "Tripletex"
                 const isActive = integration.status === "active" && (!isTripletex || hasTripletexConnection)
@@ -82,7 +82,7 @@ export default async function IntegrasjonerPage() {
 
                 return (
                     <Card key={integration.name} className="">
-                      <CardHeader>
+                      <CardHeader className="mb-auto">
                         <div className="flex items-center justify-between gap-3">
                           <CardTitle className="mb-2">
                             <Image src={integration.logo} alt={`${integration.name} logo`} width={120} height={40} />
@@ -97,9 +97,9 @@ export default async function IntegrasjonerPage() {
                           {integration.description}
                       </CardDescription>
                     </CardHeader>
-                    <CardContent className="flex items-center justify-between gap-3">
+                    <CardContent className="flex items-center justify-start gap-3 mt-auto">
                       {integration.status === "active" ? (
-                        <Button asChild variant="default">
+                        <Button asChild variant="default" className="min-w-20">
                             <Link href={integration.url}>
                             {actionLabel}
                             </Link>

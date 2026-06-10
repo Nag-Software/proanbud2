@@ -11,10 +11,8 @@ import {
   FileImage,
   FileText,
   Link2,
-  Mail,
   Plus,
   Send,
-  Sparkles,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -27,10 +25,12 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
-import { NewOfferItemsTable } from "@/components/tilbud/new-offer-items-table"
+import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
+import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
 import { formatOfferReference } from "@/lib/tilbud/offer-document"
 import { getOfferActivityTone, type OfferActivityEvent } from "@/lib/tilbud/offer-activity.shared"
 import { type OfferCompanyContext, type OfferLineItem, type OfferSourceDocument, calculateOfferTotals, formatNok } from "@/lib/tilbud/types"
+
 
 type OfferActivityItem = OfferActivityEvent
 
@@ -60,9 +60,19 @@ type TripletexSyncState = {
   pendingJobs: Array<{ job_type: string; status: string; last_error_message: string | null }>
 } | null
 
+type LinkedCustomer = {
+  id: string | null
+  name: string
+  email: string
+  phone: string
+  address: string
+  postalCode: string
+  city: string
+  orgNumber: string
+}
+
 type OfferPageModel = {
   id: string
-  customerId: string | null
   title: string
   description: string
   projectSummary: string
@@ -77,13 +87,6 @@ type OfferPageModel = {
   recipientName: string
   recipientEmail: string
   recipientPhone: string
-  customerName: string
-  customerEmail: string
-  customerPhone: string
-  customerAddress: string
-  customerPostalCode: string
-  customerCity: string
-  customerOrgNumber: string
   projectName: string
   sourceSummary: string
   sourceDocuments: OfferSourceDocument[]
@@ -96,18 +99,48 @@ type OfferSaveSnapshot = {
   description: string
   status: OfferPageModel["status"]
   quoteValidUntil: string | null
-  customerName: string
-  customerEmail: string
-  customerPhone: string
-  customerAddress: string
-  customerPostalCode: string
-  customerCity: string
-  customerOrgNumber: string
   recipientName: string
   recipientEmail: string
   recipientPhone: string
   lineItems: OfferLineItem[]
   sourceSummary: string
+}
+
+function customerField(value: string) {
+  return value.trim() || "—"
+}
+
+function CustomerInfoDisplay({ customer }: { customer: LinkedCustomer }) {
+  const addressLine = [customer.address, customer.postalCode, customer.city].filter(Boolean).join(", ")
+
+  return (
+    <div className="space-y-3 text-sm">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Kunde</p>
+        <p className="mt-1 font-medium text-[15px] text-foreground">{customerField(customer.name)}</p>
+      </div>
+      <div className="space-y-2">
+        {customer.orgNumber ? (
+        <div className="grid grid-cols-[88px_1fr] gap-2">
+            <p className="text-muted-foreground">Org.nr</p>
+            <p className="text-foreground">{customerField(customer.orgNumber)}</p>
+          </div>
+        ) : null}
+        <div className="grid grid-cols-[88px_1fr] gap-2">
+          <p className="text-muted-foreground">Adresse</p>
+          <p className="text-foreground">{addressLine || "—"}</p>
+        </div>
+        <div className="grid grid-cols-[88px_1fr] gap-2">
+          <p className="text-muted-foreground">E-post</p>
+          <p className="text-foreground">{customerField(customer.email)}</p>
+        </div>
+        <div className="grid grid-cols-[88px_1fr] gap-2">
+          <p className="text-muted-foreground">Telefon</p>
+          <p className="text-foreground">{customerField(customer.phone)}</p>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function formatFileSize(sizeBytes: number) {
@@ -180,12 +213,14 @@ function contractBadge(status?: string) {
 
 export function OfferDetailClient({
   initialOffer,
+  linkedCustomer,
   activity,
   company,
   contractProvider = "docusign",
   tripletexSync: initialTripletexSync = null,
 }: {
   initialOffer: OfferPageModel
+  linkedCustomer: LinkedCustomer
   activity: OfferActivityItem[]
   company: OfferCompanyContext | null
   contractProvider?: "docusign" | "tripletex"
@@ -200,6 +235,7 @@ export function OfferDetailClient({
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isAutoSaving, setIsAutoSaving] = useState(false)
   const pdfDocRef = useRef<HTMLDivElement>(null)
+  const itemsTableRef = useRef<NewOfferItemsTableHandle>(null)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const [lastAutoSaveAt, setLastAutoSaveAt] = useState<string | null>(initialOffer.updatedAt)
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -217,13 +253,6 @@ export function OfferDetailClient({
       description: offer.description,
       status: offer.status,
       quoteValidUntil: offer.quoteValidUntil,
-      customerName: offer.customerName,
-      customerEmail: offer.customerEmail,
-      customerPhone: offer.customerPhone,
-      customerAddress: offer.customerAddress,
-      customerPostalCode: offer.customerPostalCode,
-      customerCity: offer.customerCity,
-      customerOrgNumber: offer.customerOrgNumber,
       recipientName: offer.recipientName,
       recipientEmail: offer.recipientEmail,
       recipientPhone: offer.recipientPhone,
@@ -232,13 +261,6 @@ export function OfferDetailClient({
     }),
     [
       lineItems,
-      offer.customerAddress,
-      offer.customerCity,
-      offer.customerEmail,
-      offer.customerName,
-      offer.customerOrgNumber,
-      offer.customerPhone,
-      offer.customerPostalCode,
       offer.description,
       offer.quoteValidUntil,
       offer.recipientEmail,
@@ -250,34 +272,36 @@ export function OfferDetailClient({
     ]
   )
 
+  const previewCustomer = useMemo(
+    () => ({
+      name: linkedCustomer.name,
+      email: offer.recipientEmail.trim() || linkedCustomer.email,
+      phone: offer.recipientPhone.trim() || linkedCustomer.phone,
+      address: linkedCustomer.address,
+      city: linkedCustomer.city,
+      orgNumber: linkedCustomer.orgNumber,
+    }),
+    [linkedCustomer, offer.recipientEmail, offer.recipientPhone]
+  )
+
   const saveFingerprint = useMemo(() => JSON.stringify(saveSnapshot), [saveSnapshot])
 
-  const setLineItem = (index: number, patch: Partial<OfferLineItem>) => {
-    setLineItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)))
-  }
+  const [activeSubproject, setActiveSubproject] = useState<string | null>(null)
 
-  const addLineItem = () => {
-    setLineItems((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        subproject: "Generelt",
-        title: "Ny post",
-        description: "",
-        quantity: 1,
-        unit: "stk",
-        supplier: "",
-        unitPriceNok: 0,
-        markupPercent: 0,
-        discountPercent: 0,
-      },
-    ])
-  }
+  const addLineItems = useCallback((nextItems: OfferLineItem[]) => {
+    setLineItems((prev) => [...prev, ...nextItems])
+  }, [])
 
+  const defaultSubproject = useMemo(() => {
+    if (activeSubproject) return activeSubproject
+    const first = lineItems.find((item) => item.subproject.trim())
+    return first?.subproject.trim() || "Generelt"
+  }, [activeSubproject, lineItems])
 
-  const removeLineItem = (id: string) => {
-    setLineItems((prev) => prev.filter((item) => item.id !== id))
-  }
+  const handleAddCategory = useCallback(() => {
+    const category = itemsTableRef.current?.addCategory()
+    if (category) setActiveSubproject(category)
+  }, [])
 
   const saveOfferSnapshot = useCallback(
     async (snapshot: OfferSaveSnapshot, options?: { silent?: boolean }) => {
@@ -402,9 +426,9 @@ export function OfferDetailClient({
   }, [offer.id])
 
   const sendOffer = async () => {
-    const recipientEmail = offer.recipientEmail.trim() || offer.customerEmail.trim()
+    const recipientEmail = offer.recipientEmail.trim() || linkedCustomer.email.trim()
     if (!recipientEmail) {
-      toast.error("Fyll inn mottaker-e-post før du sender tilbud")
+      toast.error("Kunden mangler e-post. Oppdater kunden før du sender tilbud.")
       return
     }
 
@@ -419,9 +443,9 @@ export function OfferDetailClient({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            recipientName: offer.recipientName.trim() || offer.customerName.trim(),
+            recipientName: offer.recipientName.trim() || linkedCustomer.name.trim(),
             recipientEmail,
-            recipientPhone: offer.recipientPhone.trim() || offer.customerPhone.trim(),
+            recipientPhone: offer.recipientPhone.trim() || linkedCustomer.phone.trim(),
             message: offer.sourceSummary.trim(),
           }),
         })
@@ -599,22 +623,16 @@ export function OfferDetailClient({
             <div className="flex flex-wrap items-center gap-2">
               {statusBadge(offer.status)}
               {contractBadge(offer.contract?.status)}
-              <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary">
-                Tilbud
-              </Badge>
               <span className="ml-auto text-[11px] text-muted-foreground">#{formatOfferReference(offer.id)}</span>
             </div>
 
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Prisforslag til kunde</p>
-                <h2 className="text-xl font-semibold leading-tight text-foreground">
-                  {offer.title?.trim() || `Tilbud #${formatOfferReference(offer.id)}`}
-                </h2>
-              </div>
+              <h2 className="text-xl font-semibold leading-tight text-foreground">
+                {offer.title?.trim() || `Tilbud #${formatOfferReference(offer.id)}`}
+              </h2>
               <div className="shrink-0 text-right">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Total eks. mva</p>
                 <p className="text-2xl font-bold tabular-nums text-foreground">{formatNok(totals.totalNok)}</p>
+                <p className="text-[11px] text-muted-foreground">eks. mva</p>
               </div>
             </div>
 
@@ -630,73 +648,6 @@ export function OfferDetailClient({
                 </SelectContent>
               </Select>
               <Input type="date" className="h-8 w-36 bg-background text-xs" value={toInputDate(offer.quoteValidUntil)} onChange={(e) => setOffer((prev) => ({ ...prev, quoteValidUntil: e.target.value || null }))} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-              <div className="border border-border bg-background p-2">
-                <p className="flex items-center gap-1 text-[10px] text-muted-foreground"><CalendarClock className="h-3 w-3" />Opprettet</p>
-                <p className="mt-0.5 text-sm font-semibold text-foreground">{dateLabel(offer.createdAt)}</p>
-              </div>
-              <div className="border border-border bg-background p-2">
-                <p className="flex items-center gap-1 text-[10px] text-muted-foreground"><CalendarClock className="h-3 w-3" />Gyldig til</p>
-                <p className="mt-0.5 text-sm font-semibold text-foreground">{dateLabel(offer.quoteValidUntil)}</p>
-              </div>
-              <div className="border border-border bg-background p-2">
-                <p className="flex items-center gap-1 text-[10px] text-muted-foreground"><Mail className="h-3 w-3" />Tilbud sendt</p>
-                <p className="mt-0.5 text-sm font-semibold text-foreground">{offer.sentAt ? dateLabel(offer.sentAt) : "Ikke sendt"}</p>
-              </div>
-              <div className="border border-border bg-background p-2">
-                <p className="flex items-center gap-1 text-[10px] text-muted-foreground"><FileText className="h-3 w-3" />Kontrakt</p>
-                <p className="mt-0.5 text-sm font-semibold text-foreground">
-                  {offer.contract?.status === "completed" ? "Signert" :
-                   offer.contract?.status && ["sent", "delivered"].includes(offer.contract.status) ? "Til signering" :
-                   "Ikke sendt"}
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-md border border-dashed border-primary/20 bg-primary/5 px-3 py-2 text-[11px] text-muted-foreground">
-              <strong className="text-foreground">Tilbud</strong> sendes som prisforslag på e-post.
-              <strong className="text-foreground"> Kontrakt</strong> er et separat signeringsdokument via DocuSign.
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div>
-                <Label htmlFor="header-recipient-name" className="text-[11px] text-muted-foreground">
-                  Mottaker
-                </Label>
-                <Input
-                  id="header-recipient-name"
-                  className="mt-1 h-8 bg-background text-xs"
-                  value={offer.recipientName}
-                  onChange={(event) => setOffer((prev) => ({ ...prev, recipientName: event.target.value }))}
-                  placeholder={offer.customerName || "Navn"}
-                />
-              </div>
-              <div>
-                <Label htmlFor="header-recipient-email" className="text-[11px] text-muted-foreground">
-                  E-post for tilbud
-                </Label>
-                <Input
-                  id="header-recipient-email"
-                  className="mt-1 h-8 bg-background text-xs"
-                  value={offer.recipientEmail}
-                  onChange={(event) => setOffer((prev) => ({ ...prev, recipientEmail: event.target.value }))}
-                  placeholder={offer.customerEmail || "kunde@firma.no"}
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <Label htmlFor="header-quote-message" className="text-[11px] text-muted-foreground">
-                  Melding til kunde (valgfri)
-                </Label>
-                <Textarea
-                  id="header-quote-message"
-                  className="mt-1 min-h-[64px] bg-background text-xs"
-                  value={offer.sourceSummary}
-                  onChange={(event) => setOffer((prev) => ({ ...prev, sourceSummary: event.target.value }))}
-                  placeholder="Kort melding som følger med tilbudet..."
-                />
-              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -718,30 +669,36 @@ export function OfferDetailClient({
                 ? "Lagrer automatisk..."
                 : `Lagret${lastAutoSaveAt ? ` ${dateTimeLabel(lastAutoSaveAt)}` : ""}`}
             </p>
+
+            <div>
+              <Label htmlFor="header-quote-message" className="text-[11px] text-muted-foreground">
+                Melding til kunde
+              </Label>
+              <Textarea
+                id="header-quote-message"
+                className="mt-1 min-h-[64px] bg-background text-xs"
+                value={offer.sourceSummary}
+                onChange={(event) => setOffer((prev) => ({ ...prev, sourceSummary: event.target.value }))}
+                placeholder="Valgfri melding som følger med tilbudet"
+              />
+            </div>
           </div>
 
           <div className="p-4 sm:p-5">
-            <article className="theme-surface-document flex h-full flex-col p-4">
-              <div className="flex flex-1 flex-col gap-3 text-sm">
-                {offer.projectName ? (
-                  <div>
-                    <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Prosjekt</p>
-                    <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">KI-generert</p>
-                    </div>
-                    <p className="mt-1 font-medium text-[15px] text-foreground">{offer.projectName}</p>
-                  </div>
-                ) : null}
-                <div className="flex-1">
-                  <p className="text-[15px] leading-relaxed text-foreground">
-                    {offer.projectSummary.trim()
-                      ? offer.projectSummary
-                      : isGeneratingSummary
-                        ? "Genererer kort oppsummering av prosjektet..."
-                        : "Kort KI-oppsummering av prosjektet vises her når den er klar."}
-                  </p>
+            <article className="theme-surface-document flex h-full flex-col gap-4 p-4">
+              <CustomerInfoDisplay customer={linkedCustomer} />
+
+              {offer.projectName ? (
+                <div className="theme-divider-soft space-y-2 border-t pt-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tilknyttet prosjekt</p>
+                  <p className="font-medium text-[15px] text-foreground">{offer.projectName}</p>
+                  {offer.projectSummary.trim() ? (
+                    <p className="text-sm leading-relaxed text-muted-foreground">{offer.projectSummary}</p>
+                  ) : isGeneratingSummary ? (
+                    <p className="text-sm text-muted-foreground">Genererer oppsummering...</p>
+                  ) : null}
                 </div>
-              </div>
+              ) : null}
             </article>
           </div>
         </div>
@@ -854,14 +811,32 @@ export function OfferDetailClient({
         <TabsContent value="komponenter" className="m-0 focus-visible:outline-none focus-visible:ring-0">
           <div className="flex flex-col border border-border bg-background">
             <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
-              <h3 className="text-sm font-semibold tracking-tight text-foreground">Ordrelinjer</h3>
-              <Button size="sm" variant="outline" onClick={addLineItem} className="h-8 text-xs font-medium">
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Legg til rad
-              </Button>
+              <h3 className="text-sm font-semibold tracking-tight text-foreground">Tilbudskomponenter</h3>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs font-medium"
+                  onClick={handleAddCategory}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Legg til kategori
+                </Button>
+                <AddOfferLineItemMenu
+                  onAddItems={addLineItems}
+                  defaultSubproject={defaultSubproject}
+                  companyName={company?.name}
+                />
+              </div>
             </div>
-            
-            <NewOfferItemsTable items={lineItems} onItemsChange={setLineItems} supplierSuggestions={[]} />
+
+            <NewOfferItemsTable
+              ref={itemsTableRef}
+              items={lineItems}
+              onItemsChange={setLineItems}
+              supplierSuggestions={[]}
+            />
             <div className="bg-muted/5 p-5">
               <div className="ml-auto flex w-full max-w-sm flex-col gap-3">
                 <div className="flex items-center justify-between text-sm">
@@ -895,82 +870,19 @@ export function OfferDetailClient({
           <div className="border border-border bg-background">
             <div className="border-b border-border bg-muted/30 px-4 py-3">
               <h3 className="text-sm font-semibold text-foreground">Kundeinfo</h3>
-              <p className="mt-1 text-xs text-muted-foreground">Kontakt- og fakturainformasjon for tilbudet.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Hentes fra kunden koblet til prosjektet. Rediger kunden under Kunder.
+              </p>
             </div>
             <div className="p-4">
               <article className="theme-surface-document mx-auto max-w-2xl p-4">
-                <div className="space-y-4 text-sm">
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-[112px_1fr] gap-3">
-                      <p className="text-muted-foreground">Bedrift</p>
-                      <Input
-                        className="h-8 bg-white"
-                        value={offer.customerName}
-                        onChange={(event) => setOffer((prev) => ({ ...prev, customerName: event.target.value }))}
-                        placeholder="Kundenavn"
-                      />
-                    </div>
-                    <div className="grid grid-cols-[112px_1fr] gap-3">
-                      <p className="text-muted-foreground">Org.nr</p>
-                      <Input
-                        className="h-8 bg-white"
-                        value={offer.customerOrgNumber}
-                        onChange={(event) => setOffer((prev) => ({ ...prev, customerOrgNumber: event.target.value }))}
-                        placeholder="999 999 999"
-                      />
-                    </div>
-                    <div className="grid grid-cols-[112px_1fr] gap-3">
-                      <p className="text-muted-foreground">Adresse</p>
-                      <div className="grid gap-2">
-                        <Input
-                          className="h-8 bg-white"
-                          value={offer.customerAddress}
-                          onChange={(event) => setOffer((prev) => ({ ...prev, customerAddress: event.target.value }))}
-                          placeholder="Gateadresse"
-                        />
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            className="h-8 bg-white"
-                            value={offer.customerPostalCode}
-                            onChange={(event) => setOffer((prev) => ({ ...prev, customerPostalCode: event.target.value }))}
-                            placeholder="Postnr"
-                          />
-                          <Input
-                            className="h-8 bg-white"
-                            value={offer.customerCity}
-                            onChange={(event) => setOffer((prev) => ({ ...prev, customerCity: event.target.value }))}
-                            placeholder="Poststed"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-[112px_1fr] gap-3">
-                      <p className="text-muted-foreground">E-post</p>
-                      <Input
-                        className="h-8 bg-white"
-                        value={offer.customerEmail}
-                        onChange={(event) => setOffer((prev) => ({ ...prev, customerEmail: event.target.value }))}
-                        placeholder="kunde@firma.no"
-                      />
-                    </div>
-                    <div className="grid grid-cols-[112px_1fr] gap-3">
-                      <p className="text-muted-foreground">Telefon</p>
-                      <Input
-                        className="h-8 bg-white"
-                        value={offer.customerPhone}
-                        onChange={(event) => setOffer((prev) => ({ ...prev, customerPhone: event.target.value }))}
-                        placeholder="+47..."
-                      />
-                    </div>
+                <CustomerInfoDisplay customer={linkedCustomer} />
+                {offer.projectName ? (
+                  <div className="theme-divider-soft mt-4 space-y-2 border-t pt-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tilknyttet prosjekt</p>
+                    <p className="font-medium text-foreground">{offer.projectName}</p>
                   </div>
-                  <div className="theme-divider-soft space-y-2 border-t pt-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tilknytning</p>
-                    <div className="grid grid-cols-[112px_1fr] gap-3">
-                      <p className="text-muted-foreground">Prosjekt</p>
-                      <p className="font-medium text-foreground">{offer.projectName || "Ikke koblet"}</p>
-                    </div>
-                  </div>
-                </div>
+                ) : null}
               </article>
             </div>
           </div>
@@ -1159,14 +1071,7 @@ export function OfferDetailClient({
               projectSummary={offer.projectSummary}
               quoteMessage={offer.sourceSummary}
               projectName={offer.projectName}
-              customer={{
-                name: offer.customerName,
-                email: offer.recipientEmail || offer.customerEmail,
-                phone: offer.recipientPhone || offer.customerPhone,
-                address: offer.customerAddress,
-                city: offer.customerCity,
-                orgNumber: offer.customerOrgNumber,
-              }}
+              customer={previewCustomer}
               lineItems={lineItems}
               company={company}
               issuedDate={offer.createdAt}
@@ -1184,14 +1089,7 @@ export function OfferDetailClient({
             projectSummary={offer.projectSummary}
             quoteMessage={offer.sourceSummary}
             projectName={offer.projectName}
-            customer={{
-              name: offer.customerName,
-              email: offer.recipientEmail || offer.customerEmail,
-              phone: offer.recipientPhone || offer.customerPhone,
-              address: offer.customerAddress,
-              city: offer.customerCity,
-              orgNumber: offer.customerOrgNumber,
-            }}
+            customer={previewCustomer}
             lineItems={lineItems}
             company={company}
             issuedDate={offer.createdAt}

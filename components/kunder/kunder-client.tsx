@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { Customer } from "./schema"
-import { columns } from "./columns"
+import { createCustomerColumns } from "./columns"
 import { DataTable } from "./data-table"
 import { CustomerDrawer } from "./customer-drawer"
 import { AddCustomerDrawer } from "./add-customer-drawer"
@@ -22,10 +22,15 @@ export function KunderClient({ initialData }: KunderClientProps) {
   // We use initialData directly so the UI always exactly matches the database
   const data = initialData;
 
-  const handleRowClick = (customer: Customer) => {
+  const handleRowClick = React.useCallback((customer: Customer) => {
     setSelectedCustomer(customer)
     setIsCustomerDrawerOpen(true)
-  }
+  }, [])
+
+  const columns = React.useMemo(
+    () => createCustomerColumns({ onViewDetails: handleRowClick }),
+    [handleRowClick]
+  )
 
   // Handle local update so the open drawer reflects changes immediately
   const handleUpdateCustomer = (updatedCustomer: Customer) => {

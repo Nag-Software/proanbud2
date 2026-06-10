@@ -28,7 +28,7 @@ export default async function Page() {
 
   return (
     <AppPageShell segments={["Min Bedrift", "Bedriftsprofil"]}>
-      <div className="mx-auto w-full max-w-3xl">
+      <div className="w-full max-w-3xl">
         <BedriftsprofilClient
           initialProfile={initialProfile}
           profileFieldsAvailable={companyResult.profileFieldsAvailable}

@@ -17,9 +17,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Building2, User, Phone, Mail, MapPin, Briefcase, TrendingUp, CreditCard, Clock, FileCheck } from "lucide-react"
+import { Building2, User, Phone, Mail, MapPin, Briefcase, TrendingUp, Clock, FileCheck } from "lucide-react"
 import { updateCustomerAction } from "@/app/kunder/actions"
 import { toast } from "sonner"
+import { CustomerProjectsTab } from "./customer-projects-tab"
 
 interface CustomerDrawerProps {
   customer: Customer | null
@@ -103,9 +104,6 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
                   <Badge variant={isBusiness ? "default" : "secondary"} className="text-xs font-normal">
                     {isBusiness ? "Bedrift" : "Privatperson"}
                   </Badge>
-                  {customer.syncStatus === "synced" && <Badge variant="outline" className="text-xs">Synced</Badge>}
-                  {customer.syncStatus === "syncing" && <Badge variant="secondary" className="text-xs">Syncer...</Badge>}
-                  {customer.syncStatus === "attention" && <Badge variant="destructive" className="text-xs">Krever handling</Badge>}
                   {isBusiness && customer.orgNumber && (
                     <span className="text-xs text-muted-foreground whitespace-nowrap">Org: {customer.orgNumber}</span>
                   )}
@@ -240,14 +238,25 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
                   <div className="grid grid-cols-2 gap-4">
                     <Card className="shadow-sm">
                       <CardContent className="p-4 flex flex-col justify-center gap-1">
-                        <span className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5"><Briefcase className="h-3 w-3" /> Prosjekter</span>
-                        <span className="text-2xl font-bold tracking-tight">{customer.activeProjects}</span>
+                        <span className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
+                          <Briefcase className="h-3 w-3" /> Prosjekter
+                        </span>
+                        <span className="text-2xl font-bold tracking-tight">{customer.totalProjects}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {customer.activeProjects} aktive
+                        </span>
                       </CardContent>
                     </Card>
                     <Card className="shadow-sm">
                       <CardContent className="p-4 flex flex-col justify-center gap-1">
-                        <span className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5"><FileCheck className="h-3 w-3" /> Akseptert</span>
-                        <span className="text-2xl font-bold tracking-tight">{customer.acceptanceRate ?? 0} <span className="text-sm font-normal text-muted-foreground">%</span></span>
+                        <span className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
+                          <FileCheck className="h-3 w-3" /> Akseptert
+                        </span>
+                        <span className="text-2xl font-bold tracking-tight">
+                          {customer.acceptanceRate ?? 0}{" "}
+                          <span className="text-sm font-normal text-muted-foreground">%</span>
+                        </span>
+                        <span className="text-xs text-muted-foreground">Av sendte tilbud</span>
                       </CardContent>
                     </Card>
                   </div>
@@ -256,22 +265,17 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
                     <CardContent className="p-5">
                       <div className="flex items-center justify-between mb-4">
                         <span className="text-sm font-semibold flex items-center gap-2">
-                           <TrendingUp className="h-4 w-4 text-emerald-500" />  Total omsetning
+                          <TrendingUp className="h-4 w-4 text-emerald-500" /> Total omsetning
                         </span>
                       </div>
                       <div className="text-3xl font-bold">
-                        {new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(customer.totalRevenue)}
+                        {new Intl.NumberFormat("nb-NO", {
+                          style: "currency",
+                          currency: "NOK",
+                          maximumFractionDigits: 0,
+                        }).format(customer.totalRevenue)}
                       </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="shadow-sm bg-muted/20">
-                    <CardContent className="p-4 flex items-center justify-between">
-                       <div className="flex flex-col">
-                         <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-1"><CreditCard className="h-3 w-3" /> Utestående</span>
-                         <span className="text-lg font-semibold">{new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(0)}</span>
-                       </div>
-                       <Button variant="secondary" size="sm" className="text-xs h-7">Fakturer</Button>
+                      <p className="mt-2 text-xs text-muted-foreground">Sum aksepterte tilbud</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -280,13 +284,10 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
             </TabsContent>
           
           <TabsContent value="projects">
-            <Card>
-              <CardContent className="pt-6 text-center text-muted-foreground">
-                <Briefcase className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                <p>Ingen pågående prosjekter.</p>
-                <Button variant="link" className="mt-2">Opprett nytt tilbud/prosjekt for kunde</Button>
-              </CardContent>
-            </Card>
+            <CustomerProjectsTab
+              customerId={customer.id}
+              projects={customer.projects || []}
+            />
           </TabsContent>
         </Tabs>
           )}

@@ -24,7 +24,8 @@ import {
 } from "lucide-react"
 
 import { saveOfferDraftAction } from "@/app/nytt-tilbud/actions"
-import { NewOfferItemsTable } from "@/components/tilbud/new-offer-items-table"
+import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
+import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -122,6 +123,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [analysisResult, setAnalysisResult] = useState<OfferAnalysisResult | null>(null)
   const [lineItems, setLineItems] = useState<OfferLineItem[]>([])
+  const [activeSubproject, setActiveSubproject] = useState<string | null>(null)
 
   const [globalMarkupPercent, setGlobalMarkupPercent] = useState(15)
 
@@ -294,23 +296,11 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
     }
   }
 
-  const addManualLineItem = () => {
-    const firstSubproject = subprojectSuggestions[0] || "Generelt"
-    const next: OfferLineItem = {
-      id: crypto.randomUUID(),
-      subproject: firstSubproject,
-      title: "Ny komponent",
-      description: "",
-      quantity: 1,
-      unit: "stk",
-      supplier: "",
-      unitPriceNok: 0,
-      markupPercent: globalMarkupPercent,
-      discountPercent: 0,
-    }
-
-    setLineItems((previous) => [...previous, next])
+  const addLineItems = (nextItems: OfferLineItem[]) => {
+    setLineItems((previous) => [...previous, ...nextItems])
   }
+
+  const defaultSubproject = activeSubproject || subprojectSuggestions[0] || "Generelt"
 
   const buildPayload = (): SaveOfferPayload => {
     return {
@@ -428,6 +418,7 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
   }
 
   const pdfDocRef = useRef<HTMLDivElement>(null)
+  const itemsTableRef = useRef<NewOfferItemsTableHandle>(null)
   const handlePrintPdf = () => {
     const node = pdfDocRef.current
     if (!node) return
@@ -657,7 +648,20 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                   className="h-9 flex-1 text-sm"
                   onClick={() => {
                     if (lineItems.length === 0) {
-                      addManualLineItem()
+                      addLineItems([
+                        {
+                          id: crypto.randomUUID(),
+                          subproject: defaultSubproject,
+                          title: "Ny komponent",
+                          description: "",
+                          quantity: 1,
+                          unit: "stk",
+                          supplier: "",
+                          unitPriceNok: 0,
+                          markupPercent: globalMarkupPercent,
+                          discountPercent: 0,
+                        },
+                      ])
                     }
                     setStep(2)
                   }}
@@ -704,14 +708,37 @@ export function NewOfferWizard({ projects, customers, company, initialProjectId,
                 <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={applyGlobalAdjustments}>
                   Bruk på alle
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="ml-auto h-7 text-xs" onClick={addManualLineItem}>
-                  <Plus className="mr-1.5 h-3.5 w-3.5" />
-                  Legg til rad
-                </Button>
+                <div className="ml-auto flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      const category = itemsTableRef.current?.addCategory()
+                      if (category) setActiveSubproject(category)
+                    }}
+                  >
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Legg til kategori
+                  </Button>
+                  <AddOfferLineItemMenu
+                    onAddItems={addLineItems}
+                    defaultSubproject={defaultSubproject}
+                    defaultMarkupPercent={globalMarkupPercent}
+                    companyName={company?.name}
+                    buttonClassName="h-7 text-xs"
+                  />
+                </div>
               </div>
 
               {/* Document-styled materials list */}
-              <NewOfferItemsTable items={lineItems} onItemsChange={setLineItems} supplierSuggestions={getDistinctSuppliers()} />
+              <NewOfferItemsTable
+                ref={itemsTableRef}
+                items={lineItems}
+                onItemsChange={setLineItems}
+                supplierSuggestions={getDistinctSuppliers()}
+              />
 
               {/* Totals footer */}
               <div className="flex items-center justify-between border-t pt-3">

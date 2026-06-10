@@ -130,7 +130,7 @@ export async function POST(request: Request) {
 
     try {
       await resend.emails.send({
-        from: 'Proanbud <onboarding@resend.dev>',
+        from: 'Proanbud <post@proanbud.no>',
         to: normalizedEmail,
         subject: 'Du er invitert til Proanbud',
         html: `

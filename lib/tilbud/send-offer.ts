@@ -134,7 +134,7 @@ export async function sendOfferToCustomer(input: SendOfferInput) {
   })
 
   await resend.emails.send({
-    from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <onboarding@resend.dev>",
+    from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <post@proanbud.no>",
     to: recipientEmail,
     subject: `Tilbud ${offerReference} fra ${companyName}`,
     html: emailHtml,

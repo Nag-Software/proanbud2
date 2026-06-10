@@ -121,3 +121,36 @@ export async function updateCustomerAction(input: {
   revalidatePath("/kunder")
   revalidatePath(`/kunder/${input.id}`)
 }
+
+export async function deleteCustomerAction(customerId: string) {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error("Du må være logget inn for å fjerne en kunde.")
+  }
+
+  const { data: userData, error: userError } = await supabase
+    .from("users")
+    .select("company_id")
+    .eq("id", user.id)
+    .single()
+
+  if (userError || !userData?.company_id) {
+    throw new Error("Kunne ikke hente din bedriftsinformasjon.")
+  }
+
+  const { error } = await supabase
+    .from("customers")
+    .delete()
+    .eq("id", customerId)
+    .eq("company_id", userData.company_id)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  revalidatePath("/kunder")
+}

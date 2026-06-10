@@ -94,6 +94,7 @@ type NewProjectWizardProps = {
   currentUserId: string
   customers: ClientOption[]
   employees: EmployeeOption[]
+  initialCustomerId?: string
 }
 
 const defaultValues: WizardValues = {
@@ -266,19 +267,25 @@ function getFirstInvalidStep(errors: FieldErrors<WizardValues>) {
   return null
 }
 
-export function NewProjectWizard({ currentUserId, customers, employees }: NewProjectWizardProps) {
+export function NewProjectWizard({ currentUserId, customers, employees, initialCustomerId }: NewProjectWizardProps) {
   const router = useRouter()
   const [step, setStep] = useState<StepIndex>(0)
   const [customerOptions, setCustomerOptions] = useState(customers)
   const [customerDrawerOpen, setCustomerDrawerOpen] = useState(false)
-  const [draft, setDraft] = useState<WizardValues>(defaultValues)
+  const [draft, setDraft] = useState<WizardValues>({
+    ...defaultValues,
+    clientId: initialCustomerId || "",
+  })
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null)
   const [successView, setSuccessView] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const submitRequestedRef = useRef(false)
 
   const form = useForm<WizardValues>({
-    defaultValues,
+    defaultValues: {
+      ...defaultValues,
+      clientId: initialCustomerId || "",
+    },
     resolver: zodResolver(wizardSchema),
     mode: "onTouched",
     reValidateMode: "onChange",

@@ -102,7 +102,12 @@ export function DataTable<TData extends Customer, TValue>({
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
                   className="cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => onRowClick && onRowClick(row.original)}
+                  onClick={(event) => {
+                    if ((event.target as HTMLElement).closest("[data-prevent-row-click]")) {
+                      return
+                    }
+                    onRowClick?.(row.original)
+                  }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>

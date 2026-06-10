@@ -115,15 +115,19 @@ function roundCurrency(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100
 }
 
-export function calculateLineItemTotal(item: OfferLineItem) {
-  const quantity = Number.isFinite(item.quantity) ? item.quantity : 0
+export function calculateLineItemUnitPriceWithMarkup(item: OfferLineItem) {
   const baseUnitPrice = Number.isFinite(item.unitPriceNok) ? item.unitPriceNok : 0
   const markupPercent = Number.isFinite(item.markupPercent) ? item.markupPercent : 0
   const discountPercent = Number.isFinite(item.discountPercent) ? item.discountPercent : 0
 
   const withMarkup = baseUnitPrice * (1 + markupPercent / 100)
   const withDiscount = withMarkup * (1 - discountPercent / 100)
-  return roundCurrency(quantity * withDiscount)
+  return roundCurrency(withDiscount)
+}
+
+export function calculateLineItemTotal(item: OfferLineItem) {
+  const quantity = Number.isFinite(item.quantity) ? item.quantity : 0
+  return roundCurrency(quantity * calculateLineItemUnitPriceWithMarkup(item))
 }
 
 export function calculateOfferTotals(items: OfferLineItem[]): OfferTotals {

@@ -1,16 +1,12 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { CheckCircle, FileText, Link, Send, Wallet } from "lucide-react"
-import { PlusCircle } from "lucide-react"
 
-
-import { columns, type Quota } from "@/components/tilbud/columns"
-import { DataTable } from "@/components/tilbud/data-table"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { OfferCard, type OfferCardData } from "@/components/tilbud/offer-card"
+import { type Quota } from "@/components/tilbud/columns"
+import { readProjectSummaryFromAnalysis } from "@/lib/tilbud/project-summary"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Button } from "@/components/ui/button"
 
 type OfferRow = {
     id: string
@@ -19,6 +15,7 @@ type OfferRow = {
     amount_nok?: number | null
     status?: string | null
     created_at?: string | null
+    analysis_result?: unknown
 }
 
 type TilbudTabProps = {
@@ -48,37 +45,35 @@ function normalizeStatus(value?: string | null): Quota["status"] {
     return "draft"
 }
 
-export default function TilbudTab({ projectId, projectName, customerName, offers }: TilbudTabProps) {
+export default function TilbudTab({ offers }: TilbudTabProps) {
     const [search, setSearch] = useState("")
     const [sortBy, setSortBy] = useState<SortOption>("newest")
 
-    const tableData = useMemo(() => {
+    const cardData = useMemo(() => {
         return offers.map((item) => {
             const createdRaw = item.created_at || ""
             const amount = Number(item.amount_nok || 0)
+            const aiDescription = readProjectSummaryFromAnalysis(item.analysis_result)
 
             return {
                 id: item.id,
-                customer: customerName || "Ukjent kunde",
-                project: projectName || "Ikke tilknyttet prosjekt",
-                description: item.description || item.title || "Ingen beskrivelse",
+                title: item.title?.trim() || item.description?.trim() || "Uten navn",
+                description: aiDescription || "Ingen KI-beskrivelse",
                 created: formatDisplayDate(item.created_at),
                 createdRaw,
                 amount,
-                email: "",
-                settings: "",
                 status: normalizeStatus(item.status),
             }
         })
-    }, [customerName, offers, projectName])
+    }, [offers])
 
-    const visibleData = useMemo(() => {
+    const visibleData = useMemo((): OfferCardData[] => {
         const needle = search.trim().toLowerCase()
 
-        let filtered = tableData
+        let filtered = cardData
         if (needle) {
-            filtered = tableData.filter((item) => {
-                const haystack = `${item.id} ${item.customer} ${item.project} ${item.description} ${item.status}`.toLowerCase()
+            filtered = cardData.filter((item) => {
+                const haystack = `${item.id} ${item.title} ${item.description} ${item.status}`.toLowerCase()
                 return haystack.includes(needle)
             })
         }
@@ -100,27 +95,11 @@ export default function TilbudTab({ projectId, projectName, customerName, offers
             return a.amount - b.amount
         })
 
-        return sorted.map(({ createdRaw: _createdRaw, ...quota }) => quota as Quota)
-    }, [search, sortBy, tableData])
-
-    const totalOffers = tableData.length
-    const sentOffers = tableData.filter((d) => d.status === "sent")
-    const sentCount = sentOffers.length
-
-    const approvedOffers = tableData.filter((d) => d.status === "accepted")
-    const approvedCount = approvedOffers.length
-    const approvedValue = approvedOffers.reduce((sum, d) => sum + (d.amount || 0), 0)
-
-    const formatNOK = (amount: number) => {
-        return new Intl.NumberFormat("no-NO", {
-            style: "currency",
-            currency: "NOK",
-            maximumFractionDigits: 0,
-        }).format(amount)
-    }
+        return sorted.map(({ createdRaw: _createdRaw, ...offer }) => offer)
+    }, [cardData, search, sortBy])
 
     return (
-        <div className="flex w-full max-w-full min-w-0 flex-col gap-3 pb-2 mt-2">
+        <div className="mt-2 flex w-full max-w-full min-w-0 flex-col gap-3 pb-2">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <Input
                     value={search}
@@ -129,7 +108,7 @@ export default function TilbudTab({ projectId, projectName, customerName, offers
                     className="sm:max-w-sm"
                 />
                 <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
-                    <SelectTrigger className="w-full sm:w-[220px] ">
+                    <SelectTrigger className="w-full sm:w-[220px]">
                         <SelectValue placeholder="Sorter etter" />
                     </SelectTrigger>
                     <SelectContent>
@@ -144,9 +123,19 @@ export default function TilbudTab({ projectId, projectName, customerName, offers
                 </Select>
             </div>
 
-            <div className="w-full min-w-0 max-w-full">
-                <DataTable columns={columns} data={visibleData} />
-            </div>
+            {visibleData.length > 0 ? (
+                <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5">
+                    {visibleData.map((offer) => (
+                        <OfferCard key={offer.id} offer={offer} />
+                    ))}
+                </div>
+            ) : (
+                <div className="rounded-xl border border-dashed border-border/70 bg-card/40 px-6 py-14 text-center">
+                    <p className="text-sm text-muted-foreground">
+                        {offers.length === 0 ? "Ingen tilbud på dette prosjektet ennå." : "Ingen tilbud matcher søket."}
+                    </p>
+                </div>
+            )}
         </div>
     )
 }

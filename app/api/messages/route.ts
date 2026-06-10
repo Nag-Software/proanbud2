@@ -79,7 +79,7 @@ export async function POST(request: Request) {
           })
 
           await resend.emails.send({
-            from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <onboarding@resend.dev>",
+            from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <post@proanbud.no>",
             to: recipientEmail,
             subject: `Ny melding fra ${company?.name || "Proanbud"}`,
             html,

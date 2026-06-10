@@ -51,6 +51,72 @@ export function sumHours(entries: Array<{ hours: number | null | undefined }>) {
   return entries.reduce((sum, entry) => sum + Number(entry.hours || 0), 0)
 }
 
+export function entryDateToDay(dateValue: string | Date): Date {
+  if (dateValue instanceof Date) {
+    return new Date(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate())
+  }
+
+  const [year, month, day] = dateValue.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
+export function isSameEntryDay(entryDate: string, day: Date): boolean {
+  const parsed = entryDateToDay(entryDate)
+  return (
+    parsed.getFullYear() === day.getFullYear() &&
+    parsed.getMonth() === day.getMonth() &&
+    parsed.getDate() === day.getDate()
+  )
+}
+
+export type EntryDateRange = {
+  from?: Date
+  to?: Date
+}
+
+export function normalizeEntryDateRange(range: EntryDateRange): { from: Date; to: Date } | null {
+  if (!range.from) return null
+
+  const from = entryDateToDay(range.from)
+  const to = entryDateToDay(range.to ?? range.from)
+
+  return from <= to ? { from, to } : { from: to, to: from }
+}
+
+export function countDaysInRange(range: EntryDateRange): number {
+  const normalized = normalizeEntryDateRange(range)
+  if (!normalized) return 0
+
+  const msPerDay = 1000 * 60 * 60 * 24
+  return Math.round((normalized.to.getTime() - normalized.from.getTime()) / msPerDay) + 1
+}
+
+export function isEntryInDateRange(entryDate: string, range: EntryDateRange): boolean {
+  const normalized = normalizeEntryDateRange(range)
+  if (!normalized) return true
+
+  const day = entryDateToDay(entryDate)
+  return day >= normalized.from && day <= normalized.to
+}
+
+export function filterEntriesByDateRange(entries: TimeEntryRow[], range?: EntryDateRange): TimeEntryRow[] {
+  if (!range?.from) return entries
+  return entries.filter((entry) => isEntryInDateRange(entry.entry_date, range))
+}
+
+export function buildDaysWithEntriesMap(entries: TimeEntryRow[]): Record<string, { id: string }[]> {
+  const map: Record<string, { id: string }[]> = {}
+
+  for (const entry of entries) {
+    if (!map[entry.entry_date]) {
+      map[entry.entry_date] = []
+    }
+    map[entry.entry_date].push({ id: entry.id })
+  }
+
+  return map
+}
+
 export type ProjectHoursSummary = {
   projectId: string
   projectName: string

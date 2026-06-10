@@ -363,7 +363,7 @@ export default function DashboardPage() {
 
   return (
     <AppPageShell segments={["Dashbord"]}>
-      <div className="flex flex-col gap-5 pb-10">
+      <div className="flex flex-col max-w-[2000px] w-full mx-auto gap-5 pb-10">
 
         <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
           <div className="flex flex-col gap-4">
@@ -425,15 +425,15 @@ export default function DashboardPage() {
                       <p className="text-2xl font-medium leading-none text-foreground tracking-tight">{k.value}</p>
                       <div className="flex flex-row items-center gap-1.5 mt-1">
                         <div className={cn(
-                          "border px-1.5 py-1 w-fit! grid grid-cols-2 gap-3 items-center text-[10px] font-medium uppercase tracking-[0.16em]",
+                          "border px-1.5 py-1 w-fit! flex flex-cols-2 gap-2 items-center text-[10px] font-medium uppercase tracking-[0.16em]",
                           k.up
                             ? "theme-trend-positive"
                             : "theme-trend-negative"
                         )}>
-                          <div className="flex items-center justify-start">
+                          <div className="m-0 p-0">
                             {k.up ? "↑" : "↓"}
                           </div>
-                          <div className="flex items-center justify-end">
+                          <div className="m-0 p-0">
                             {k.change}
                           </div>
                         </div>

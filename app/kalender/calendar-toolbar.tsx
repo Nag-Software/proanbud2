@@ -218,10 +218,15 @@ export function CalendarToolbar({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="justify-start rounded-none"
+                      className="justify-start rounded-none font-bold"
                       disabled={isDisconnecting}
                       onClick={() => onDisconnect?.("google")}
                     >
+                      <img
+                        src="https://www.gstatic.com/images/branding/product/1x/calendar_48dp.png"
+                        alt=""
+                        className="size-4"
+                      />
                       Koble fra Google
                     </Button>
                   )}
@@ -229,10 +234,16 @@ export function CalendarToolbar({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="justify-start rounded-none"
+                      className="justify-start rounded-none font-bold"
                       disabled={isDisconnecting}
                       onClick={() => onDisconnect?.("microsoft")}
                     >
+                      <img
+                        src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Microsoft_365_%282022%29.svg/330px-Microsoft_365_%282022%29.svg.png"
+                        alt=""
+                        className="size-4"
+                      />
+
                       Koble fra Outlook
                     </Button>
                   )}

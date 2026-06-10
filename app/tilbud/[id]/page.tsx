@@ -67,9 +67,51 @@ type OfferRecord = {
   projects?:
     | {
         name: string | null
+        customer_id: string | null
+        customers?:
+          | {
+              name: string | null
+              email: string | null
+              phone: string | null
+              address: string | null
+              postal_code: string | null
+              city: string | null
+              org_number: string | null
+            }
+          | {
+              name: string | null
+              email: string | null
+              phone: string | null
+              address: string | null
+              postal_code: string | null
+              city: string | null
+              org_number: string | null
+            }[]
+          | null
       }
     | {
         name: string | null
+        customer_id: string | null
+        customers?:
+          | {
+              name: string | null
+              email: string | null
+              phone: string | null
+              address: string | null
+              postal_code: string | null
+              city: string | null
+              org_number: string | null
+            }
+          | {
+              name: string | null
+              email: string | null
+              phone: string | null
+              address: string | null
+              postal_code: string | null
+              city: string | null
+              org_number: string | null
+            }[]
+          | null
       }[]
     | null
 }
@@ -218,7 +260,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
     supabase
       .from("offers")
       .select(
-        "id, title, description, status, amount_nok, subtotal_nok, discount_nok, quote_valid_until, created_at, updated_at, sent_at, recipient_name, recipient_email, recipient_phone, source_summary, source_documents, line_items, analysis_result, customer_id, project_id, customers(id, name, email, phone, address, postal_code, city, org_number), projects(id, name)"
+        "id, title, description, status, amount_nok, subtotal_nok, discount_nok, quote_valid_until, created_at, updated_at, sent_at, recipient_name, recipient_email, recipient_phone, source_summary, source_documents, line_items, analysis_result, customer_id, project_id, customers(id, name, email, phone, address, postal_code, city, org_number), projects(id, name, customer_id, customers(id, name, email, phone, address, postal_code, city, org_number))"
       )
       .eq("id", id)
       .eq("company_id", companyId)
@@ -240,17 +282,27 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
   ).catch(() => null)
   const lineItems = toLineItems(offer.line_items)
   const contract = readContractState(offer.analysis_result)
-  const customer = normalizeRelatedRow(offer.customers)
   const project = normalizeRelatedRow(offer.projects)
+  const customer = normalizeRelatedRow(offer.customers) || normalizeRelatedRow(project?.customers)
+  const resolvedCustomerId = offer.customer_id || project?.customer_id || null
   const sourceDocuments = await refreshSourceDocumentUrls(supabase, toSourceDocuments(offer.source_documents))
   const projectSummary = readProjectSummaryFromAnalysis(offer.analysis_result)
 
   return (
     <AppPageShell segments={["Tilbud", `#${formatOfferReference(offer.id)}`]}>
       <OfferDetailClient
+        linkedCustomer={{
+          id: resolvedCustomerId,
+          name: customer?.name || "Ukjent kunde",
+          email: customer?.email || "",
+          phone: customer?.phone || "",
+          address: customer?.address || "",
+          postalCode: customer?.postal_code || "",
+          city: customer?.city || "",
+          orgNumber: customer?.org_number || "",
+        }}
         initialOffer={{
           id: offer.id,
-          customerId: offer.customer_id || null,
           title: offer.title || "Untitled",
           description: offer.description || "",
           projectSummary,
@@ -265,13 +317,6 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
           recipientName: offer.recipient_name || "",
           recipientEmail: offer.recipient_email || customer?.email || "",
           recipientPhone: offer.recipient_phone || "",
-          customerName: customer?.name || "Ukjent kunde",
-          customerEmail: customer?.email || "",
-          customerPhone: customer?.phone || "",
-          customerAddress: customer?.address || "",
-          customerPostalCode: customer?.postal_code || "",
-          customerCity: customer?.city || "",
-          customerOrgNumber: customer?.org_number || "",
           projectName: project?.name || "",
           sourceSummary: offer.source_summary || "",
           sourceDocuments,

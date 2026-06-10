@@ -30,7 +30,7 @@ export type CompanyPricePromptAttachment = {
 
 const DEFAULT_HOURLY_RATE_NOK = 795
 const DEFAULT_TRANSPORT_RATE_NOK = 950
-const DEFAULT_MATERIAL_MARKUP_PERCENT = 15
+export const DEFAULT_MATERIAL_MARKUP_PERCENT = 15
 const DEFAULT_SERVICE_MARKUP_PERCENT = 0
 const SERVICE_SUPPLIER = "Eget arbeid"
 const PROMPT_PRICE_ROW_LIMIT = 24
@@ -567,6 +567,79 @@ export function selectRelevantCompanyPriceRows(rows: CompanyPriceRow[], query: s
   return []
 }
 
+function compactSearchKey(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9æøå]/gi, "")
+}
+
+function pickerHaystack(row: CompanyPriceRow) {
+  return normalizeText(
+    [
+      row.product,
+      row.category,
+      row.nobb,
+      row.supplier_sku,
+      row.product_group_code,
+      row.supplier_name,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  )
+}
+
+export function rankCompanyPriceRowsForPicker(rows: CompanyPriceRow[], query: string, limit = 20) {
+  const trimmedQuery = query.trim()
+  if (!trimmedQuery) {
+    return rows.slice(0, limit)
+  }
+
+  const compactQuery = compactSearchKey(trimmedQuery)
+  const tokens = extractSearchTokens(trimmedQuery)
+  if (compactQuery.length >= 3) {
+    tokens.push(compactQuery)
+  }
+
+  const uniqueTokens = Array.from(new Set(tokens))
+
+  const scoredRows = rows
+    .map((row) => {
+      const haystack = pickerHaystack(row)
+      const compactHaystacks = [
+        compactSearchKey(row.product || ""),
+        compactSearchKey(row.nobb || ""),
+        compactSearchKey(row.supplier_sku || ""),
+        compactSearchKey(row.product_group_code || ""),
+      ].filter(Boolean)
+
+      let score = 0
+
+      if (compactQuery.length >= 3) {
+        for (const candidate of compactHaystacks) {
+          if (candidate === compactQuery) {
+            score += 120
+          } else if (candidate.includes(compactQuery) || compactQuery.includes(candidate)) {
+            score += 60
+          }
+        }
+      }
+
+      for (const token of uniqueTokens) {
+        if (haystack.includes(token)) {
+          score += token.length >= 8 ? 8 : token.length >= 5 ? 5 : 3
+        }
+      }
+
+      return { row, score }
+    })
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score)
+
+  if (scoredRows.length > 0) {
+    return scoredRows.slice(0, limit).map((item) => item.row)
+  }
+
+  return rows.slice(0, limit)
+}
+
 function findBestCompanyPriceRow(rows: CompanyPriceRow[], query: string) {
   const tokens = extractSearchTokens(query)
   const filteredRows = rows.filter(
@@ -602,6 +675,27 @@ function createCompanyMaterialLineItem(item: OfferLineItem, row: CompanyPriceRow
     unitPriceNok: resolveUnitPrice(row),
     markupPercent: Number.isFinite(item.markupPercent) ? item.markupPercent : DEFAULT_MATERIAL_MARKUP_PERCENT,
   }
+}
+
+export function buildOfferLineItemFromPriceRow(
+  row: CompanyPriceRow,
+  options: { subproject: string; markupPercent?: number }
+): OfferLineItem {
+  return createCompanyMaterialLineItem(
+    {
+      id: crypto.randomUUID(),
+      subproject: options.subproject,
+      title: "",
+      description: row.category?.trim() ? `Kategori: ${row.category.trim()}` : "",
+      quantity: 1,
+      unit: row.unit?.trim() || "stk",
+      supplier: row.supplier_name?.trim() || "Prisfil",
+      unitPriceNok: 0,
+      markupPercent: options.markupPercent ?? DEFAULT_MATERIAL_MARKUP_PERCENT,
+      discountPercent: 0,
+    },
+    row
+  )
 }
 
 function buildFallbackMaterialLineItems(input: {

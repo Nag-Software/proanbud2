@@ -66,7 +66,7 @@ export function AppPageShell({ segments, children, noPadding }: AppPageShellProp
         </header>
         <div
           className={cn(
-            "flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col",
+            "flex min-h-0 w-full max-w-[2000px] min-w-0 flex-1 flex-col overflow-y-auto @apply [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;",
             noPadding ? "overflow-hidden" : "gap-4 p-4 pt-0"
           )}
         >

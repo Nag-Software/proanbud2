@@ -117,6 +117,14 @@ export function lineItemMatchesSavedJob(item: OfferLineItem, job: SavedJobRow) {
   return tokens.every((token) => tokenMatchesQuery(token, haystack))
 }
 
+export function buildOfferLineItemFromSavedJob(
+  job: SavedJobRow,
+  subproject: string,
+  companyName?: string | null
+): OfferLineItem {
+  return createSavedJobLineItem(job, subproject, companyName)
+}
+
 function createSavedJobLineItem(job: SavedJobRow, subproject: string, companyName?: string | null): OfferLineItem {
   return {
     id: crypto.randomUUID(),

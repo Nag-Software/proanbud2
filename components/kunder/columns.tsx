@@ -1,6 +1,7 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
+import { useRouter } from "next/navigation"
 import { Customer } from "./schema"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,8 +14,92 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { deleteCustomerAction } from "@/app/kunder/actions"
+import { toast } from "sonner"
 
-export const columns: ColumnDef<Customer>[] = [
+type CustomerColumnHandlers = {
+  onViewDetails: (customer: Customer) => void
+}
+
+function CustomerRowActions({
+  customer,
+  onViewDetails,
+}: {
+  customer: Customer
+  onViewDetails: (customer: Customer) => void
+}) {
+  const router = useRouter()
+
+  const handleDelete = () => {
+    deleteCustomerAction(customer.id)
+      .then(() => {
+        toast.success("Kunde fjernet")
+        router.refresh()
+      })
+      .catch((error: Error) => {
+        toast.error("Kunne ikke fjerne kunde")
+        console.error(error)
+      })
+  }
+
+  return (
+    <div data-prevent-row-click onClick={(e) => e.stopPropagation()}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            className="h-8 w-8 p-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="sr-only">Åpne meny</span>
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => onViewDetails(customer)}>
+            Se detaljer
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={(event) => event.preventDefault()}>
+            Opprett tilbud
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Handlinger</DropdownMenuLabel>
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault()
+              void navigator.clipboard.writeText(customer.email)
+            }}
+          >
+            Kopier e-post
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault()
+              void navigator.clipboard.writeText(customer.phone)
+            }}
+          >
+            Kopier telefon
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive"
+            onSelect={(event) => {
+              event.preventDefault()
+              handleDelete()
+            }}
+          >
+            Fjern kunde
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+export function createCustomerColumns({
+  onViewDetails,
+}: CustomerColumnHandlers): ColumnDef<Customer>[] {
+  return [
   {
     accessorKey: "name",
     header: "Navn",
@@ -83,34 +168,12 @@ export const columns: ColumnDef<Customer>[] = [
   },
   {
     id: "actions",
-    cell: ({ row }) => {
-      const customer = row.original
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-8 w-8 p-0">
-              <span className="sr-only">Åpne meny</span>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Handlinger</DropdownMenuLabel>
-            <DropdownMenuItem
-              onClick={() => navigator.clipboard.writeText(customer.email)}
-            >
-              Kopier e-post
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => navigator.clipboard.writeText(customer.phone)}
-            >
-              Kopier telefon
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>Se detaljer</DropdownMenuItem>
-            <DropdownMenuItem>Opprett tilbud</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )
-    },
+    cell: ({ row }) => (
+      <CustomerRowActions
+        customer={row.original}
+        onViewDetails={onViewDetails}
+      />
+    ),
   },
-]
+  ]
+}

@@ -1,6 +1,7 @@
 import { AppPageShell } from "@/components/app-page-shell"
 import { KunderClient } from "@/components/kunder/kunder-client"
-import { Customer } from "@/components/kunder/schema"
+import { Customer, CustomerProject } from "@/components/kunder/schema"
+import { isActiveProject } from "@/app/prosjekter/project-utils"
 import { createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ export default async function Page() {
 
     const { data, error } = await supabase
       .from("customers")
-      .select("*, projects(id, status, budget_nok)")
+      .select("*, projects(id, name, status, budget_nok, start_date, end_date, updated_at), offers(id, status, amount_nok)")
       .order("name")
     
     if (error) {
@@ -71,20 +72,31 @@ export default async function Page() {
   }
   
   const customers = dbCustomers.map((c: any) => {
-    const projects = c.projects || [];
-    
-    // Antall aktive prosjekter
-    const activeProjects = projects.filter((p: any) => 
-      !['Avsluttet', 'Arkivert', 'Tilbud sendt'].includes(p.status)
-    ).length;
-    
-    // Kalkuler total innbringende/budsjett eller fakturert.
-    const totalRevenue = projects.reduce((sum: number, p: any) => sum + (p.budget_nok || 0), 0);
-    
-    // Beregn "akseptert" (tilbud akseptert vs sendt). 
-    const totalOffers = projects.length;
-    const acceptedOffers = projects.filter((p: any) => !['Tilbud sendt', 'Avslått', 'Avventer'].includes(p.status)).length;
-    const acceptanceRate = totalOffers > 0 ? Math.round((acceptedOffers / totalOffers) * 100) : 0;
+    const projects: CustomerProject[] = (c.projects || [])
+      .map((p: any) => ({
+        id: p.id,
+        name: p.name || "Uten navn",
+        status: p.status,
+        budgetNok: p.budget_nok || 0,
+        startDate: p.start_date,
+        endDate: p.end_date,
+        updatedAt: p.updated_at,
+      }))
+      .sort((a: CustomerProject, b: CustomerProject) => {
+        const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+        const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+        return bTime - aTime
+      })
+
+    const activeProjects = projects.filter((p) => isActiveProject(p.status)).length
+    const totalProjects = projects.length
+
+    const offers = (c.offers || []) as Array<{ status: string | null; amount_nok: number | null }>
+    const relevantOffers = offers.filter((offer) => offer.status && offer.status !== "draft")
+    const acceptedOffers = relevantOffers.filter((offer) => offer.status === "accepted")
+    const totalRevenue = acceptedOffers.reduce((sum, offer) => sum + (offer.amount_nok || 0), 0)
+    const acceptanceRate =
+      relevantOffers.length > 0 ? Math.round((acceptedOffers.length / relevantOffers.length) * 100) : 0
     
     const link = linkByCustomerId.get(c.id)
     const jobState = jobStatusByCustomerId.get(c.id) || { syncing: 0, failed: 0 }
@@ -108,13 +120,15 @@ export default async function Page() {
       postalCode: c.postal_code || "",
       city: c.city || "",
       activeProjects,
+      totalProjects,
       totalRevenue,
       lastContact: new Date().toISOString(),
       acceptanceRate,
       syncStatus,
       syncLastSyncedAt: link?.last_synced_at || null,
       syncExternalUrl: link?.external_url || null,
-    } as any
+      projects,
+    } satisfies Customer
   })
 
   return (

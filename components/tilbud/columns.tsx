@@ -33,7 +33,7 @@ type StatusConfig = {
   fillClass: string
 }
 
-const statusConfigByValue: Record<Quota["status"], StatusConfig> = {
+export const offerStatusConfigByValue: Record<Quota["status"], StatusConfig> = {
   draft: {
     label: "Utkast",
     filledBars: 0,
@@ -56,7 +56,7 @@ const statusConfigByValue: Record<Quota["status"], StatusConfig> = {
   },
 }
 
-const totalBars = 3
+export const totalOfferStatusBars = 3
 
 export const columns: ColumnDef<Quota>[] = [
   {
@@ -92,12 +92,12 @@ export const columns: ColumnDef<Quota>[] = [
     header: "Status",
     cell: ({ row }) => {
       const status = row.original.status
-      const config = statusConfigByValue[status]
+      const config = offerStatusConfigByValue[status]
 
       return (
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
-            {Array.from({ length: totalBars }).map((_, index) => {
+            {Array.from({ length: totalOfferStatusBars }).map((_, index) => {
               const isFilled = index < config.filledBars
 
               return (
