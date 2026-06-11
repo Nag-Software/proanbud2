@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { AppPageShell } from "@/components/app-page-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Area, AreaChart, CartesianGrid, XAxis, RadialBarChart, RadialBar, PolarAngleAxis } from "recharts"
@@ -9,6 +10,13 @@ import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "
 import { TrendingUp, FileText, FolderKanban, Users, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { createClient } from "@/lib/supabase/client"
 
 const formatNok = (val: number) =>
@@ -61,6 +69,36 @@ function StatusBadge({ status }: { status: "aktiv" | "feil" | "vedlikehold" }) {
   )
 }
 
+function OfferRowActions({ offerId }: { offerId: string }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          className="h-7 w-7"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="sr-only">Tilbudshandlinger</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem asChild>
+          <Link href={`/tilbud/${offerId}`}>Rediger</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href={`/tilbud/${offerId}`}>Forhåndsvis</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href={`/tilbud/${offerId}`}>Åpne tilbud</Link>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 const areaChartConfig = {
   omsetning: { label: "Omsetning", color: "var(--color-primary)" },
   tilbud: { label: "Tilbud sendt", color: "var(--color-accent)" },
@@ -80,7 +118,7 @@ interface DashboardData {
   chartData: Array<{ date: string; omsetning: number; tilbud: number }>
   recentOffers: Array<{ id: string; title: string; kunde: string; prosjekt: string; tid: string }>
   tableOffers: Array<{ id: string; navn: string; shortId: string; kunde: string; verdi: number; status: string }>
-  topProjects: Array<{ navn: string; offers: number; pst: number }>
+  topProjects: Array<{ id: string; navn: string; offers: number; pst: number }>
   userName: string
   companyName: string
   companyLogo: string | null
@@ -123,9 +161,9 @@ export default function DashboardPage() {
           ]
 
           const topProjects = [
-            { navn: "Loftprosjekt", offers: 12, pst: 100 },
-            { navn: "Fasade 2026", offers: 9, pst: 75 },
-            { navn: "Kundeoppgradering", offers: 6, pst: 50 },
+            { id: "p1", navn: "Loftprosjekt", offers: 12, pst: 100 },
+            { id: "p2", navn: "Fasade 2026", offers: 9, pst: 75 },
+            { id: "p3", navn: "Kundeoppgradering", offers: 6, pst: 50 },
           ]
 
           const mock: DashboardData = {
@@ -293,7 +331,7 @@ export default function DashboardPage() {
         const counts = await Promise.all(
           topProjectsRes.data.map(async p => {
             const { count } = await supabase.from("offers").select("id", { count: "exact", head: true }).eq("project_id", p.id)
-            return { navn: p.name, offers: count || 0 }
+            return { id: p.id, navn: p.name, offers: count || 0 }
           })
         )
         const max = Math.max(1, ...counts.map(c => c.offers))
@@ -489,7 +527,12 @@ export default function DashboardPage() {
             <CardHeader className="">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Månedens ytelse</CardTitle>
-                <button className="text-[10px] font-medium uppercase tracking-[0.18em] text-primary hover:underline">Detaljer</button>
+                <Link
+                  href="/prosjekter"
+                  className="text-[10px] font-medium uppercase tracking-[0.18em] text-primary hover:underline"
+                >
+                  Detaljer
+                </Link>
               </div>
             </CardHeader>
             <CardContent className="flex flex-col items-center px-5 gap-0 flex-1">
@@ -536,7 +579,12 @@ export default function DashboardPage() {
           <Card className="bg-card/85">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Siste tilbud</CardTitle>
-              <button className="text-[10px] font-medium uppercase tracking-[0.18em] text-primary hover:underline">Vis alle</button>
+              <Link
+                href="/prosjekter"
+                className="text-[10px] font-medium uppercase tracking-[0.18em] text-primary hover:underline"
+              >
+                Vis alle
+              </Link>
             </CardHeader>
             <CardContent className="px-5 pb-5">
               <div className="w-full overflow-x-auto">
@@ -562,9 +610,13 @@ export default function DashboardPage() {
                           ))}
                         </tr>
                       ))
-                      : data?.tableOffers.map((row, i) => (
-                        <tr key={i} className="hover:bg-muted/30 transition-colors">
-                          <td className="py-2.5 font-medium text-foreground pr-3 max-w-[140px] truncate">{row.navn}</td>
+                      : data?.tableOffers.map((row) => (
+                        <tr key={row.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="py-2.5 font-medium text-foreground pr-3 max-w-[140px] truncate">
+                            <Link href={`/tilbud/${row.id}`} className="hover:text-primary hover:underline">
+                              {row.navn}
+                            </Link>
+                          </td>
                           <td className="py-2.5 text-muted-foreground pr-3 whitespace-nowrap font-mono text-[10px]">{row.shortId}</td>
                           <td className="py-2.5 text-muted-foreground pr-3 max-w-[100px] truncate">{row.kunde}</td>
                           <td className="py-2.5 font-semibold pr-3 whitespace-nowrap">{formatNok(row.verdi)}</td>
@@ -574,9 +626,7 @@ export default function DashboardPage() {
                             </Badge>
                           </td>
                           <td className="py-2.5 text-right">
-                            <button className="p-1 hover:bg-muted">
-                              <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
-                            </button>
+                            <OfferRowActions offerId={row.id} />
                           </td>
                         </tr>
                       ))
@@ -609,14 +659,19 @@ export default function DashboardPage() {
                 <p className="text-xs text-muted-foreground text-center py-8">Ingen aktive tilbud</p>
               ) : (
                 <div className="divide-y">
-                  {data?.recentOffers.map((t, i) => (
-                    <div key={i} className="flex items-start justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
-                      <div className="flex-1 min-w-0">
+                  {data?.recentOffers.map((t) => (
+                    <div key={t.id} className="flex items-start justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
+                      <Link href={`/tilbud/${t.id}`} className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-foreground truncate">{t.kunde}</p>
                         <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{t.title}</p>
                         <p className="text-[10px] text-muted-foreground/70 mt-0.5">{t.tid}</p>
-                      </div>
-                      <button className="ml-3 mt-0.5 shrink-0 text-[10px] font-medium uppercase tracking-[0.18em] text-primary hover:underline">Vis</button>
+                      </Link>
+                      <Link
+                        href={`/tilbud/${t.id}`}
+                        className="ml-3 mt-0.5 shrink-0 text-[10px] font-medium uppercase tracking-[0.18em] text-primary hover:underline"
+                      >
+                        Vis
+                      </Link>
                     </div>
                   ))}
                 </div>
@@ -648,10 +703,15 @@ export default function DashboardPage() {
                 ))
                 : data?.topProjects.length === 0
                   ? <p className="text-xs text-muted-foreground text-center py-4">Ingen aktive prosjekter</p>
-                  : data?.topProjects.map((p, i) => (
-                    <div key={i} className="space-y-1.5">
+                  : data?.topProjects.map((p) => (
+                    <div key={p.id} className="space-y-1.5">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs font-medium text-foreground truncate max-w-[140px]">{p.navn}</span>
+                        <Link
+                          href={`/prosjekter/${p.id}`}
+                          className="text-xs font-medium text-foreground truncate max-w-[140px] hover:text-primary hover:underline"
+                        >
+                          {p.navn}
+                        </Link>
                         <span className="text-xs text-muted-foreground shrink-0 ml-2">{p.offers} tilbud</span>
                       </div>
                       <div className="h-1.5 w-full overflow-hidden bg-muted">
