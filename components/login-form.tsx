@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useState } from "react"
-import { useRouter } from "next/navigation"
+import React, { useState, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { completeClientLogin } from "@/lib/auth/client-login"
@@ -22,11 +22,13 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 
-export function LoginForm({
+function LoginFormInner({
   className,
   ...props
 }: React.ComponentProps<"div">) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const passwordUpdated = searchParams.get("message") === "password-updated"
   const supabase = createClient()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -114,6 +116,11 @@ export function LoginForm({
               </Field>
               <Field>
                 <Button type="submit" disabled={loading}>{loading ? 'Logger inn…' : 'Logg inn'}</Button>
+                {passwordUpdated ? (
+                  <FieldDescription className="text-center text-green-600 dark:text-green-500">
+                    Passordet ditt er oppdatert. Du kan nå logge inn.
+                  </FieldDescription>
+                ) : null}
                 {error ? <FieldDescription className="text-center text-destructive">{error}</FieldDescription> : (
                   <FieldDescription className="text-center">
                     Har du ikke en konto? <a href="/signup">Registrer deg</a>
@@ -129,5 +136,13 @@ export function LoginForm({
         og <a href="/privacy">Personvernerklæring</a>.
       </FieldDescription>
     </div>
+  )
+}
+
+export function LoginForm(props: React.ComponentProps<"div">) {
+  return (
+    <Suspense fallback={<div className="text-center text-sm text-muted-foreground">Laster inn …</div>}>
+      <LoginFormInner {...props} />
+    </Suspense>
   )
 }
