@@ -90,6 +90,18 @@ const saveOfferSchema = z
     recipientEmail: z.string().trim().default(""),
     recipientPhone: z.string().trim().default(""),
     validityDays: z.number().int().min(1).max(365).default(30),
+    pricingModel: z.enum(["fixed", "time_materials", "unit_price", "mixed"]).optional(),
+    contractBasis: z.enum(["ns8405", "ns8407", "custom", "none"]).optional(),
+    markupPercent: z.number().min(0).max(200).optional(),
+    paymentSchedule: z
+      .array(
+        z.object({
+          label: z.string().trim().min(1),
+          percent: z.number().min(0).max(100),
+          dueDescription: z.string().trim().optional(),
+        })
+      )
+      .optional(),
   })
   .superRefine((value, ctx) => {
     if (value.sendDirectlyToCustomer && !value.recipientEmail) {
@@ -204,6 +216,10 @@ function toOfferRow(input: SaveOfferInput, companyId: string, status: "draft" | 
     quote_valid_until: validUntil.toISOString().slice(0, 10),
     sent_at: status === "sent" ? new Date().toISOString() : null,
     status,
+    pricing_model: input.pricingModel || "fixed",
+    contract_basis: input.contractBasis || "none",
+    markup_percent: Number(input.markupPercent ?? 0),
+    payment_schedule: input.paymentSchedule || [],
   }
 }
 

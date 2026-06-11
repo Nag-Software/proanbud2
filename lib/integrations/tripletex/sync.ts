@@ -1,13 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
 import { runTripletexWorker } from "@/lib/integrations/tripletex/worker"
+import type { TripletexScopeConfig } from "@/lib/integrations/tripletex/scopes"
 
-type TripletexScopeConfig = {
-  customers?: boolean
-  projects?: boolean
-  offers?: boolean
-  invoices?: boolean
-}
+export { parseProjectIdFromDocumentPath } from "@/lib/integrations/tripletex/scopes"
 
 export async function getTripletexConnectionState(companyId: string) {
   const admin = createAdminClient()
@@ -27,12 +23,16 @@ export async function getTripletexConnectionState(companyId: string) {
   }
 }
 
+export type TripletexOfferSyncPhase = "quote" | "order"
+
 export async function enqueueOfferTripletexSync(input: {
   companyId: string
   offerId: string
   customerId: string
-  projectId: string
+  projectId?: string | null
   source: string
+  /** quote = Tilbudsoversikt (project offer). order = Ordrer (after contract). */
+  phase?: TripletexOfferSyncPhase
   includeInvoice?: boolean
 }) {
   const connection = await getTripletexConnectionState(input.companyId)
@@ -41,7 +41,12 @@ export async function enqueueOfferTripletexSync(input: {
   }
 
   const scopes = connection.scopeConfig
-  const keyPrefix = `${input.source}:offer:${input.offerId}`
+  const phase = input.phase || "quote"
+  const stableOfferKey = `tripletex:offer:${input.offerId}:${phase}`
+  const keyPrefix =
+    input.source === "manual"
+      ? `${stableOfferKey}:manual:${Math.floor(Date.now() / 30_000)}`
+      : stableOfferKey
 
   if (scopes.customers !== false) {
     await enqueueIntegrationJob({
@@ -52,7 +57,8 @@ export async function enqueueOfferTripletexSync(input: {
     })
   }
 
-  if (scopes.projects !== false) {
+  // Utførelsesprosjekt (isOffer=false) synkes kun ved ordre-fase — ikke ved tilbud i Tilbudsoversikt.
+  if (input.projectId && scopes.projects !== false && phase === "order") {
     await enqueueIntegrationJob({
       companyId: input.companyId,
       jobType: "project.upsert",
@@ -62,24 +68,37 @@ export async function enqueueOfferTripletexSync(input: {
   }
 
   if (scopes.offers !== false) {
-    await enqueueIntegrationJob({
-      companyId: input.companyId,
-      jobType: "order.create_from_offer",
-      payload: {
-        offerId: input.offerId,
-        customerId: input.customerId,
-        projectId: input.projectId,
-      },
-      idempotencyKey: `${keyPrefix}:order`,
-    })
-
-    if (input.includeInvoice && scopes.invoices !== false) {
+    if (phase === "quote") {
       await enqueueIntegrationJob({
         companyId: input.companyId,
-        jobType: "invoice.create_from_offer",
-        payload: { offerId: input.offerId },
-        idempotencyKey: `${keyPrefix}:invoice`,
+        jobType: "offer.upsert",
+        payload: {
+          offerId: input.offerId,
+          customerId: input.customerId,
+          projectId: input.projectId,
+        },
+        idempotencyKey: `${stableOfferKey}:upsert`,
       })
+    } else {
+      await enqueueIntegrationJob({
+        companyId: input.companyId,
+        jobType: "order.create_from_offer",
+        payload: {
+          offerId: input.offerId,
+          customerId: input.customerId,
+          projectId: input.projectId,
+        },
+        idempotencyKey: `${stableOfferKey}:order`,
+      })
+
+      if (input.includeInvoice && scopes.invoices !== false) {
+        await enqueueIntegrationJob({
+          companyId: input.companyId,
+          jobType: "invoice.create_from_offer",
+          payload: { offerId: input.offerId },
+          idempotencyKey: `${stableOfferKey}:invoice`,
+        })
+      }
     }
   }
 
@@ -115,6 +134,80 @@ export async function enqueueEntityTripletexSync(input: {
   return true
 }
 
+export async function enqueueDocumentTripletexSync(input: {
+  companyId: string
+  documentItemId: string
+  projectId: string
+}) {
+  const connection = await getTripletexConnectionState(input.companyId)
+  if (!connection || connection.scopeConfig.documents !== true) {
+    return false
+  }
+
+  if (connection.scopeConfig.projects !== false) {
+    await enqueueIntegrationJob({
+      companyId: input.companyId,
+      jobType: "project.upsert",
+      payload: { projectId: input.projectId },
+      idempotencyKey: `document:${input.documentItemId}:project:${input.projectId}`,
+    })
+  }
+
+  await enqueueIntegrationJob({
+    companyId: input.companyId,
+    jobType: "document.upload",
+    payload: {
+      documentItemId: input.documentItemId,
+      projectId: input.projectId,
+    },
+    idempotencyKey: `document:${input.documentItemId}`,
+  })
+
+  processTripletexQueueInBackground({ batchSize: 10, maxBatches: 3 })
+  return true
+}
+
+export async function enqueueCalendarTripletexSync(input: {
+  companyId: string
+  eventId: string
+  projectId: string
+  title: string
+  description?: string | null
+  start: string
+  end: string
+}) {
+  const connection = await getTripletexConnectionState(input.companyId)
+  if (!connection || connection.scopeConfig.calendar !== true) {
+    return false
+  }
+
+  if (connection.scopeConfig.projects !== false) {
+    await enqueueIntegrationJob({
+      companyId: input.companyId,
+      jobType: "project.upsert",
+      payload: { projectId: input.projectId },
+      idempotencyKey: `calendar:${input.eventId}:project:${input.projectId}`,
+    })
+  }
+
+  await enqueueIntegrationJob({
+    companyId: input.companyId,
+    jobType: "calendar.activity.upsert",
+    payload: {
+      eventId: input.eventId,
+      projectId: input.projectId,
+      title: input.title,
+      description: input.description || null,
+      start: input.start,
+      end: input.end,
+    },
+    idempotencyKey: `calendar:${input.eventId}`,
+  })
+
+  processTripletexQueueInBackground({ batchSize: 10, maxBatches: 3 })
+  return true
+}
+
 export function processTripletexQueueInBackground(input?: { batchSize?: number; maxBatches?: number }) {
   void runTripletexWorker({
     workerId: `bg-${Date.now()}`,
@@ -129,8 +222,9 @@ export async function enqueueOfferTripletexSyncAndProcess(input: {
   companyId: string
   offerId: string
   customerId: string
-  projectId: string
+  projectId?: string | null
   source: string
+  phase?: TripletexOfferSyncPhase
   includeInvoice?: boolean
   waitForCompletion?: boolean
 }) {
@@ -183,6 +277,7 @@ export async function fetchOfferTripletexSyncStatus(companyId: string, offerId: 
     connected,
     customer: customerId ? byType("customer") : null,
     project: projectId ? byType("project") : null,
+    offer: byType("offer"),
     order: byType("order"),
     invoice: byType("invoice"),
     pendingJobs,

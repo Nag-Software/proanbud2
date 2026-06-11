@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { toggleModuleOnSubscription } from "@/lib/billing/checkout"
-import { getAuthenticatedCompanyContext, requireActiveSubscription } from "@/lib/billing/guards"
+import { requireActiveSubscription, requireCompanyAdmin } from "@/lib/billing/guards"
 import type { ModuleKey } from "@/lib/billing/plans"
 
 const bodySchema = z.object({
@@ -12,8 +12,11 @@ const bodySchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const auth = await requireActiveSubscription()
+    const auth = await requireCompanyAdmin()
     if (!auth.ok) return auth.response
+
+    const active = await requireActiveSubscription()
+    if (!active.ok) return active.response
 
     const parsed = bodySchema.safeParse(await request.json())
     if (!parsed.success) {
@@ -38,7 +41,7 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
-    const auth = await getAuthenticatedCompanyContext()
+    const auth = await requireCompanyAdmin()
     if (!auth.ok) return auth.response
 
     const { createAdminClient } = await import("@/lib/supabase/admin")

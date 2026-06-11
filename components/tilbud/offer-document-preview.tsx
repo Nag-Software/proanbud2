@@ -14,6 +14,7 @@ import { calculateLineItemTotal, calculateLineItemUnitPriceWithMarkup, formatNok
 type OfferDocumentPreviewProps = OfferDocumentData & {
   className?: string
   documentClassName?: string
+  showSupplier?: boolean
 }
 
 export function OfferDocumentPreview({
@@ -30,6 +31,7 @@ export function OfferDocumentPreview({
   quoteValidUntil,
   className,
   documentClassName,
+  showSupplier = true,
 }: OfferDocumentPreviewProps) {
   const groupedPreview = useMemo(() => groupLineItemsBySubproject(lineItems), [lineItems])
   const resolvedValidityDays = validityDays ?? computeValidityDays(String(issuedDate || ""), quoteValidUntil)
@@ -83,7 +85,7 @@ export function OfferDocumentPreview({
             <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Prosjekt</p>
             <p className="font-semibold text-gray-900">{projectName || "—"}</p>
             {(projectSummary?.trim() || description?.trim()) ? (
-              <p className="mt-1 leading-4 text-gray-600">
+              <p className="mt-1 text-gray-600">
                 {(projectSummary?.trim() || description?.trim() || "").slice(0, 140)}
                 {(projectSummary?.trim() || description?.trim() || "").length > 140 ? "…" : ""}
               </p>
@@ -127,7 +129,9 @@ export function OfferDocumentPreview({
                             {item.description.length > 60 ? "…" : ""}
                           </span>
                         ) : null}
-                        {item.supplier ? <span className="block text-[10px] font-normal text-gray-400">{item.supplier}</span> : null}
+                        {showSupplier && item.supplier ? (
+                          <span className="block text-[10px] font-normal text-gray-400">{item.supplier}</span>
+                        ) : null}
                       </td>
                       <td className="py-1.5 pr-3 text-right tabular-nums text-gray-700">{item.quantity}</td>
                       <td className="py-1.5 pr-3 text-right text-gray-500">{item.unit}</td>

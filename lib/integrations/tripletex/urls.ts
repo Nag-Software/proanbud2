@@ -8,6 +8,11 @@ export function tripletexProjectUrl(externalId: number) {
   return `${TRIPLETEX_APP_BASE}/execute/projectMenu?projectId=${externalId}`
 }
 
+/** Tilbudsoversikt — same project entity with isOffer=true */
+export function tripletexOfferUrl(externalId: number) {
+  return `${TRIPLETEX_APP_BASE}/execute/projectMenu?projectId=${externalId}&context=offer`
+}
+
 export function tripletexOrderUrl(externalId: number) {
   return `${TRIPLETEX_APP_BASE}/execute/orderMenu?orderId=${externalId}`
 }

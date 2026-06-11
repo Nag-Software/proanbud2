@@ -129,28 +129,6 @@ function parseXmlPayload(rawBody: string): DocusignEnvelopeEvent {
   }
 }
 
-function patchContract(analysisResult: unknown, input: { status: DocusignEnvelopeEvent["status"]; envelopeId: string | null }) {
-  const base = analysisResult && typeof analysisResult === "object" ? { ...(analysisResult as Record<string, unknown>) } : {}
-  const currentContract =
-    base.contract && typeof base.contract === "object" ? { ...(base.contract as Record<string, unknown>) } : {}
-
-  const now = new Date().toISOString()
-  const next = {
-    ...currentContract,
-    provider: "docusign",
-    envelopeId: input.envelopeId || currentContract.envelopeId || null,
-    status: input.status,
-    updatedAt: now,
-    signedAt: input.status === "completed" ? now : currentContract.signedAt || null,
-    lastError: input.status === "error" ? "Webhook event parsing failed" : null,
-  }
-
-  return {
-    ...base,
-    contract: next,
-  }
-}
-
 export async function POST(request: Request) {
   const admin = createAdminClient()
 
@@ -174,16 +152,28 @@ export async function POST(request: Request) {
     let offerId = event.offerId || null
 
     if ((!companyId || !offerId) && event.envelopeId) {
-      const { data: matchedOffer } = await admin
-        .from("offers")
-        .select("id, company_id, analysis_result")
-        .contains("analysis_result", { contract: { envelopeId: event.envelopeId } })
+      const { data: matchedContract } = await admin
+        .from("contracts")
+        .select("offer_id, company_id")
+        .eq("signing_external_id", event.envelopeId)
         .limit(1)
         .maybeSingle()
 
-      if (matchedOffer) {
-        companyId = matchedOffer.company_id
-        offerId = matchedOffer.id
+      if (matchedContract) {
+        companyId = matchedContract.company_id
+        offerId = matchedContract.offer_id
+      } else {
+        const { data: matchedOffer } = await admin
+          .from("offers")
+          .select("id, company_id, analysis_result")
+          .contains("analysis_result", { contract: { envelopeId: event.envelopeId } })
+          .limit(1)
+          .maybeSingle()
+
+        if (matchedOffer) {
+          companyId = matchedOffer.company_id
+          offerId = matchedOffer.id
+        }
       }
     }
 
@@ -218,7 +208,7 @@ export async function POST(request: Request) {
 
     const { data: offer } = await admin
       .from("offers")
-      .select("status, analysis_result")
+      .select("status, analysis_result, customer_id, project_id")
       .eq("id", offerId)
       .eq("company_id", companyId)
       .maybeSingle()
@@ -233,19 +223,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, mapped: false })
     }
 
-    const analysisResult = patchContract(offer.analysis_result, {
-      status: event.status,
-      envelopeId: event.envelopeId,
-    })
-
-    const offerStatus = event.status === "completed" ? "accepted" : event.status === "declined" || event.status === "voided" ? "rejected" : offer.status
+    const now = new Date().toISOString()
+    const offerStatus =
+      event.status === "completed"
+        ? "accepted"
+        : event.status === "declined" || event.status === "voided"
+        ? "rejected"
+        : offer.status
 
     await admin
       .from("offers")
       .update({
-        analysis_result: analysisResult,
         status: offerStatus,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
       .eq("id", offerId)
       .eq("company_id", companyId)

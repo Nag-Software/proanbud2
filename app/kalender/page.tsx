@@ -275,7 +275,8 @@ function KalenderPage() {
           title: eventTitle,
           start: eventStart.toISOString(),
           end: eventEnd.toISOString(),
-          description: eventDescription
+          description: eventDescription,
+          projectId: linkedProject || undefined,
         })
       })
 

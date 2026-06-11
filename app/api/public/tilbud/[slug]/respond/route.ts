@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { handleOfferAccepted } from "@/lib/tilbud/on-offer-accepted"
 import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 import { fetchPublicOfferBySlug } from "@/lib/tilbud/public-offer"
 
@@ -53,6 +54,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     description: offer.recipientEmail || offer.customer.email || undefined,
     metadata: { publicSlug: slug },
   })
+
+  if (parsed.data.action === "accept") {
+    void handleOfferAccepted({
+      offerId: offer.id,
+      companyId: offer.companyId,
+      source: "public_accept",
+    }).catch((error) => {
+      console.error("Failed to sync Tripletex order after public accept:", error)
+    })
+  }
 
   return NextResponse.json({ ok: true, status: nextStatus })
 }

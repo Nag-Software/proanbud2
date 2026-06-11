@@ -14,7 +14,6 @@ import { companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/serv
 import { MODULE_PRICING } from "@/lib/billing/plans"
 import { getProjectParticipantHoursAction } from "@/app/timeforing/actions"
 import OppgaverTab from "./oppgaver-tab"
-import { KontrakterTab } from "./kontrakter-tab"
 import DeltakereTab from "./deltakere-tab"
 import { EditProjectDialog } from "./edit-project-dialog"
 import ProjectDocumentsTab from "./project-documents-tab"
@@ -211,14 +210,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             >
               Timeføring
             </TabsTrigger>
-            {!isWorker && (
-              <TabsTrigger
-                value="kontrakter"
-                className="rounded-none border-b-3 border-b-transparent bg-transparent px-4 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-b-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
-              >
-                Kontrakter
-              </TabsTrigger>
-            )}
             <TabsTrigger
               value="deltakere"
               className="rounded-none border-b-3 border-b-transparent bg-transparent px-4 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-b-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
@@ -329,12 +320,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               />
             )}
           </TabsContent>
-
-          {!isWorker && (
-            <TabsContent value="kontrakter">
-              <KontrakterTab projectId={project.id} companyId={project.company_id} />
-            </TabsContent>
-          )}
 
           <TabsContent value="deltakere">
             <DeltakereTab

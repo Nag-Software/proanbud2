@@ -11,7 +11,7 @@ import Image from "next/image"
 export const integrations = [
     {
         name: "Tripletex",
-        description: "Koble regnskap, kunder og prosjekter med synkronisering, jobbkø og webhooker.",
+        description: "Koble til Tripletex med én API-brukernøkkel. Synkroniser kunder, prosjekter, tilbud og fakturaer.",
         url: "/min-bedrift/tripletex",
         status: "active",
         logo: "/integrasjoner-logo/tripletex.png"

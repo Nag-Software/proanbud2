@@ -1,3 +1,11 @@
+import {
+  expandTripletexTokenCandidates,
+  getTripletexApiBaseUrl,
+} from "@/lib/integrations/tripletex/config"
+import {
+  buildTripletexOfferExternalAccountsNumber,
+  buildTripletexOfferNumber,
+} from "@/lib/integrations/tripletex/offer-identity"
 import { decryptSecret, encryptSecret } from "@/lib/integrations/tripletex/crypto"
 import type {
   TripletexConnectionRow,
@@ -5,7 +13,7 @@ import type {
   TripletexProjectPayload,
 } from "@/lib/integrations/tripletex/types"
 
-type RequestMethod = "GET" | "POST" | "PUT"
+type RequestMethod = "GET" | "POST" | "PUT" | "DELETE"
 
 type RequestOptions = {
   method?: RequestMethod
@@ -13,10 +21,8 @@ type RequestOptions = {
   body?: Record<string, unknown>
 }
 
-const DEFAULT_TRIPLETEX_BASE_URL = "https://api.tripletex.io/v2"
-
 function getTripletexBaseUrl() {
-  return process.env.TRIPLETEX_BASE_URL || DEFAULT_TRIPLETEX_BASE_URL
+  return getTripletexApiBaseUrl()
 }
 
 function authHeader(connection: TripletexConnectionRow) {
@@ -80,6 +86,31 @@ export async function tripletexRequest(connection: TripletexConnectionRow, optio
   return parseTripletexResponse(response)
 }
 
+export async function refreshTripletexSessionWithCandidates(
+  consumerToken: string,
+  employeeTokenCandidates: string[]
+) {
+  if (employeeTokenCandidates.length === 0) {
+    throw new Error("Tripletex employee token is missing")
+  }
+
+  let lastError: unknown = null
+
+  for (const employeeToken of employeeTokenCandidates) {
+    try {
+      const session = await refreshTripletexSession(consumerToken, employeeToken)
+      return {
+        ...session,
+        employeeToken,
+      }
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError
+}
+
 export async function refreshTripletexSession(
   consumerToken: string,
   employeeToken: string,
@@ -89,17 +120,23 @@ export async function refreshTripletexSession(
   expirationDate.setDate(expirationDate.getDate() + 30)
   const expirationDateIso = expirationDate.toISOString().slice(0, 10)
 
-  const response = await fetch(`${getTripletexBaseUrl()}/token/session/:create`, {
-    method: "POST",
+  const params = new URLSearchParams({
+    consumerToken,
+    employeeToken,
+    expirationDate: expirationDateIso,
+  })
+
+  const sessionUrl = `${getTripletexBaseUrl()}/token/session/:create?${params.toString()}`
+
+  if (process.env.NODE_ENV === "development") {
+    console.info("[tripletex] creating session via PUT", getTripletexBaseUrl())
+  }
+
+  const response = await fetch(sessionUrl, {
+    method: "PUT",
     headers: {
-      "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({
-      consumerToken,
-      employeeToken,
-      expirationDate: expirationDateIso,
-    }),
     cache: "no-store",
   })
 
@@ -115,6 +152,10 @@ export async function refreshTripletexSession(
     sessionToken: String(token),
     expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
   }
+}
+
+export async function refreshTripletexSessionFromApiKey(consumerToken: string, apiKey: string) {
+  return refreshTripletexSessionWithCandidates(consumerToken, expandTripletexTokenCandidates(apiKey))
 }
 
 export function encryptConnectionTokens(input: {
@@ -149,6 +190,55 @@ export async function upsertTripletexCustomer(
   })
 }
 
+function extractTripletexProjectIds(response: unknown): number[] {
+  if (!response || typeof response !== "object") {
+    return []
+  }
+
+  const record = response as Record<string, unknown>
+  const values = record.values ?? record.value
+
+  if (Array.isArray(values)) {
+    return values
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") return null
+        const id = Number((entry as Record<string, unknown>).id)
+        return Number.isFinite(id) ? id : null
+      })
+      .filter((id): id is number => id !== null)
+  }
+
+  if (values && typeof values === "object") {
+    const id = Number((values as Record<string, unknown>).id)
+    return Number.isFinite(id) ? [id] : []
+  }
+
+  const directId = Number(record.id)
+  return Number.isFinite(directId) ? [directId] : []
+}
+
+export async function findTripletexProjectOfferByProanbudId(
+  connection: TripletexConnectionRow,
+  offerId: string
+): Promise<number | null> {
+  const fields = "id,number,externalAccountsNumber,isOffer"
+  const externalAccountsNumber = encodeURIComponent(buildTripletexOfferExternalAccountsNumber(offerId))
+  const number = encodeURIComponent(buildTripletexOfferNumber(offerId))
+
+  const byExternal = await tripletexRequest(connection, {
+    path: `/project?externalAccountsNumber=${externalAccountsNumber}&isOffer=true&count=10&fields=${fields}`,
+  })
+  const externalMatch = extractTripletexProjectIds(byExternal)[0]
+  if (externalMatch) {
+    return externalMatch
+  }
+
+  const byNumber = await tripletexRequest(connection, {
+    path: `/project?number=${number}&isOffer=true&count=10&fields=${fields}`,
+  })
+  return extractTripletexProjectIds(byNumber)[0] ?? null
+}
+
 export async function upsertTripletexProject(
   connection: TripletexConnectionRow,
   payload: TripletexProjectPayload,
@@ -166,6 +256,106 @@ export async function upsertTripletexProject(
     method: "POST",
     path: "/project",
     body: payload,
+  })
+}
+
+export async function getTripletexProjectFlags(connection: TripletexConnectionRow, projectId: number) {
+  const response = await tripletexRequest(connection, {
+    path: `/project/${projectId}?fields=id,isOffer`,
+  })
+  const value = response?.value ?? response
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  return {
+    isOffer: Boolean((value as Record<string, unknown>).isOffer),
+  }
+}
+
+function extractTripletexOrderLineIds(response: unknown): number[] {
+  if (!response || typeof response !== "object") {
+    return []
+  }
+
+  const record = response as Record<string, unknown>
+  const values = record.values ?? record.value
+
+  if (!Array.isArray(values)) {
+    return []
+  }
+
+  return values
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null
+      const id = Number((entry as Record<string, unknown>).id)
+      return Number.isFinite(id) ? id : null
+    })
+    .filter((id): id is number => id !== null)
+}
+
+export async function listTripletexProjectOrderLineIds(
+  connection: TripletexConnectionRow,
+  projectId: number
+) {
+  const response = await tripletexRequest(connection, {
+    path: `/project/orderline?projectId=${projectId}&count=1000&fields=id`,
+  })
+  return extractTripletexOrderLineIds(response)
+}
+
+export async function deleteTripletexProjectOrderLine(connection: TripletexConnectionRow, orderLineId: number) {
+  await tripletexRequest(connection, {
+    method: "DELETE",
+    path: `/project/orderline/${orderLineId}`,
+  })
+}
+
+/** Replace all order lines on a Tripletex tilbud (isOffer=true), never on utførelsesprosjekt. */
+export async function replaceTripletexTilbudOrderLines(
+  connection: TripletexConnectionRow,
+  tilbudProjectId: number,
+  lines: Record<string, unknown>[]
+) {
+  const flags = await getTripletexProjectFlags(connection, tilbudProjectId)
+  if (!flags?.isOffer) {
+    throw new Error(
+      `Refusing to sync offer lines to Tripletex project ${tilbudProjectId}: expected tilbud (isOffer=true)`
+    )
+  }
+
+  const existingLineIds = await listTripletexProjectOrderLineIds(connection, tilbudProjectId)
+  for (const lineId of existingLineIds) {
+    await deleteTripletexProjectOrderLine(connection, lineId)
+  }
+
+  if (lines.length === 0) {
+    return null
+  }
+
+  return createTripletexProjectOrderLines(connection, lines)
+}
+
+export async function createTripletexProjectOrderLines(
+  connection: TripletexConnectionRow,
+  lines: Record<string, unknown>[]
+) {
+  if (lines.length === 0) {
+    return null
+  }
+
+  if (lines.length === 1) {
+    return tripletexRequest(connection, {
+      method: "POST",
+      path: "/project/orderline",
+      body: lines[0],
+    })
+  }
+
+  return tripletexRequest(connection, {
+    method: "POST",
+    path: "/project/orderline/list",
+    body: lines as unknown as Record<string, unknown>,
   })
 }
 
@@ -219,6 +409,56 @@ export async function getTripletexSessionEmployeeId(connection: TripletexConnect
   }
 
   return null
+}
+
+export async function uploadTripletexProjectDocument(
+  connection: TripletexConnectionRow,
+  projectExternalId: number,
+  file: { name: string; bytes: Uint8Array; contentType: string }
+) {
+  const formData = new FormData()
+  const blob = new Blob([Buffer.from(file.bytes)], { type: file.contentType })
+  formData.append("file", blob, file.name)
+
+  const url = `${getTripletexBaseUrl()}/documentArchive/project/${projectExternalId}`
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: authHeader(connection),
+      Accept: "application/json",
+    },
+    body: formData,
+    cache: "no-store",
+  })
+
+  return parseTripletexResponse(response)
+}
+
+export async function createTripletexProjectActivity(
+  connection: TripletexConnectionRow,
+  payload: {
+    projectExternalId: number
+    title: string
+    description?: string | null
+    startDate: string
+    endDate: string
+  }
+) {
+  return tripletexRequest(connection, {
+    method: "POST",
+    path: "/project/projectActivity",
+    body: {
+      project: { id: payload.projectExternalId },
+      activity: {
+        name: payload.title.slice(0, 255),
+        description: payload.description || undefined,
+        activityType: "PROJECT_SPECIFIC_ACTIVITY",
+        isProjectActivity: true,
+      },
+      startDate: payload.startDate,
+      endDate: payload.endDate,
+    },
+  })
 }
 
 export async function getTripletexProjectManagerEmployeeIds(connection: TripletexConnectionRow): Promise<number[]> {

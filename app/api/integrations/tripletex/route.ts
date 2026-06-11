@@ -5,9 +5,22 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import {
   encryptConnectionTokens,
   refreshTripletexSession,
+  refreshTripletexSessionFromApiKey,
 } from "@/lib/integrations/tripletex/connector"
-import { decryptSecret, encryptSecret } from "@/lib/integrations/tripletex/crypto"
+import {
+  detectTripletexEnvironmentMismatch,
+  getTripletexApiBaseUrl,
+  hasTripletexConsumerToken,
+  normalizeTripletexApiKey,
+  resolveTripletexConsumerToken,
+  TRIPLETEX_APPLICATION_NAME,
+} from "@/lib/integrations/tripletex/config"
+import { decryptSecret } from "@/lib/integrations/tripletex/crypto"
 import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
+import {
+  buildTripletexScopeConfig,
+  hasTripletexScopeOverride,
+} from "@/lib/integrations/tripletex/scopes"
 import { processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
 
 type KnownErrorShape = Error & {
@@ -15,15 +28,50 @@ type KnownErrorShape = Error & {
   body?: Record<string, unknown>
 }
 
+function formatTripletexValidationMessages(messages: unknown[] | undefined) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return null
+  }
+
+  const parts = messages
+    .map((entry) => {
+      const row = entry as Record<string, unknown>
+      const field = typeof row.field === "string" ? row.field : null
+      const message = typeof row.message === "string" ? row.message.trim() : ""
+      if (!message) return null
+
+      if (field === "employeeToken") {
+        return message
+      }
+
+      if (field === "consumerToken") {
+        return "Tripletex consumer token på serveren er ugyldig. Kontakt support."
+      }
+
+      return message
+    })
+    .filter((value): value is string => Boolean(value))
+
+  return parts.length > 0 ? parts.join(" ") : null
+}
+
 function extractTripletexErrorMessage(errorBody: Record<string, unknown> | undefined) {
   if (!errorBody) return null
 
+  const rootValidation = formatTripletexValidationMessages(
+    errorBody.validationMessages as unknown[] | undefined
+  )
+  if (rootValidation) {
+    return rootValidation
+  }
+
   const value = errorBody.value as Record<string, unknown> | undefined
-  const validationMessages = value?.validationMessages as unknown[] | undefined
-  const firstValidation =
-    Array.isArray(validationMessages) && validationMessages.length > 0
-      ? (validationMessages[0] as Record<string, unknown>)
-      : undefined
+  const nestedValidation = formatTripletexValidationMessages(
+    value?.validationMessages as unknown[] | undefined
+  )
+  if (nestedValidation) {
+    return nestedValidation
+  }
 
   const candidates: unknown[] = [
     errorBody.message,
@@ -31,17 +79,33 @@ function extractTripletexErrorMessage(errorBody: Record<string, unknown> | undef
     errorBody.description,
     value?.message,
     value?.developerMessage,
-    firstValidation?.message,
-    firstValidation?.developerMessage,
   ]
 
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim()
+      const trimmed = candidate.trim()
+      if (trimmed.toLowerCase() === "validation failed") {
+        continue
+      }
+      return trimmed
     }
   }
 
   return null
+}
+
+function buildTripletexErrorDetails(error: KnownErrorShape) {
+  if (process.env.NODE_ENV === "production") {
+    return undefined
+  }
+
+  return {
+    tripletexMethod: "PUT",
+    tripletexBaseUrl: getTripletexApiBaseUrl(),
+    tripletexStatus: error.status ?? null,
+    applicationName: TRIPLETEX_APPLICATION_NAME,
+    note: "POST i Next-loggen er forespørselen fra nettleseren til /api/integrations/tripletex. Tripletex kalles internt med PUT.",
+  }
 }
 
 function toClientError(error: unknown) {
@@ -56,21 +120,43 @@ function toClientError(error: unknown) {
     }
   }
 
+  if (message.includes("TRIPLETEX_CONSUMER_TOKEN")) {
+    return {
+      status: 500,
+      code: "consumer_token_missing",
+      message: "Tripletex-integrasjonen er ikke konfigurert på serveren.",
+    }
+  }
+
   if (known.status === 401 || known.status === 403) {
     const providerMessage = extractTripletexErrorMessage(known.body)
     return {
       status: 400,
       code: "tripletex_auth_failed",
-      message: providerMessage || "Tripletex avviste tokenene. Sjekk consumer token og employee token.",
+      message: providerMessage || "Tripletex avviste API-brukernøkkelen. Sjekk at nøkkelen er aktiv.",
     }
   }
 
   if (known.status === 422) {
     const providerMessage = extractTripletexErrorMessage(known.body)
+    const validationMessages = known.body?.validationMessages
+    const mentionsEmployeeToken =
+      providerMessage?.toLowerCase().includes("employee token") ||
+      (Array.isArray(validationMessages) &&
+        validationMessages.some(
+          (entry) =>
+            typeof entry === "object" &&
+            entry !== null &&
+            (entry as Record<string, unknown>).field === "employeeToken"
+        ))
+
     return {
       status: 400,
       code: "tripletex_validation_error",
-      message: providerMessage || "Tripletex avviste forespoerselen. Sjekk token-format og verdier.",
+      message: mentionsEmployeeToken
+        ? `API-brukernøkkelen matcher ikke consumer token på serveren. Opprett nøkkelen på nytt i Tripletex med applikasjonsnavn «${TRIPLETEX_APPLICATION_NAME}» (nøyaktig som i godkjennings-e-posten fra Tripletex).`
+        : providerMessage ||
+          "Tripletex avviste API-brukernøkkelen. Sjekk at nøkkelen er opprettet for riktig applikasjon.",
     }
   }
 
@@ -150,10 +236,10 @@ export async function GET() {
     if ("error" in ctx) return ctx.error
 
     const admin = createAdminClient()
-    const [connectionResult, jobsResult] = await Promise.all([
+    const [connectionResult, jobsResult, recentJobsResult, recentEventsResult] = await Promise.all([
       admin
         .from("tripletex_connections")
-        .select("company_id, sync_state, session_expires_at, default_account_id, last_success_at, last_error_at, last_error_message, scope_config, consumer_token_enc, employee_token_enc, webhook_secret_enc")
+        .select("company_id, sync_state, session_expires_at, last_success_at, last_error_at, last_error_message, scope_config, employee_token_enc")
         .eq("company_id", ctx.companyId)
         .maybeSingle(),
       admin
@@ -161,6 +247,20 @@ export async function GET() {
         .select("status")
         .eq("company_id", ctx.companyId)
         .eq("provider", "tripletex"),
+      admin
+        .from("integration_jobs")
+        .select("id, status, job_type, created_at, last_error_message")
+        .eq("company_id", ctx.companyId)
+        .eq("provider", "tripletex")
+        .order("created_at", { ascending: false })
+        .limit(12),
+      admin
+        .from("integration_webhook_events")
+        .select("id, event_type, process_status, received_at")
+        .eq("company_id", ctx.companyId)
+        .eq("provider", "tripletex")
+        .order("received_at", { ascending: false })
+        .limit(12),
     ])
 
     const jobs = jobsResult.data || []
@@ -180,29 +280,24 @@ export async function GET() {
       }
     )
 
-    const canViewSecrets = ctx.isCompanyAdmin
-
     const connection = connectionResult.data
       ? {
-          ...connectionResult.data,
-          consumer_token:
-            canViewSecrets && connectionResult.data.consumer_token_enc
-            ? decryptSecret(connectionResult.data.consumer_token_enc)
-            : "",
-          employee_token:
-            canViewSecrets && connectionResult.data.employee_token_enc
-            ? decryptSecret(connectionResult.data.employee_token_enc)
-            : "",
-          webhook_secret:
-            canViewSecrets && connectionResult.data.webhook_secret_enc
-            ? decryptSecret(connectionResult.data.webhook_secret_enc)
-            : "",
+          company_id: connectionResult.data.company_id,
+          sync_state: connectionResult.data.sync_state,
+          session_expires_at: connectionResult.data.session_expires_at,
+          last_success_at: connectionResult.data.last_success_at,
+          last_error_at: connectionResult.data.last_error_at,
+          last_error_message: connectionResult.data.last_error_message,
+          scope_config: connectionResult.data.scope_config,
         }
       : null
 
     return NextResponse.json({
       connection,
+      hasApiKey: Boolean(connectionResult.data?.employee_token_enc),
       jobs: stats,
+      recentJobs: recentJobsResult.data || [],
+      recentEvents: recentEventsResult.data || [],
       connected: Boolean(connection && connection.sync_state !== "disconnected"),
     })
   } catch (error) {
@@ -219,43 +314,54 @@ export async function POST(request: Request) {
     if (forbidden) return forbidden
 
     const body = await request.json()
-    const consumerToken = String(body.consumerToken || "").trim()
-    const employeeToken = String(body.employeeToken || "").trim()
-    const webhookSecret = String(body.webhookSecret || "").trim()
-    const defaultAccountId = body.defaultAccountId ? Number(body.defaultAccountId) : null
-    const scopeConfig = {
-      customers: body.scopeCustomers !== false,
-      projects: body.scopeProjects !== false,
-      offers: body.scopeOffers !== false,
-      invoices: body.scopeInvoices !== false,
-      employees: body.scopeEmployees === true,
-      calendar: body.scopeCalendar === true,
-      documents: body.scopeDocuments === true,
-    }
+    const apiKey = normalizeTripletexApiKey(String(body.apiKey || body.employeeToken || ""))
+    const scopeConfig = buildTripletexScopeConfig(body)
 
-    if (!consumerToken || !employeeToken) {
+    if (!apiKey) {
       return NextResponse.json(
-        { error: "Både consumer token og employee token må fylles ut.", code: "missing_tokens" },
+        { error: "API-brukernøkkel må fylles ut.", code: "missing_api_key" },
         { status: 400 }
       )
     }
 
-    const session = await refreshTripletexSession(consumerToken, employeeToken)
+    if (!hasTripletexConsumerToken()) {
+      return NextResponse.json(
+        { error: "Tripletex-integrasjonen er ikke konfigurert på serveren.", code: "consumer_token_missing" },
+        { status: 500 }
+      )
+    }
+
+    const consumerToken = resolveTripletexConsumerToken()
+    const environmentMismatch = detectTripletexEnvironmentMismatch(consumerToken, apiKey)
+    if (environmentMismatch) {
+      return NextResponse.json(
+        { error: environmentMismatch.message, code: environmentMismatch.code },
+        { status: 400 }
+      )
+    }
+
+    const session = await refreshTripletexSessionFromApiKey(consumerToken, apiKey)
     const encrypted = encryptConnectionTokens({
       consumerToken,
-      employeeToken,
+      employeeToken: session.employeeToken,
       sessionToken: session.sessionToken,
     })
 
     const admin = createAdminClient()
+    const { data: existing } = await admin
+      .from("tripletex_connections")
+      .select("default_account_id, webhook_secret_enc")
+      .eq("company_id", ctx.companyId)
+      .maybeSingle()
+
     const { error } = await admin.from("tripletex_connections").upsert({
       company_id: ctx.companyId,
       ...encrypted,
-      webhook_secret_enc: webhookSecret ? encryptSecret(webhookSecret) : null,
+      webhook_secret_enc: existing?.webhook_secret_enc || null,
       session_expires_at: session.expiresAt,
       sync_state: "connected",
       default_vat_type_id: null,
-      default_account_id: Number.isFinite(defaultAccountId) ? defaultAccountId : null,
+      default_account_id: existing?.default_account_id ?? null,
       scope_config: scopeConfig,
       last_error_at: null,
       last_error_message: null,
@@ -290,7 +396,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true })
   } catch (error) {
     const mapped = toClientError(error)
-    return NextResponse.json({ error: mapped.message, code: mapped.code }, { status: mapped.status })
+    const details = buildTripletexErrorDetails(error as KnownErrorShape)
+    return NextResponse.json(
+      { error: mapped.message, code: mapped.code, details },
+      { status: mapped.status }
+    )
   }
 }
 
@@ -328,6 +438,8 @@ export async function PATCH(request: Request) {
     }
 
     if (action === "connect") {
+      const nextScopeConfig = hasTripletexScopeOverride(body) ? buildTripletexScopeConfig(body) : null
+
       const { data: existing, error: existingError } = await admin
         .from("tripletex_connections")
         .select("consumer_token_enc, employee_token_enc, scope_config")
@@ -341,20 +453,30 @@ export async function PATCH(request: Request) {
         )
       }
 
-      const consumerToken = decryptSecret(existing.consumer_token_enc)
       const employeeToken = decryptSecret(existing.employee_token_enc)
 
-      if (!consumerToken || !employeeToken) {
+      if (!employeeToken) {
         return NextResponse.json(
-          { error: "Mangler gyldige lagrede tokens. Legg inn tokenene på nytt og lagre tilkobling.", code: "missing_tokens" },
+          { error: "Mangler lagret API-brukernøkkel. Lim inn nøkkelen på nytt og koble til.", code: "missing_api_key" },
           { status: 400 }
         )
       }
 
-      const session = await refreshTripletexSession(consumerToken, employeeToken)
+      const consumerToken = hasTripletexConsumerToken()
+        ? resolveTripletexConsumerToken()
+        : decryptSecret(existing.consumer_token_enc)
+
+      if (!consumerToken) {
+        return NextResponse.json(
+          { error: "Tripletex-integrasjonen er ikke konfigurert på serveren.", code: "consumer_token_missing" },
+          { status: 500 }
+        )
+      }
+
+      const session = await refreshTripletexSessionFromApiKey(consumerToken, employeeToken)
       const encrypted = encryptConnectionTokens({
         consumerToken,
-        employeeToken,
+        employeeToken: session.employeeToken,
         sessionToken: session.sessionToken,
       })
 
@@ -364,6 +486,7 @@ export async function PATCH(request: Request) {
           ...encrypted,
           session_expires_at: session.expiresAt,
           sync_state: "connected",
+          scope_config: nextScopeConfig || existing.scope_config,
           last_error_at: null,
           last_error_message: null,
           last_success_at: new Date().toISOString(),
@@ -400,15 +523,7 @@ export async function PATCH(request: Request) {
     }
 
     if (action === "update_scope") {
-      const scopeConfig = {
-        customers: body.scopeCustomers !== false,
-        projects: body.scopeProjects !== false,
-        offers: body.scopeOffers !== false,
-        invoices: body.scopeInvoices !== false,
-        employees: body.scopeEmployees === true,
-        calendar: body.scopeCalendar === true,
-        documents: body.scopeDocuments === true,
-      }
+      const scopeConfig = buildTripletexScopeConfig(body)
 
       const { error: scopeError } = await admin
         .from("tripletex_connections")
@@ -423,6 +538,51 @@ export async function PATCH(request: Request) {
       }
 
       return NextResponse.json({ ok: true, scopeConfig })
+    }
+
+    if (action === "sync_now") {
+      const { data: connection, error: connectionError } = await admin
+        .from("tripletex_connections")
+        .select("sync_state, scope_config")
+        .eq("company_id", ctx.companyId)
+        .maybeSingle()
+
+      if (connectionError || !connection) {
+        return NextResponse.json(
+          { error: "Fant ingen Tripletex-tilkobling.", code: "connection_missing" },
+          { status: 400 }
+        )
+      }
+
+      if (connection.sync_state === "disconnected") {
+        return NextResponse.json(
+          { error: "Tripletex er frakoblet. Koble til før du synkroniserer.", code: "disconnected" },
+          { status: 400 }
+        )
+      }
+
+      const runKey = new Date().toISOString()
+      const scopeConfig = (connection.scope_config || {}) as { customers?: boolean }
+
+      if (scopeConfig.customers !== false) {
+        await enqueueIntegrationJob({
+          companyId: ctx.companyId,
+          jobType: "customer.pull_all",
+          payload: { source: "manual_sync" },
+          idempotencyKey: `customer:pull_all:${ctx.companyId}:${runKey}`,
+        })
+      }
+
+      await enqueueIntegrationJob({
+        companyId: ctx.companyId,
+        jobType: "reconcile.full",
+        payload: { source: "manual_sync" },
+        idempotencyKey: `reconcile:${ctx.companyId}:${runKey}`,
+      })
+
+      processTripletexQueueInBackground({ batchSize: 30, maxBatches: 15 })
+
+      return NextResponse.json({ ok: true })
     }
 
     return NextResponse.json({ error: "Ugyldig handling", code: "invalid_action" }, { status: 400 })

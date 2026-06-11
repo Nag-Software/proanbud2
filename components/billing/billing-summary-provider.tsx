@@ -11,6 +11,7 @@ import {
 } from "react"
 
 import { useAuth } from "@/components/auth-provider"
+import { useUserRole } from "@/hooks/use-user-role"
 
 export type BillingSummary = {
   status?: string
@@ -61,12 +62,14 @@ const BillingSummaryContext = createContext<BillingSummaryContextValue | null>(n
 
 export function BillingSummaryProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading } = useAuth()
+  const { isAdmin, loadingRole } = useUserRole()
+  const canLoadBilling = isAdmin
   const [summary, setSummary] = useState<BillingSummary | null>(() => memoryCache ?? readSessionCache())
   const [loading, setLoading] = useState(() => !memoryCache && !readSessionCache())
   const [dismissed, setDismissed] = useState(readDismissed)
 
   const refresh = useCallback(async () => {
-    if (!user) {
+    if (!user || !canLoadBilling) {
       setSummary(null)
       setLoading(false)
       return
@@ -86,17 +89,17 @@ export function BillingSummaryProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [user, canLoadBilling])
 
   useEffect(() => {
-    if (authLoading) return
-    if (!user) {
+    if (authLoading || loadingRole) return
+    if (!user || !canLoadBilling) {
       setSummary(null)
       setLoading(false)
       return
     }
     void refresh()
-  }, [authLoading, refresh, user])
+  }, [authLoading, canLoadBilling, loadingRole, refresh, user])
 
   const dismiss = useCallback(() => {
     setDismissed(true)

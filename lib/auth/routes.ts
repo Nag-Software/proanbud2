@@ -16,6 +16,12 @@ export const SUBSCRIPTION_EXEMPT_ROUTE_PREFIXES = [
   '/create-company',
 ] as const
 
+export const ADMIN_ONBOARDING_ROUTE_PREFIXES = [
+  '/create-company',
+  '/onboarding',
+  '/innstillinger/betaling',
+] as const
+
 export function isPublicAuthRoute(pathname: string): boolean {
   return AUTH_PUBLIC_ROUTE_PREFIXES.some((route) => pathname.startsWith(route))
 }
@@ -26,4 +32,8 @@ export function isSubscriptionExemptRoute(pathname: string): boolean {
 
 export function isAuthEntryRoute(pathname: string): boolean {
   return pathname === LOGIN_PATH || pathname === SIGNUP_PATH
+}
+
+export function isAdminOnboardingRoute(pathname: string): boolean {
+  return ADMIN_ONBOARDING_ROUTE_PREFIXES.some((route) => pathname.startsWith(route))
 }

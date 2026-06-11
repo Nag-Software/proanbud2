@@ -5,12 +5,10 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
   CalendarClock,
-  CheckCircle2,
   Download,
   Eye,
   FileImage,
   FileText,
-  Link2,
   Plus,
   Send,
 } from "lucide-react"
@@ -29,20 +27,20 @@ import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-me
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
 import { formatOfferReference } from "@/lib/tilbud/offer-document"
 import { getOfferActivityTone, type OfferActivityEvent } from "@/lib/tilbud/offer-activity.shared"
-import { type OfferCompanyContext, type OfferLineItem, type OfferSourceDocument, calculateOfferTotals, formatNok } from "@/lib/tilbud/types"
+import { CONTRACT_BASIS_LABELS, DEFAULT_PAYMENT_SCHEDULE, PRICING_MODEL_LABELS } from "@/lib/contracts/pricing"
+import {
+  type OfferCompanyContext,
+  type OfferContractBasis,
+  type OfferPaymentScheduleEntry,
+  type OfferLineItem,
+  type OfferPricingModel,
+  type OfferSourceDocument,
+  calculateOfferTotals,
+  formatNok,
+} from "@/lib/tilbud/types"
 
 
 type OfferActivityItem = OfferActivityEvent
-
-type OfferContractState = {
-  provider: "docusign" | "tripletex"
-  status: "draft" | "sent" | "delivered" | "completed" | "declined" | "voided" | "error"
-  envelopeId?: string
-  externalUrl?: string
-  sentAt?: string
-  signedAt?: string
-  lastError?: string
-}
 
 type TripletexSyncLink = {
   external_id?: number
@@ -55,6 +53,7 @@ type TripletexSyncState = {
   connected: boolean
   customer: TripletexSyncLink
   project: TripletexSyncLink
+  offer: TripletexSyncLink
   order: TripletexSyncLink
   invoice: TripletexSyncLink
   pendingJobs: Array<{ job_type: string; status: string; last_error_message: string | null }>
@@ -91,7 +90,10 @@ type OfferPageModel = {
   sourceSummary: string
   sourceDocuments: OfferSourceDocument[]
   lineItems: OfferLineItem[]
-  contract: OfferContractState | null
+  pricingModel: OfferPricingModel
+  contractBasis: OfferContractBasis
+  markupPercent: number
+  paymentSchedule: OfferPaymentScheduleEntry[]
 }
 
 type OfferSaveSnapshot = {
@@ -104,6 +106,10 @@ type OfferSaveSnapshot = {
   recipientPhone: string
   lineItems: OfferLineItem[]
   sourceSummary: string
+  pricingModel: OfferPricingModel
+  contractBasis: OfferContractBasis
+  markupPercent: number
+  paymentSchedule: OfferPaymentScheduleEntry[]
 }
 
 function customerField(value: string) {
@@ -202,28 +208,17 @@ function tripletexSyncBadge(sync: TripletexSyncLink) {
   return <Badge variant="outline">{sync.sync_status || "Ukjent"}</Badge>
 }
 
-function contractBadge(status?: string) {
-  if (status === "completed") return <Badge className="theme-badge-contract-completed">Kontrakt signert</Badge>
-  if (status === "sent" || status === "delivered") return <Badge className="theme-badge-contract-sent">Kontrakt til signering</Badge>
-  if (status === "declined" || status === "voided" || status === "error") return <Badge variant="destructive">Kontrakt krever handling</Badge>
-  return <Badge variant="secondary">Kontrakt ikke sendt</Badge>
-}
-
-
-
 export function OfferDetailClient({
   initialOffer,
   linkedCustomer,
   activity,
   company,
-  contractProvider = "docusign",
   tripletexSync: initialTripletexSync = null,
 }: {
   initialOffer: OfferPageModel
   linkedCustomer: LinkedCustomer
   activity: OfferActivityItem[]
   company: OfferCompanyContext | null
-  contractProvider?: "docusign" | "tripletex"
   tripletexSync?: TripletexSyncState
 }) {
   const router = useRouter()
@@ -244,9 +239,6 @@ export function OfferDetailClient({
   const lastSavedFingerprintRef = useRef("")
 
   const totals = useMemo(() => calculateOfferTotals(lineItems), [lineItems])
-  const contractEnvelopeId = offer.contract?.envelopeId
-  const contractStatus = offer.contract?.status
-
   const saveSnapshot = useMemo<OfferSaveSnapshot>(
     () => ({
       title: offer.title,
@@ -258,10 +250,18 @@ export function OfferDetailClient({
       recipientPhone: offer.recipientPhone,
       lineItems,
       sourceSummary: offer.sourceSummary,
+      pricingModel: offer.pricingModel,
+      contractBasis: offer.contractBasis,
+      markupPercent: offer.markupPercent,
+      paymentSchedule: offer.paymentSchedule,
     }),
     [
       lineItems,
+      offer.contractBasis,
       offer.description,
+      offer.markupPercent,
+      offer.paymentSchedule,
+      offer.pricingModel,
       offer.quoteValidUntil,
       offer.recipientEmail,
       offer.recipientName,
@@ -405,26 +405,6 @@ export function OfferDetailClient({
     }
   }, [offer.id])
 
-  const refreshContractStatus = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/offers/${offer.id}/contract-status`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      })
-
-      if (!response.ok) return
-
-      const payload = await response.json()
-      setOffer((prev) => ({
-        ...prev,
-        contract: payload.contract || prev.contract,
-        status: (payload.offerStatus as OfferPageModel["status"]) || prev.status,
-      }))
-    } catch {
-      // Silent by design, polling should not interrupt UI flow.
-    }
-  }, [offer.id])
-
   const sendOffer = async () => {
     const recipientEmail = offer.recipientEmail.trim() || linkedCustomer.email.trim()
     if (!recipientEmail) {
@@ -470,68 +450,6 @@ export function OfferDetailClient({
     })
   }
 
-  const sendContract = async () => {
-    startTransition(async () => {
-      try {
-        const saved = await saveOfferSnapshot(saveSnapshot, { silent: true })
-        if (!saved) {
-          throw new Error("Kunne ikke lagre endringer før sending")
-        }
-
-        const endpoint =
-          contractProvider === "tripletex"
-            ? `/api/offers/${offer.id}/tripletex-contract`
-            : `/api/offers/${offer.id}/docusign`
-
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        })
-        const payload = await response.json()
-        if (!response.ok) {
-          throw new Error(payload.error || "Kunne ikke sende kontrakt")
-        }
-
-        setOffer((prev) => ({ ...prev, contract: payload.contract }))
-        void triggerTripletexSyncInBackground()
-        toast.success(
-          contractProvider === "tripletex"
-            ? "Ordre opprettet i Tripletex"
-            : "Kontrakt sendt via DocuSign"
-        )
-        void refreshActivity()
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Kunne ikke sende kontrakt")
-      }
-    })
-  }
-
-  const updateContractStatus = async (status: "completed" | "declined" | "voided") => {
-    startTransition(async () => {
-      try {
-        const response = await fetch(`/api/offers/${offer.id}/contract-status`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status }),
-        })
-        const payload = await response.json()
-        if (!response.ok) {
-          throw new Error(payload.error || "Kunne ikke oppdatere kontraktstatus")
-        }
-
-        setOffer((prev) => ({ ...prev, contract: payload.contract }))
-        if (status === "completed") {
-          setOffer((prev) => ({ ...prev, status: "accepted" }))
-          void triggerTripletexSyncInBackground()
-        }
-        toast.success("Kontraktstatus oppdatert")
-        void refreshActivity()
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Kunne ikke oppdatere kontraktstatus")
-      }
-    })
-  }
-
   useEffect(() => {
     setActivityLog(activity)
   }, [activity])
@@ -562,25 +480,6 @@ export function OfferDetailClient({
       }
     }
   }, [saveFingerprint, saveOfferSnapshot, saveSnapshot])
-
-  useEffect(() => {
-    if (!contractEnvelopeId) {
-      return
-    }
-
-    if (contractStatus === "completed" || contractStatus === "declined" || contractStatus === "voided") {
-      return
-    }
-
-    void refreshContractStatus()
-    const intervalId = setInterval(() => {
-      void refreshContractStatus()
-    }, 20000)
-
-    return () => {
-      clearInterval(intervalId)
-    }
-  }, [contractEnvelopeId, contractStatus, refreshContractStatus])
 
   useEffect(() => {
     if (offer.projectSummary.trim()) return
@@ -622,7 +521,6 @@ export function OfferDetailClient({
           <div className="space-y-4 p-4 sm:p-5">
             <div className="flex flex-wrap items-center gap-2">
               {statusBadge(offer.status)}
-              {contractBadge(offer.contract?.status)}
               <span className="ml-auto text-[11px] text-muted-foreground">#{formatOfferReference(offer.id)}</span>
             </div>
 
@@ -649,6 +547,100 @@ export function OfferDetailClient({
               </Select>
               <Input type="date" className="h-8 w-36 bg-background text-xs" value={toInputDate(offer.quoteValidUntil)} onChange={(e) => setOffer((prev) => ({ ...prev, quoteValidUntil: e.target.value || null }))} />
             </div>
+
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div>
+                <Label className="text-[11px] text-muted-foreground">Vederlagsform</Label>
+                <Select
+                  value={offer.pricingModel}
+                  onValueChange={(value) =>
+                    setOffer((prev) => ({ ...prev, pricingModel: value as OfferPricingModel }))
+                  }
+                >
+                  <SelectTrigger className="mt-1 h-8 bg-background text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(PRICING_MODEL_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[11px] text-muted-foreground">Kontraktsgrunnlag</Label>
+                <Select
+                  value={offer.contractBasis}
+                  onValueChange={(value) =>
+                    setOffer((prev) => ({ ...prev, contractBasis: value as OfferContractBasis }))
+                  }
+                >
+                  <SelectTrigger className="mt-1 h-8 bg-background text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(CONTRACT_BASIS_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {offer.pricingModel === "time_materials" || offer.pricingModel === "mixed" ? (
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">Påslag %</Label>
+                  <Input
+                    type="number"
+                    className="mt-1 h-8 bg-background text-xs"
+                    value={offer.markupPercent}
+                    onChange={(event) =>
+                      setOffer((prev) => ({
+                        ...prev,
+                        markupPercent: Number(event.target.value || 0),
+                      }))
+                    }
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            {offer.pricingModel === "fixed" || offer.pricingModel === "mixed" ? (
+              <div className="rounded-md border bg-muted/20 p-3">
+                <Label className="text-[11px] text-muted-foreground">Avdragsplan</Label>
+                <div className="mt-2 space-y-2">
+                  {(offer.paymentSchedule.length ? offer.paymentSchedule : DEFAULT_PAYMENT_SCHEDULE).map((entry, index) => (
+                    <div key={index} className="grid gap-2 sm:grid-cols-3">
+                      <Input
+                        className="h-8 bg-background text-xs"
+                        value={entry.label}
+                        onChange={(event) => {
+                          const base = offer.paymentSchedule.length ? offer.paymentSchedule : DEFAULT_PAYMENT_SCHEDULE
+                          const next = [...base]
+                          next[index] = { ...entry, label: event.target.value }
+                          setOffer((prev) => ({ ...prev, paymentSchedule: next }))
+                        }}
+                      />
+                      <Input
+                        type="number"
+                        className="h-8 bg-background text-xs"
+                        value={entry.percent}
+                        onChange={(event) => {
+                          const base = offer.paymentSchedule.length ? offer.paymentSchedule : DEFAULT_PAYMENT_SCHEDULE
+                          const next = [...base]
+                          next[index] = { ...entry, percent: Number(event.target.value || 0) }
+                          setOffer((prev) => ({ ...prev, paymentSchedule: next }))
+                        }}
+                      />
+                      <Input
+                        className="h-8 bg-background text-xs"
+                        value={entry.dueDescription || ""}
+                        onChange={(event) => {
+                          const base = offer.paymentSchedule.length ? offer.paymentSchedule : DEFAULT_PAYMENT_SCHEDULE
+                          const next = [...base]
+                          next[index] = { ...entry, dueDescription: event.target.value }
+                          setOffer((prev) => ({ ...prev, paymentSchedule: next }))
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="flex flex-wrap gap-2">
               <Button onClick={sendOffer} disabled={isPending || isAutoSaving || lineItems.length === 0} className="h-9">
@@ -723,12 +715,6 @@ export function OfferDetailClient({
             className="rounded-none border-b-3 border-b-transparent bg-transparent px-4 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-b-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
           >
             Dokumenter
-          </TabsTrigger>
-          <TabsTrigger
-            value="kontrakt"
-            className="rounded-none border-b-3 border-b-transparent bg-transparent px-4 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-b-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
-          >
-            Kontrakt
           </TabsTrigger>
           <TabsTrigger
             value="hendelser"
@@ -935,90 +921,6 @@ export function OfferDetailClient({
           </div>
         </TabsContent>
 
-        <TabsContent value="kontrakt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-          <Card className="theme-surface-violet overflow-hidden">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <FileText className="h-4 w-4 theme-badge-violet" />
-                {contractProvider === "tripletex" ? "Ordre i Tripletex" : "Kontrakt (DocuSign)"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 lg:grid-cols-2">
-              <div className="space-y-2 text-sm">
-                <p className="rounded-md border bg-background px-2.5 py-2 text-xs text-muted-foreground">
-                  {contractProvider === "tripletex"
-                    ? "Oppretter kunde, prosjekt og ordre i Tripletex. Faktura kan opprettes automatisk hvis det er aktivert."
-                    : "Kontrakten er et signeringsdokument og sendes separat fra tilbudet."}
-                </p>
-                <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Provider</span><strong>{offer.contract?.provider || contractProvider}</strong></div>
-                <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Status</span><div>{contractBadge(offer.contract?.status)}</div></div>
-                <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>{contractProvider === "tripletex" ? "Ordre-ID" : "Envelope"}</span><strong>{offer.contract?.envelopeId || "-"}</strong></div>
-                <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Sendt</span><strong>{dateTimeLabel(offer.contract?.sentAt)}</strong></div>
-                {contractProvider === "docusign" ? (
-                  <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Signert</span><strong>{dateTimeLabel(offer.contract?.signedAt)}</strong></div>
-                ) : null}
-
-                {tripletexSync?.connected ? (
-                  <div className="mt-3 space-y-2 rounded-md border bg-background p-2.5">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tripletex-synk</p>
-                    <div className="flex items-center justify-between"><span>Kunde</span>{tripletexSyncBadge(tripletexSync.customer)}</div>
-                    <div className="flex items-center justify-between"><span>Prosjekt</span>{tripletexSyncBadge(tripletexSync.project)}</div>
-                    <div className="flex items-center justify-between"><span>Ordre</span>{tripletexSyncBadge(tripletexSync.order)}</div>
-                    <div className="flex items-center justify-between"><span>Faktura</span>{tripletexSyncBadge(tripletexSync.invoice)}</div>
-                    {tripletexSync.pendingJobs.length > 0 ? (
-                      <p className="text-xs text-muted-foreground">{tripletexSync.pendingJobs.length} synk-jobber i kø…</p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="space-y-2">
-                <Button onClick={sendContract} disabled={isPending || isAutoSaving} className="w-full">
-                  <Send className="mr-2 h-4 w-4" />
-                  {contractProvider === "tripletex" ? "Opprett ordre i Tripletex" : "Send kontrakt til signering"}
-                </Button>
-                <Button variant="outline" onClick={() => void triggerTripletexSyncInBackground()} disabled={isPending} className="w-full">
-                  Synk til Tripletex nå
-                </Button>
-                <Button variant="secondary" onClick={() => setIsPreviewOpen(true)} className="w-full">
-                  <Eye className="mr-2 h-4 w-4" />
-                  Forhåndsvis tilbud
-                </Button>
-                {contractProvider === "docusign" ? (
-                  <>
-                    <Button variant="outline" onClick={() => updateContractStatus("completed")} disabled={isPending} className="w-full">
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                      Marker signert
-                    </Button>
-                    <Button variant="outline" onClick={() => updateContractStatus("declined")} disabled={isPending} className="w-full">
-                      Avvist av kunde
-                    </Button>
-                    <Button variant="outline" onClick={() => updateContractStatus("voided")} disabled={isPending} className="w-full">
-                      Annuller
-                    </Button>
-                  </>
-                ) : null}
-                {offer.contract?.externalUrl ? (
-                  <Button variant="outline" className="w-full" asChild>
-                    <a href={offer.contract.externalUrl} target="_blank" rel="noreferrer">
-                      {contractProvider === "tripletex" ? "Åpne i Tripletex" : "Åpne i DocuSign"}
-                      <Link2 className="ml-2 h-4 w-4" />
-                    </a>
-                  </Button>
-                ) : null}
-                {tripletexSync?.order?.external_url ? (
-                  <Button variant="outline" className="w-full" asChild>
-                    <a href={tripletexSync.order.external_url} target="_blank" rel="noreferrer">
-                      Åpne ordre i Tripletex
-                      <Link2 className="ml-2 h-4 w-4" />
-                    </a>
-                  </Button>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="hendelser" className="m-0 focus-visible:outline-none focus-visible:ring-0">
           <div className="border border-border bg-background">
             <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
@@ -1054,7 +956,7 @@ export function OfferDetailClient({
           <SheetHeader className="flex-row items-start justify-between gap-4 space-y-0">
             <div>
               <SheetTitle>Forhåndsvisning av tilbud</SheetTitle>
-              <SheetDescription>Slik ser tilbudet ut for kunden. Kontrakten er et separat dokument.</SheetDescription>
+              <SheetDescription>Slik ser tilbudet ut for kunden.</SheetDescription>
             </div>
             <Button variant="outline" size="sm" onClick={handlePrintPdf} disabled={lineItems.length === 0}>
               <Download className="mr-2 h-4 w-4" />

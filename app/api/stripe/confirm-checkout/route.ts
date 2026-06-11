@@ -5,7 +5,7 @@ import {
   confirmCheckoutSession,
   reconcileCompanyBillingFromStripe,
 } from "@/lib/billing/confirm-checkout"
-import { getAuthenticatedCompanyContext } from "@/lib/billing/guards"
+import { requireCompanyAdmin } from "@/lib/billing/guards"
 import { isActiveSubscriptionStatus } from "@/lib/billing/plans"
 
 const bodySchema = z.object({
@@ -15,7 +15,7 @@ const bodySchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const auth = await getAuthenticatedCompanyContext()
+    const auth = await requireCompanyAdmin()
     if (!auth.ok) return auth.response
 
     const parsed = bodySchema.safeParse(await request.json().catch(() => ({})))

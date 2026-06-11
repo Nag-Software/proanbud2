@@ -137,7 +137,7 @@ export const columns: ColumnDef<Quota>[] = [
             <Link href={`/tilbud/${row.original.id}`}>Forhåndsvis</Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
-            <Link href={`/tilbud/${row.original.id}`}>Send kontrakt</Link>
+            <Link href={`/tilbud/${row.original.id}`}>Åpne tilbud</Link>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

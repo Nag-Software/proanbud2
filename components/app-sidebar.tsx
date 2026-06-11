@@ -19,6 +19,7 @@ import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2I
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { useUserRole } from "@/hooks/use-user-role"
+import { canManageSubscription } from "@/lib/roles"
 import { useAuth } from "@/components/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { CreateProjectDrawer } from "@/app/prosjekter/create-project-dialog"
@@ -123,10 +124,6 @@ const data: {
           title: "Timeføring",
           url: "/min-bedrift/timeforing",
         },
-        {
-          title: "Integrasjoner",
-          url: "/min-bedrift/integrasjoner",
-        },
       ]
     },
     {
@@ -147,6 +144,10 @@ const data: {
         {
           title: "Betaling",
           url: "/innstillinger/betaling",
+        },
+        {
+          title: "Integrasjoner",
+          url: "/innstillinger/integrasjoner",
         },
       ],
     },
@@ -234,10 +235,12 @@ function AppSidebarHeader({ unreadCount }: { unreadCount: number }) {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { role } = useUserRole();
+  const { role, canonicalRole } = useUserRole();
   const { user } = useAuth();
   const unreadCount = useUnreadMessages();
   const [activeProjects, setActiveProjects] = React.useState<SidebarProject[]>([]);
+  const isWorker = canonicalRole === "worker";
+  const canManageBilling = canManageSubscription(role);
 
   React.useEffect(() => {
     async function fetchProjects() {
@@ -266,9 +269,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     fetchProjects();
   }, [user, role]);
 
-  const { canonicalRole } = useUserRole();
-  const isWorker = canonicalRole === "worker";
-
   const filteredNavMain = data.navMain
     .map((item) => {
       if (item.title === "Meldinger" && unreadCount > 0) {
@@ -280,11 +280,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           items: item.items.filter((subItem) => subItem.title === "Timeføring"),
         };
       }
+      if (item.title === "Innstillinger" && item.items) {
+        return {
+          ...item,
+          items: item.items.filter(
+            (subItem) => subItem.title !== "Betaling" || canManageBilling
+          ),
+        };
+      }
       return item;
     })
     .filter((item) => {
     if (item.hidden) return false;
-    if (!isWorker) return true;
+    if (!isWorker) {
+      if (item.title === "Innstillinger" && !canManageBilling) {
+        return false;
+      }
+      return true;
+    }
 
     const hiddenForWorker = [
       "Salg & Økonomi",

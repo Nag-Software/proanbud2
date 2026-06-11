@@ -1,4 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import {
+  hasTripletexConsumerToken,
+  resolveTripletexConsumerToken,
+} from "@/lib/integrations/tripletex/config"
 import { decryptSecret } from "@/lib/integrations/tripletex/crypto"
 import {
   encryptConnectionTokens,
@@ -36,7 +40,9 @@ export async function ensureFreshTripletexConnection(
     return connection
   }
 
-  const consumerToken = decryptSecret(connection.consumer_token_enc)
+  const consumerToken = hasTripletexConsumerToken()
+    ? resolveTripletexConsumerToken()
+    : decryptSecret(connection.consumer_token_enc)
   const employeeToken = decryptSecret(connection.employee_token_enc)
 
   if (!consumerToken || !employeeToken) {

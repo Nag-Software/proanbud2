@@ -5,6 +5,7 @@ import { XIcon } from "lucide-react"
 
 import { useBillingSummary } from "@/components/billing/billing-summary-provider"
 import { Button } from "@/components/ui/button"
+import { useUserRole } from "@/hooks/use-user-role"
 
 function daysLeft(trialEndsAt: string): number {
   const end = new Date(trialEndsAt).getTime()
@@ -14,6 +15,9 @@ function daysLeft(trialEndsAt: string): number {
 
 export function TrialBanner() {
   const { summary, dismissed, dismiss, loading } = useBillingSummary()
+  const { isAdmin, loadingRole } = useUserRole()
+
+  if (!isAdmin || loadingRole) return null
 
   if (dismissed) return null
 

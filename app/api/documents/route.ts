@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import {
+  enqueueDocumentTripletexSync,
+  parseProjectIdFromDocumentPath,
+} from "@/lib/integrations/tripletex/sync"
+import {
   createGoogleDriveFolder,
   createOneDriveFolder,
   deleteGoogleDriveItem,
@@ -421,6 +425,25 @@ export async function POST(request: Request) {
 
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 500 })
+  }
+
+  const projectId = parseProjectIdFromDocumentPath(parentPath)
+  if (projectId) {
+    const { data: userRow } = await supabase
+      .from("users")
+      .select("company_id")
+      .eq("id", user.id)
+      .maybeSingle()
+
+    if (userRow?.company_id) {
+      void enqueueDocumentTripletexSync({
+        companyId: userRow.company_id,
+        documentItemId: inserted.id,
+        projectId,
+      }).catch((error) => {
+        console.error("Tripletex document sync enqueue failed:", error)
+      })
+    }
   }
 
   return NextResponse.json({

@@ -2,6 +2,16 @@ export type OfferAssignmentMode = "project" | "customer"
 
 export type OfferStatus = "draft" | "sent" | "accepted" | "rejected"
 
+export type OfferPricingModel = "fixed" | "time_materials" | "unit_price" | "mixed"
+
+export type OfferContractBasis = "ns8405" | "ns8407" | "custom" | "none"
+
+export type OfferPaymentScheduleEntry = {
+  label: string
+  percent: number
+  dueDescription?: string
+}
+
 export type OfferSourceDocument = {
   id: string
   name: string
@@ -108,6 +118,10 @@ export type SaveOfferPayload = {
   recipientEmail: string
   recipientPhone: string
   validityDays: number
+  pricingModel?: OfferPricingModel
+  contractBasis?: OfferContractBasis
+  markupPercent?: number
+  paymentSchedule?: OfferPaymentScheduleEntry[]
 }
 
 function roundCurrency(value: number) {

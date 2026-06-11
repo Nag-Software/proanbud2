@@ -3,7 +3,7 @@ import { z } from "zod"
 
 import { createSubscriptionCheckoutSession } from "@/lib/billing/checkout"
 import type { BillingInterval, PlanKey } from "@/lib/billing/plans"
-import { getAuthenticatedCompanyContext } from "@/lib/billing/guards"
+import { requireCompanyAdmin } from "@/lib/billing/guards"
 import { isStripeConfigured } from "@/lib/stripe/server"
 import { createClient } from "@/lib/supabase/server"
 
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Stripe er ikke konfigurert." }, { status: 500 })
     }
 
-    const auth = await getAuthenticatedCompanyContext()
+    const auth = await requireCompanyAdmin()
     if (!auth.ok) return auth.response
 
     const parsed = bodySchema.safeParse(await request.json())

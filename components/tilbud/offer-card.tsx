@@ -61,7 +61,7 @@ export function OfferCard({ offer }: OfferCardProps) {
               <Link href={`/tilbud/${offer.id}`}>Forhåndsvis</Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href={`/tilbud/${offer.id}`}>Send kontrakt</Link>
+              <Link href={`/tilbud/${offer.id}`}>Åpne tilbud</Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

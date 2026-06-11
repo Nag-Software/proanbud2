@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
+import { canManageSubscription } from "@/lib/roles"
 
 import {
   Avatar,
@@ -256,6 +257,7 @@ export function NavUser() {
     .join("")
     .toUpperCase() || "PR"
   const subscriptionConfigured = Boolean(stripePublishableKey)
+  const canManageBilling = canManageSubscription(profile?.role)
   const currentRole = profile?.role && profile.role in roleLabel
     ? roleLabel[profile.role as keyof typeof roleLabel]
     : "Bruker"
@@ -313,10 +315,12 @@ export function NavUser() {
                   <BadgeCheckIcon className="mr-2 h-4 w-4" />
                   Min Konto
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleManageSubscription}>
-                  <CreditCardIcon className="mr-2 h-4 w-4" />
-                  Abonnement
-                </DropdownMenuItem>
+                {canManageBilling && (
+                  <DropdownMenuItem onClick={handleManageSubscription}>
+                    <CreditCardIcon className="mr-2 h-4 w-4" />
+                    Abonnement
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout}>
@@ -353,7 +357,7 @@ export function NavUser() {
                         <Badge variant="outline">{currentRole}</Badge>
                         <Badge variant="outline">{companyName}</Badge>
                         <Badge variant={subscriptionConfigured ? "secondary" : "destructive"}>
-                          {subscriptionConfigured ? "Stripe klar" : "Stripe mangler"}
+                          {subscriptionConfigured ? "Godkjent" : "Mangler abonnement"}
                         </Badge>
                       </div>
                     </div>

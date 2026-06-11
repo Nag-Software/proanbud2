@@ -1,3 +1,7 @@
+import {
+  buildTripletexOfferExternalAccountsNumber,
+  buildTripletexOfferNumber,
+} from "@/lib/integrations/tripletex/offer-identity"
 import { calculateLineItemTotal, type OfferLineItem } from "@/lib/tilbud/types"
 
 export function mapCustomerToTripletex(customer: {
@@ -56,6 +60,7 @@ export function mapProjectToTripletex(
      * true for POST /project — force open in Tripletex even if local status is completed.
      */
     treatAsNewInTripletex: boolean
+    isOffer?: boolean
   }
 ) {
   const startDate = options.startDate
@@ -77,6 +82,7 @@ export function mapProjectToTripletex(
     startDate: string
     endDate?: string
     isClosed: boolean
+    isOffer: boolean
     description?: string
   } = {
     name: project.name,
@@ -84,6 +90,7 @@ export function mapProjectToTripletex(
     projectManager: { id: options.projectManagerExternalId },
     startDate: fromDbStart || startDate,
     isClosed,
+    isOffer: options.isOffer ?? false,
     description: project.description || undefined,
   }
 
@@ -185,7 +192,7 @@ export function mapOrderFromOffer(
     line_items?: unknown
   },
   customerExternalId: number,
-  projectExternalId: number,
+  projectExternalId?: number | null,
   options?: {
     defaultVatTypeId?: number | null
     defaultAccountId?: number | null
@@ -209,10 +216,97 @@ export function mapOrderFromOffer(
 
   return {
     customer: { id: customerExternalId },
-    project: { id: projectExternalId },
+    ...(projectExternalId ? { project: { id: projectExternalId } } : {}),
     orderDate,
     deliveryDate: orderDate,
     isPrioritizeAmountsIncludingVat: false,
     orderLines,
   }
 }
+
+/**
+ * POST/PUT /project with isOffer=true — appears in Tripletex Tilbudsoversikt.
+ */
+export function mapProjectOfferFromOffer(
+  offer: {
+    id: string
+    title: string | null
+    description: string | null
+    amount_nok: number | null
+    pricing_model?: string | null
+  },
+  customerExternalId: number,
+  projectManagerExternalId: number,
+  options?: { startDate?: string; projectName?: string | null }
+) {
+  const startDate = options?.startDate || new Date().toISOString().slice(0, 10)
+  const pricingModel = offer.pricing_model || "fixed"
+  const isFixedPrice = pricingModel === "fixed" || pricingModel === "unit_price" || pricingModel === "mixed"
+
+  return {
+    name: offer.title?.trim() || options?.projectName?.trim() || `Tilbud ${offer.id.slice(0, 8)}`,
+    number: buildTripletexOfferNumber(offer.id),
+    externalAccountsNumber: buildTripletexOfferExternalAccountsNumber(offer.id),
+    customer: { id: customerExternalId },
+    projectManager: { id: projectManagerExternalId },
+    startDate,
+    isOffer: true,
+    isClosed: false,
+    isFixedPrice,
+    fixedprice: isFixedPrice && offer.amount_nok ? Number(offer.amount_nok) : undefined,
+    description: offer.description?.trim() || undefined,
+  }
+}
+
+/** Maps ProAnbud line_items to Tripletex /project/orderline rows on a tilbud (isOffer=true). */
+export function mapTilbudOrderLinesFromOffer(
+  offer: {
+    id: string
+    title: string | null
+    description: string | null
+    amount_nok: number | null
+    line_items?: unknown
+  },
+  tilbudExternalId: number,
+  options?: { defaultVatTypeId?: number | null }
+) {
+  const lineItems = normalizeOfferLineItems(offer.line_items)
+  const lines =
+    lineItems.length > 0
+      ? lineItems.map((item) => {
+          const descriptionParts = [item.title.trim()]
+          if (item.description.trim()) descriptionParts.push(item.description.trim())
+          if (item.subproject && item.subproject !== "Generelt") {
+            descriptionParts.unshift(`[${item.subproject}]`)
+          }
+
+          const line: Record<string, unknown> = {
+            project: { id: tilbudExternalId },
+            description: descriptionParts.join(" – "),
+            count: item.quantity,
+            unitPriceExcludingVatCurrency: lineUnitPriceExVat(item),
+          }
+
+          if (item.discountPercent > 0) {
+            line.discount = item.discountPercent
+          }
+          if (options?.defaultVatTypeId) {
+            line.vatType = { id: options.defaultVatTypeId }
+          }
+          return line
+        })
+      : [
+          {
+            project: { id: tilbudExternalId },
+            description: offer.title || offer.description || `Tilbud ${offer.id}`,
+            count: 1,
+            unitPriceExcludingVatCurrency: Number(offer.amount_nok || 0),
+            ...(options?.defaultVatTypeId ? { vatType: { id: options.defaultVatTypeId } } : {}),
+          },
+        ]
+
+  return lines
+}
+
+/** @deprecated Use mapTilbudOrderLinesFromOffer */
+export const mapProjectOrderLinesFromOffer = mapTilbudOrderLinesFromOffer

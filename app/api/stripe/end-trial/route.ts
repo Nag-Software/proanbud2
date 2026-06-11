@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
 
-import { getAuthenticatedCompanyContext } from "@/lib/billing/guards"
+import { requireCompanyAdmin } from "@/lib/billing/guards"
 import { fetchSubscription, upsertCompanyBillingFromSubscription } from "@/lib/billing/sync"
 import { getStripe } from "@/lib/stripe/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function POST() {
   try {
-    const auth = await getAuthenticatedCompanyContext()
+    const auth = await requireCompanyAdmin()
     if (!auth.ok) return auth.response
 
     const admin = createAdminClient()

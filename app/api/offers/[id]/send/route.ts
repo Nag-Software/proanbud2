@@ -46,13 +46,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .eq("company_id", context.companyId)
       .maybeSingle()
 
-    if (offerRow?.customer_id && offerRow?.project_id) {
+    if (offerRow?.customer_id) {
       await enqueueOfferTripletexSyncAndProcess({
         companyId: context.companyId,
         offerId: id,
         customerId: offerRow.customer_id,
-        projectId: offerRow.project_id,
+        projectId: offerRow.project_id || null,
         source: "offer-send",
+        phase: "quote",
       })
     }
 

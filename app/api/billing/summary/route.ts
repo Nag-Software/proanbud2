@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server"
 
-import { getAuthenticatedCompanyContext, getUsageSummary } from "@/lib/billing/guards"
+import { getUsageSummary, requireCompanyAdmin } from "@/lib/billing/guards"
 import { MODULE_PRICING, PLAN_LABELS, PLAN_PRICING, SEAT_PRICE_NOK } from "@/lib/billing/plans"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function GET() {
   try {
-    const auth = await getAuthenticatedCompanyContext()
+    const auth = await requireCompanyAdmin()
     if (!auth.ok) return auth.response
 
     const summary = await getUsageSummary(auth.context.companyId)

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { ensureValidToken } from "@/lib/oauth"
+import { enqueueCalendarTripletexSync } from "@/lib/integrations/tripletex/sync"
 
 interface CalendarEvent {
   id: string
@@ -108,6 +109,45 @@ export async function GET(request: Request) {
   }
 }
 
+async function enqueueTripletexCalendarEvent(input: {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  userId: string
+  eventId: string
+  projectId?: string | null
+  title?: string | null
+  description?: string | null
+  start: string
+  end: string
+}) {
+  const projectId = input.projectId?.trim()
+  const title = input.title?.trim()
+  if (!projectId || !title) {
+    return
+  }
+
+  const { data: userRow } = await input.supabase
+    .from("users")
+    .select("company_id")
+    .eq("id", input.userId)
+    .maybeSingle()
+
+  if (!userRow?.company_id) {
+    return
+  }
+
+  void enqueueCalendarTripletexSync({
+    companyId: userRow.company_id,
+    eventId: input.eventId,
+    projectId,
+    title,
+    description: input.description || null,
+    start: input.start,
+    end: input.end,
+  }).catch((error) => {
+    console.error("Tripletex calendar sync enqueue failed:", error)
+  })
+}
+
 async function fetchGoogleCalendarEvents(
   accessToken: string,
   start: string,
@@ -203,7 +243,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { title, start, end, description, targetProvider } = body
+    const { title, start, end, description, targetProvider, projectId } = body
 
     if (!title || !start || !end) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -251,7 +291,21 @@ export async function POST(request: Request) {
       if (!res.ok) {
         throw new Error(await res.text())
       }
-      return NextResponse.json(await res.json())
+      const created = await res.json()
+      const createdEventId = typeof created?.id === "string" ? `google-${created.id}` : null
+      if (createdEventId) {
+        await enqueueTripletexCalendarEvent({
+          supabase,
+          userId: user.id,
+          eventId: createdEventId,
+          projectId,
+          title,
+          description,
+          start,
+          end,
+        })
+      }
+      return NextResponse.json(created)
     }
 
     if (validIntegration.provider === "microsoft") {
@@ -272,7 +326,21 @@ export async function POST(request: Request) {
       if (!res.ok) {
         throw new Error(await res.text())
       }
-      return NextResponse.json(await res.json())
+      const created = await res.json()
+      const createdEventId = typeof created?.id === "string" ? `ms-${created.id}` : null
+      if (createdEventId) {
+        await enqueueTripletexCalendarEvent({
+          supabase,
+          userId: user.id,
+          eventId: createdEventId,
+          projectId,
+          title,
+          description,
+          start,
+          end,
+        })
+      }
+      return NextResponse.json(created)
     }
 
     return NextResponse.json({ error: "Unsupported provider" }, { status: 400 })
@@ -326,7 +394,18 @@ export async function PATCH(request: Request) {
         body: JSON.stringify(updateBody)
       })
       if (!res.ok) throw new Error(await res.text())
-      return NextResponse.json(await res.json())
+      const updated = await res.json()
+      await enqueueTripletexCalendarEvent({
+        supabase,
+        userId: user.id,
+        eventId,
+        projectId,
+        title,
+        description,
+        start,
+        end,
+      })
+      return NextResponse.json(updated)
     }
 
     if (isMicrosoft) {
@@ -348,7 +427,18 @@ export async function PATCH(request: Request) {
         body: JSON.stringify(updateBody)
       })
       if (!res.ok) throw new Error(await res.text())
-      return NextResponse.json(await res.json())
+      const updated = await res.json()
+      await enqueueTripletexCalendarEvent({
+        supabase,
+        userId: user.id,
+        eventId,
+        projectId,
+        title,
+        description,
+        start,
+        end,
+      })
+      return NextResponse.json(updated)
     }
     
     return NextResponse.json({ success: true })

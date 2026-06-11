@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
+import { handleOfferAccepted } from "@/lib/tilbud/on-offer-accepted"
 import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
-import { calculateOfferTotals, type OfferLineItem } from "@/lib/tilbud/types"
+import {
+  calculateOfferTotals,
+  type OfferContractBasis,
+  type OfferLineItem,
+  type OfferPricingModel,
+} from "@/lib/tilbud/types"
 
 type UpdatePayload = {
   activitySource?: "autosave" | "manual"
@@ -22,6 +28,10 @@ type UpdatePayload = {
   recipientPhone?: string
   sourceSummary?: string
   lineItems?: OfferLineItem[]
+  pricingModel?: OfferPricingModel
+  contractBasis?: OfferContractBasis
+  markupPercent?: number
+  paymentSchedule?: Array<{ label: string; percent: number; dueDescription?: string }>
 }
 
 function normalizeLineItems(input: unknown): OfferLineItem[] {
@@ -109,6 +119,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     updated_at: new Date().toISOString(),
   }
 
+  if (payload.pricingModel !== undefined) {
+    Object.assign(updateRow, { pricing_model: payload.pricingModel })
+  }
+  if (payload.contractBasis !== undefined) {
+    Object.assign(updateRow, { contract_basis: payload.contractBasis })
+  }
+  if (payload.markupPercent !== undefined) {
+    Object.assign(updateRow, { markup_percent: Number(payload.markupPercent) })
+  }
+  if (payload.paymentSchedule !== undefined) {
+    Object.assign(updateRow, { payment_schedule: payload.paymentSchedule })
+  }
+
   const { data, error } = await ctx.supabase
     .from("offers")
     .update(updateRow)
@@ -125,6 +148,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const nextStatus = updateRow.status
   const statusChanged = nextStatus !== previousStatus
   const shouldLogUpdate = payload.activitySource !== "autosave" || statusChanged
+
+  if (nextStatus === "accepted" && previousStatus !== "accepted") {
+    void handleOfferAccepted({
+      offerId: id,
+      companyId: ctx.companyId,
+      actorUserId: ctx.userId,
+      source: "manual_accept",
+    }).catch((error) => {
+      console.error("Failed to sync Tripletex order after manual accept:", error)
+    })
+  }
 
   if (shouldLogUpdate) {
     await logOfferActivity({

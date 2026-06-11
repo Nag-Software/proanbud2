@@ -11,9 +11,14 @@ import {
 } from "@/lib/integrations/tripletex/jobs"
 import {
   createTripletexInvoiceFromOrder,
+  createTripletexProjectActivity,
+  findTripletexProjectOfferByProanbudId,
+  getTripletexProjectFlags,
+  replaceTripletexTilbudOrderLines,
   getTripletexProjectManagerEmployeeIds,
   getTripletexSessionEmployeeId,
   tripletexRequest,
+  uploadTripletexProjectDocument,
   upsertTripletexCustomer,
   upsertTripletexOrder,
   upsertTripletexProject,
@@ -21,6 +26,8 @@ import {
 import {
   mapCustomerToTripletex,
   mapOrderFromOffer,
+  mapProjectOfferFromOffer,
+  mapTilbudOrderLinesFromOffer,
   mapProjectToTripletex,
   resolveProjectStartDateForTripletex,
 } from "@/lib/integrations/tripletex/mappers"
@@ -28,6 +35,7 @@ import { getFreshTripletexConnection } from "@/lib/integrations/tripletex/sessio
 import {
   tripletexCustomerUrl,
   tripletexInvoiceUrl,
+  tripletexOfferUrl,
   tripletexOrderUrl,
   tripletexProjectUrl,
 } from "@/lib/integrations/tripletex/urls"
@@ -347,6 +355,59 @@ async function processCustomerPullAll(job: IntegrationJobRow) {
   }
 }
 
+async function resolveTripletexProjectManagerId(
+  job: IntegrationJobRow,
+  connection: NonNullable<Awaited<ReturnType<typeof getFreshTripletexConnection>>>,
+  createdBy: string | null | undefined,
+  cache?: WorkerRuntimeCache
+) {
+  let projectManagerExternalId: number | undefined
+
+  if (createdBy) {
+    const employeeLink = await getExternalEntityLink({
+      companyId: job.company_id,
+      entityType: "employee",
+      localId: createdBy,
+    })
+    if (employeeLink?.external_id) {
+      projectManagerExternalId = employeeLink.external_id
+    }
+  }
+
+  if (!projectManagerExternalId) {
+    let sessionEmployeeId: number | null
+    if (cache?.sessionEmployeeIdByCompany.has(job.company_id)) {
+      sessionEmployeeId = cache.sessionEmployeeIdByCompany.get(job.company_id) ?? null
+    } else {
+      sessionEmployeeId = await getTripletexSessionEmployeeId(connection)
+      cache?.sessionEmployeeIdByCompany.set(job.company_id, sessionEmployeeId)
+    }
+    if (sessionEmployeeId) {
+      projectManagerExternalId = sessionEmployeeId
+    }
+  }
+
+  let availableProjectManagerIds: number[]
+  if (cache?.projectManagerIdsByCompany.has(job.company_id)) {
+    availableProjectManagerIds = cache.projectManagerIdsByCompany.get(job.company_id) || []
+  } else {
+    availableProjectManagerIds = await getTripletexProjectManagerEmployeeIds(connection)
+    cache?.projectManagerIdsByCompany.set(job.company_id, availableProjectManagerIds)
+  }
+
+  if (availableProjectManagerIds.length > 0) {
+    if (!projectManagerExternalId || !availableProjectManagerIds.includes(projectManagerExternalId)) {
+      projectManagerExternalId = availableProjectManagerIds[0]
+    }
+  }
+
+  if (!projectManagerExternalId) {
+    throw new Error("No valid Tripletex project manager available")
+  }
+
+  return projectManagerExternalId
+}
+
 async function processProjectUpsert(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
   const projectId = String(job.payload.projectId || "")
   if (!projectId) {
@@ -399,52 +460,12 @@ async function processProjectUpsert(job: IntegrationJobRow, cache?: WorkerRuntim
     customerExternalId = customerLink.external_id
   }
 
-  let projectManagerExternalId: number | undefined = undefined
-  if (project.created_by) {
-    const employeeLink = await getExternalEntityLink({
-      companyId: job.company_id,
-      entityType: "employee",
-      localId: project.created_by,
-    })
-
-    if (employeeLink?.external_id) {
-      projectManagerExternalId = employeeLink.external_id
-    }
-  }
-
-  if (!projectManagerExternalId) {
-    let sessionEmployeeId: number | null
-    if (cache?.sessionEmployeeIdByCompany.has(job.company_id)) {
-      sessionEmployeeId = cache.sessionEmployeeIdByCompany.get(job.company_id) ?? null
-    } else {
-      sessionEmployeeId = await getTripletexSessionEmployeeId(connection)
-      cache?.sessionEmployeeIdByCompany.set(job.company_id, sessionEmployeeId)
-    }
-
-    if (sessionEmployeeId) {
-      projectManagerExternalId = sessionEmployeeId
-    }
-  }
-
-  let availableProjectManagerIds: number[]
-  if (cache?.projectManagerIdsByCompany.has(job.company_id)) {
-    availableProjectManagerIds = cache.projectManagerIdsByCompany.get(job.company_id) || []
-  } else {
-    availableProjectManagerIds = await getTripletexProjectManagerEmployeeIds(connection)
-    cache?.projectManagerIdsByCompany.set(job.company_id, availableProjectManagerIds)
-  }
-
-  if (availableProjectManagerIds.length > 0) {
-    if (!projectManagerExternalId || !availableProjectManagerIds.includes(projectManagerExternalId)) {
-      projectManagerExternalId = availableProjectManagerIds[0]
-    }
-  }
-
-  if (!projectManagerExternalId) {
-    throw new Error("No valid Tripletex project manager available for project upsert")
-  }
-
-  const resolvedProjectManagerId = projectManagerExternalId
+  const resolvedProjectManagerId = await resolveTripletexProjectManagerId(
+    job,
+    activeConnection,
+    project.created_by,
+    cache
+  )
 
   const startDateResolved = resolveProjectStartDateForTripletex(project)
   const endDateResolved = project.end_date ? String(project.end_date).slice(0, 10) : null
@@ -456,6 +477,7 @@ async function processProjectUpsert(job: IntegrationJobRow, cache?: WorkerRuntim
       startDate: startDateResolved,
       endDate: endDateResolved,
       treatAsNewInTripletex,
+      isOffer: false,
     })
     const payloadCandidates: Array<{ label: string; payload: Record<string, unknown> }> = [
       { label: "default", payload: payload as Record<string, unknown> },
@@ -558,6 +580,115 @@ async function processProjectUpsert(job: IntegrationJobRow, cache?: WorkerRuntim
   }
 }
 
+async function processOfferUpsert(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
+  const offerId = String(job.payload.offerId || "")
+  if (!offerId) {
+    throw new Error("offerId missing in payload")
+  }
+
+  const supabase = createAdminClient()
+  const connection = await getFreshTripletexConnection(job.company_id)
+  if (!connection) {
+    throw new Error("Tripletex connection missing for company")
+  }
+
+  const offerResult = await supabase
+    .from("offers")
+    .select(
+      "id, company_id, title, description, amount_nok, line_items, customer_id, project_id, pricing_model, projects(name, created_by)"
+    )
+    .eq("id", offerId)
+    .eq("company_id", job.company_id)
+    .maybeSingle()
+
+  if (offerResult.error || !offerResult.data) {
+    throw new Error("Offer not found")
+  }
+
+  const offer = offerResult.data
+  if (!offer.customer_id) {
+    throw new Error("Offer requires customer for Tripletex tilbud")
+  }
+
+  const projectRow = offer.projects as { name?: string | null; created_by?: string | null } | null
+
+  const customerLink = await getExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "customer",
+    localId: offer.customer_id,
+  })
+
+  if (!customerLink?.external_id) {
+    await enqueueIntegrationJob({
+      companyId: job.company_id,
+      jobType: "customer.upsert",
+      payload: { customerId: offer.customer_id },
+      idempotencyKey: `offer:${offerId}:customer:${offer.customer_id}`,
+    })
+    throw new Error("Offer customer is not synced to Tripletex yet")
+  }
+
+  const existingOfferLink = await getExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "offer",
+    localId: offerId,
+  })
+
+  let tripletexOfferExternalId = existingOfferLink?.external_id || undefined
+  if (tripletexOfferExternalId) {
+    const flags = await getTripletexProjectFlags(connection, tripletexOfferExternalId)
+    if (!flags?.isOffer) {
+      tripletexOfferExternalId = undefined
+    }
+  }
+
+  if (!tripletexOfferExternalId) {
+    const discoveredId = await findTripletexProjectOfferByProanbudId(connection, offerId)
+    if (discoveredId) {
+      tripletexOfferExternalId = discoveredId
+    }
+  }
+
+  const projectManagerExternalId = await resolveTripletexProjectManagerId(
+    job,
+    connection,
+    projectRow?.created_by,
+    cache
+  )
+
+  const payload = mapProjectOfferFromOffer(
+    offer,
+    customerLink.external_id,
+    projectManagerExternalId,
+    { projectName: projectRow?.name || null }
+  )
+
+  const response = await upsertTripletexProject(
+    connection,
+    payload as Parameters<typeof upsertTripletexProject>[1],
+    tripletexOfferExternalId
+  )
+
+  const externalId = Number(response?.value?.id || response?.id || tripletexOfferExternalId)
+  if (!Number.isFinite(externalId)) {
+    throw new Error("Tripletex offer project id missing in response")
+  }
+
+  const tilbudOrderLines = mapTilbudOrderLinesFromOffer(offer, externalId, {
+    defaultVatTypeId: connection.default_vat_type_id,
+  })
+  await replaceTripletexTilbudOrderLines(connection, externalId, tilbudOrderLines as Record<string, unknown>[])
+
+  await upsertExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "offer",
+    localId: offerId,
+    externalId,
+    syncStatus: "synced",
+    externalUrl: tripletexOfferUrl(externalId),
+  })
+}
+
 async function processOrderCreateFromOffer(job: IntegrationJobRow) {
   const offerId = String(job.payload.offerId || "")
   if (!offerId) {
@@ -582,42 +713,47 @@ async function processOrderCreateFromOffer(job: IntegrationJobRow) {
   }
 
   const offer = offerResult.data
-  if (!offer.customer_id || !offer.project_id) {
-    throw new Error("Offer requires both customer and project for order creation")
+  if (!offer.customer_id) {
+    throw new Error("Offer requires customer for order creation")
   }
 
   const [customerLink, projectLink, existingOrderLink] = await Promise.all([
     getExternalEntityLink({ companyId: job.company_id, entityType: "customer", localId: offer.customer_id }),
-    getExternalEntityLink({ companyId: job.company_id, entityType: "project", localId: offer.project_id }),
+    offer.project_id
+      ? getExternalEntityLink({ companyId: job.company_id, entityType: "project", localId: offer.project_id })
+      : Promise.resolve(null),
     getExternalEntityLink({ companyId: job.company_id, entityType: "order", localId: offerId }),
   ])
 
-  if (!customerLink?.external_id || !projectLink?.external_id) {
-    if (!customerLink?.external_id) {
-      await enqueueIntegrationJob({
-        companyId: job.company_id,
-        jobType: "customer.upsert",
-        payload: { customerId: offer.customer_id },
-        idempotencyKey: `offer:${offerId}:customer:${offer.customer_id}`,
-      })
-    }
-
-    if (!projectLink?.external_id) {
-      await enqueueIntegrationJob({
-        companyId: job.company_id,
-        jobType: "project.upsert",
-        payload: { projectId: offer.project_id },
-        idempotencyKey: `offer:${offerId}:project:${offer.project_id}`,
-      })
-    }
-
-    throw new Error("Offer dependencies are not yet synced")
+  if (!customerLink?.external_id) {
+    await enqueueIntegrationJob({
+      companyId: job.company_id,
+      jobType: "customer.upsert",
+      payload: { customerId: offer.customer_id },
+      idempotencyKey: `offer:${offerId}:customer:${offer.customer_id}`,
+    })
+    throw new Error("Offer customer is not yet synced")
   }
 
-  const payload = mapOrderFromOffer(offer, customerLink.external_id, projectLink.external_id, {
-    defaultVatTypeId: connection.default_vat_type_id,
-    defaultAccountId: connection.default_account_id,
-  })
+  if (offer.project_id && !projectLink?.external_id) {
+    await enqueueIntegrationJob({
+      companyId: job.company_id,
+      jobType: "project.upsert",
+      payload: { projectId: offer.project_id },
+      idempotencyKey: `offer:${offerId}:project:${offer.project_id}`,
+    })
+    throw new Error("Offer project is not yet synced")
+  }
+
+  const payload = mapOrderFromOffer(
+    offer,
+    customerLink.external_id,
+    projectLink?.external_id || null,
+    {
+      defaultVatTypeId: connection.default_vat_type_id,
+      defaultAccountId: connection.default_account_id,
+    }
+  )
 
   const response = await upsertTripletexOrder(
     connection,
@@ -670,11 +806,15 @@ async function processInvoiceCreateFromOffer(job: IntegrationJobRow) {
       .eq("company_id", job.company_id)
       .maybeSingle()
 
-    if (offer?.customer_id && offer?.project_id) {
+    if (offer?.customer_id) {
       await enqueueIntegrationJob({
         companyId: job.company_id,
         jobType: "order.create_from_offer",
-        payload: { offerId, customerId: offer.customer_id, projectId: offer.project_id },
+        payload: {
+          offerId,
+          customerId: offer.customer_id,
+          projectId: offer.project_id || null,
+        },
         idempotencyKey: `offer:${offerId}:order:invoice-prereq`,
       })
     }
@@ -688,11 +828,22 @@ async function processInvoiceCreateFromOffer(job: IntegrationJobRow) {
     localId: offerId,
   })
 
+  const sendToCustomer = job.payload.sendToCustomer === true
+
   if (existingInvoiceLink?.external_id) {
+    if (sendToCustomer) {
+      await upsertExternalEntityLink({
+        companyId: job.company_id,
+        entityType: "invoice",
+        localId: offerId,
+        externalId: existingInvoiceLink.external_id,
+        syncStatus: "sent",
+        externalUrl: existingInvoiceLink.external_url || tripletexInvoiceUrl(existingInvoiceLink.external_id),
+      })
+    }
     return
   }
 
-  const sendToCustomer = job.payload.sendToCustomer === true
   const response = await createTripletexInvoiceFromOrder(connection, orderLink.external_id, { sendToCustomer })
   const externalId = Number(response?.value?.id || response?.id)
 
@@ -700,14 +851,16 @@ async function processInvoiceCreateFromOffer(job: IntegrationJobRow) {
     throw new Error("Tripletex invoice id missing in response")
   }
 
+  const linkSyncStatus = sendToCustomer ? "sent" : "synced"
   await upsertExternalEntityLink({
     companyId: job.company_id,
     entityType: "invoice",
     localId: offerId,
     externalId,
-    syncStatus: "synced",
+    syncStatus: linkSyncStatus,
     externalUrl: tripletexInvoiceUrl(externalId),
   })
+
 }
 
 function extractInvoiceId(payload: unknown): number | null {
@@ -756,11 +909,20 @@ async function processInvoicePaidWebhook(job: IntegrationJobRow) {
     return
   }
 
-  // Minimal finance projection fallback: mark related offer as accepted when payment is confirmed.
+  const offerId = String(invoiceLink.local_id)
+
+  await upsertExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "invoice",
+    localId: offerId,
+    externalId: invoiceId,
+    syncStatus: "paid",
+  })
+
   await supabase
     .from("offers")
     .update({ status: "accepted", updated_at: new Date().toISOString() })
-    .eq("id", invoiceLink.local_id)
+    .eq("id", offerId)
     .eq("company_id", job.company_id)
 }
 
@@ -808,8 +970,7 @@ async function processFullReconciliation(job: IntegrationJobRow) {
           .eq("company_id", job.company_id)
           .in("status", ["sent", "accepted"])
           .not("customer_id", "is", null)
-          .not("project_id", "is", null)
-      : Promise.resolve({ data: [] as Array<{ id: string; customer_id: string; project_id: string; status: string }> }),
+      : Promise.resolve({ data: [] as Array<{ id: string; customer_id: string; project_id: string | null; status: string }> }),
   ])
 
   if (customersEnabled) {
@@ -850,21 +1011,162 @@ async function processFullReconciliation(job: IntegrationJobRow) {
     for (const offer of offersResult.data || []) {
       const offerId = String(offer.id)
       const customerId = String(offer.customer_id)
-      const projectId = String(offer.project_id)
+      const projectId = offer.project_id ? String(offer.project_id) : null
 
-      const { error } = await supabase.from("integration_jobs").insert({
+      const { error: offerError } = await supabase.from("integration_jobs").insert({
         company_id: job.company_id,
         provider: "tripletex",
-        job_type: "order.create_from_offer",
+        job_type: "offer.upsert",
         payload: { offerId, customerId, projectId },
-        idempotency_key: `${reconcileRunKey}:offer-order:${offerId}`,
+        idempotency_key: `${reconcileRunKey}:offer-quote:${offerId}`,
         status: "pending",
         next_run_at: new Date().toISOString(),
       })
-      if (error && error.code !== "23505") {
-        throw new Error(error.message)
+      if (offerError && offerError.code !== "23505") {
+        throw new Error(offerError.message)
+      }
+
+      if (offer.status === "accepted") {
+        const { error: orderError } = await supabase.from("integration_jobs").insert({
+          company_id: job.company_id,
+          provider: "tripletex",
+          job_type: "order.create_from_offer",
+          payload: { offerId, customerId, ...(projectId ? { projectId } : {}) },
+          idempotency_key: `${reconcileRunKey}:offer-order:${offerId}`,
+          status: "pending",
+          next_run_at: new Date().toISOString(),
+        })
+        if (orderError && orderError.code !== "23505") {
+          throw new Error(orderError.message)
+        }
       }
     }
+  }
+}
+
+function toTripletexDate(value: string) {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid date value: ${value}`)
+  }
+  return parsed.toISOString().slice(0, 10)
+}
+
+async function processDocumentUpload(job: IntegrationJobRow) {
+  const documentItemId = String(job.payload.documentItemId || "")
+  const projectId = String(job.payload.projectId || "")
+  if (!documentItemId || !projectId) {
+    throw new Error("documentItemId or projectId missing in payload")
+  }
+
+  const supabase = createAdminClient()
+  const connection = await getFreshTripletexConnection(job.company_id)
+  if (!connection) {
+    throw new Error("Tripletex connection missing for company")
+  }
+
+  const documentResult = await supabase
+    .from("document_items")
+    .select("id, name, item_type, mime_type, storage_bucket, storage_path")
+    .eq("id", documentItemId)
+    .maybeSingle()
+
+  if (documentResult.error || !documentResult.data) {
+    throw new Error("Document not found")
+  }
+
+  const document = documentResult.data
+  if (document.item_type !== "file" || !document.storage_bucket || !document.storage_path) {
+    throw new Error("Document is not a stored file")
+  }
+
+  const projectLink = await getExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "project",
+    localId: projectId,
+  })
+
+  if (!projectLink?.external_id) {
+    throw new Error("Project is not linked to Tripletex yet")
+  }
+
+  const download = await supabase.storage.from(document.storage_bucket).download(document.storage_path)
+  if (download.error || !download.data) {
+    throw new Error(`Failed to download document: ${download.error?.message || "unknown error"}`)
+  }
+
+  const bytes = new Uint8Array(await download.data.arrayBuffer())
+  const response = await uploadTripletexProjectDocument(connection, Number(projectLink.external_id), {
+    name: document.name,
+    bytes,
+    contentType: document.mime_type || "application/octet-stream",
+  })
+
+  const externalId = Number(response?.value?.id)
+  if (Number.isFinite(externalId)) {
+    await upsertExternalEntityLink({
+      companyId: job.company_id,
+      entityType: "document",
+      localId: documentItemId,
+      externalId,
+    })
+  }
+}
+
+async function processCalendarActivityUpsert(job: IntegrationJobRow) {
+  const eventId = String(job.payload.eventId || "")
+  const projectId = String(job.payload.projectId || "")
+  const title = String(job.payload.title || "").trim()
+  const description =
+    typeof job.payload.description === "string" ? job.payload.description : null
+  const start = String(job.payload.start || "")
+  const end = String(job.payload.end || "")
+
+  if (!eventId || !projectId || !title || !start || !end) {
+    throw new Error("Calendar activity payload is incomplete")
+  }
+
+  const connection = await getFreshTripletexConnection(job.company_id)
+  if (!connection) {
+    throw new Error("Tripletex connection missing for company")
+  }
+
+  const projectLink = await getExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "project",
+    localId: projectId,
+  })
+
+  if (!projectLink?.external_id) {
+    throw new Error("Project is not linked to Tripletex yet")
+  }
+
+  const existingLink = await getExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "calendar_event",
+    localId: eventId,
+  })
+
+  if (existingLink?.external_id) {
+    return
+  }
+
+  const response = await createTripletexProjectActivity(connection, {
+    projectExternalId: Number(projectLink.external_id),
+    title,
+    description,
+    startDate: toTripletexDate(start),
+    endDate: toTripletexDate(end),
+  })
+
+  const externalId = Number(response?.value?.id)
+  if (Number.isFinite(externalId)) {
+    await upsertExternalEntityLink({
+      companyId: job.company_id,
+      entityType: "calendar_event",
+      localId: eventId,
+      externalId,
+    })
   }
 }
 
@@ -879,11 +1181,20 @@ async function processJob(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
     case "project.upsert":
       await processProjectUpsert(job, cache)
       return
+    case "offer.upsert":
+      await processOfferUpsert(job, cache)
+      return
     case "order.create_from_offer":
       await processOrderCreateFromOffer(job)
       return
     case "invoice.create_from_offer":
       await processInvoiceCreateFromOffer(job)
+      return
+    case "document.upload":
+      await processDocumentUpload(job)
+      return
+    case "calendar.activity.upsert":
+      await processCalendarActivityUpsert(job)
       return
     case "webhook.invoice_paid":
       await processInvoicePaidWebhook(job)

@@ -85,8 +85,17 @@ export function canAccessCompanySettings(role: string | null | undefined): boole
   return isManagerOrAdmin(role)
 }
 
+export function canManageSubscription(role: string | null | undefined): boolean {
+  return isAdmin(role)
+}
+
 export function canAccessPricing(role: string | null | undefined): boolean {
-  return isManagerOrAdmin(role)
+  return canManageSubscription(role)
+}
+
+export function isInvitedCompanyMember(role: string | null | undefined): boolean {
+  const normalized = normalizeRole(role)
+  return normalized === "worker" || normalized === "manager"
 }
 
 export function hasRoleAccess(

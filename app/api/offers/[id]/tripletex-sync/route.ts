@@ -68,9 +68,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Offer not found" }, { status: 404 })
   }
 
-  if (!offer.customer_id || !offer.project_id) {
+  if (!offer.customer_id) {
     return NextResponse.json(
-      { error: "Tilbud må være koblet til både kunde og prosjekt før Tripletex-synk." },
+      { error: "Tilbud må være koblet til kunde før Tripletex-synk." },
       { status: 400 }
     )
   }
@@ -79,7 +79,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     companyId: ctx.companyId,
     offerId: offer.id,
     customerId: offer.customer_id,
-    projectId: offer.project_id,
+    projectId: offer.project_id || null,
     source: "manual",
   })
 

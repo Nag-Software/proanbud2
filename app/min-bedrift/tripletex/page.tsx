@@ -1,6 +1,7 @@
 import { AppPageShell } from "@/components/app-page-shell"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
+import { getTripletexApiBaseUrl, TRIPLETEX_HELP_URL } from "@/lib/integrations/tripletex/config"
 
 import { TripletexClient } from "./tripletex-client"
 
@@ -56,9 +57,13 @@ export default async function TripletexPage() {
   return (
     <AppPageShell segments={["Min Bedrift", "Tripletex"]}>
       <div className="flex flex-col gap-6 pb-8">
-        <div className="space-y-1">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Integrasjoner</p>
+        <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Tripletex</h1>
+          {getTripletexApiBaseUrl().includes("api-test.tripletex.tech") && (
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900">
+              Test
+            </span>
+          )}
         </div>
 
         <TripletexClient
@@ -66,6 +71,7 @@ export default async function TripletexPage() {
           initialJobs={jobsResult.data || []}
           initialEvents={eventsResult.data || []}
           canManage={canManageIntegration}
+          helpUrl={TRIPLETEX_HELP_URL}
         />
       </div>
     </AppPageShell>

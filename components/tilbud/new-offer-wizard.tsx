@@ -27,8 +27,13 @@ import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-me
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  CONTRACT_BASIS_LABELS,
+  DEFAULT_PAYMENT_SCHEDULE,
+  inferPricingModelFromLineItems,
+  PRICING_MODEL_LABELS,
+} from "@/lib/contracts/pricing"
 import { getDistinctSuppliers } from "@/lib/tilbud/supplier-prices"
 import {
   calculateOfferTotals,
@@ -36,7 +41,10 @@ import {
   type OfferAnalysisResult,
   type OfferCompanyContext,
   type OfferCustomerOption,
+  type OfferContractBasis,
   type OfferLineItem,
+  type OfferPaymentScheduleEntry,
+  type OfferPricingModel,
   type OfferProjectOption,
   type OfferSourceDocument,
   type SaveOfferPayload,
@@ -119,6 +127,10 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
   const [recipientPhone, setRecipientPhone] = useState(initialCustomer?.phone || "")
   const [validityDays, setValidityDays] = useState(company?.quoteValidityDays ?? 30)
   const [quoteMessage, setQuoteMessage] = useState("")
+  const [pricingModel, setPricingModel] = useState<OfferPricingModel>("fixed")
+  const [contractBasis, setContractBasis] = useState<OfferContractBasis>("none")
+  const [markupPercent, setMarkupPercent] = useState(15)
+  const [paymentSchedule, setPaymentSchedule] = useState<OfferPaymentScheduleEntry[]>(DEFAULT_PAYMENT_SCHEDULE)
 
   const [isPersisting, startPersisting] = useTransition()
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -280,7 +292,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
       title,
       description,
       projectId,
-      sourceSummary: "",
+      sourceSummary: quoteMessage,
       sourceDocuments,
       lineItems,
       analysisResult,
@@ -289,6 +301,10 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
       recipientEmail,
       recipientPhone,
       validityDays,
+      pricingModel,
+      contractBasis,
+      markupPercent,
+      paymentSchedule: pricingModel === "fixed" || pricingModel === "mixed" ? paymentSchedule : [],
     }
   }
 
@@ -300,7 +316,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     return null
   }
 
-  const validateBeforeContract = () => {
+  const validateBeforeSave = () => {
     if (lineItems.length === 0) return "Tilbudet må inneholde minst ett element"
     return null
   }
@@ -367,8 +383,8 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     })
   }
 
-  const handleOpenContract = () => {
-    const validationError = validateBeforeContract()
+  const handleOpenOffer = () => {
+    const validationError = validateBeforeSave()
     if (validationError) {
       setFeedback(validationError)
       return
@@ -378,11 +394,11 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
       try {
         const result = await saveOfferDraftAction(buildPayload())
         setOfferId(result.id)
-        setFeedback("Tilbud lagret. Åpner kontraktssiden...")
+        setFeedback("Tilbud lagret. Åpner tilbudssiden...")
         onCompleted?.()
         router.push(`/tilbud/${result.id}`)
       } catch (error) {
-        setFeedback(error instanceof Error ? error.message : "Kunne ikke klargjøre kontrakt")
+        setFeedback(error instanceof Error ? error.message : "Kunne ikke lagre tilbud")
       }
     })
   }
@@ -427,22 +443,15 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
 
       <div className="flex h-full min-h-0 flex-col rounded-md bg-white">
         <div className="border-none px-4 pb-6">
-          <div className="mb-0 flex items-center justify-end gap-3">
-            <Button type="button" variant="outline" size="sm" onClick={handleSaveDraft} disabled={isPersisting}>
-              {isPersisting ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
-              Lagre som utkast
-            </Button>
-          </div>
-
-          {/* Step progress */}
-          <div className="mt-3 mb-5">
-            <div className="flex items-center gap-0">
+          <div className="mb-5 grid grid-cols-[1fr_auto_1fr] items-start gap-4">
+            <div aria-hidden="true" />
+            <div className="flex items-center pt-0.5 mt-0.5">
               {steps.map((item, index) => {
                 const isActive = item.id === step
                 const isCompleted = item.id < step
                 const clickable = canOpenStep(item.id)
                 return (
-                  <div key={item.id} className="flex flex-1 items-center">
+                  <div key={item.id} className="flex items-center">
                     <button
                       type="button"
                       onClick={() => clickable && setStep(item.id)}
@@ -469,7 +478,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                       </span>
                     </button>
                     {index < steps.length - 1 && (
-                      <div className="relative mx-2 mb-5 h-px flex-1">
+                      <div className="relative mx-3 mb-5 h-px w-16 sm:w-24">
                         <div className="absolute inset-0 bg-border" />
                         <div
                           className="absolute inset-y-0 left-0 bg-primary transition-all duration-500 ease-out"
@@ -480,6 +489,12 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   </div>
                 )
               })}
+            </div>
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={handleSaveDraft} disabled={isPersisting}>
+                {isPersisting ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
+                Lagre som utkast
+              </Button>
             </div>
           </div>
         </div>
@@ -669,7 +684,15 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   Tilbake
                 </Button>
-                <Button type="button" onClick={() => setStep(3)} disabled={lineItems.length === 0}>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setPricingModel(inferPricingModelFromLineItems(lineItems))
+                    setMarkupPercent(globalMarkupPercent)
+                    setStep(3)
+                  }}
+                  disabled={lineItems.length === 0}
+                >
                   Videre til forhåndsvisning
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -679,71 +702,56 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
 
           {step === 3 ? (
             <div className="space-y-5">
-              <div className="rounded-lg border p-4">
-                <div className="mb-3">
-                  <h3 className="theme-heading-strong flex items-center gap-2 text-lg font-semibold">
-                    <Calculator className="h-5 w-5 text-primary" />
-                    Prissammendrag
-                  </h3>
-                </div>
-                <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-6">
-                  <div className="theme-surface-success w-full flex-1 rounded-lg border p-4 text-center sm:p-6">
-                    <h3 className="theme-heading-strong mb-2 text-base font-semibold sm:text-lg">Total tilbudssum</h3>
-                    <div className="whitespace-nowrap text-2xl font-bold text-primary sm:text-3xl lg:text-4xl">{formatNok(totals.totalNok)}</div>
+              <div className="mx-auto max-w-2xl rounded-lg border px-5 py-4">
+                <div className="flex items-baseline justify-between gap-4 border-b pb-4">
+                  <h3 className="text-sm font-medium text-muted-foreground">Prissammendrag</h3>
+                  <div className="text-right">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total tilbudssum</p>
+                    <p className="whitespace-nowrap text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+                      {formatNok(totals.totalNok)}
+                    </p>
                   </div>
                 </div>
-              </div>
-
-              <div className="rounded-lg border p-4 max-w-3xl">
-                <div className="mb-3">
-                  <h3 className="theme-heading-strong flex items-center gap-2 text-lg font-semibold">
-                    <Send className="h-5 w-5 text-primary" />
-                    Klargjør kontrakt
-                  </h3>
-                </div>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="theme-text-label mb-2 block text-sm font-medium">Tilbudsnavn</label>
-                      <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Skriv inn tilbudsnavn..." />
-                    </div>
-                  </div>
-
+                <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">Melding til kunde (valgfri)</label>
-                    <Textarea
-                      value={quoteMessage}
-                      onChange={(event) => setQuoteMessage(event.target.value)}
-                      className="h-24 resize-none"
-                      placeholder="Skriv en beskrivelse eller melding til kunden..."
-                    />
-                    <p className="mt-1 text-xs text-gray-500">Denne meldingen brukes i tilbudsteksten ved utsending.</p>
+                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Vederlagsform</dt>
+                    <dd className="mt-0.5 font-medium text-foreground">{PRICING_MODEL_LABELS[pricingModel]}</dd>
                   </div>
-
-                  <div className="rounded-lg border bg-gray-50 p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-sm font-medium text-gray-700">Mottaker for kontrakt</p>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <Input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder={selectedCustomer?.name || "Mottaker navn"} />
-                      <Input value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} placeholder={selectedCustomer?.email || "Mottaker e-post"} />
-                      <Input value={recipientPhone} onChange={(event) => setRecipientPhone(event.target.value)} placeholder={selectedCustomer?.phone || "Mottaker telefon"} />
-                    </div>
-
-                    <div className="mt-3 max-w-[220px]">
-                      <Label htmlFor="validity-days">Gyldighet (dager)</Label>
-                      <Input
-                        id="validity-days"
-                        type="number"
-                        min={1}
-                        max={365}
-                        value={validityDays}
-                        onChange={(event) => setValidityDays(normalizeNumberInput(event.target.value, validityDays))}
-                      />
-                    </div>
+                  <div>
+                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Kontraktsgrunnlag</dt>
+                    <dd className="mt-0.5 font-medium text-foreground">{CONTRACT_BASIS_LABELS[contractBasis]}</dd>
                   </div>
-                </div>
+                  <div>
+                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Gyldighet</dt>
+                    <dd className="mt-0.5 font-medium text-foreground">{validityDays} dager</dd>
+                  </div>
+                  <div className="sm:col-span-3">
+                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Mottaker</dt>
+                    <dd className="mt-0.5 truncate font-medium text-foreground">
+                      {selectedCustomer?.name || recipientName.trim() || "—"}
+                      {(selectedCustomer?.email || recipientEmail.trim()) ? (
+                        <span className="font-normal text-muted-foreground">
+                          {" · "}
+                          {selectedCustomer?.email || recipientEmail.trim()}
+                        </span>
+                      ) : null}
+                    </dd>
+                  </div>
+                  {quoteMessage.trim() ? (
+                    <div className="sm:col-span-3">
+                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Melding til kunde</dt>
+                      <dd className="mt-0.5 leading-relaxed text-foreground">{quoteMessage.trim()}</dd>
+                    </div>
+                  ) : null}
+                  {pricingModel === "fixed" || pricingModel === "mixed" ? (
+                    <div className="sm:col-span-3">
+                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Avdragsplan</dt>
+                      <dd className="mt-0.5 text-foreground">
+                        {paymentSchedule.map((entry) => `${entry.label} ${entry.percent}%`).join(" · ")}
+                      </dd>
+                    </div>
+                  ) : null}
+                </dl>
               </div>
 
               <div className="rounded-lg border p-4">
@@ -791,9 +799,9 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 </div>
 
                 <div className="order-2 sm:order-3 sm:basis-0 sm:flex-1">
-                  <Button type="button" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleOpenContract} disabled={isPersisting || lineItems.length === 0}>
+                  <Button type="button" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleOpenOffer} disabled={isPersisting || lineItems.length === 0}>
                     {isPersisting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    {isPersisting ? "Åpner..." : "Åpne kontrakt"}
+                    {isPersisting ? "Åpner..." : "Gå til tilbud"}
                   </Button>
                 </div>
 

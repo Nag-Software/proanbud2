@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { isActiveSubscriptionStatus } from "@/lib/billing/plans"
 import type { BillingStatus, UsageSummary } from "@/lib/billing/types"
+import { isAdmin } from "@/lib/roles"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
@@ -66,6 +67,33 @@ export async function getAuthenticatedCompanyContext(): Promise<
       isActive: isActiveSubscriptionStatus(status),
     },
   }
+}
+
+export async function requireCompanyAdmin(): Promise<
+  | { ok: true; context: BillingContext }
+  | { ok: false; response: NextResponse }
+> {
+  const result = await getAuthenticatedCompanyContext()
+  if (!result.ok) return result
+
+  const supabase = await createClient()
+  const { data: userRow } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", result.context.userId)
+    .maybeSingle()
+
+  if (!isAdmin(userRow?.role)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Kun administrator kan administrere abonnement." },
+        { status: 403 }
+      ),
+    }
+  }
+
+  return result
 }
 
 export async function requireActiveSubscription(): Promise<

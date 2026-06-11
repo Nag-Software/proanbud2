@@ -65,6 +65,10 @@ export type TripletexCustomerPayload = {
 export type TripletexProjectPayload = {
   id?: number
   name: string
+  /** Tilbudsnummer — synkroniseres med ProAnbud-referanse */
+  number?: string
+  /** Stabil ekstern nøkkel (ProAnbud offer UUID) for oppslag */
+  externalAccountsNumber?: string
   customer?: {
     id: number
   }
@@ -75,5 +79,18 @@ export type TripletexProjectPayload = {
   startDate?: string
   endDate?: string
   isClosed?: boolean
+  /** true = Tilbudsoversikt, false = Prosjekter */
+  isOffer?: boolean
+  isFixedPrice?: boolean
+  fixedprice?: number
   description?: string
+}
+
+export type TripletexProjectOrderLinePayload = {
+  project: { id: number }
+  description: string
+  count: number
+  unitPriceExcludingVatCurrency: number
+  discount?: number
+  vatType?: { id: number }
 }

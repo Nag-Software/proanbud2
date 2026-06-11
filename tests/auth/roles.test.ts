@@ -4,9 +4,11 @@ import {
   canAccessCustomers,
   canInviteEmployees,
   canManageProjects,
+  canManageSubscription,
   canSendOffers,
   getRoleDisplayName,
   hasRoleAccess,
+  isInvitedCompanyMember,
   isWorker,
   normalizeRole,
 } from "../../lib/roles"
@@ -54,6 +56,23 @@ describe("roles", () => {
     expect(hasRoleAccess("manager", ["Administrator", "Prosjektleder"])).toBe(true)
     expect(hasRoleAccess("worker", ["Administrator", "Prosjektleder"])).toBe(false)
     expect(hasRoleAccess("worker", ["admin", "manager", "worker"])).toBe(true)
+  })
+
+  it("restricts subscription management to admins only", () => {
+    expect(canManageSubscription("Administrator")).toBe(true)
+    expect(canManageSubscription("admin")).toBe(true)
+    expect(canManageSubscription("Prosjektleder")).toBe(false)
+    expect(canManageSubscription("manager")).toBe(false)
+    expect(canManageSubscription("Håndverker")).toBe(false)
+    expect(canManageSubscription("ansatt")).toBe(false)
+  })
+
+  it("treats invited workers and managers as company members", () => {
+    expect(isInvitedCompanyMember("Håndverker")).toBe(true)
+    expect(isInvitedCompanyMember("ansatt")).toBe(true)
+    expect(isInvitedCompanyMember("Prosjektleder")).toBe(true)
+    expect(isInvitedCompanyMember("Administrator")).toBe(false)
+    expect(isInvitedCompanyMember(null)).toBe(false)
   })
 })
 

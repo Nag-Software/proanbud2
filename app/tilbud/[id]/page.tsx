@@ -6,21 +6,18 @@ import { readProjectSummaryFromAnalysis } from "@/lib/tilbud/project-summary"
 import { fetchOfferTripletexSyncStatus } from "@/lib/integrations/tripletex/sync"
 import { fetchOfferActivity } from "@/lib/tilbud/offer-activity"
 import { createClient } from "@/lib/supabase/server"
-import { type OfferLineItem, type OfferSourceDocument } from "@/lib/tilbud/types"
+import { DEFAULT_PAYMENT_SCHEDULE } from "@/lib/contracts/pricing"
+import {
+  type OfferContractBasis,
+  type OfferLineItem,
+  type OfferPaymentScheduleEntry,
+  type OfferPricingModel,
+  type OfferSourceDocument,
+} from "@/lib/tilbud/types"
 import { OfferDetailClient } from "./offer-detail-client"
 
 type Params = {
   id: string
-}
-
-type ContractState = {
-  provider: "docusign" | "tripletex"
-  status: "draft" | "sent" | "delivered" | "completed" | "declined" | "voided" | "error"
-  envelopeId?: string
-  externalUrl?: string
-  sentAt?: string
-  signedAt?: string
-  lastError?: string
 }
 
 type OfferRecord = {
@@ -44,6 +41,10 @@ type OfferRecord = {
   source_documents: unknown
   line_items: unknown
   analysis_result: unknown
+  pricing_model: string | null
+  contract_basis: string | null
+  markup_percent: number | null
+  payment_schedule: unknown
   customers?:
     | {
         name: string | null
@@ -149,6 +150,23 @@ function toLineItems(input: unknown): OfferLineItem[] {
     .filter((item) => item.title.trim().length > 0)
 }
 
+function toPaymentSchedule(input: unknown): OfferPaymentScheduleEntry[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    return DEFAULT_PAYMENT_SCHEDULE
+  }
+
+  return input
+    .map((row) => {
+      const entry = row as Partial<OfferPaymentScheduleEntry>
+      return {
+        label: String(entry.label || "").trim(),
+        percent: Number(entry.percent || 0),
+        dueDescription: entry.dueDescription ? String(entry.dueDescription) : undefined,
+      }
+    })
+    .filter((entry) => entry.label.length > 0)
+}
+
 function toSourceDocuments(input: unknown): OfferSourceDocument[] {
   if (!Array.isArray(input)) return []
 
@@ -197,34 +215,6 @@ async function refreshSourceDocumentUrls(
   )
 }
 
-function readContractState(analysisResult: unknown): ContractState | null {
-  if (!analysisResult || typeof analysisResult !== "object") return null
-  const contract = (analysisResult as Record<string, unknown>).contract
-  if (!contract || typeof contract !== "object") return null
-
-  const value = contract as Record<string, unknown>
-  const statusRaw = String(value.status || "draft")
-  const status =
-    statusRaw === "sent" ||
-    statusRaw === "delivered" ||
-    statusRaw === "completed" ||
-    statusRaw === "declined" ||
-    statusRaw === "voided" ||
-    statusRaw === "error"
-      ? statusRaw
-      : "draft"
-
-  return {
-    provider: value.provider === "tripletex" ? "tripletex" : "docusign",
-    status,
-    envelopeId: value.envelopeId ? String(value.envelopeId) : undefined,
-    externalUrl: value.externalUrl ? String(value.externalUrl) : undefined,
-    sentAt: value.sentAt ? String(value.sentAt) : undefined,
-    signedAt: value.signedAt ? String(value.signedAt) : undefined,
-    lastError: value.lastError ? String(value.lastError) : undefined,
-  }
-}
-
 function formatOfferReference(id: string) {
   const normalized = id.trim()
   if (!normalized) return "UKJENT"
@@ -256,17 +246,16 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
 
   const companyId = company.id
 
-  const [offerResult, activityRows, companyRow] = await Promise.all([
+  const [offerResult, activityRows] = await Promise.all([
     supabase
       .from("offers")
       .select(
-        "id, title, description, status, amount_nok, subtotal_nok, discount_nok, quote_valid_until, created_at, updated_at, sent_at, recipient_name, recipient_email, recipient_phone, source_summary, source_documents, line_items, analysis_result, customer_id, project_id, customers(id, name, email, phone, address, postal_code, city, org_number), projects(id, name, customer_id, customers(id, name, email, phone, address, postal_code, city, org_number))"
+        "id, title, description, status, amount_nok, subtotal_nok, discount_nok, quote_valid_until, created_at, updated_at, sent_at, recipient_name, recipient_email, recipient_phone, source_summary, source_documents, line_items, analysis_result, pricing_model, contract_basis, markup_percent, payment_schedule, customer_id, project_id, customers(id, name, email, phone, address, postal_code, city, org_number), projects(id, name, customer_id, customers(id, name, email, phone, address, postal_code, city, org_number))"
       )
       .eq("id", id)
       .eq("company_id", companyId)
       .maybeSingle(),
     fetchOfferActivity(id, companyId),
-    supabase.from("companies").select("contract_provider").eq("id", companyId).maybeSingle(),
   ])
 
   if (!offerResult.data) {
@@ -281,7 +270,6 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
     offer.project_id
   ).catch(() => null)
   const lineItems = toLineItems(offer.line_items)
-  const contract = readContractState(offer.analysis_result)
   const project = normalizeRelatedRow(offer.projects)
   const customer = normalizeRelatedRow(offer.customers) || normalizeRelatedRow(project?.customers)
   const resolvedCustomerId = offer.customer_id || project?.customer_id || null
@@ -321,11 +309,13 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
           sourceSummary: offer.source_summary || "",
           sourceDocuments,
           lineItems,
-          contract,
+          pricingModel: (offer.pricing_model as OfferPricingModel) || "fixed",
+          contractBasis: (offer.contract_basis as OfferContractBasis) || "none",
+          markupPercent: Number(offer.markup_percent || 0),
+          paymentSchedule: toPaymentSchedule(offer.payment_schedule),
         }}
         activity={activityRows}
         company={company}
-        contractProvider={(companyRow.data?.contract_provider as "docusign" | "tripletex" | null) || "docusign"}
         tripletexSync={tripletexSync}
       />
     </AppPageShell>

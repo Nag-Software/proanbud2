@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { mapOrderFromOffer } from "../../lib/integrations/tripletex/mappers"
+import {
+  mapOrderFromOffer,
+  mapProjectOfferFromOffer,
+  mapTilbudOrderLinesFromOffer,
+} from "../../lib/integrations/tripletex/mappers"
 
 describe("mapOrderFromOffer", () => {
   it("maps line items to Tripletex order lines with ex-VAT unit prices", () => {
@@ -55,6 +59,23 @@ describe("mapOrderFromOffer", () => {
     expect(String(firstLine.description)).toContain("Flislegging")
   })
 
+  it("omits project when prosjektmodul is not synced", () => {
+    const payload = mapOrderFromOffer(
+      {
+        id: "offer-3",
+        title: "Ordre uten prosjekt",
+        description: null,
+        amount_nok: 8000,
+        line_items: [],
+      },
+      10,
+      null
+    )
+
+    expect(payload.customer).toEqual({ id: 10 })
+    expect(payload).not.toHaveProperty("project")
+  })
+
   it("falls back to summary line when no line items exist", () => {
     const payload = mapOrderFromOffer(
       {
@@ -70,5 +91,65 @@ describe("mapOrderFromOffer", () => {
 
     expect(payload.orderLines).toHaveLength(1)
     expect((payload.orderLines[0] as Record<string, unknown>).unitPriceExcludingVatCurrency).toBe(12000)
+  })
+})
+
+describe("mapProjectOfferFromOffer", () => {
+  it("creates a Tripletex project offer for Tilbudsoversikt", () => {
+    const payload = mapProjectOfferFromOffer(
+      {
+        id: "offer-1",
+        title: "Bad-renovering",
+        description: "Komplett rehab",
+        amount_nok: 250000,
+        pricing_model: "fixed",
+      },
+      101,
+      55,
+      { projectName: "Hovedprosjekt" }
+    )
+
+    expect(payload.isOffer).toBe(true)
+    expect(payload.isFixedPrice).toBe(true)
+    expect(payload.fixedprice).toBe(250000)
+    expect(payload.customer).toEqual({ id: 101 })
+    expect(payload.projectManager).toEqual({ id: 55 })
+    expect(payload.name).toBe("Bad-renovering")
+    expect(payload.number).toBe("OFFER")
+    expect(payload.externalAccountsNumber).toBe("offer-1")
+  })
+})
+
+describe("mapTilbudOrderLinesFromOffer", () => {
+  it("maps offer lines to Tripletex tilbud order lines", () => {
+    const lines = mapTilbudOrderLinesFromOffer(
+      {
+        id: "offer-1",
+        title: "Tilbud",
+        description: null,
+        amount_nok: 1000,
+        line_items: [
+          {
+            id: "1",
+            subproject: "Bad",
+            title: "Flis",
+            description: "",
+            quantity: 5,
+            unit: "m2",
+            supplier: "",
+            unitPriceNok: 400,
+            markupPercent: 0,
+            discountPercent: 0,
+          },
+        ],
+      },
+      999,
+      { defaultVatTypeId: 3 }
+    )
+
+    expect(lines).toHaveLength(1)
+    expect(lines[0].project).toEqual({ id: 999 })
+    expect(lines[0].count).toBe(5)
+    expect(lines[0].vatType).toEqual({ id: 3 })
   })
 })
