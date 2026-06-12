@@ -96,7 +96,7 @@ function OnboardingAbonnementContent() {
 
   return (
     <div className="flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12 sm:px-10">
-      <div className="w-full max-w-md space-y-10">
+      <div className="w-full max-w-md space-y-5">
         <div className="flex justify-center">
           <Image
             src="/logo/light/logo-primary.svg"
@@ -107,9 +107,9 @@ function OnboardingAbonnementContent() {
           />
         </div>
 
-        <div className="space-y-3 text-center">
+        <div className="space-y-2 mt-10 text-center">
           <h1 className="text-2xl font-semibold tracking-tight">
-            Start gratis prøve
+            Start nå helt gratis
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground">
             14 dager Proff · kort kreves · ingen belastning nå
@@ -127,10 +127,10 @@ function OnboardingAbonnementContent() {
           disabled={loading}
         >
           {loading && <Loader2Icon className="mr-2 size-4 animate-spin" />}
-          Fortsett til betaling
+          Fortsett til prøveperioden
         </Button>
 
-        <p className="text-center text-xs text-muted-foreground">
+        <p className="text-center text-sm text-muted-foreground">
           Du kan avslutte prøven når som helst.
         </p>
       </div>
