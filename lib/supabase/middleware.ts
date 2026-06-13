@@ -9,6 +9,7 @@ import {
 import { isActiveSubscriptionStatus } from '@/lib/billing/plans'
 import { isInvitedCompanyMember } from '@/lib/roles'
 import { LOGIN_PATH } from '@/lib/constants'
+import { isPlatformAdminEmail, isSjefenApiRoute, isSjefenRoute } from '@/lib/auth/platform-admin'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -66,6 +67,33 @@ export async function updateSession(request: NextRequest) {
     url.pathname = LOGIN_PATH
     url.searchParams.set('reason', 'no-session')
     return NextResponse.redirect(url)
+  }
+
+  if (user && isSjefenRoute(pathname)) {
+    if (!isPlatformAdminEmail(user.email)) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/'
+      url.search = ''
+      const redirect = NextResponse.redirect(url)
+      supabaseResponse.cookies.getAll().forEach(({ name, value }) => {
+        redirect.cookies.set(name, value)
+      })
+      return redirect
+    }
+
+    return supabaseResponse
+  }
+
+  if (user && isSjefenApiRoute(pathname)) {
+    if (!isPlatformAdminEmail(user.email)) {
+      return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+    }
+
+    return supabaseResponse
+  }
+
+  if (!user && isSjefenApiRoute(pathname)) {
+    return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
   }
 
   if (user && !isPublic) {

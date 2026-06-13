@@ -20,12 +20,14 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { isPublicAuthRoute } from "@/lib/auth/routes"
+import { isSjefenRoute } from "@/lib/auth/platform-admin"
 import { cn } from "@/lib/utils"
 import { Fragment } from "react"
 
 function shouldUsePersistentShell(pathname: string) {
   if (isPublicAuthRoute(pathname)) return false
   if (pathname.startsWith("/onboarding")) return false
+  if (isSjefenRoute(pathname)) return false
   return true
 }
 
