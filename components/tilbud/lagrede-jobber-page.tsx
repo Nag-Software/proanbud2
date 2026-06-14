@@ -211,7 +211,7 @@ export function LagredeJobberPage() {
         />
       </div>
 
-      <div className="rounded-lg border">
+      <div className="hidden rounded-lg border md:block">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50 hover:bg-muted/50">
@@ -268,6 +268,48 @@ export function LagredeJobberPage() {
             )}
           </TableBody>
         </Table>
+      </div>
+      <div className="divide-y overflow-hidden rounded-lg border md:hidden">
+        {isLoading ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : filteredJobs.length === 0 ? (
+          <div className="px-4 py-10 text-center text-muted-foreground">
+            {jobs.length === 0
+              ? "Ingen lagrede jobber ennå. Legg til din første fastprisjobb."
+              : "Ingen jobber matcher søket."}
+          </div>
+        ) : (
+          filteredJobs.map((job) => (
+            <div key={job.id} className="flex items-center justify-between gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <p className="font-medium">{job.name}</p>
+                <p className="mt-1 text-sm tabular-nums text-muted-foreground">{formatPrice(job.price_nok)}</p>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => openEditDialog(job)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Rediger
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => openDeleteDialog(job)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Slett
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ))
+        )}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => (open ? setDialogOpen(true) : closeDialog())}>

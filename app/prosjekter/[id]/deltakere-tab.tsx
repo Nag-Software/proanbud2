@@ -78,7 +78,7 @@ export default function DeltakereTab({
           )}
         </div>
       </div>
-        <div className="border rounded-lg">
+        <div className="hidden rounded-lg border md:block">
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 border-b">
               <tr>
@@ -167,6 +167,55 @@ export default function DeltakereTab({
               )}
             </tbody>
           </table>
+      </div>
+      <div className="divide-y overflow-hidden rounded-lg border md:hidden">
+        {filteredParticipants.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">Ingen deltakere funnet.</div>
+        ) : (
+          filteredParticipants.map((p) => (
+            <div key={p.id} className="flex items-start gap-3 px-4 py-3">
+              <Avatar className="h-9 w-9 shrink-0">
+                <AvatarFallback className="bg-primary/10 text-xs text-primary">{p.avatar}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">{p.name}</p>
+                <p className="truncate text-xs text-muted-foreground">{p.email}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {p.role} · {p.accessLevel}
+                  {isAdminUser ? ` · ${formatHours(hoursByUserId.get(p.id)?.totalHours || 0)}` : ""}
+                </p>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-40">
+                  <DropdownMenuItem><Mail className="mr-2 h-4 w-4" /> Send e-post</DropdownMenuItem>
+                  {isAdminUser && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => {
+                          if (window.confirm("Er du sikker på at du vil fjerne denne deltakeren?")) {
+                            removeProjectParticipantAction(projectId, p.id).catch((err) => {
+                              alert("Kunne ikke fjerne deltaker: " + err.message)
+                            })
+                          }
+                        }}
+                      >
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Fjern fra prosjekt
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ))
+        )}
       </div>
       {isAdminUser && (
         <Card className="border-dashed">

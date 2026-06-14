@@ -15,7 +15,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, Bell, CalendarDays, FolderIcon, FilesIcon, SearchIcon } from "lucide-react"
+import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, Bell, CalendarDays, FolderIcon, FilesIcon, SearchIcon, ShieldAlertIcon, ShieldCheckIcon } from "lucide-react"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { useUserRole } from "@/hooks/use-user-role"
@@ -24,6 +24,7 @@ import { useAuth } from "@/components/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { CreateProjectDrawer } from "@/app/prosjekter/create-project-dialog"
 import { useUnreadMessages } from "@/hooks/use-unread-messages"
+import { useOpenDeviationCount } from "@/hooks/use-open-deviation-count"
 
 type SidebarProject = {
   name: string
@@ -91,6 +92,16 @@ const data: {
       title: "Dokumenter",
       url: "/dokumenter",
       icon: <FilesIcon className="size-4" />,
+    },
+    {
+      title: "Avvik",
+      url: "/avvik",
+      icon: <ShieldAlertIcon className="size-4" />,
+    },
+    {
+      title: "HMS",
+      url: "/hms",
+      icon: <ShieldCheckIcon className="size-4" />,
     },
     {
       title: "Mine priser",
@@ -238,6 +249,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { role, canonicalRole } = useUserRole();
   const { user } = useAuth();
   const unreadCount = useUnreadMessages();
+  const openDeviationCount = useOpenDeviationCount();
   const [activeProjects, setActiveProjects] = React.useState<SidebarProject[]>([]);
   const isWorker = canonicalRole === "worker";
   const canManageBilling = canManageSubscription(role);
@@ -273,6 +285,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     .map((item) => {
       if (item.title === "Meldinger" && unreadCount > 0) {
         return { ...item, badge: unreadCount };
+      }
+      if (item.title === "Avvik" && openDeviationCount > 0) {
+        return { ...item, badge: openDeviationCount };
       }
       if (item.title === "Min bedrift" && isWorker && item.items) {
         return {

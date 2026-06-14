@@ -104,7 +104,7 @@ export function TimeforingClient({
           </CardContent>
         </Card>
 
-        <div className="rounded-lg border overflow-x-auto">
+        <div className="hidden rounded-lg border md:block">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/50">
               <tr>
@@ -153,6 +153,36 @@ export function TimeforingClient({
             </tbody>
           </table>
         </div>
+        <div className="divide-y overflow-hidden rounded-lg border md:hidden">
+          {filteredEntries.length === 0 ? (
+            <div className="px-4 py-8 text-center text-muted-foreground">
+              {hasDayFilter ? "Ingen timer for valgte dager." : "Ingen timer registrert ennå."}
+            </div>
+          ) : (
+            filteredEntries.map((entry) => {
+              const user = unwrapRelation(entry.users)
+              const project = unwrapRelation(entry.projects)
+              const started = entry.started_at ? new Date(entry.started_at) : null
+              const ended = entry.ended_at ? new Date(entry.ended_at) : null
+              return (
+                <div key={entry.id} className="px-4 py-3">
+                  <p className="font-medium">{project?.name || "Ukjent prosjekt"}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {format(new Date(entry.entry_date), "d. MMM yyyy", { locale: nb })}
+                    {canViewAll ? ` · ${user?.full_name || user?.email || "Ukjent"}` : ""}
+                  </p>
+                  <p className="mt-1 text-sm">
+                    {formatHours(entry.hours)}
+                    {started && ended ? ` · ${format(started, "HH:mm")}–${format(ended, "HH:mm")}` : ""}
+                  </p>
+                  {entry.description ? (
+                    <p className="mt-1 text-xs text-muted-foreground">{entry.description}</p>
+                  ) : null}
+                </div>
+              )
+            })
+          )}
+        </div>
       </TabsContent>
 
       <TabsContent value="prosjekt" className="space-y-4">
@@ -197,7 +227,7 @@ export function TimeforingClient({
             </CardContent>
           </Card>
 
-          <div className="rounded-lg border overflow-x-auto">
+          <div className="hidden rounded-lg border md:block">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/50">
                 <tr>
@@ -238,6 +268,31 @@ export function TimeforingClient({
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="divide-y overflow-hidden rounded-lg border md:hidden">
+            {filteredByEmployee.length === 0 ? (
+              <div className="px-4 py-8 text-center text-muted-foreground">
+                {hasDayFilter ? "Ingen arbeidstimer for valgte dager." : "Ingen arbeidstimer registrert ennå."}
+              </div>
+            ) : (
+              filteredByEmployee.map((employee) => (
+                <div key={employee.userId} className="px-4 py-3">
+                  <p className="font-medium">{employee.name}</p>
+                  <p className="text-xs text-muted-foreground">{employee.email}</p>
+                  <p className="mt-2 text-sm font-semibold">
+                    {formatHours(employee.totalHours)} · {employee.entryCount} registreringer
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {employee.byProject.map((project) => (
+                      <div key={project.projectId} className="flex justify-between gap-4 text-xs text-muted-foreground">
+                        <span>{project.projectName}</span>
+                        <span className="font-medium text-foreground">{formatHours(project.totalHours)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </TabsContent>
       )}

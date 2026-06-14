@@ -101,8 +101,12 @@ export function CalendarToolbar({
             <SelectGroup>
               <SelectLabel>Visning</SelectLabel>
               <SelectItem value={Views.MONTH}>{VIEW_LABELS[Views.MONTH]}</SelectItem>
-              <SelectItem value={Views.WEEK}>{VIEW_LABELS[Views.WEEK]}</SelectItem>
-              <SelectItem value={Views.DAY}>{VIEW_LABELS[Views.DAY]}</SelectItem>
+              <SelectItem value={Views.WEEK} className="hidden md:flex">
+                {VIEW_LABELS[Views.WEEK]}
+              </SelectItem>
+              <SelectItem value={Views.DAY} className="hidden md:flex">
+                {VIEW_LABELS[Views.DAY]}
+              </SelectItem>
             </SelectGroup>
           </SelectContent>
         </Select>
@@ -164,6 +168,29 @@ export function CalendarToolbar({
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 rounded-none">
             <div className="space-y-4">
+              {hasBothIntegrations && (
+                <div className="space-y-2 md:hidden">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Kalenderkilde
+                  </p>
+                  <Select
+                    value={visibleProvider}
+                    onValueChange={(v) =>
+                      onVisibleProviderChange(v as "all" | "google" | "microsoft")
+                    }
+                  >
+                    <SelectTrigger className="rounded-none">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Alle kalendere</SelectItem>
+                      <SelectItem value="google">Google</SelectItem>
+                      <SelectItem value="microsoft">Outlook</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Visningsperiode

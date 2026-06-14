@@ -497,7 +497,8 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
   }
 
   return (
-    <div className="w-full overflow-hidden rounded-lg border bg-background">
+    <>
+    <div className="hidden w-full overflow-hidden rounded-lg border bg-background lg:block">
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
@@ -745,6 +746,30 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
         </Table>
       </div>
     </div>
+    <div className="space-y-3 lg:hidden">
+      {items.length === 0 ? (
+        <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">
+          Ingen elementer enda. Legg til fra prisliste, fast jobb eller blank rad.
+        </div>
+      ) : (
+        items.map((item) => (
+          <div key={item.id} className="rounded-lg border p-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.subproject}</p>
+            <p className="mt-1 font-medium">{item.title}</p>
+            {item.description ? (
+              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
+            ) : null}
+            <div className="mt-3 flex items-end justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                {item.quantity} {item.unit} · {item.supplier || "Ukjent leverandør"}
+              </p>
+              <p className="shrink-0 font-semibold tabular-nums">{formatNok(calculateLineItemTotal(item))}</p>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+    </>
   )
 })
 

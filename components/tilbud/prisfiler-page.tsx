@@ -662,7 +662,8 @@ export function PrisfilerPage() {
                 <p className="text-sm text-muted-foreground">Ingen produkter funnet</p>
               </div>
             ) : (
-              <table className="w-full text-xs">
+              <>
+              <table className="hidden w-full text-xs md:table">
                 <thead className="sticky top-0 border-b bg-muted/60 backdrop-blur">
                   <tr>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Produktnavn</th>
@@ -705,6 +706,22 @@ export function PrisfilerPage() {
                   ))}
                 </tbody>
               </table>
+              <div className="divide-y md:hidden">
+                {viewerRows.map((row) => (
+                  <div key={row.id} className="px-4 py-3">
+                    <p className="font-medium">{row.product ?? "—"}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      NOBB: {row.nobb ?? "—"} · {row.unit ?? "—"}
+                    </p>
+                    <p className="mt-2 text-sm tabular-nums">
+                      Veil: {row.list_price != null ? row.list_price.toLocaleString("no-NO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                      {" · "}
+                      Min: {row.min_price != null ? row.min_price.toLocaleString("no-NO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              </>
             )}
 
             {viewerHasMore && (
@@ -781,7 +798,7 @@ export function PrisfilerPage() {
                   </span>{" "}
                   funnet. Velg hva hver kolonne representerer.
                 </p>
-                <div className="overflow-hidden rounded-lg border">
+                <div className="hidden overflow-hidden rounded-lg border md:block">
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
@@ -831,6 +848,35 @@ export function PrisfilerPage() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+                <div className="space-y-3 md:hidden">
+                  {parsedData.headers.map((h) => (
+                    <div key={h} className="rounded-lg border p-3">
+                      <p className="mb-2 truncate text-sm font-medium">{h}</p>
+                      <Select
+                        value={columnMapping[h] ?? "ignore"}
+                        onValueChange={(v) =>
+                          setColumnMapping((prev) => ({ ...prev, [h]: v as ColumnField }))
+                        }
+                      >
+                        <SelectTrigger className="h-9 w-full text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {COLUMN_FIELDS.map((f) => (
+                            <SelectItem key={f.value} value={f.value} className="text-xs">
+                              {f.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {previewRows[0] ? (
+                        <p className="mt-2 truncate text-xs text-muted-foreground">
+                          Eksempel: {previewRows[0][parsedData.headers.indexOf(h)] ?? "—"}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Viser 3 av {totalRows.toLocaleString("no-NO")} rader ·{" "}

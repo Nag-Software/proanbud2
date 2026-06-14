@@ -233,7 +233,7 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
         </div>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="hidden rounded-lg border md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -299,6 +299,35 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
             )}
           </TableBody>
         </Table>
+      </div>
+      <div className="divide-y overflow-hidden rounded-lg border md:hidden">
+        {loading ? (
+          <div className="px-4 py-6 text-muted-foreground">Laster dokumenter...</div>
+        ) : filteredFiles.length === 0 ? (
+          <div className="px-4 py-6 text-muted-foreground">Ingen dokumenter i dette prosjektet ennå.</div>
+        ) : (
+          filteredFiles.map((item) => {
+            const disabled = busyId === item.id
+            return (
+              <div key={item.id} className="flex items-start justify-between gap-3 px-4 py-3">
+                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => openFile(item)}>
+                  <p className="truncate font-medium">{item.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {item.extension?.toUpperCase() ?? "Fil"} · {formatSize(item.sizeBytes)} · {formatDate(item.updatedAt)}
+                  </p>
+                </button>
+                <div className="flex shrink-0 gap-1">
+                  <Button variant="ghost" size="icon" disabled={disabled} onClick={() => askRename(item)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" disabled={disabled} onClick={() => void onDelete(item)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            )
+          })
+        )}
       </div>
 
       <Dialog open={Boolean(renameTarget)} onOpenChange={(open) => !open && setRenameTarget(null)}>

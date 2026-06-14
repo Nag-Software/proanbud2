@@ -32,11 +32,6 @@ function ProjectListItem({ project }: { project: CustomerProject }) {
   const statusConfig = getStatusConfig(project.status)
   const projectCode = getProjectCode(project.id)
   const periodLabel = getProjectPeriod({
-    id: project.id,
-    name: project.name,
-    status: project.status,
-    customer_id: null,
-    budget_nok: project.budgetNok,
     start_date: project.startDate,
     end_date: project.endDate,
   })

@@ -102,7 +102,7 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
           <Plus className="h-4 w-4" /> Inviter ansatt
         </Button>
       </div>
-      <div className="border rounded-lg">
+      <div className="hidden rounded-lg border md:block">
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 border-b">
               <tr>
@@ -180,6 +180,64 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
             </tbody>
           </table>
         </div>
+
+      <div className="divide-y overflow-hidden rounded-lg border md:hidden">
+        {filteredEmployees.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">Ingen ansatte funnet.</div>
+        ) : (
+          filteredEmployees.map((e) => (
+            <div key={e.id} className="flex items-start justify-between gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <p className="font-medium">{e.name}</p>
+                <p className="mt-1 truncate text-sm text-muted-foreground">{e.email}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {e.role} · {e.status}
+                </p>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {e.status === "Invitert" ? (
+                    <>
+                      <DropdownMenuItem><Mail className="mr-2 h-4 w-4" /> Gjensend invitasjon</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-destructive"><X className="mr-2 h-4 w-4" /> Trekk tilbake</DropdownMenuItem>
+                    </>
+                  ) : (
+                    <>
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
+                          <Shield className="mr-2 h-4 w-4" />
+                          <span>Endre rolle</span>
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuPortal>
+                          <DropdownMenuSubContent>
+                            <DropdownMenuItem onClick={() => handleRoleChange(e.id, "Administrator")}>
+                              Administrator
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleRoleChange(e.id, "Prosjektleder")}>
+                              Prosjektleder
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleRoleChange(e.id, "Håndverker")}>
+                              Håndverker
+                            </DropdownMenuItem>
+                          </DropdownMenuSubContent>
+                        </DropdownMenuPortal>
+                      </DropdownMenuSub>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-destructive"><X className="mr-2 h-4 w-4" /> Deaktiver ansatt</DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ))
+        )}
+      </div>
 
       <Dialog open={isInviteOpen} onOpenChange={closeDialog}>
         <DialogContent className="sm:max-w-[425px]">

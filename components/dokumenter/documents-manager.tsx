@@ -12,6 +12,13 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
+import {
   ChevronLeft,
   ChevronRight,
   Cloud,
@@ -22,6 +29,7 @@ import {
   Folder,
   FolderPlus,
   HardDrive,
+  PanelLeft,
   PencilLine,
   Plus,
   Trash2,
@@ -114,6 +122,7 @@ export default function DocumentsManager() {
   const [newFolderName, setNewFolderName] = useState("")
   const [newAreaOpen, setNewAreaOpen] = useState(false)
   const [newAreaName, setNewAreaName] = useState("")
+  const [areasOpen, setAreasOpen] = useState(false)
   const [renameTarget, setRenameTarget] = useState<DocumentItem | null>(null)
   const [renameValue, setRenameValue] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<DocumentItem | null>(null)
@@ -481,6 +490,7 @@ export default function DocumentsManager() {
       ...prev,
       [provider]: [{ id: nextId, name: folder.name }],
     }))
+    setAreasOpen(false)
   }
 
   function goHome() {
@@ -488,6 +498,7 @@ export default function DocumentsManager() {
       ...prev,
       [provider]: [{ id: null, name: "Alle områder" }],
     }))
+    setAreasOpen(false)
   }
 
   function openFolder(item: DocumentItem) {
@@ -559,8 +570,8 @@ export default function DocumentsManager() {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       <div className="theme-docs-shell shrink-0 shadow-sm">
-        <div className="theme-docs-header theme-docs-divider flex items-center justify-between border-b px-3 py-2">
-          <div className="flex items-center gap-1">
+        <div className="theme-docs-header theme-docs-divider flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
+          <div className="flex flex-wrap items-center gap-1">
             <Button variant={provider === "supabase" ? "secondary" : "ghost"} onClick={() => setProvider("supabase")} size="sm" className="h-8 gap-2 rounded-md">
               <HardDrive className="h-4 w-4" />
               Proanbud Cloud
@@ -575,8 +586,8 @@ export default function DocumentsManager() {
             </Button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Input placeholder="Søk i mappe" value={query} onChange={(e) => setQuery(e.target.value)} className="h-8 w-56" />
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+            <Input placeholder="Søk i mappe" value={query} onChange={(e) => setQuery(e.target.value)} className="h-8 w-full sm:w-56" />
             <>
               <Button onClick={() => setNewFolderOpen(true)} disabled={busyId === "__create_folder__"} size="sm" variant="outline" className="h-8 gap-2">
                 <FolderPlus className="h-4 w-4" />
@@ -601,8 +612,8 @@ export default function DocumentsManager() {
           </div>
         </div>
 
-        <div className="grid flex-1 grid-cols-[250px_minmax(0,1fr)] sm:min-h-100 overflow-hidden">
-          <aside className="theme-docs-sidebar theme-docs-divider overflow-y-auto border-r p-3 pb-0">
+        <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[250px_minmax(0,1fr)] lg:min-h-100">
+          <aside className="theme-docs-sidebar theme-docs-divider hidden overflow-y-auto border-r p-3 pb-0 lg:block">
             <div>
               <div className="mb-2 flex items-center justify-between px-2">
                 <p className="theme-doc-area-label text-[11px] font-semibold uppercase tracking-wide">Områder</p>
@@ -673,7 +684,49 @@ export default function DocumentsManager() {
               </div>
             )}
 
-            <div className="theme-doc-breadcrumbs flex items-center gap-1 border-b px-3 py-2">
+            <div className="theme-doc-breadcrumbs flex flex-wrap items-center gap-1 border-b px-3 py-2">
+              <Sheet open={areasOpen} onOpenChange={setAreasOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 gap-1.5 lg:hidden">
+                    <PanelLeft className="h-4 w-4" />
+                    Områder
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-[min(100%,280px)] p-0">
+                  <SheetHeader className="border-b px-4 py-3">
+                    <SheetTitle>Områder</SheetTitle>
+                  </SheetHeader>
+                  <div className="overflow-y-auto p-3">
+                    <div className="mb-2 flex items-center justify-between px-2">
+                      <p className="theme-doc-area-label text-[11px] font-semibold uppercase tracking-wide">Områder</p>
+                      <Button variant="ghost" size="icon" className="theme-hover-muted h-5 w-5" onClick={() => setNewAreaOpen(true)} title="Nytt område">
+                        <Plus className="theme-icon-muted h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div className="space-y-1">
+                      <Button variant={currentPath.length === 1 && currentPath[0].id === null ? "secondary" : "ghost"} className="h-8 w-full justify-start gap-2 rounded-md" onClick={goHome}>
+                        <HardDrive className="theme-icon-brand h-4 w-4" />
+                        <span className="truncate">Alle områder</span>
+                      </Button>
+                      {rootFolders.map((folder) => {
+                        const fPath = folderPathFromItem(folder)
+                        const isActiveArea = currentPath.length > 1 && currentPath[1].id === fPath
+                        return (
+                          <Button
+                            key={`sheet-sidebar-${folder.id}`}
+                            variant={isActiveArea ? "secondary" : "ghost"}
+                            className="h-8 w-full justify-start gap-2 rounded-md pl-6"
+                            onClick={() => selectArea(folder)}
+                          >
+                            <Folder className={`h-4 w-4 ${isActiveArea ? "theme-doc-folder-active" : "theme-icon-folder"}`} />
+                            <span className={`truncate ${isActiveArea ? "font-medium" : ""}`}>{folder.name}</span>
+                          </Button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
               <Button variant="ghost" size="icon" className="h-7 w-7" disabled={currentPath.length <= 1} onClick={goBackFolder}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
@@ -701,7 +754,7 @@ export default function DocumentsManager() {
               </div>
             ) : (
               <>
-                <div className="theme-doc-table-head theme-docs-divider theme-doc-table-label grid grid-cols-[minmax(0,1fr)_120px_140px_140px] gap-2 border-b px-3 py-2 text-[11px] font-semibold uppercase tracking-wide">
+                <div className="theme-doc-table-head theme-docs-divider theme-doc-table-label hidden grid-cols-[minmax(0,1fr)_120px_140px_140px] gap-2 border-b px-3 py-2 text-[11px] font-semibold uppercase tracking-wide md:grid">
                   <span>Navn</span>
                   <span>Type</span>
                   <span>Endret</span>
@@ -714,7 +767,8 @@ export default function DocumentsManager() {
                   ) : listItems.length === 0 ? (
                     <div className="p-6 text-sm text-muted-foreground">Tom mappe</div>
                   ) : (
-                    <div className="theme-doc-row-list divide-y divide-border/80">
+                    <>
+                    <div className="theme-doc-row-list hidden divide-y divide-border/80 md:block">
                     {listItems.map((item) => {
                       const isBusy = busyId === item.id
 
@@ -788,6 +842,52 @@ export default function DocumentsManager() {
                       )
                     })}
                   </div>
+                  <div className="divide-y md:hidden">
+                    {listItems.map((item) => {
+                      const isBusy = busyId === item.id
+                      return (
+                        <div
+                          key={`mobile-${item.provider}-${item.id}`}
+                          className="flex items-start gap-3 px-3 py-3"
+                          onClick={() => {
+                            if (item.itemType === "folder") openFolder(item)
+                          }}
+                        >
+                          {item.itemType === "folder" ? (
+                            <Folder className="theme-icon-folder mt-0.5 h-4 w-4 shrink-0" />
+                          ) : (
+                            <FileText className="theme-icon-file mt-0.5 h-4 w-4 shrink-0" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{item.name}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {item.itemType === "folder" ? "Mappe" : "Fil"}
+                              {item.lastModifiedAt
+                                ? ` · ${new Date(item.lastModifiedAt).toLocaleDateString("nb-NO")}`
+                                : ""}
+                              {item.sizeBytes ? ` · ${formatBytes(item.sizeBytes)}` : ""}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            {item.itemType === "file" && (item.webUrl || item.downloadUrl) ? (
+                              <Button size="icon" variant="ghost" className="h-8 w-8" disabled={isBusy} asChild>
+                                <a href={item.webUrl ?? item.downloadUrl ?? "#"} target="_blank" rel="noreferrer">
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                              </Button>
+                            ) : null}
+                            <Button size="icon" variant="ghost" className="h-8 w-8" disabled={isBusy} onClick={() => askRename(item)}>
+                              <PencilLine className="h-4 w-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-8 w-8" disabled={isBusy} onClick={() => setDeleteTarget(item)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                    </>
                 )}
                 </div>
               </>

@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ResponsiveTabs, TabsContent } from "@/components/responsive-tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
@@ -524,7 +524,7 @@ export function OfferDetailClient({
               <span className="ml-auto text-[11px] text-muted-foreground">#{formatOfferReference(offer.id)}</span>
             </div>
 
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <h2 className="text-xl font-semibold leading-tight text-foreground">
                 {offer.title?.trim() || `Tilbud #${formatOfferReference(offer.id)}`}
               </h2>
@@ -696,33 +696,15 @@ export function OfferDetailClient({
         </div>
       </section>
 
-      <Tabs defaultValue="komponenter" className="w-full">
-        <TabsList className="mb-2 flex h-auto w-[fit-content] min-w-3xl overflow-y-hidden justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent p-0">
-          <TabsTrigger
-            value="komponenter"
-            className="rounded-none border-b-3 border-b-transparent bg-transparent px-4 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-b-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
-          >
-            Komponenter
-          </TabsTrigger>
-          <TabsTrigger
-            value="kunde"
-            className="rounded-none border-b-3 border-b-transparent bg-transparent px-4 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-b-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
-          >
-            Kundeinfo
-          </TabsTrigger>
-          <TabsTrigger
-            value="dokumenter"
-            className="rounded-none border-b-3 border-b-transparent bg-transparent px-4 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-b-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
-          >
-            Dokumenter
-          </TabsTrigger>
-          <TabsTrigger
-            value="hendelser"
-            className="rounded-none border-b-3 border-b-transparent bg-transparent px-4 pb-3 pt-2 font-medium text-muted-foreground shadow-none data-[state=active]:border-b-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
-          >
-            Hendelser
-          </TabsTrigger>
-        </TabsList>
+      <ResponsiveTabs
+        defaultValue="komponenter"
+        tabs={[
+          { value: "komponenter", label: "Komponenter" },
+          { value: "kunde", label: "Kundeinfo" },
+          { value: "dokumenter", label: "Dokumenter" },
+          { value: "hendelser", label: "Hendelser" },
+        ]}
+      >
 
         <TabsContent value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
           <Card className="theme-surface-info overflow-hidden">
@@ -949,7 +931,7 @@ export function OfferDetailClient({
             </div>
           </div>
         </TabsContent>
-      </Tabs>
+      </ResponsiveTabs>
 
       <Sheet open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
         <SheetContent className="theme-preview-shell !max-w-[min(1500px,96vw)] w-[96vw] overflow-y-auto p-4 sm:!max-w-[min(1500px,96vw)]">

@@ -22,15 +22,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { cn } from "@/lib/utils"
 import { ClientAutocomplete, type ClientOption } from "./ny/components/client-autocomplete"
 import { updateProjectAction } from "./actions"
+import { ProjectStatusFooter } from "./project-status-footer"
 import {
   getProjectCode,
   getProjectCustomer,
   getProjectPeriod,
-  getStatusConfig,
-  totalStatusBars,
   type ProjectRow,
 } from "./project-utils"
 
@@ -49,7 +47,6 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
   const [isSaving, setIsSaving] = React.useState(false)
 
   const customer = getProjectCustomer(project)
-  const statusConfig = getStatusConfig(project.status)
   const projectCode = getProjectCode(project.id)
   const periodLabel = getProjectPeriod(project)
 
@@ -166,26 +163,7 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
             </div>
           </div>
 
-          <div className="w-full border-t border-border/50 bg-muted/25 px-3.5 py-2.5">
-            <div className="flex w-full gap-1">
-              {Array.from({ length: totalStatusBars }).map((_, index) => {
-                const isFilled = index < statusConfig.filledBars
-
-                return (
-                  <span
-                    key={`${project.id}-bar-${index}`}
-                    className={cn(
-                      "h-1 flex-1 rounded-full bg-muted",
-                      isFilled && statusConfig.fillClass
-                    )}
-                  />
-                )
-              })}
-            </div>
-            <p className="mt-1.5 w-full text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              {statusConfig.label}
-            </p>
-          </div>
+          <ProjectStatusFooter status={project.status} idPrefix={project.id} className="w-full" />
         </Link>
       </div>
 

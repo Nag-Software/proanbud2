@@ -785,7 +785,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   company={company}
                   issuedDate={new Date()}
                   validityDays={validityDays}
-                  documentClassName="mx-auto w-[794px] min-w-[794px] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)]"
+                  documentClassName="mx-auto w-full max-w-[794px] min-w-0 bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)] sm:min-w-[794px]"
                   />
                 </div>
               </div>

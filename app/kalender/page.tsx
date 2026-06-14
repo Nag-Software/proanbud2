@@ -21,6 +21,7 @@ import "moment/locale/nb"
 
 import { CalendarToolbar, type CalendarView } from "./calendar-toolbar"
 import { MonthCalendar } from "./month-calendar"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 moment.locale("nb");
 const localizer = momentLocalizer(moment);
@@ -46,6 +47,7 @@ function defaultSlotTimes(day: Date) {
 }
 
 function KalenderPage() {
+  const isMobile = useIsMobile()
   const [integrations, setIntegrations] = useState<{ provider: string }[]>([])
   const [loggedIn, setLoggedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -74,6 +76,12 @@ function KalenderPage() {
   const [isDisconnecting, setIsDisconnecting] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const searchParams = useSearchParams()
+
+  useEffect(() => {
+    if (isMobile && view !== Views.MONTH) {
+      setView(Views.MONTH)
+    }
+  }, [isMobile, view])
 
   const minTime = useMemo(() => {
     const d = new Date()

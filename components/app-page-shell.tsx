@@ -3,20 +3,14 @@
 import { AppSidebar } from "@/components/app-sidebar"
 import { useAppShell } from "@/components/app-shell-context"
 import { TrialBanner } from "@/components/billing/trial-banner"
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
+import { ShellBreadcrumb } from "@/components/shell-breadcrumb"
 import { Separator } from "@/components/ui/separator"
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { Fragment, useLayoutEffect, type ReactNode } from "react"
+import { useLayoutEffect, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
 type AppPageShellProps = {
@@ -51,22 +45,7 @@ function LegacyAppPageShell({ segments, children, noPadding }: AppPageShellProps
               orientation="vertical"
               className="mr-2 data-vertical:h-4 data-vertical:self-auto"
             />
-            <Breadcrumb>
-              <BreadcrumbList>
-                {segments.map((segment, index) => {
-                  const href = "#"
-
-                  return (
-                    <Fragment key={segment + index}>
-                      {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
-                      <BreadcrumbItem className="hidden md:block">
-                        <BreadcrumbLink href={href}>{segment}</BreadcrumbLink>
-                      </BreadcrumbItem>
-                    </Fragment>
-                  )
-                })}
-              </BreadcrumbList>
-            </Breadcrumb>
+            <ShellBreadcrumb segments={segments} />
           </div>
         </header>
         <div

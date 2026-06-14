@@ -87,7 +87,7 @@ export function ProsjekterFilters() {
     currentStatus !== "all" || currentSort !== "name" || currentQuery.trim().length > 0
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card/60 p-4">
+    <div className="rounded-xl border-0 border-border/60 bg-card/60">
       <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
         <div className="space-y-1">
           <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Søk</p>

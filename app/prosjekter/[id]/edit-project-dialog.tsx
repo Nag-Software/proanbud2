@@ -4,6 +4,7 @@ import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { SettingsDialog } from "@/components/settings-dialog"
 import { updateProjectAction } from "../actions"
+import { EDITABLE_PROJECT_STATUSES } from "../project-utils"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
@@ -33,7 +34,7 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
       ],
     },
     {
-      name: "Dato og Status",
+      name: "Dato og fase",
       icon: "calendar",
       fields: [
         {
@@ -50,15 +51,13 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
         },
         {
           id: "status",
-          label: "Status",
+          label: "Prosjektfase",
           type: "select" as const,
           value: project.status || "planning",
-          options: [
-            { label: "Planlegges", value: "planning" },
-            { label: "Aktiv", value: "active" },
-            { label: "Avventer", value: "on_hold" },
-            { label: "Fullfort", value: "completed" },
-          ],
+          options: EDITABLE_PROJECT_STATUSES.map((item) => ({
+            label: item.label,
+            value: item.value,
+          })),
         },
       ],
     },

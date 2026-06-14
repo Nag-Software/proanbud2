@@ -376,6 +376,26 @@
     border-left-color: var(--foreground);
   }
 
+  .theme-project-rail-planning {
+    border-left-color: var(--tone-warning);
+  }
+
+  .theme-project-rail-active {
+    border-left-color: var(--accent);
+  }
+
+  .theme-project-rail-onhold {
+    border-left-color: var(--tone-neutral);
+  }
+
+  .theme-project-rail-completed {
+    border-left-color: var(--tone-success);
+  }
+
+  .theme-project-rail-danger {
+    border-left-color: var(--tone-danger);
+  }
+
   .theme-offer-hero {
     background-image: linear-gradient(135deg, color-mix(in srgb, var(--tone-info) 10%, white), color-mix(in srgb, var(--tone-success) 8%, white), transparent 70%);
   }

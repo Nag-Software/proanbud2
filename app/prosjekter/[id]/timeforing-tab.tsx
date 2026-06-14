@@ -188,7 +188,7 @@ export default function TimeforingTab({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/50">
               <tr>
@@ -236,6 +236,36 @@ export default function TimeforingTab({
               )}
             </tbody>
           </table>
+        </div>
+        <div className="divide-y md:hidden">
+          {entries.length === 0 ? (
+            <div className="px-4 py-8 text-center text-muted-foreground">
+              Ingen fullførte arbeidsøkter ennå. Trykk «Start arbeid» for å begynne.
+            </div>
+          ) : (
+            entries.map((entry) => {
+              const user = unwrapRelation(entry.users)
+              const started = entry.started_at ? new Date(entry.started_at) : null
+              const ended = entry.ended_at ? new Date(entry.ended_at) : null
+              return (
+                <div key={entry.id} className="px-4 py-3">
+                  <p className="font-medium">{formatHours(entry.hours)}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {format(new Date(entry.entry_date), "d. MMM yyyy", { locale: nb })}
+                    {started && ended ? ` · ${format(started, "HH:mm")}–${format(ended, "HH:mm")}` : ""}
+                  </p>
+                  {canViewAllEntries ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {user?.full_name || user?.email || "Ukjent"}
+                    </p>
+                  ) : null}
+                  {entry.description ? (
+                    <p className="mt-1 text-xs text-muted-foreground">{entry.description}</p>
+                  ) : null}
+                </div>
+              )
+            })
+          )}
         </div>
       </div>
     </div>

@@ -26,6 +26,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Sidebar,
@@ -302,7 +309,22 @@ export function SettingsDialog({
             </SidebarContent>
           </Sidebar>
           <main className="flex h-[480px] p-0 m-0 flex-1 flex-col overflow-hidden">
-            <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+            <header className="flex shrink-0 flex-col gap-2 border-b md:border-b-0">
+              <div className="px-4 pt-3 md:hidden">
+                <Select value={currentSection} onValueChange={setCurrentSection}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Velg seksjon" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {resolvedSettings.map((item) => (
+                      <SelectItem key={item.name} value={item.name}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
               <div className="flex items-center gap-2 px-4">
                 <Breadcrumb>
                   <BreadcrumbList>
@@ -316,6 +338,7 @@ export function SettingsDialog({
                   </BreadcrumbList>
                 </Breadcrumb>
               </div>
+            </div>
             </header>
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0">
               {currentSettings?.fields?.length ? (

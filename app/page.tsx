@@ -406,7 +406,7 @@ export default function DashboardPage() {
         <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
           <div className="flex flex-col gap-4">
             {/* Welcome banner */}
-            <Card className="hidden border-border theme-surface-hero">
+            <Card className="hidden! border-border theme-surface-hero">
               <CardContent className="flex items-center gap-6 px-6 py-2">
                 {/* Col 1: greeting + company name */}
                 <div className="flex-1 min-w-0">
@@ -587,7 +587,7 @@ export default function DashboardPage() {
               </Link>
             </CardHeader>
             <CardContent className="px-5 pb-5">
-              <div className="w-full overflow-x-auto">
+              <div className="hidden w-full overflow-x-auto md:block">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b text-muted-foreground">
@@ -635,6 +635,42 @@ export default function DashboardPage() {
                 </table>
                 {!loading && data?.tableOffers.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-6">Ingen tilbud ennå</p>
+                )}
+              </div>
+              <div className="divide-y md:hidden">
+                {loading
+                  ? Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="py-3">
+                        <div className="h-4 w-2/3 animate-pulse bg-muted" />
+                        <div className="mt-2 h-3 w-1/2 animate-pulse bg-muted" />
+                      </div>
+                    ))
+                  : data?.tableOffers.map((row) => (
+                      <Link
+                        key={row.id}
+                        href={`/tilbud/${row.id}`}
+                        className="block py-3 transition-colors hover:bg-muted/30"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-foreground">{row.navn}</p>
+                            <p className="mt-1 truncate text-xs text-muted-foreground">{row.kunde}</p>
+                            <p className="mt-1 font-mono text-[10px] text-muted-foreground">{row.shortId}</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-sm font-semibold">{formatNok(row.verdi)}</p>
+                            <Badge
+                              variant="outline"
+                              className={cn("mt-1 text-[10px] font-medium", statusColor[row.status])}
+                            >
+                              {statusLabel[row.status] ?? row.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                {!loading && data?.tableOffers.length === 0 && (
+                  <p className="py-6 text-center text-xs text-muted-foreground">Ingen tilbud ennå</p>
                 )}
               </div>
             </CardContent>

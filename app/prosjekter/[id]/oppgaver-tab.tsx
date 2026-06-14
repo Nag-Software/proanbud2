@@ -188,7 +188,7 @@ export default function OppgaverTab({
 
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-1">
-        <Tabs defaultValue="liste" onValueChange={(v) => setView(v as any)} className="w-[400px]">
+        <Tabs defaultValue="liste" onValueChange={(v) => setView(v as any)} className="w-full max-w-md">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="liste" className="gap-2"><List className="h-4 w-4"/> Liste</TabsTrigger>
             <TabsTrigger value="kanban" className="gap-2"><LayoutGrid className="h-4 w-4"/> Kanban</TabsTrigger>
@@ -222,7 +222,8 @@ export default function OppgaverTab({
       {/* Content Area */}
       <div className="flex-1 bg-background/50 border-none p-0">
         {view === "liste" && (
-          <div className="w-full border rounded-lg bg-card">
+          <>
+          <div className="hidden w-full rounded-lg border bg-card md:block">
             <table className="w-full text-sm text-left">
               <thead className="bg-muted/50 border-b">
                 <tr>
@@ -264,11 +265,37 @@ export default function OppgaverTab({
               </tbody>
             </table>
           </div>
+          <div className="divide-y overflow-hidden rounded-lg border bg-card md:hidden">
+            {filteredTasks.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                Ingen oppgaver funnet. Klikk på &quot;Ny oppgave&quot; for å legge til.
+              </div>
+            ) : (
+              filteredTasks.map((task) => (
+                <button
+                  key={task.id}
+                  type="button"
+                  className="block w-full px-4 py-3 text-left hover:bg-muted/30"
+                  onClick={() => handleOpenTask(task)}
+                >
+                  <p className="font-medium">{task.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {statusToLabel[task.status] || task.status} · {priorityToLabel[task.priority] || task.priority}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Frist: {task.due_date ? new Date(task.due_date).toLocaleDateString("no-NO") : "-"}
+                    {task.assigned_to ? ` · ${task.assigned_to}` : ""}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+          </>
         )}
 
         {view === "kanban" && (
           <DragDropContext onDragEnd={handleDragEnd}>
-            <div className="flex h-full gap-4 flex-wrap pb-4">
+            <div className="flex h-full snap-x snap-mandatory gap-4 overflow-x-auto pb-4">
               {["todo", "in_progress", "review", "done"].map((col) => {
                 const colTasks = filteredTasks.filter((t: any) => t.status === col);
                 return (
@@ -277,7 +304,7 @@ export default function OppgaverTab({
                       <div
                         {...provided.droppableProps}
                         ref={provided.innerRef}
-                        className="w-80 shrink-0 flex flex-col gap-3 bg-muted/30 rounded-lg p-4 border"
+                        className="flex w-[min(100%,20rem)] shrink-0 snap-start flex-col gap-3 rounded-lg border bg-muted/30 p-4"
                       >
                         <div className="flex justify-between items-center font-medium mb-2">
                           {statusToLabel[col] || col} <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">{colTasks.length}</span>
@@ -447,7 +474,7 @@ export default function OppgaverTab({
 
       {/* Rediger Oppgave Drawer */}
       <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
-        <DrawerContent className="w-[400px] sm:w-[540px] overflow-y-auto">
+        <DrawerContent className="w-full overflow-y-auto sm:w-[540px]">
           <DrawerHeader>
             <DrawerTitle>Rediger Oppgave</DrawerTitle>
             <DrawerDescription>Endre detaljer for oppgaven her.</DrawerDescription>

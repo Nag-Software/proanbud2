@@ -75,7 +75,7 @@ export function DataTable<TData extends Customer, TValue>({
         />
         {/* We can add a filter by type here as a dropdown later */}
       </div>
-      <div className="rounded-md border">
+      <div className="hidden rounded-md border md:block">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -125,6 +125,46 @@ export function DataTable<TData extends Customer, TValue>({
             )}
           </TableBody>
         </Table>
+      </div>
+      <div className="divide-y overflow-hidden rounded-md border md:hidden">
+        {table.getRowModel().rows?.length ? (
+          table.getRowModel().rows.map((row) => {
+            const customer = row.original
+            return (
+              <div
+                key={row.id}
+                className="cursor-pointer px-4 py-3 hover:bg-muted/50"
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("[data-prevent-row-click]")) return
+                  onRowClick?.(customer)
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium">{customer.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {customer.email || customer.phone || "Ingen kontaktinfo"}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {customer.activeProjects ?? 0} pågående prosjekt
+                      {(customer.activeProjects ?? 0) !== 1 ? "er" : ""}
+                    </p>
+                  </div>
+                  <div data-prevent-row-click>
+                    {(() => {
+                      const actionsCell = row.getVisibleCells().find((c) => c.column.id === "actions")
+                      return actionsCell
+                        ? flexRender(actionsCell.column.columnDef.cell, actionsCell.getContext())
+                        : null
+                    })()}
+                  </div>
+                </div>
+              </div>
+            )
+          })
+        ) : (
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">Ingen kunder funnet.</div>
+        )}
       </div>
       <div className="flex items-center justify-end space-x-2 py-4">
         <Button

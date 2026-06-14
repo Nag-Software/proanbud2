@@ -1,13 +1,11 @@
 import Link from "next/link"
 
-import { cn } from "@/lib/utils"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ProjectStatusFooter } from "./project-status-footer"
 import {
   getProjectCode,
   getProjectCustomer,
   getProjectPeriod,
-  getStatusConfig,
-  totalStatusBars,
   type ProjectRow,
 } from "./project-utils"
 
@@ -47,7 +45,6 @@ export function ArchiveProjectsTable({ projects }: ArchiveProjectsTableProps) {
           <TableBody>
             {projects.map((project) => {
               const customer = getProjectCustomer(project)
-              const statusConfig = getStatusConfig(project.status)
               const projectCode = getProjectCode(project.id)
               const periodLabel = getProjectPeriod(project)
 
@@ -78,26 +75,12 @@ export function ArchiveProjectsTable({ projects }: ArchiveProjectsTableProps) {
                   </TableCell>
                   <TableCell className="py-3 align-middle">
                     <Link href={`/prosjekter/${project.id}`} className="block">
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1">
-                          {Array.from({ length: totalStatusBars }).map((_, index) => {
-                            const isFilled = index < statusConfig.filledBars
-
-                            return (
-                              <span
-                                key={`${project.id}-archive-bar-${index}`}
-                                className={cn(
-                                  "h-2 w-4 rounded-sm bg-muted",
-                                  isFilled && statusConfig.fillClass
-                                )}
-                              />
-                            )
-                          })}
-                        </div>
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {statusConfig.label}
-                        </span>
-                      </div>
+                      <ProjectStatusFooter
+                        status={project.status}
+                        idPrefix={`${project.id}-archive`}
+                        bordered={false}
+                        className="min-w-[140px] px-0 py-0"
+                      />
                     </Link>
                   </TableCell>
                 </TableRow>
@@ -110,7 +93,6 @@ export function ArchiveProjectsTable({ projects }: ArchiveProjectsTableProps) {
       <div className="divide-y overflow-hidden rounded-xl border border-border/70 bg-card md:hidden">
         {projects.map((project) => {
           const customer = getProjectCustomer(project)
-          const statusConfig = getStatusConfig(project.status)
           const projectCode = getProjectCode(project.id)
           const periodLabel = getProjectPeriod(project)
 
@@ -118,48 +100,37 @@ export function ArchiveProjectsTable({ projects }: ArchiveProjectsTableProps) {
             <Link
               key={project.id}
               href={`/prosjekter/${project.id}`}
-              className="block px-4 py-4 transition-colors hover:bg-muted/30"
+              className="flex flex-col transition-colors hover:bg-muted/30"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-foreground">{project.name}</p>
-                  <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                    {projectCode}
-                  </p>
+              <div className="px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-foreground">{project.name}</p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                      {projectCode}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                      Kunde
+                    </p>
+                    <p className="mt-1 text-foreground">{customer.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                      Periode
+                    </p>
+                    <p className="mt-1 text-muted-foreground">{periodLabel}</p>
+                  </div>
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                    Kunde
-                  </p>
-                  <p className="mt-1 text-foreground">{customer.name}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                    Periode
-                  </p>
-                  <p className="mt-1 text-muted-foreground">{periodLabel}</p>
-                </div>
-              </div>
-              <div className="mt-3 flex items-center gap-2">
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalStatusBars }).map((_, index) => {
-                    const isFilled = index < statusConfig.filledBars
-
-                    return (
-                      <span
-                        key={`${project.id}-archive-mobile-bar-${index}`}
-                        className={cn(
-                          "h-2 w-4 rounded-sm bg-muted",
-                          isFilled && statusConfig.fillClass
-                        )}
-                      />
-                    )
-                  })}
-                </div>
-                <span className="text-xs font-medium text-muted-foreground">{statusConfig.label}</span>
-              </div>
+              <ProjectStatusFooter
+                status={project.status}
+                idPrefix={`${project.id}-archive-mobile`}
+                className="w-full"
+              />
             </Link>
           )
         })}

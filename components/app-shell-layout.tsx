@@ -6,13 +6,7 @@ import { type ReactNode } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppShellProvider, useAppShell } from "@/components/app-shell-context"
 import { TrialBanner } from "@/components/billing/trial-banner"
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
+import { ShellBreadcrumb } from "@/components/shell-breadcrumb"
 import { Separator } from "@/components/ui/separator"
 import {
   SidebarInset,
@@ -22,7 +16,6 @@ import {
 import { isPublicAuthRoute } from "@/lib/auth/routes"
 import { isSjefenRoute } from "@/lib/auth/platform-admin"
 import { cn } from "@/lib/utils"
-import { Fragment } from "react"
 
 function shouldUsePersistentShell(pathname: string) {
   if (isPublicAuthRoute(pathname)) return false
@@ -48,22 +41,7 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
               orientation="vertical"
               className="mr-2 data-vertical:h-4 data-vertical:self-auto"
             />
-            <Breadcrumb>
-              <BreadcrumbList>
-                {segments.map((segment, index) => {
-                  const href = "#"
-
-                  return (
-                    <Fragment key={`${segment}-${index}`}>
-                      {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
-                      <BreadcrumbItem className="hidden md:block">
-                        <BreadcrumbLink href={href}>{segment}</BreadcrumbLink>
-                      </BreadcrumbItem>
-                    </Fragment>
-                  )
-                })}
-              </BreadcrumbList>
-            </Breadcrumb>
+            <ShellBreadcrumb segments={segments} />
           </div>
         </header>
         <div

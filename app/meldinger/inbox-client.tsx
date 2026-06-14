@@ -20,6 +20,7 @@ import {
   FileIcon,
   Download,
   Search,
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -377,7 +378,13 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
   return (
     <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden">
       {/* Conversation list */}
-      <aside className="flex h-full min-h-0 w-[380px] shrink-0 flex-col border-r border-border bg-card">
+      <aside
+        className={cn(
+          "flex h-full min-h-0 flex-col border-r border-border bg-card",
+          "w-full md:w-[380px] md:shrink-0",
+          selectedCustomerId && "hidden md:flex"
+        )}
+      >
             <div className="shrink-0 border-b border-border px-4 py-4">
               <div className="flex items-center justify-between">
                 <h1 className="text-lg font-semibold tracking-tight">Meldinger</h1>
@@ -502,10 +509,25 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
       </aside>
 
       {/* Chat thread */}
-      <div className="flex h-full min-w-0 flex-1 flex-col bg-background">
+      <div
+        className={cn(
+          "flex h-full min-w-0 flex-1 flex-col bg-background",
+          !selectedCustomerId && "hidden md:flex"
+        )}
+      >
             {selectedCustomer ? (
               <>
                 <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 md:hidden"
+                    onClick={() => setSelectedCustomerId(null)}
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    <span className="sr-only">Tilbake til samtaler</span>
+                  </Button>
                   <Avatar className="h-10 w-10">
                     <AvatarFallback className="bg-primary/10 text-sm text-primary">
                       {selectedCustomer.name.slice(0, 2).toUpperCase()}

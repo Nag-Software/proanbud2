@@ -112,6 +112,7 @@ export default async function SjefenFirmaDetailPage({
               <CardTitle className="text-base">Brukere i firmaet</CardTitle>
             </CardHeader>
             <CardContent>
+              <div className="hidden md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -137,6 +138,22 @@ export default async function SjefenFirmaDetailPage({
                   ))}
                 </TableBody>
               </Table>
+              </div>
+              <div className="divide-y md:hidden">
+                {users.map((user) => (
+                  <div key={user.id} className="py-3 first:pt-0">
+                    <p className="font-medium">{user.full_name}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{user.email}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                      <span>{getRoleDisplayName(user.role)}</span>
+                      <StatusBadge
+                        label={user.is_active ? "Aktiv" : "Inaktiv"}
+                        variant={user.is_active ? "success" : "muted"}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </div>

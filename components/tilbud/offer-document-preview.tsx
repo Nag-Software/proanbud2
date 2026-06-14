@@ -42,7 +42,7 @@ export function OfferDocumentPreview({
       <div
         className={
           documentClassName ||
-          "mx-auto w-full min-w-[794px] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)]"
+          "mx-auto w-full min-w-0 bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)] sm:min-w-[794px]"
         }
       >
         <div className="flex items-start justify-between gap-6 border-b border-gray-200 px-8 py-6">

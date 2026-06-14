@@ -91,7 +91,7 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
 
   return (
     <Drawer direction="right" open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="flex flex-col p-0 sm:min-w-[700px]">
+      <DrawerContent className="flex w-full flex-col p-0 sm:max-w-lg md:max-w-2xl">
         <DrawerHeader className="pl-4 sm:pl-6 pr-12 py-6 border-b shrink-0 bg-background z-10">
           <div className="flex justify-between items-start gap-4">
             <div className="flex items-center gap-3">

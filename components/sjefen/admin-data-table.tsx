@@ -31,6 +31,7 @@ type AdminDataTableProps<TData, TValue> = {
   searchPlaceholder?: string
   onRowClick?: (row: TData) => void
   pageSize?: number
+  renderMobileRow?: (row: TData) => React.ReactNode
 }
 
 export function AdminDataTable<TData, TValue>({
@@ -40,6 +41,7 @@ export function AdminDataTable<TData, TValue>({
   searchPlaceholder = "Søk...",
   onRowClick,
   pageSize = 20,
+  renderMobileRow,
 }: AdminDataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
@@ -72,7 +74,7 @@ export function AdminDataTable<TData, TValue>({
           className="max-w-sm"
         />
       )}
-      <div className="rounded-md border">
+      <div className="hidden rounded-md border md:block">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -112,6 +114,31 @@ export function AdminDataTable<TData, TValue>({
             )}
           </TableBody>
         </Table>
+      </div>
+      <div className="divide-y overflow-hidden rounded-md border md:hidden">
+        {table.getRowModel().rows?.length ? (
+          table.getRowModel().rows.map((row) => (
+            <div
+              key={row.id}
+              className={onRowClick ? "cursor-pointer px-4 py-3 hover:bg-muted/50" : "px-4 py-3"}
+              onClick={() => onRowClick?.(row.original)}
+            >
+              {renderMobileRow ? (
+                renderMobileRow(row.original)
+              ) : (
+                <div className="space-y-1">
+                  {row.getVisibleCells().map((cell) => (
+                    <div key={cell.id} className="text-sm">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">Ingen resultater.</div>
+        )}
       </div>
       <div className="flex items-center justify-end gap-2">
         <Button
