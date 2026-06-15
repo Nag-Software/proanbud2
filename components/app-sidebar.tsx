@@ -15,7 +15,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, Bell, CalendarDays, FolderIcon, FilesIcon, SearchIcon, ShieldAlertIcon, ShieldCheckIcon } from "lucide-react"
+import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, Bell, CalendarDays, FolderIcon, FilesIcon, SearchIcon, ShieldCheckIcon } from "lucide-react"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { useUserRole } from "@/hooks/use-user-role"
@@ -43,6 +43,7 @@ type NavMainItem = {
     title: string
     url: string
     hidden?: boolean
+    badge?: number
   }>
 }
 
@@ -94,14 +95,19 @@ const data: {
       icon: <FilesIcon className="size-4" />,
     },
     {
-      title: "Avvik",
-      url: "/avvik",
-      icon: <ShieldAlertIcon className="size-4" />,
-    },
-    {
       title: "HMS",
       url: "/hms",
       icon: <ShieldCheckIcon className="size-4" />,
+      items: [
+        {
+          title: "Oversikt",
+          url: "/hms",
+        },
+        {
+          title: "Avvik",
+          url: "/avvik",
+        },
+      ],
     },
     {
       title: "Mine priser",
@@ -134,6 +140,10 @@ const data: {
         {
           title: "Timeføring",
           url: "/min-bedrift/timeforing",
+        },
+        {
+          title: "KS-maler",
+          url: "/min-bedrift/ks",
         },
       ]
     },
@@ -286,8 +296,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       if (item.title === "Meldinger" && unreadCount > 0) {
         return { ...item, badge: unreadCount };
       }
-      if (item.title === "Avvik" && openDeviationCount > 0) {
-        return { ...item, badge: openDeviationCount };
+      if (item.title === "HMS" && item.items && openDeviationCount > 0) {
+        return {
+          ...item,
+          items: item.items.map((subItem) =>
+            subItem.title === "Avvik" ? { ...subItem, badge: openDeviationCount } : subItem
+          ),
+        }
       }
       if (item.title === "Min bedrift" && isWorker && item.items) {
         return {

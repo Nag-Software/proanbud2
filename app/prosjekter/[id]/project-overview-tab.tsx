@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Calendar,
   CheckCircle2,
+  ClipboardCheck,
   Clock,
   FileText,
   Mail,
@@ -19,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { DeviationWithRelations } from "@/lib/hms/types"
+import type { ChecklistSummary } from "@/lib/ks/types"
 import { formatHours } from "@/lib/time-tracking"
 import { cn } from "@/lib/utils"
 import {
@@ -93,6 +95,7 @@ export type ProjectOverviewProps = {
   }
   tasks: OverviewTask[]
   deviations: DeviationWithRelations[]
+  checklists: ChecklistSummary[]
   participants: OverviewParticipant[]
   participantHours: ParticipantHoursSummary[]
   offersSummary: {
@@ -181,6 +184,7 @@ export function ProjectOverviewTab({
   customer,
   tasks,
   deviations,
+  checklists,
   participants,
   participantHours,
   offersSummary,
@@ -190,6 +194,10 @@ export function ProjectOverviewTab({
   const navigateToTab = useProjectTabNavigation()
   const statusConfig = getStatusConfig(project.status)
   const openDeviations = deviations.filter((d) => d.status === "open")
+  const activeChecklists = checklists.filter(
+    (c) => c.status === "in_progress" || c.status === "not_started"
+  )
+  const ksOpenDeviations = openDeviations.filter((d) => d.type === "ks")
   const overdueTaskList = tasks.filter((task) => {
     if (!task.due_date || task.status === "done") return false
     return new Date(task.due_date) < new Date()
@@ -198,7 +206,10 @@ export function ProjectOverviewTab({
   const timelinePercent = getTimelineProgress(project.start_date, project.end_date)
   const pastDeadline = isPastDeadline(project.end_date, project.status)
   const hasAttentionItems =
-    overdueTaskList.length > 0 || openDeviations.length > 0 || pastDeadline
+    overdueTaskList.length > 0 ||
+    openDeviations.length > 0 ||
+    activeChecklists.length > 0 ||
+    pastDeadline
 
   const topHours = [...participantHours]
     .sort((a, b) => b.totalHours - a.totalHours)
@@ -241,7 +252,11 @@ export function ProjectOverviewTab({
               value={String(openDeviations.length)}
               highlight={openDeviations.length > 0}
             />
-            <OverviewStat label="Tidsplan" value={formatDaysRemaining(project.end_date)} />
+            <OverviewStat
+              label="KS sjekklister"
+              value={String(activeChecklists.length)}
+              highlight={activeChecklists.length > 0}
+            />
           </div>
 
           {flags.hasTimeforing && flags.isProjectAdmin && (
@@ -255,6 +270,10 @@ export function ProjectOverviewTab({
       {/* Quick actions */}
       <Card className="rounded-sm lg:col-span-12">
         <CardContent className="flex flex-wrap gap-2 px-4 py-3">
+          <Button size="sm" variant="outline" onClick={() => navigateToTab("ks")}>
+            <ClipboardCheck className="mr-2 h-4 w-4" />
+            KS sjekklister
+          </Button>
           <Button size="sm" variant="outline" asChild>
             <Link href={`/avvik/ny?projectId=${projectId}`}>
               <AlertTriangle className="mr-2 h-4 w-4" />
@@ -297,13 +316,42 @@ export function ProjectOverviewTab({
         <CardContent className="space-y-3 px-3 pb-3">
           {!hasAttentionItems ? (
             <p className="text-sm text-muted-foreground">
-              Alt i orden — ingen forfalte oppgaver eller åpne avvik.
+              Alt i orden — ingen forfalte oppgaver, åpne avvik eller ufullstendige sjekklister.
             </p>
           ) : (
             <>
               {pastDeadline && (
                 <div className="rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
                   Prosjektet har passert planlagt sluttdato uten å være fullført.
+                </div>
+              )}
+              {activeChecklists.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Ufullstendige sjekklister
+                  </p>
+                  <ul className="space-y-1">
+                    {activeChecklists.slice(0, 3).map((cl) => (
+                      <li key={cl.id}>
+                        <Link
+                          href={`/prosjekter/${projectId}/ks/${cl.id}`}
+                          className="flex w-full items-center justify-between rounded-sm border border-muted/60 px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted/40"
+                        >
+                          <span className="truncate font-medium">{cl.name}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {cl.progress.answered}/{cl.progress.total}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {ksOpenDeviations.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Åpne KS-avvik ({ksOpenDeviations.length})
+                  </p>
                 </div>
               )}
               {overdueTaskList.length > 0 && (

@@ -8,6 +8,8 @@ export const createDeviationSchema = z.object({
   title: z.string().min(3, "Tittel må være minst 3 tegn").max(200),
   description: z.string().min(5, "Beskriv avviket kort").max(3000),
   locationText: z.string().max(300).optional(),
+  checklistItemId: z.string().uuid().optional(),
+  source: z.enum(["manual", "checklist"]).optional(),
 })
 
 export const closeDeviationSchema = z.object({

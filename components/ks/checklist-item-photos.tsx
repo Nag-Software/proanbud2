@@ -1,0 +1,235 @@
+"use client"
+
+import * as React from "react"
+import { ImagePlus, Loader2, X } from "lucide-react"
+import { toast } from "sonner"
+
+import {
+  deleteChecklistItemPhotoAction,
+  getChecklistPhotoUrlAction,
+  uploadChecklistItemPhotoAction,
+} from "@/app/ks/actions"
+import { PhotoAnnotatorDialog } from "@/components/ks/photo-annotator"
+import { Button } from "@/components/ui/button"
+import type { ProjectChecklistItem } from "@/lib/ks/types"
+
+type Props = {
+  item: ProjectChecklistItem
+  projectId: string
+  checklistId: string
+  onUpdated: () => void
+}
+
+async function compressImage(file: File, maxSizeBytes = 2 * 1024 * 1024): Promise<File> {
+  if (file.size <= maxSizeBytes) return file
+
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const canvas = document.createElement("canvas")
+      let { width, height } = img
+      const maxDim = 1920
+
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = (height / width) * maxDim
+          width = maxDim
+        } else {
+          width = (width / height) * maxDim
+          height = maxDim
+        }
+      }
+
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext("2d")
+      if (!ctx) {
+        resolve(file)
+        return
+      }
+
+      ctx.drawImage(img, 0, 0, width, height)
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file)
+            return
+          }
+          resolve(new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" }))
+        },
+        "image/jpeg",
+        0.85
+      )
+    }
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error("Kunne ikke lese bilde"))
+    }
+
+    img.src = url
+  })
+}
+
+function PhotoThumb({
+  attachment,
+  onDelete,
+  onAnnotate,
+}: {
+  attachment: NonNullable<ProjectChecklistItem["attachments"]>[number]
+  onDelete: () => void
+  onAnnotate: () => void
+}) {
+  const [url, setUrl] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    void getChecklistPhotoUrlAction(attachment.storage_path).then(setUrl)
+  }, [attachment.storage_path])
+
+  return (
+    <div className="relative aspect-square overflow-hidden rounded-lg border">
+      {url ? (
+        <button type="button" onClick={onAnnotate} className="size-full">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url} alt={attachment.file_name} className="size-full object-cover" />
+        </button>
+      ) : (
+        <div className="flex size-full items-center justify-center bg-muted text-xs">Laster...</div>
+      )}
+      <button
+        type="button"
+        onClick={onDelete}
+        className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-full bg-background/90 shadow"
+        aria-label="Slett bilde"
+      >
+        <X className="size-3.5" />
+      </button>
+    </div>
+  )
+}
+
+export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }: Props) {
+  const [uploading, setUploading] = React.useState(false)
+  const [annotateFile, setAnnotateFile] = React.useState<File | null>(null)
+  const [annotateOpen, setAnnotateOpen] = React.useState(false)
+  const cameraRef = React.useRef<HTMLInputElement>(null)
+  const galleryRef = React.useRef<HTMLInputElement>(null)
+
+  async function handleFiles(files: FileList | null) {
+    if (!files?.length) return
+    setUploading(true)
+    try {
+      for (const raw of Array.from(files)) {
+        const file = await compressImage(raw)
+        setAnnotateFile(file)
+        setAnnotateOpen(true)
+        break
+      }
+    } catch {
+      toast.error("Kunne ikke behandle bilde")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleAnnotatedUpload(file: File, annotationJson: string) {
+    const formData = new FormData()
+    formData.append("itemId", item.id)
+    formData.append("file", file)
+    formData.append("annotationJson", annotationJson)
+    await uploadChecklistItemPhotoAction(formData)
+    toast.success("Bilde lagret")
+    onUpdated()
+  }
+
+  async function handleDelete(attachmentId: string) {
+    try {
+      await deleteChecklistItemPhotoAction(attachmentId)
+      toast.success("Bilde slettet")
+      onUpdated()
+    } catch {
+      toast.error("Kunne ikke slette bilde")
+    }
+  }
+
+  const attachments = item.attachments || []
+
+  return (
+    <div className="space-y-2">
+      {attachments.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {attachments.map((att) => (
+            <PhotoThumb
+              key={att.id}
+              attachment={att}
+              onDelete={() => void handleDelete(att.id)}
+              onAnnotate={() => {
+                void getChecklistPhotoUrlAction(att.storage_path).then(async (url) => {
+                  if (!url) return
+                  const res = await fetch(url)
+                  const blob = await res.blob()
+                  setAnnotateFile(new File([blob], att.file_name, { type: blob.type }))
+                  setAnnotateOpen(true)
+                })
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => void handleFiles(e.target.files)}
+        />
+        <input
+          ref={galleryRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => void handleFiles(e.target.files)}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 flex-1"
+          disabled={uploading}
+          onClick={() => cameraRef.current?.click()}
+        >
+          {uploading ? (
+            <Loader2 className="mr-2 size-4 animate-spin" />
+          ) : (
+            <ImagePlus className="mr-2 size-4" />
+          )}
+          Ta bilde
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 flex-1"
+          disabled={uploading}
+          onClick={() => galleryRef.current?.click()}
+        >
+          Last opp
+        </Button>
+      </div>
+
+      <PhotoAnnotatorDialog
+        open={annotateOpen}
+        onOpenChange={setAnnotateOpen}
+        file={annotateFile}
+        onSave={handleAnnotatedUpload}
+      />
+    </div>
+  )
+}

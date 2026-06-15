@@ -33,11 +33,16 @@ export function NewDeviationForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const preselectedProject = searchParams.get("projectId") || ""
+  const preselectedChecklistItemId = searchParams.get("checklistItemId") || ""
+  const preselectedType = searchParams.get("type") as DeviationType | null
+  const preselectedTitle = searchParams.get("title") || ""
 
   const [projects, setProjects] = React.useState<Array<{ id: string; name: string }>>([])
   const [projectId, setProjectId] = React.useState(preselectedProject)
-  const [type, setType] = React.useState<DeviationType>("ruh")
-  const [title, setTitle] = React.useState("")
+  const [type, setType] = React.useState<DeviationType>(
+    preselectedType && DEVIATION_TYPES.includes(preselectedType) ? preselectedType : "ruh"
+  )
+  const [title, setTitle] = React.useState(preselectedTitle)
   const [description, setDescription] = React.useState("")
   const [locationText, setLocationText] = React.useState("")
   const [photos, setPhotos] = React.useState<File[]>([])
@@ -65,6 +70,8 @@ export function NewDeviationForm() {
         title,
         description,
         locationText,
+        checklistItemId: preselectedChecklistItemId || undefined,
+        source: preselectedChecklistItemId ? "checklist" : "manual",
       })
 
       for (const photo of photos) {
@@ -84,10 +91,14 @@ export function NewDeviationForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto max-w-xl space-y-5 pb-24">
+    <form onSubmit={handleSubmit} className="max-w-xl space-y-5 pb-24">
       <div className="space-y-2">
         <Label>Prosjekt</Label>
-        <Select value={projectId} onValueChange={setProjectId}>
+        <Select
+          value={projectId}
+          onValueChange={setProjectId}
+          disabled={Boolean(preselectedProject)}
+        >
           <SelectTrigger>
             <SelectValue placeholder="Velg prosjekt" />
           </SelectTrigger>

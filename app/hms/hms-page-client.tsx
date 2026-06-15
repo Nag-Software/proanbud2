@@ -36,7 +36,7 @@ export function HmsPageClient({ isAdmin, stats, openDeviations, handbookContent 
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <PageHeader
         title="HMS"
         subtitle="Oversikt og enkel HMS-håndbok for bedriften"

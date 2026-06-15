@@ -15,7 +15,12 @@ import { canManageProjects } from "@/lib/roles"
 const DEVIATION_SELECT = `
   *,
   projects(id, name),
-  reporter:users!reported_by(id, full_name, email)
+  reporter:users!reported_by(id, full_name, email),
+  checklist_item:project_checklist_items(
+    id,
+    title,
+    checklist:project_checklists(id, name, project_id)
+  )
 `
 
 function logSupabaseError(context: string, error: { message?: string; code?: string }) {
@@ -75,18 +80,30 @@ export async function getDeviationsAction(filters?: {
   projectId?: string
   status?: string
   type?: string
+  source?: string
+  search?: string
+  dateFrom?: string
+  dateTo?: string
+  sortBy?: "created_at" | "title" | "status" | "type"
+  sortDir?: "asc" | "desc"
 }) {
   const { supabase, companyId } = await getAuthContext()
+
+  const sortBy = filters?.sortBy || "created_at"
+  const ascending = filters?.sortDir === "asc"
 
   let query = supabase
     .from("deviations")
     .select(DEVIATION_SELECT)
     .eq("company_id", companyId)
-    .order("created_at", { ascending: false })
+    .order(sortBy, { ascending })
 
   if (filters?.projectId) query = query.eq("project_id", filters.projectId)
   if (filters?.status) query = query.eq("status", filters.status)
   if (filters?.type) query = query.eq("type", filters.type)
+  if (filters?.source) query = query.eq("source", filters.source)
+  if (filters?.dateFrom) query = query.gte("created_at", filters.dateFrom)
+  if (filters?.dateTo) query = query.lte("created_at", filters.dateTo)
 
   let { data, error } = await query
 
@@ -113,7 +130,19 @@ export async function getDeviationsAction(filters?: {
     throw new Error(error.message || "Kunne ikke hente avvik")
   }
 
-  return (data || []) as DeviationWithRelations[]
+  let results = (data || []) as DeviationWithRelations[]
+
+  if (filters?.search) {
+    const q = filters.search.toLowerCase()
+    results = results.filter(
+      (d) =>
+        d.title.toLowerCase().includes(q) ||
+        d.description.toLowerCase().includes(q) ||
+        d.reference_number.toLowerCase().includes(q)
+    )
+  }
+
+  return results
 }
 
 export async function getDeviationByIdAction(id: string) {
@@ -218,6 +247,8 @@ export async function createDeviationAction(input: CreateDeviationInput) {
       description: parsed.description,
       location_text: parsed.locationText || null,
       reported_by: user.id,
+      checklist_item_id: parsed.checklistItemId || null,
+      source: parsed.source || "manual",
     })
     .select("id, reference_number")
     .single()
@@ -225,6 +256,13 @@ export async function createDeviationAction(input: CreateDeviationInput) {
   if (error || !data) {
     logSupabaseError("createDeviationAction:", error || {})
     throw new Error("Kunne ikke opprette avvik")
+  }
+
+  if (parsed.checklistItemId) {
+    await supabase
+      .from("project_checklist_items")
+      .update({ deviation_id: data.id })
+      .eq("id", parsed.checklistItemId)
   }
 
   revalidatePath("/avvik")

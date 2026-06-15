@@ -5,6 +5,7 @@ import { Camera, ImagePlus, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { DEVIATION_PHOTO_MAX_WIDTH } from "@/lib/hms/constants"
 
 type PhotoPreview = {
   id: string
@@ -16,31 +17,37 @@ type Props = {
   onPhotosChange: (files: File[]) => void
   maxPhotos?: number
   disabled?: boolean
+  /** Maks bredde i px før opplasting (standard: avvik-grense) */
+  maxImageWidth?: number
 }
 
-async function compressImage(file: File, maxSizeBytes = 2 * 1024 * 1024): Promise<File> {
-  if (file.size <= maxSizeBytes) return file
-
+async function prepareImage(
+  file: File,
+  maxWidth: number,
+  maxSizeBytes = 2 * 1024 * 1024
+): Promise<File> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
 
     img.onload = () => {
       URL.revokeObjectURL(url)
-      const canvas = document.createElement("canvas")
       let { width, height } = img
-      const maxDim = 1920
 
-      if (width > maxDim || height > maxDim) {
-        if (width > height) {
-          height = (height / width) * maxDim
-          width = maxDim
-        } else {
-          width = (width / height) * maxDim
-          height = maxDim
-        }
+      if (width > maxWidth) {
+        height = Math.round((height / width) * maxWidth)
+        width = maxWidth
       }
 
+      const needsResize = width !== img.width || height !== img.height
+      const needsCompress = file.size > maxSizeBytes
+
+      if (!needsResize && !needsCompress && file.type === "image/jpeg") {
+        resolve(file)
+        return
+      }
+
+      const canvas = document.createElement("canvas")
       canvas.width = width
       canvas.height = height
       const ctx = canvas.getContext("2d")
@@ -50,17 +57,28 @@ async function compressImage(file: File, maxSizeBytes = 2 * 1024 * 1024): Promis
       }
 
       ctx.drawImage(img, 0, 0, width, height)
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            resolve(file)
-            return
-          }
-          resolve(new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" }))
-        },
-        "image/jpeg",
-        0.85
-      )
+
+      const tryQuality = (quality: number) => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              resolve(file)
+              return
+            }
+            if (blob.size > maxSizeBytes && quality > 0.5) {
+              tryQuality(quality - 0.15)
+              return
+            }
+            resolve(
+              new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" })
+            )
+          },
+          "image/jpeg",
+          quality
+        )
+      }
+
+      tryQuality(0.85)
     }
 
     img.onerror = () => {
@@ -72,15 +90,25 @@ async function compressImage(file: File, maxSizeBytes = 2 * 1024 * 1024): Promis
   })
 }
 
-export function PhotoCaptureField({ onPhotosChange, maxPhotos = 5, disabled }: Props) {
+export function PhotoCaptureField({
+  onPhotosChange,
+  maxPhotos = 5,
+  disabled,
+  maxImageWidth = DEVIATION_PHOTO_MAX_WIDTH,
+}: Props) {
   const [photos, setPhotos] = React.useState<PhotoPreview[]>([])
   const [compressing, setCompressing] = React.useState(false)
   const cameraInputRef = React.useRef<HTMLInputElement>(null)
   const galleryInputRef = React.useRef<HTMLInputElement>(null)
+  const onPhotosChangeRef = React.useRef(onPhotosChange)
 
   React.useEffect(() => {
-    onPhotosChange(photos.map((p) => p.file))
-  }, [photos, onPhotosChange])
+    onPhotosChangeRef.current = onPhotosChange
+  }, [onPhotosChange])
+
+  React.useEffect(() => {
+    onPhotosChangeRef.current(photos.map((p) => p.file))
+  }, [photos])
 
   React.useEffect(() => {
     return () => {
@@ -105,11 +133,11 @@ export function PhotoCaptureField({ onPhotosChange, maxPhotos = 5, disabled }: P
 
       for (const file of files) {
         if (!file.type.startsWith("image/")) continue
-        const compressed = await compressImage(file)
+        const prepared = await prepareImage(file, maxImageWidth)
         newPhotos.push({
           id: `${Date.now()}-${Math.random()}`,
-          file: compressed,
-          previewUrl: URL.createObjectURL(compressed),
+          file: prepared,
+          previewUrl: URL.createObjectURL(prepared),
         })
       }
 
@@ -200,7 +228,7 @@ export function PhotoCaptureField({ onPhotosChange, maxPhotos = 5, disabled }: P
       )}
 
       <p className="text-xs text-muted-foreground">
-        {photos.length}/{maxPhotos} bilder. Bilder komprimeres automatisk.
+        {photos.length}/{maxPhotos} bilder · maks {maxImageWidth}px bredde
       </p>
     </div>
   )

@@ -24,3 +24,6 @@ export const DEVIATION_TYPE_HINTS: Record<DeviationType, string> = {
   ks: "Feil utførelse eller kvalitetsavvik",
   forbedring: "Forslag til forbedring",
 }
+
+/** Maks bredde for avviksbilder ved opplasting (klient-side resize) */
+export const DEVIATION_PHOTO_MAX_WIDTH = 1200

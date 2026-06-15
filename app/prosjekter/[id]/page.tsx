@@ -14,11 +14,13 @@ import { companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/serv
 import { MODULE_PRICING } from "@/lib/billing/plans"
 import { getProjectParticipantHoursAction } from "@/app/timeforing/actions"
 import { getDeviationsAction } from "@/app/avvik/actions"
+import { getProjectChecklistsAction } from "@/app/ks/actions"
 import { getProjectCustomer } from "@/app/prosjekter/project-utils"
 
 import OppgaverTab from "./oppgaver-tab"
 import DeltakereTab from "./deltakere-tab"
 import AvvikTab from "./avvik-tab"
+import KsTab from "./ks-tab"
 import { EditProjectDialog } from "./edit-project-dialog"
 import ProjectDocumentsTab from "./project-documents-tab"
 import TilbudTab from "./tilbud-tab"
@@ -108,6 +110,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     hasTimeforing && isProjectAdmin ? await getProjectParticipantHoursAction(resolvedParams.id) : []
 
   const projectDeviations = await getDeviationsAction({ projectId: resolvedParams.id })
+  const projectChecklists = await getProjectChecklistsAction(resolvedParams.id)
 
   const projectDeltakere = normalizedMembers.map((member) => {
     const memberUser = member.users
@@ -182,6 +185,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               { value: "oppgaver", label: "Oppgaver" },
               { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
               { value: "timeforing", label: "Timeføring" },
+              { value: "ks", label: "KS" },
               { value: "avvik", label: "Avvik" },
               { value: "deltakere", label: "Deltakere" },
             ]}
@@ -199,6 +203,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 customer={customer}
                 tasks={overviewTasks}
                 deviations={projectDeviations}
+                checklists={projectChecklists}
                 participants={projectDeltakere}
                 participantHours={participantHours}
                 offersSummary={{
@@ -252,6 +257,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   description="Registrer og følg arbeidstimer direkte på prosjektet."
                 />
               )}
+            </TabsContent>
+
+            <TabsContent value="ks">
+              <KsTab projectId={project.id} checklists={projectChecklists} />
             </TabsContent>
 
             <TabsContent value="avvik">

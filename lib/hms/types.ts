@@ -14,6 +14,8 @@ export interface Deviation {
   follow_up_notes: string | null
   closed_at: string | null
   closed_by: string | null
+  checklist_item_id: string | null
+  source: "manual" | "checklist"
   created_at: string
   updated_at: string
 }
@@ -34,6 +36,11 @@ export interface DeviationWithRelations extends Deviation {
   projects?: { id: string; name: string } | null
   reporter?: { id: string; full_name: string; email: string } | null
   attachments?: DeviationAttachment[]
+  checklist_item?: {
+    id: string
+    title: string
+    checklist?: { id: string; name: string; project_id: string } | null
+  } | null
 }
 
 export interface CompanyHms {

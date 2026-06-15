@@ -32,6 +32,7 @@ export function NavMain({
       title: string
       url: string
       hidden?: boolean
+      badge?: number
     }[]
   }[]
 }) {
@@ -83,6 +84,11 @@ export function NavMain({
                         <SidebarMenuSubButton asChild className="text-[15px]">
                           <a href={subItem.url}>
                             <span>{subItem.title}</span>
+                            {subItem.badge != null && subItem.badge > 0 && (
+                              <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground tabular-nums">
+                                {subItem.badge > 99 ? "99+" : subItem.badge}
+                              </span>
+                            )}
                           </a>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
