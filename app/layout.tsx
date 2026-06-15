@@ -5,6 +5,7 @@ import { AppShellLayout } from "@/components/app-shell-layout"
 import { BillingSummaryProvider } from "@/components/billing/billing-summary-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import AuthProvider from "@/components/auth-provider"
+import { Analytics } from "@vercel/analytics/next"
 
 const satoshi = localFont({
   variable: "--font-satoshi",
@@ -44,6 +45,7 @@ export default function RootLayout({
             </BillingSummaryProvider>
           </AuthProvider>
         </TooltipProvider>
+        <Analytics />
       </body>
     </html>
   );
