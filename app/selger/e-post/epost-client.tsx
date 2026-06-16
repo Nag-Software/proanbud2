@@ -1,7 +1,7 @@
 "use client"
 
 import { useSearchParams } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { SelgerPageShell } from "@/components/selger/selger-page-shell"
 import { Button } from "@/components/ui/button"
@@ -16,7 +16,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { SELLER_EMAIL_TEMPLATES } from "@/lib/selger/email-templates"
+import {
+  getSellerEmailTemplate,
+  renderSellerEmailTemplate,
+  SELLER_EMAIL_TEMPLATES,
+} from "@/lib/selger/email-templates"
+
+const INVITATION_TEMPLATE_IDS = new Set(["invitasjon", "invitasjon-paminnelse"])
 
 export function EpostClient() {
   const searchParams = useSearchParams()
@@ -28,14 +34,30 @@ export function EpostClient() {
   const [recipientName, setRecipientName] = useState("")
   const [companyId, setCompanyId] = useState("")
   const [customMessage, setCustomMessage] = useState("")
+  const [invitationUrl, setInvitationUrl] = useState("")
+
+  const selectedTemplate = getSellerEmailTemplate(templateId)
+  const showInvitationUrlField = INVITATION_TEMPLATE_IDS.has(templateId)
+
+  const preview = useMemo(
+    () =>
+      renderSellerEmailTemplate(templateId, {
+        recipientName: recipientName.trim() || "Ola",
+        customMessage: customMessage || null,
+        invitationUrl: invitationUrl || null,
+      }),
+    [templateId, recipientName, customMessage, invitationUrl]
+  )
 
   useEffect(() => {
     const email = searchParams.get("email")
     const company = searchParams.get("company")
     const name = searchParams.get("name")
+    const inviteUrl = searchParams.get("invite_url")
     if (email) setRecipientEmail(email)
     if (company) setCompanyId(company)
     if (name) setRecipientName(name)
+    if (inviteUrl) setInvitationUrl(inviteUrl)
   }, [searchParams])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -54,6 +76,7 @@ export function EpostClient() {
           recipient_name: recipientName,
           company_id: companyId || null,
           custom_message: customMessage || null,
+          invitation_url: invitationUrl || null,
         }),
       })
 
@@ -71,79 +94,130 @@ export function EpostClient() {
 
   return (
     <SelgerPageShell segments={["Selger", "E-post"]}>
-      <div className="mx-auto max-w-xl space-y-6">
+      <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Send e-post</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Velg mal og send raskt til kunde.
+            Velg mal, tilpass meldingen og send til kunde.
           </p>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Hurtigutsendelse</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Mal</Label>
-                <Select value={templateId} onValueChange={setTemplateId}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SELLER_EMAIL_TEMPLATES.map((template) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Hurtigutsendelse</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Mal</Label>
+                  <Select value={templateId} onValueChange={setTemplateId}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SELLER_EMAIL_TEMPLATES.map((template) => (
+                        <SelectItem key={template.id} value={template.id}>
+                          {template.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedTemplate && (
+                    <div className="space-y-1 pt-1">
+                      <p className="text-xs text-muted-foreground">{selectedTemplate.description}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Emne: <span className="text-foreground">{selectedTemplate.subject}</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email">Til</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={recipientEmail}
-                  onChange={(event) => setRecipientEmail(event.target.value)}
-                  required
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Til</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={recipientEmail}
+                    onChange={(event) => setRecipientEmail(event.target.value)}
+                    required
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="name">Navn</Label>
-                <Input
-                  id="name"
-                  value={recipientName}
-                  onChange={(event) => setRecipientName(event.target.value)}
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="name">Navn</Label>
+                  <Input
+                    id="name"
+                    value={recipientName}
+                    onChange={(event) => setRecipientName(event.target.value)}
+                    placeholder="Brukes i hilsen"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="message">Ekstra melding (valgfritt)</Label>
-                <Textarea
-                  id="message"
-                  value={customMessage}
-                  onChange={(event) => setCustomMessage(event.target.value)}
-                  rows={3}
-                />
-              </div>
+                {showInvitationUrlField && (
+                  <div className="space-y-2">
+                    <Label htmlFor="invitation-url">Invitasjonslenke</Label>
+                    <Input
+                      id="invitation-url"
+                      type="url"
+                      value={invitationUrl}
+                      onChange={(event) => setInvitationUrl(event.target.value)}
+                      placeholder="https://app.proanbud.no/signup?invite=..."
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Lim inn lenken fra invitasjonssystemet slik at mottakeren kan registrere seg direkte.
+                    </p>
+                  </div>
+                )}
 
-              {companyId && (
-                <p className="text-xs text-muted-foreground">Koblet til firma-ID: {companyId}</p>
+                <div className="space-y-2">
+                  <Label htmlFor="message">Personlig melding (valgfritt)</Label>
+                  <Textarea
+                    id="message"
+                    value={customMessage}
+                    onChange={(event) => setCustomMessage(event.target.value)}
+                    rows={3}
+                    placeholder="Vises i egen boks i e-posten"
+                  />
+                </div>
+
+                {companyId && (
+                  <p className="text-xs text-muted-foreground">Koblet til firma-ID: {companyId}</p>
+                )}
+
+                {message && <p className="text-sm text-green-700">{message}</p>}
+                {error && <p className="text-sm text-destructive">{error}</p>}
+
+                <Button type="submit" disabled={loading} className="w-full">
+                  {loading ? "Sender..." : "Send e-post"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle className="text-base">Forhåndsvisning</CardTitle>
+              {preview && (
+                <p className="text-xs text-muted-foreground">
+                  Emne: <span className="text-foreground">{preview.subject}</span>
+                </p>
               )}
-
-              {message && <p className="text-sm text-green-700">{message}</p>}
-              {error && <p className="text-sm text-destructive">{error}</p>}
-
-              <Button type="submit" disabled={loading} className="w-full">
-                {loading ? "Sender..." : "Send e-post"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="p-0 min-h-[800px]">
+              {preview ? (
+                <iframe
+                  title="E-post forhåndsvisning"
+                  srcDoc={preview.html}
+                  className="min-h-[800px] w-full border-0 bg-[#f7f7f7]"
+                  sandbox=""
+                />
+              ) : (
+                <p className="px-6 pb-6 text-sm text-muted-foreground">Ingen forhåndsvisning tilgjengelig.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </SelgerPageShell>
   )

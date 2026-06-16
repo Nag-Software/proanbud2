@@ -20,6 +20,7 @@ export async function POST(request: Request) {
       company_id,
       company_name,
       custom_message,
+      invitation_url,
     } = await request.json()
 
     if (!template_id?.trim()) {
@@ -51,6 +52,7 @@ export async function POST(request: Request) {
       recipientName: recipient_name?.trim() || "der",
       companyName: resolvedCompanyName,
       customMessage: custom_message,
+      invitationUrl: invitation_url?.trim() || null,
     })
 
     if (!rendered) {
