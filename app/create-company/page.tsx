@@ -103,6 +103,12 @@ export default function CreateCompanyClient() {
   }
 
   const handleCreateCompany = async () => {
+    const normalizedPhone = phone.trim()
+    if (!normalizedPhone) {
+      setError("Telefonnummer er påkrevd.")
+      return
+    }
+
     setLoading(true)
     setError("")
 
@@ -117,7 +123,9 @@ export default function CreateCompanyClient() {
         body: JSON.stringify({
           name: companyName,
           org_number: orgNumber,
-          full_name: user?.user_metadata?.full_name
+          full_name: user?.user_metadata?.full_name,
+          phone: normalizedPhone,
+          website: website.trim() || null,
         })
       })
 
@@ -271,10 +279,13 @@ export default function CreateCompanyClient() {
             {/* Trinn 2 */}
             <StepperContent value={2} className="space-y-4">
               <div className="space-y-2 pt-4">
-                <Label>Telefonnummer</Label>
-                <Input 
-                  value={phone} 
-                  onChange={(e) => setPhone(e.target.value)} 
+                <Label htmlFor="phone">Telefonnummer</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  required
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   placeholder="+47..."
                 />
               </div>
@@ -289,7 +300,7 @@ export default function CreateCompanyClient() {
               <div className="flex justify-between pt-4">
                 <Button variant="outline" onClick={() => setActiveStep(1)}>
                   <ArrowLeft className="mr-2 size-4" />Tilbake</Button>
-                <Button onClick={() => setActiveStep(3)}>
+                <Button onClick={() => setActiveStep(3)} disabled={!phone.trim()}>
                   Neste
                   <ArrowRight className="ml-2 size-4" />
                 </Button>

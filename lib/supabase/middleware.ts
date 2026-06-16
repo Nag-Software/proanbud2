@@ -10,6 +10,7 @@ import { isActiveSubscriptionStatus } from '@/lib/billing/plans'
 import { isInvitedCompanyMember } from '@/lib/roles'
 import { LOGIN_PATH } from '@/lib/constants'
 import { isPlatformAdminEmail, isSjefenApiRoute, isSjefenRoute } from '@/lib/auth/platform-admin'
+import { canAccessSelger, isSelgerApiRoute, isSelgerRoute } from '@/lib/auth/platform-seller'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -93,6 +94,33 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (!user && isSjefenApiRoute(pathname)) {
+    return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+  }
+
+  if (user && isSelgerRoute(pathname)) {
+    if (!canAccessSelger(user.email)) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/'
+      url.search = ''
+      const redirect = NextResponse.redirect(url)
+      supabaseResponse.cookies.getAll().forEach(({ name, value }) => {
+        redirect.cookies.set(name, value)
+      })
+      return redirect
+    }
+
+    return supabaseResponse
+  }
+
+  if (user && isSelgerApiRoute(pathname)) {
+    if (!canAccessSelger(user.email)) {
+      return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+    }
+
+    return supabaseResponse
+  }
+
+  if (!user && isSelgerApiRoute(pathname)) {
     return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
   }
 

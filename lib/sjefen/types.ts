@@ -33,6 +33,8 @@ export type SjefenOfferRow = {
   company_name: string
   customer_name: string | null
   project_name: string | null
+  public_slug?: string | null
+  recipient_email?: string | null
 }
 
 export type SjefenContractRow = {

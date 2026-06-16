@@ -11,9 +11,14 @@ export async function POST(request: Request) {
     const user = userData?.user
     if (!user) return NextResponse.json({ error: 'Du er ikke logget inn.' }, { status: 401 })
 
-    const { name, org_number, full_name } = await request.json()
+    const { name, org_number, full_name, phone, website } = await request.json()
 
     if (!name) return NextResponse.json({ error: 'Navn på bedrift mangler.' }, { status: 400 })
+
+    const normalizedPhone = String(phone ?? '').trim()
+    if (!normalizedPhone) {
+      return NextResponse.json({ error: 'Telefonnummer er påkrevd.' }, { status: 400 })
+    }
 
     // Sjekker om nøkkel eksisterer FOR å avverge tomromsfeil:
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -32,6 +37,9 @@ export async function POST(request: Request) {
       .insert({
         name,
         org_number: org_number || null,
+        phone: normalizedPhone,
+        website: website?.trim() || null,
+        email: user.email || null,
         created_at: new Date().toISOString()
       })
       .select()

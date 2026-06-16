@@ -15,12 +15,14 @@ import {
 } from "@/components/ui/sidebar"
 import { isPublicAuthRoute } from "@/lib/auth/routes"
 import { isSjefenRoute } from "@/lib/auth/platform-admin"
+import { isSelgerRoute } from "@/lib/auth/platform-seller"
 import { cn } from "@/lib/utils"
 
 function shouldUsePersistentShell(pathname: string) {
   if (isPublicAuthRoute(pathname)) return false
   if (pathname.startsWith("/onboarding")) return false
   if (isSjefenRoute(pathname)) return false
+  if (isSelgerRoute(pathname)) return false
   return true
 }
 
