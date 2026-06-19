@@ -28,7 +28,7 @@ export function buildOutreachEmailHtml(args: {
   const ctaLabel = args.ctaLabel || "Prøv Proanbud gratis i 14 dager"
   const ctaBlock = args.ctaUrl
     ? `<div style="margin:22px 0 8px;">
-         <a href="${escapeHtml(args.ctaUrl)}" style="display:inline-block;background:#1c1917;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 22px;border-radius:8px;">${escapeHtml(ctaLabel)}</a>
+         <a href="${escapeHtml(args.ctaUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#1c1917;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 22px;border-radius:8px;">${escapeHtml(ctaLabel)}</a>
        </div>`
     : ""
 

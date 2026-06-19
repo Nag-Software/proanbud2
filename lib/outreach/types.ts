@@ -45,6 +45,25 @@ export type ProspectRow = {
   created_at: string
 }
 
+/** Norwegian counties (fylker) with their 2-digit kommunenummer prefix (2024 structure). */
+export const NORWEGIAN_FYLKER = [
+  { code: "03", name: "Oslo" },
+  { code: "11", name: "Rogaland" },
+  { code: "15", name: "Møre og Romsdal" },
+  { code: "18", name: "Nordland" },
+  { code: "31", name: "Østfold" },
+  { code: "32", name: "Akershus" },
+  { code: "33", name: "Buskerud" },
+  { code: "34", name: "Innlandet" },
+  { code: "39", name: "Vestfold" },
+  { code: "40", name: "Telemark" },
+  { code: "42", name: "Agder" },
+  { code: "46", name: "Vestland" },
+  { code: "50", name: "Trøndelag" },
+  { code: "55", name: "Troms" },
+  { code: "56", name: "Finnmark" },
+] as const
+
 /** Construction / civil-engineering NACE prefixes (bygg og anlegg). */
 export const CONSTRUCTION_NACE = [
   { code: "41", label: "41 — Oppføring av bygninger" },

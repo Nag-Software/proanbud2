@@ -141,7 +141,7 @@ export function buildSellerEmailHtml(input: SellerEmailHtmlInput) {
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 0;">
             <tr>
               <td>
-                <a href="${escapeHtml(input.ctaUrl)}" style="display:inline-block;background:#151515;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:13px 24px;border-radius:8px;">
+                <a href="${escapeHtml(input.ctaUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#151515;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:13px 24px;border-radius:8px;">
                   ${escapeHtml(input.ctaLabel)}
                 </a>
               </td>

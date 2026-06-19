@@ -11,6 +11,7 @@ import {
   InboxIcon,
   LayoutDashboardIcon,
   NewspaperIcon,
+  RadarIcon,
   ReceiptIcon,
   ScrollTextIcon,
   ShieldCheckIcon,
@@ -47,6 +48,11 @@ const navItems = [
     title: "Oversikt",
     url: "/sjefen",
     icon: <LayoutDashboardIcon className="size-4" />,
+  },
+  {
+    title: "Analyse",
+    url: "/sjefen/analyse",
+    icon: <RadarIcon className="size-4" />,
   },
   {
     title: "Firmaer",

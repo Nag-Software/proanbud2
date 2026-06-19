@@ -6,6 +6,7 @@ import { type ReactNode } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppShellProvider, useAppShell } from "@/components/app-shell-context"
 import { MobileBottomNav } from "@/components/mobile-bottom-nav"
+import { PresenceHeartbeat } from "@/components/presence-heartbeat"
 import { TrialBanner } from "@/components/billing/trial-banner"
 import { ShellBreadcrumb } from "@/components/shell-breadcrumb"
 import { Separator } from "@/components/ui/separator"
@@ -35,6 +36,7 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
 
   return (
     <SidebarProvider>
+      <PresenceHeartbeat />
       <AppSidebar />
       <SidebarInset className="h-svh min-h-0 overflow-hidden">
         <TrialBanner />

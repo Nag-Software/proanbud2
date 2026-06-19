@@ -1,13 +1,19 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Download, Loader2, Phone, Search, Sparkles, Wand2, Zap } from "lucide-react"
+import { ChevronDown, Download, Loader2, Phone, Search, Sparkles, Wand2, Zap } from "lucide-react"
 import { toast } from "sonner"
 
 import { SelgerPageShell } from "@/components/selger/selger-page-shell"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -25,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import {
   Table,
   TableBody,
@@ -35,6 +42,7 @@ import {
 } from "@/components/ui/table"
 import {
   CONSTRUCTION_NACE,
+  NORWEGIAN_FYLKER,
   PROSPECT_STATUSES,
   PROSPECT_STATUS_LABELS,
   type ProspectRow,
@@ -63,9 +71,10 @@ export function LeadsClient() {
 
   // Import form
   const [nace, setNace] = useState<Record<string, boolean>>({ "41": true, "42": true, "43": true })
-  const [kommuneNumber, setKommuneNumber] = useState("")
+  const [selectedFylker, setSelectedFylker] = useState<string[]>([])
   const [maxEmployees, setMaxEmployees] = useState("")
   const [importCount, setImportCount] = useState("100")
+  const [onlyWithContact, setOnlyWithContact] = useState(false)
   const [importing, setImporting] = useState(false)
 
   const loadProspects = useCallback(async () => {
@@ -99,10 +108,6 @@ export function LeadsClient() {
       toast.error("Velg minst én bransje (NACE).")
       return
     }
-    if (kommuneNumber && kommuneNumber.length !== 4) {
-      toast.error("Kommunenummer må være 4 siffer (f.eks. 3801).")
-      return
-    }
     const maxEmp = Number(maxEmployees)
     if (maxEmployees.trim() && Number.isFinite(maxEmp) && maxEmp >= 1 && maxEmp <= 4) {
       toast.error("Brønnøysund tillater ikke 1–4 ansatte (personvern). Bruk 5 eller mer.")
@@ -115,9 +120,10 @@ export function LeadsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           naeringskoder,
-          kommunenummer: kommuneNumber || undefined,
+          fylker: selectedFylker.length > 0 ? selectedFylker : undefined,
           tilAntallAnsatte: maxEmployees.trim() && Number.isFinite(maxEmp) ? maxEmp : undefined,
           count: Number(importCount),
+          onlyWithContact,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -258,17 +264,36 @@ export function LeadsClient() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1.5">
-                <Label htmlFor="kommune" className="text-xs text-muted-foreground">
-                  Kommunenummer (valgfritt)
-                </Label>
-                <Input
-                  id="kommune"
-                  inputMode="numeric"
-                  maxLength={4}
-                  placeholder="f.eks. 3801"
-                  value={kommuneNumber}
-                  onChange={(e) => setKommuneNumber(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                />
+                <Label className="text-xs text-muted-foreground">Fylke (valgfritt)</Label>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full justify-between font-normal">
+                      <span className="truncate">
+                        {selectedFylker.length === 0
+                          ? "Alle fylker"
+                          : selectedFylker.length === 1
+                            ? NORWEGIAN_FYLKER.find((f) => f.code === selectedFylker[0])?.name
+                            : `${selectedFylker.length} fylker valgt`}
+                      </span>
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56">
+                    {NORWEGIAN_FYLKER.map((fylke) => (
+                      <DropdownMenuCheckboxItem
+                        key={fylke.code}
+                        checked={selectedFylker.includes(fylke.code)}
+                        onCheckedChange={(checked) =>
+                          setSelectedFylker((prev) =>
+                            checked ? [...prev, fylke.code] : prev.filter((c) => c !== fylke.code)
+                          )
+                        }
+                      >
+                        {fylke.name}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Antall firmaer</Label>
@@ -306,6 +331,16 @@ export function LeadsClient() {
                   Importer
                 </Button>
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="only-with-contact"
+                checked={onlyWithContact}
+                onCheckedChange={setOnlyWithContact}
+              />
+              <Label htmlFor="only-with-contact" className="cursor-pointer text-sm">
+                Hent kun firmaer med kontaktinfo (e-post/telefon) fra Brønnøysund
+              </Label>
             </div>
             <p className="text-xs text-muted-foreground">
               Henter inntil {importCount} firmaer per import. Eksisterende kunder filtreres automatisk bort.

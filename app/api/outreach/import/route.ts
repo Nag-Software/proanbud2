@@ -11,11 +11,14 @@ export const maxDuration = 60
 
 const importSchema = z.object({
   naeringskoder: z.array(z.string().trim().min(1)).min(1).max(10),
-  kommunenummer: z.string().trim().optional(),
+  /** 2-digit fylke prefix codes, e.g. ["03","32"]. Filters post-fetch. */
+  fylker: z.array(z.string().trim().min(2).max(2)).optional(),
   fraAntallAnsatte: z.number().int().min(0).optional(),
   tilAntallAnsatte: z.number().int().min(0).optional(),
   // How many companies to import this run.
   count: z.number().int().min(1).max(2000).optional(),
+  // Only import companies that have email/phone registered in Brønnøysund.
+  onlyWithContact: z.boolean().optional(),
 })
 
 export async function POST(request: Request) {
@@ -29,18 +32,15 @@ export async function POST(request: Request) {
 
   const { naeringskoder, fraAntallAnsatte, tilAntallAnsatte } = parsed.data
   const count = parsed.data.count ?? 100
-  const maxPages = Math.min(Math.ceil(count / 100), 20)
-
-  // Brønnøysund requires kommunenummer to be exactly 4 digits. Extract digits so
-  // "3801 (Holmestrand)" is forgiven, and reject anything that isn't 4 digits.
-  let kommunenummer: string | undefined
-  if (parsed.data.kommunenummer?.trim()) {
-    const digits = parsed.data.kommunenummer.replace(/\D/g, "")
-    if (digits.length !== 4) {
-      return NextResponse.json({ error: "Kommunenummer må være 4 siffer (f.eks. 3801)." }, { status: 400 })
-    }
-    kommunenummer = digits
-  }
+  const onlyWithContact = parsed.data.onlyWithContact ?? false
+  const fylker = parsed.data.fylker?.length ? parsed.data.fylker : undefined
+  // Fetch more pages when filtering by fylke or contact-only, since both
+  // reduce density and we need enough raw results to reach `count` matches.
+  const maxPages = fylker
+    ? 20
+    : onlyWithContact
+      ? Math.min(20, Math.max(Math.ceil(count / 25), 2))
+      : Math.min(20, Math.ceil(count / 100))
 
   // Brønnøysund forbids filtering to 1–4 employees (privacy). Only 0 or 5+ allowed.
   const inForbiddenRange = (n?: number) => typeof n === "number" && n >= 1 && n <= 4
@@ -61,7 +61,6 @@ export async function POST(request: Request) {
     for (let page = 0; page < maxPages; page++) {
       const result = await searchBrregEnheter({
         naeringskoder,
-        kommunenummer,
         fraAntallAnsatte,
         tilAntallAnsatte,
         page,
@@ -70,9 +69,11 @@ export async function POST(request: Request) {
       fetched += result.enheter.length
       for (const enhet of result.enheter) {
         const row = mapEnhetToProspect(enhet)
-        if (!row) {
-          skipped += 1
-          continue
+        if (!row) { skipped += 1; continue }
+        if (onlyWithContact && !row.email && !row.phone) { skipped += 1; continue }
+        if (fylker) {
+          const knr = row.kommune_number
+          if (!knr || !fylker.some((f) => knr.startsWith(f))) { skipped += 1; continue }
         }
         mapped.set(row.org_number, row) // dedupe within batch by org_number
       }
@@ -149,7 +150,7 @@ export async function POST(request: Request) {
     targetType: "prospects",
     metadata: {
       naeringskoder,
-      kommunenummer: kommunenummer ?? null,
+      fylker: fylker ?? null,
       fetched,
       imported,
       duplicates,
