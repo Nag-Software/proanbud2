@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { AlertTriangle, Camera, ChevronDown, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -159,7 +160,7 @@ export function ChecklistItemRow({ item, projectId, checklistId, index, onUpdate
           <div className="flex flex-wrap gap-2">
             {item.deviation_id ? (
               <Button variant="outline" size="sm" asChild>
-                <a href={`/avvik/${item.deviation_id}`}>Se avvik</a>
+                <Link href={`/avvik/${item.deviation_id}`}>Se avvik</Link>
               </Button>
             ) : (
               <Button

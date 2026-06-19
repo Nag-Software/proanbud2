@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/server"
 import { TimeforingClient } from "./timeforing-client"
 
 export default async function Page() {
-  await checkRoleAccess(["admin", "manager", "worker"])
+  await checkRoleAccess(["admin", "manager"])
 
   const supabase = await createClient()
   const {

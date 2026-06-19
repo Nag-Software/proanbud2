@@ -12,7 +12,9 @@ import { checkRoleAccess } from "@/lib/auth-utils"
 export const dynamic = "force-dynamic"
 
 export default async function AvvikPage() {
-  await checkRoleAccess(["admin", "manager", "worker"])
+  // Company-wide deviation overview is part of HMS (managers/admins). Workers
+  // report and follow up deviations from within their project's Avvik tab.
+  await checkRoleAccess(["admin", "manager"])
 
   const [deviations, stats, projects] = await Promise.all([
     getDeviationsAction(),

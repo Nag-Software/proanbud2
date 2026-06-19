@@ -5,6 +5,9 @@ import { AppShellLayout } from "@/components/app-shell-layout"
 import { BillingSummaryProvider } from "@/components/billing/billing-summary-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import AuthProvider from "@/components/auth-provider"
+import { RoleProvider } from "@/components/role-provider"
+import { Toaster } from "@/components/ui/sonner"
+import { MockRoleBanner } from "@/components/dev/mock-role-banner"
 import { Analytics } from "@vercel/analytics/next"
 
 const satoshi = localFont({
@@ -40,11 +43,15 @@ export default function RootLayout({
       >
         <TooltipProvider>
           <AuthProvider>
-            <BillingSummaryProvider>
-              <AppShellLayout>{children}</AppShellLayout>
-            </BillingSummaryProvider>
+            <RoleProvider>
+              <BillingSummaryProvider>
+                <AppShellLayout>{children}</AppShellLayout>
+              </BillingSummaryProvider>
+            </RoleProvider>
           </AuthProvider>
         </TooltipProvider>
+        <Toaster position="top-right" richColors closeButton />
+        <MockRoleBanner />
         <Analytics />
       </body>
     </html>

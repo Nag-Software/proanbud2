@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
-import type { BillingInterval, PlanKey } from "@/lib/billing/plans"
+import { MODULE_CATALOG, type BillingInterval, type ModuleKey, type PlanKey } from "@/lib/billing/plans"
 
 type BillingSummary = {
   has_billing: boolean
@@ -59,7 +59,7 @@ export function BillingPageClient() {
   const [summary, setSummary] = useState<BillingSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [timeforingEnabled, setTimeforingEnabled] = useState(false)
+  const [enabledModules, setEnabledModules] = useState<Set<string>>(new Set())
 
   const loadSummary = useCallback(async () => {
     setLoading(true)
@@ -68,7 +68,7 @@ export function BillingPageClient() {
       if (!res.ok) throw new Error("Kunne ikke hente abonnement")
       const data = (await res.json()) as BillingSummary
       setSummary(data)
-      setTimeforingEnabled(data.modules.some((m) => m.module_key === "timeforing"))
+      setEnabledModules(new Set(data.modules.map((m) => m.module_key)))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Noe gikk galt")
     } finally {
@@ -133,22 +133,34 @@ export function BillingPageClient() {
     }
   }
 
-  async function toggleTimeforing(enabled: boolean) {
-    setActionLoading("timeforing")
+  async function toggleModule(moduleKey: ModuleKey, label: string, enabled: boolean) {
+    setActionLoading(`module:${moduleKey}`)
+    // Optimistic update
+    setEnabledModules((prev) => {
+      const next = new Set(prev)
+      if (enabled) next.add(moduleKey)
+      else next.delete(moduleKey)
+      return next
+    })
     try {
       const res = await fetch("/api/stripe/modules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ moduleKey: "timeforing", enabled }),
+        body: JSON.stringify({ moduleKey, enabled }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Kunne ikke oppdatere modul")
-      setTimeforingEnabled(enabled)
-      toast.success(enabled ? "Timeføring aktivert" : "Timeføring deaktivert")
+      toast.success(enabled ? `${label} aktivert` : `${label} deaktivert`)
       await loadSummary()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Noe gikk galt")
-      setTimeforingEnabled(!enabled)
+      // Revert optimistic update
+      setEnabledModules((prev) => {
+        const next = new Set(prev)
+        if (enabled) next.delete(moduleKey)
+        else next.add(moduleKey)
+        return next
+      })
     } finally {
       setActionLoading(null)
     }
@@ -259,18 +271,29 @@ export function BillingPageClient() {
       </section>
 
       <section className="space-y-3">
-        <p className="text-sm text-muted-foreground">Tillegg</p>
-        <div className="flex items-center justify-between rounded-xl border px-5 py-4">
-          <div>
-            <p className="text-sm font-medium">Timeføring</p>
-            <p className="text-xs text-muted-foreground">29 kr/mnd</p>
-          </div>
-          <Switch
-            checked={timeforingEnabled}
-            disabled={actionLoading !== null}
-            onCheckedChange={toggleTimeforing}
-          />
+        <p className="text-sm text-muted-foreground">Moduler</p>
+        <div className="space-y-2">
+          {MODULE_CATALOG.map((module) => (
+            <div
+              key={module.key}
+              className="flex items-center justify-between gap-3 rounded-xl border px-5 py-4"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{module.label}</p>
+                <p className="text-xs text-muted-foreground">{module.description}</p>
+                <p className="mt-1 text-xs font-medium text-foreground">{module.monthlyNok} kr/mnd</p>
+              </div>
+              <Switch
+                checked={enabledModules.has(module.key)}
+                disabled={actionLoading !== null}
+                onCheckedChange={(checked) => toggleModule(module.key, module.label, checked)}
+              />
+            </div>
+          ))}
         </div>
+        <p className="text-xs text-muted-foreground">
+          Outlook- og Google Drive-tilkobling er alltid gratis.
+        </p>
       </section>
     </div>
   )

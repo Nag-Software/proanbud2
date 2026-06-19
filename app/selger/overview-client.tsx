@@ -125,7 +125,7 @@ export function OverviewClient({ stats, initialCompanies }: OverviewClientProps)
 
         <Card>
           <CardContent className="space-y-4 pt-6">
-            <div className="grid gap-3 lg:grid-cols-6">
+            <div className="grid gap-3 lg:grid-cols-7 max-w-4xl">
               <Input
                 placeholder="Søk navn, e-post, org.nr..."
                 value={search}

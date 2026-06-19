@@ -181,13 +181,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <ProjectTabsShell
             tabs={[
               { value: "oversikt", label: "Oversikt" },
-              { value: "tilbud", label: "Tilbud", hidden: isWorker },
+              { value: "tilbud", label: "Tilbud" },
               { value: "oppgaver", label: "Oppgaver" },
               { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
               { value: "timeforing", label: "Timeføring" },
-              { value: "ks", label: "KS" },
+              { value: "ks", label: "KS", hidden: isWorker },
               { value: "avvik", label: "Avvik" },
-              { value: "deltakere", label: "Deltakere" },
+              { value: "deltakere", label: "Deltakere", hidden: isWorker },
             ]}
           >
             <TabsContent value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
@@ -228,19 +228,18 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               />
             </TabsContent>
 
-            {!isWorker && (
-              <TabsContent value="tilbud">
-                <TilbudTab
-                  projectId={project.id}
-                  projectName={project.name}
-                  customerName={customer.name}
-                  offers={offers}
-                />
-              </TabsContent>
-            )}
+            <TabsContent value="tilbud">
+              <TilbudTab
+                projectId={project.id}
+                projectName={project.name}
+                customerName={customer.name}
+                offers={offers}
+                readOnly={isWorker}
+              />
+            </TabsContent>
 
             <TabsContent value="oppgaver">
-              <OppgaverTab projectId={project.id} canManageTasks={isProjectAdmin} />
+              <OppgaverTab projectId={project.id} canManageTasks={isProjectAdmin || isWorker} />
             </TabsContent>
 
             <TabsContent value="filer">
@@ -259,22 +258,26 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               )}
             </TabsContent>
 
-            <TabsContent value="ks">
-              <KsTab projectId={project.id} checklists={projectChecklists} />
-            </TabsContent>
+            {!isWorker && (
+              <TabsContent value="ks">
+                <KsTab projectId={project.id} checklists={projectChecklists} />
+              </TabsContent>
+            )}
 
             <TabsContent value="avvik">
               <AvvikTab projectId={project.id} deviations={projectDeviations} />
             </TabsContent>
 
-            <TabsContent value="deltakere">
-              <DeltakereTab
-                projectId={project.id}
-                initialParticipants={projectDeltakere}
-                isProjectAdmin={isProjectAdmin}
-                participantHours={participantHours}
-              />
-            </TabsContent>
+            {!isWorker && (
+              <TabsContent value="deltakere">
+                <DeltakereTab
+                  projectId={project.id}
+                  initialParticipants={projectDeltakere}
+                  isProjectAdmin={isProjectAdmin}
+                  participantHours={participantHours}
+                />
+              </TabsContent>
+            )}
           </ProjectTabsShell>
         </Suspense>
       </section>

@@ -23,6 +23,7 @@ type TilbudTabProps = {
     projectName: string
     customerName: string
     offers: OfferRow[]
+    readOnly?: boolean
 }
 
 type SortOption = "newest" | "oldest" | "amount_desc" | "amount_asc"
@@ -45,7 +46,7 @@ function normalizeStatus(value?: string | null): Quota["status"] {
     return "draft"
 }
 
-export default function TilbudTab({ offers }: TilbudTabProps) {
+export default function TilbudTab({ offers, readOnly = false }: TilbudTabProps) {
     const [search, setSearch] = useState("")
     const [sortBy, setSortBy] = useState<SortOption>("newest")
 
@@ -126,7 +127,7 @@ export default function TilbudTab({ offers }: TilbudTabProps) {
             {visibleData.length > 0 ? (
                 <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5">
                     {visibleData.map((offer) => (
-                        <OfferCard key={offer.id} offer={offer} />
+                        <OfferCard key={offer.id} offer={offer} readOnly={readOnly} />
                     ))}
                 </div>
             ) : (

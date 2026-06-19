@@ -8,22 +8,32 @@ import {
   ShieldCheckIcon,
   InboxIcon,
   MenuIcon,
+  CalendarDays,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useSidebar } from "@/components/ui/sidebar"
 import { useUnreadMessages } from "@/hooks/use-unread-messages"
+import { useUserRole } from "@/hooks/use-user-role"
 
-const navItems = [
+const fullNavItems = [
   { href: "/", icon: LayoutDashboardIcon, label: "Dashbord", exact: true },
   { href: "/prosjekter", icon: FolderIcon, label: "Prosjekter", exact: false },
   { href: "/hms", icon: ShieldCheckIcon, label: "HMS", exact: false },
   { href: "/meldinger", icon: InboxIcon, label: "Meldinger", exact: false },
 ]
 
+// Workers only have Projects + Calendar.
+const workerNavItems = [
+  { href: "/prosjekter", icon: FolderIcon, label: "Prosjekter", exact: false },
+  { href: "/kalender", icon: CalendarDays, label: "Kalender", exact: false },
+]
+
 export function MobileBottomNav() {
   const pathname = usePathname()
   const { toggleSidebar } = useSidebar()
   const unreadCount = useUnreadMessages()
+  const { isWorker } = useUserRole()
+  const navItems = isWorker ? workerNavItems : fullNavItems
 
   return (
     <nav

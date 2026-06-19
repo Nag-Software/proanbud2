@@ -8,9 +8,24 @@
  */
 import Stripe from "stripe"
 
+// Next.js loads .env.local automatically, but plain `node` does not.
+// Load it (and .env as fallback) so the script picks up STRIPE_SECRET_KEY.
+if (typeof process.loadEnvFile === "function") {
+  for (const envFile of [".env.local", ".env"]) {
+    try {
+      process.loadEnvFile(envFile)
+    } catch {
+      // File missing/unreadable — ignore and fall back to existing process env.
+    }
+  }
+}
+
 const secretKey = process.env.STRIPE_SECRET_KEY?.trim()
 if (!secretKey) {
-  console.error("STRIPE_SECRET_KEY mangler")
+  console.error(
+    "STRIPE_SECRET_KEY mangler. Legg den i .env.local, eller kjør med:\n" +
+      "  STRIPE_SECRET_KEY=sk_... npm run stripe:seed-catalog"
+  )
   process.exit(1)
 }
 
@@ -78,6 +93,14 @@ async function main() {
     kind: "module_product",
     module_key: "timeforing",
   })
+  const dokumenterProduct = await ensureProduct("Proanbud Dokumenter (Cloud)", {
+    kind: "module_product",
+    module_key: "dokumenter",
+  })
+  const integrasjonerProduct = await ensureProduct("Proanbud Integrasjoner", {
+    kind: "module_product",
+    module_key: "integrasjoner",
+  })
   const seatProduct = await ensureProduct("Proanbud Ansatt", { kind: "seat_product" })
 
   const prices = {
@@ -113,6 +136,18 @@ async function main() {
       2900,
       { interval: "month" },
       { kind: "module", module_key: "timeforing" }
+    ),
+    STRIPE_PRICE_MODULE_DOKUMENTER: await ensureRecurringPrice(
+      dokumenterProduct.id,
+      2900,
+      { interval: "month" },
+      { kind: "module", module_key: "dokumenter" }
+    ),
+    STRIPE_PRICE_MODULE_INTEGRASJONER: await ensureRecurringPrice(
+      integrasjonerProduct.id,
+      1900,
+      { interval: "month" },
+      { kind: "module", module_key: "integrasjoner" }
     ),
     STRIPE_PRICE_SEAT_EMPLOYEE: await ensureRecurringPrice(
       seatProduct.id,

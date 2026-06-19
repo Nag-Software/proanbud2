@@ -13,7 +13,7 @@ export default async function ChecklistFillPage({
   params: Promise<{ id: string; checklistId: string }>
 }) {
   const { id: projectId, checklistId } = await params
-  await checkRoleAccess(["admin", "manager", "worker"])
+  await checkRoleAccess(["admin", "manager"])
 
   const supabase = await createClient()
   const { data: project } = await supabase

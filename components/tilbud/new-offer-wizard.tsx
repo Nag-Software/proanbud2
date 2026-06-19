@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 
 import { AiChatPanel } from "@/components/tilbud/ai-chat-panel"
-import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
+import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
@@ -11,7 +11,6 @@ import {
   Calculator,
   Check,
   CheckCircle2,
-  Download,
   Edit3,
   LoaderCircle,
   Plus,
@@ -403,26 +402,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     })
   }
 
-  const pdfDocRef = useRef<HTMLDivElement>(null)
   const itemsTableRef = useRef<NewOfferItemsTableHandle>(null)
-  const handlePrintPdf = () => {
-    const node = pdfDocRef.current
-    if (!node) return
-    const cssLinks = Array.from(document.styleSheets)
-      .filter((s) => s.href)
-      .map((s) => `<link rel="stylesheet" href="${s.href}">`)
-      .join("\n")
-    const printWin = window.open("", "_blank", "width=900,height=1100")
-    if (!printWin) return
-    printWin.document.write(
-      `<!DOCTYPE html><html><head><meta charset="utf-8">${cssLinks}</head><body style="margin:0;background:#fff">${node.outerHTML}</body></html>`
-    )
-    printWin.document.close()
-    printWin.addEventListener("load", () => {
-      printWin.focus()
-      printWin.print()
-    })
-  }
 
   return (
     <div className="mx-auto h-full min-h-0 w-full max-w-[1600px]">
@@ -755,23 +735,18 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
               </div>
 
               <div className="rounded-lg border p-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="mb-3 flex items-center gap-2">
                   <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
                     <CheckCircle2 className="h-5 w-5 text-primary" />
                     Forhåndsvisning
                   </h3>
-                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={handlePrintPdf}>
-                    <Download className="h-3.5 w-3.5" />
-                    Last ned PDF
-                  </Button>
                 </div>
-                {/* ---- PDF-like document ---- */}
-                <div ref={pdfDocRef}>
-                  <OfferDocumentPreview
-                    title={title}
-                    description={description}
-                    projectSummary={analysisResult?.summary}
-                    quoteMessage={quoteMessage}
+                {/* ---- A4 document viewer (identical on mobile + desktop) ---- */}
+                <OfferDocumentViewer
+                  title={title}
+                  description={description}
+                  projectSummary={analysisResult?.summary}
+                  quoteMessage={quoteMessage}
                   projectName={selectedProject?.name || undefined}
                   customer={{
                     name: selectedCustomer?.name || recipientName.trim() || "—",
@@ -785,9 +760,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   company={company}
                   issuedDate={new Date()}
                   validityDays={validityDays}
-                  documentClassName="mx-auto w-full max-w-[794px] min-w-0 bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)] sm:min-w-[794px]"
-                  />
-                </div>
+                />
               </div>
 
               <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:flex-row sm:space-x-3">

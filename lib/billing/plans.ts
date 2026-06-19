@@ -1,6 +1,6 @@
 export type PlanKey = "mini" | "proff"
 export type BillingInterval = "month" | "year"
-export type ModuleKey = "timeforing"
+export type ModuleKey = "timeforing" | "dokumenter" | "integrasjoner"
 
 export const TRIAL_DAYS = 14
 export const OVERAGE_UNIT_NOK = 9.5
@@ -46,7 +46,39 @@ export const PLAN_PRICING: Record<
 
 export const MODULE_PRICING: Record<ModuleKey, number> = {
   timeforing: 29,
+  dokumenter: 29,
+  integrasjoner: 19,
 }
+
+/**
+ * Catalog of optional, billable modules shown on the billing page.
+ * The order here is the order they are rendered in the UI.
+ */
+export const MODULE_CATALOG: Array<{
+  key: ModuleKey
+  label: string
+  description: string
+  monthlyNok: number
+}> = [
+  {
+    key: "timeforing",
+    label: "Timeføring",
+    description: "Registrer og følg opp timer på prosjekter og ansatte.",
+    monthlyNok: MODULE_PRICING.timeforing,
+  },
+  {
+    key: "dokumenter",
+    label: "Dokumenter — Proanbud Cloud",
+    description: "Skylagring av prosjektdokumenter og filer i Proanbud.",
+    monthlyNok: MODULE_PRICING.dokumenter,
+  },
+  {
+    key: "integrasjoner",
+    label: "Integrasjoner",
+    description: "Koble til Tripletex, DocuSign m.m. Outlook og Google Drive er alltid gratis.",
+    monthlyNok: MODULE_PRICING.integrasjoner,
+  },
+]
 
 export const SEAT_PRICE_NOK = 19
 
@@ -57,6 +89,8 @@ const PRICE_ENV_KEYS: Record<string, string> = {
   "proff-year": "STRIPE_PRICE_PROFF_YEARLY",
   overage: "STRIPE_PRICE_OVERAGE",
   "module-timeforing": "STRIPE_PRICE_MODULE_TIMEFORING",
+  "module-dokumenter": "STRIPE_PRICE_MODULE_DOKUMENTER",
+  "module-integrasjoner": "STRIPE_PRICE_MODULE_INTEGRASJONER",
   seat: "STRIPE_PRICE_SEAT_EMPLOYEE",
 }
 

@@ -316,7 +316,8 @@ export async function addChecklistToProjectAction(
   input: Parameters<typeof addChecklistToProjectSchema.parse>[0]
 ) {
   const parsed = addChecklistToProjectSchema.parse(input)
-  const { supabase, user, companyId } = await getAuthContext()
+  const { supabase, user, companyId, role } = await getAuthContext()
+  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
 
   const { data: project } = await supabase
     .from("projects")
@@ -390,7 +391,8 @@ export async function updateChecklistItemAction(
   input: Parameters<typeof updateChecklistItemSchema.parse>[0]
 ) {
   const parsed = updateChecklistItemSchema.parse(input)
-  const { supabase, user, companyId } = await getAuthContext()
+  const { supabase, user, companyId, role } = await getAuthContext()
+  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
 
   const { data: item } = await supabase
     .from("project_checklist_items")
@@ -445,7 +447,8 @@ export async function createDeviationFromChecklistItemAction(
   input: Parameters<typeof createDeviationFromItemSchema.parse>[0]
 ) {
   const parsed = createDeviationFromItemSchema.parse(input)
-  const { supabase, user, companyId } = await getAuthContext()
+  const { supabase, user, companyId, role } = await getAuthContext()
+  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
 
   const { data: item } = await supabase
     .from("project_checklist_items")
@@ -502,7 +505,8 @@ export async function createDeviationFromChecklistItemAction(
 // ==========================================
 
 export async function uploadChecklistItemPhotoAction(formData: FormData) {
-  const { supabase, user, companyId } = await getAuthContext()
+  const { supabase, user, companyId, role } = await getAuthContext()
+  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
 
   const itemId = String(formData.get("itemId") || "")
   const file = formData.get("file") as File | null
@@ -558,7 +562,8 @@ export async function getChecklistPhotoUrlAction(storagePath: string) {
 }
 
 export async function deleteChecklistItemPhotoAction(attachmentId: string) {
-  const { supabase, companyId } = await getAuthContext()
+  const { supabase, companyId, role } = await getAuthContext()
+  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
 
   const { data: attachment } = await supabase
     .from("checklist_item_attachments")

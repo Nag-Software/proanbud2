@@ -122,6 +122,10 @@ const data: {
           title: "Lagrede jobber",
           url: "/mine-priser/lagrede-jobber",
         },
+        {
+          title: "Timepriser",
+          url: "/mine-priser/timepriser",
+        },
       ]
     },
     {
@@ -304,12 +308,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           ),
         }
       }
-      if (item.title === "Min bedrift" && isWorker && item.items) {
-        return {
-          ...item,
-          items: item.items.filter((subItem) => subItem.title === "Timeføring"),
-        };
-      }
       if (item.title === "Innstillinger" && item.items) {
         return {
           ...item,
@@ -322,20 +320,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     })
     .filter((item) => {
     if (item.hidden) return false;
-    if (!isWorker) {
-      if (item.title === "Innstillinger" && !canManageBilling) {
-        return false;
-      }
-      return true;
+    // Workers have a deliberately small surface: only Projects and Calendar.
+    if (isWorker) {
+      return ["Prosjekter", "Kalender"].includes(item.title);
     }
-
-    const hiddenForWorker = [
-      "Salg & Økonomi",
-      "Kunder",
-      "Mine priser",
-      "Innstillinger",
-    ];
-    return !hiddenForWorker.includes(item.title);
+    if (item.title === "Innstillinger" && !canManageBilling) {
+      return false;
+    }
+    return true;
   });
 
   return (

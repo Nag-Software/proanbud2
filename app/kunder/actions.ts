@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { enqueueEntityTripletexSync, processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
+import { canAccessCustomers } from "@/lib/roles"
 import { revalidatePath } from "next/cache"
 
 export async function createCustomerAction(formData: FormData) {
@@ -15,12 +16,16 @@ export async function createCustomerAction(formData: FormData) {
 
   const { data: userData, error: userError } = await supabase
     .from('users')
-    .select('company_id')
+    .select('company_id, role')
     .eq('id', user.id)
     .single()
 
   if (userError || !userData?.company_id) {
     throw new Error("Kunne ikke hente din bedriftsinformasjon.")
+  }
+
+  if (!canAccessCustomers(userData.role)) {
+    throw new Error("Du har ikke tilgang til å administrere kunder.")
   }
 
   // Map form data fields to DB
@@ -81,12 +86,16 @@ export async function updateCustomerAction(input: {
 
   const { data: userData, error: userError } = await supabase
     .from("users")
-    .select("company_id")
+    .select("company_id, role")
     .eq("id", user.id)
     .single()
 
   if (userError || !userData?.company_id) {
     throw new Error("Kunne ikke hente din bedriftsinformasjon.")
+  }
+
+  if (!canAccessCustomers(userData.role)) {
+    throw new Error("Du har ikke tilgang til å administrere kunder.")
   }
 
   const payload = {
@@ -134,12 +143,16 @@ export async function deleteCustomerAction(customerId: string) {
 
   const { data: userData, error: userError } = await supabase
     .from("users")
-    .select("company_id")
+    .select("company_id, role")
     .eq("id", user.id)
     .single()
 
   if (userError || !userData?.company_id) {
     throw new Error("Kunne ikke hente din bedriftsinformasjon.")
+  }
+
+  if (!canAccessCustomers(userData.role)) {
+    throw new Error("Du har ikke tilgang til å administrere kunder.")
   }
 
   const { error } = await supabase

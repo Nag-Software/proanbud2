@@ -513,7 +513,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40">
               <TableHead className="w-8" />
-              <TableHead className="w-[33%] text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <TableHead className="w-[26%] max-w-md text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Produkt / element
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Leverandør</TableHead>
@@ -625,7 +625,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                                           <GripVertical className="h-3.5 w-3.5" />
                                         </button>
                                       </td>
-                                      <td className="p-2 align-middle">
+                                      <td className="max-w-md p-2 align-middle">
                                         <div className="flex items-center gap-1">
                                           <div className="min-w-0 flex-1">
                                             <EditableText
@@ -756,60 +756,101 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
       </div>
     </div>
     <div className="space-y-2 lg:hidden">
-      {items.length === 0 ? (
+      {groupOrder.length === 0 ? (
         <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">
           Ingen elementer enda. Legg til fra prisliste, fast jobb eller blank rad.
         </div>
       ) : (
-        items.map((item) => (
-          <div key={item.id} className="rounded-lg border bg-background p-3">
-            <div className="flex items-start gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{item.subproject || "Generelt"}</p>
-                <p className="mt-0.5 font-medium text-sm leading-snug">{item.title || "Uten navn"}</p>
-                {item.description ? (
-                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
-                ) : null}
-              </div>
-              <div className="flex shrink-0 gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  onClick={() => setEditingItem({ ...item })}
-                  aria-label="Rediger"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                  onClick={() => removeRow(item.id)}
-                  aria-label="Slett"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
+        groupOrder.map((group) => {
+          const groupItems = groups[group] || []
+          const isExpanded = !collapsedGroups.has(group)
+          const groupTotal = groupItems.reduce((sum, item) => sum + calculateLineItemTotal(item), 0)
+
+          return (
+            <div key={group} className="overflow-hidden rounded-lg border bg-background">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 bg-muted/50 px-3 py-2.5 text-left"
+                onClick={() => toggleGroup(group)}
+                aria-expanded={isExpanded}
+                aria-label={isExpanded ? `Skjul ${group}` : `Vis ${group}`}
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150",
+                    !isExpanded && "-rotate-90"
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {group}
+                </span>
+                <Badge variant="outline" className="h-4 rounded-sm px-1.5 text-[10px] font-normal">
+                  {groupItems.length}
+                </Badge>
+                <span className="shrink-0 text-sm font-semibold tabular-nums">{formatNok(groupTotal)}</span>
+              </button>
+
+              {isExpanded ? (
+                groupItems.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                    Ingen komponenter i denne kategorien.
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {groupItems.map((item) => (
+                      <div key={item.id} className="p-3">
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-sm leading-snug">{item.title || "Uten navn"}</p>
+                            {item.description ? (
+                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
+                            ) : null}
+                          </div>
+                          <div className="flex shrink-0 gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              onClick={() => setEditingItem({ ...item })}
+                              aria-label="Rediger"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              onClick={() => removeRow(item.id)}
+                              aria-label="Slett"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">
+                          <p className="text-xs text-muted-foreground">
+                            {item.quantity} {item.unit || "stk"}
+                            {item.unitPriceNok > 0 ? ` · ${item.unitPriceNok.toLocaleString("no-NO")} kr/enhet` : ""}
+                            {item.discountPercent > 0 ? ` · ${item.discountPercent}% rabatt` : ""}
+                          </p>
+                          <p className="shrink-0 text-sm font-semibold tabular-nums">{formatNok(calculateLineItemTotal(item))}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : null}
             </div>
-            <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">
-              <p className="text-xs text-muted-foreground">
-                {item.quantity} {item.unit || "stk"}
-                {item.unitPriceNok > 0 ? ` · ${item.unitPriceNok.toLocaleString("no-NO")} kr/enhet` : ""}
-                {item.discountPercent > 0 ? ` · ${item.discountPercent}% rabatt` : ""}
-              </p>
-              <p className="shrink-0 text-sm font-semibold tabular-nums">{formatNok(calculateLineItemTotal(item))}</p>
-            </div>
-          </div>
-        ))
+          )
+        })
       )}
     </div>
 
     {/* Mobile edit sheet */}
     <Sheet open={editingItem !== null} onOpenChange={(open) => { if (!open) setEditingItem(null) }}>
-      <SheetContent side="bottom" className="h-auto max-h-[90vh] overflow-y-auto rounded-t-xl pb-8">
+      <SheetContent side="bottom" className="h-auto max-h-[90vh] overflow-y-auto rounded-t-xl px-5 pb-8">
         <SheetHeader className="mb-4">
           <SheetTitle className="text-base">Rediger komponent</SheetTitle>
         </SheetHeader>

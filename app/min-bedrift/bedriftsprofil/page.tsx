@@ -5,9 +5,15 @@ import { checkRoleAccess } from "@/lib/auth-utils"
 import { fetchCompanyProfileRow, mapCompanyRowToProfile } from "@/lib/tilbud/company-profile"
 import { createClient } from "@/lib/supabase/server"
 import { BedriftsprofilClient } from "./bedriftsprofil-client"
+import { DeleteCompanySection } from "./delete-company-section"
 
 export default async function Page() {
-  await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
+  const { canonicalRole } = await checkRoleAccess([
+    "Administrator",
+    "Prosjektleder",
+    "admin",
+    "manager",
+  ])
   const supabase = await createClient()
 
   const {
@@ -33,6 +39,9 @@ export default async function Page() {
           initialProfile={initialProfile}
           profileFieldsAvailable={companyResult.profileFieldsAvailable}
         />
+        {canonicalRole === "admin" ? (
+          <DeleteCompanySection companyName={initialProfile.name} />
+        ) : null}
       </div>
     </AppPageShell>
   )

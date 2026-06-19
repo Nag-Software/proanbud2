@@ -22,10 +22,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ResponsiveTabs, TabsContent } from "@/components/responsive-tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
+import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
-import { formatOfferReference } from "@/lib/tilbud/offer-document"
+import { buildOfferDocumentPage, formatOfferReference, type OfferDocumentData } from "@/lib/tilbud/offer-document"
 import { getOfferActivityTone, type OfferActivityEvent } from "@/lib/tilbud/offer-activity.shared"
 import { CONTRACT_BASIS_LABELS, DEFAULT_PAYMENT_SCHEDULE, PRICING_MODEL_LABELS } from "@/lib/contracts/pricing"
 import {
@@ -229,7 +229,6 @@ export function OfferDetailClient({
   const [activityLog, setActivityLog] = useState<OfferActivityItem[]>(activity)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isAutoSaving, setIsAutoSaving] = useState(false)
-  const pdfDocRef = useRef<HTMLDivElement>(null)
   const itemsTableRef = useRef<NewOfferItemsTableHandle>(null)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const [lastAutoSaveAt, setLastAutoSaveAt] = useState<string | null>(initialOffer.updatedAt)
@@ -282,6 +281,33 @@ export function OfferDetailClient({
       orgNumber: linkedCustomer.orgNumber,
     }),
     [linkedCustomer, offer.recipientEmail, offer.recipientPhone]
+  )
+
+  const documentData = useMemo<OfferDocumentData>(
+    () => ({
+      title: offer.title,
+      description: offer.description,
+      projectSummary: offer.projectSummary,
+      quoteMessage: offer.sourceSummary,
+      projectName: offer.projectName,
+      customer: previewCustomer,
+      lineItems,
+      company,
+      issuedDate: offer.createdAt,
+      quoteValidUntil: offer.quoteValidUntil,
+    }),
+    [
+      offer.title,
+      offer.description,
+      offer.projectSummary,
+      offer.sourceSummary,
+      offer.projectName,
+      offer.createdAt,
+      offer.quoteValidUntil,
+      previewCustomer,
+      lineItems,
+      company,
+    ]
   )
 
   const saveFingerprint = useMemo(() => JSON.stringify(saveSnapshot), [saveSnapshot])
@@ -357,35 +383,25 @@ export function OfferDetailClient({
     router.refresh()
   }, [router])
 
-  const handlePrintPdf = useCallback(async () => {
-    const node = pdfDocRef.current
-    if (!node) return
-
+  const logPdfExport = useCallback(async () => {
     try {
       await fetch(`/api/offers/${offer.id}/pdf-export`, { method: "POST" })
       void refreshActivity()
     } catch {
       // Logging should not block export.
     }
+  }, [offer.id, refreshActivity])
 
-    const cssLinks = Array.from(document.styleSheets)
-      .filter((sheet) => sheet.href)
-      .map((sheet) => `<link rel="stylesheet" href="${sheet.href}">`)
-      .join("\n")
-    const printWin = window.open("", "_blank", "width=900,height=1100")
+  const handlePrintPdf = useCallback(() => {
+    void logPdfExport()
+    const printWin = window.open("", "_blank")
     if (!printWin) {
       toast.error("Kunne ikke åpne utskriftsvindu")
       return
     }
-    printWin.document.write(
-      `<!DOCTYPE html><html><head><meta charset="utf-8">${cssLinks}</head><body style="margin:0;background:#fff">${node.outerHTML}</body></html>`
-    )
+    printWin.document.write(buildOfferDocumentPage(documentData, { autoPrint: true }))
     printWin.document.close()
-    printWin.addEventListener("load", () => {
-      printWin.focus()
-      printWin.print()
-    })
-  }, [offer.id, refreshActivity])
+  }, [documentData, logPdfExport])
 
   const triggerTripletexSyncInBackground = useCallback(async () => {
     try {
@@ -934,53 +950,20 @@ export function OfferDetailClient({
       </ResponsiveTabs>
 
       <Sheet open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <SheetContent className="theme-preview-shell !max-w-[min(1500px,96vw)] w-[96vw] overflow-y-auto p-4 sm:!max-w-[min(1500px,96vw)]">
-          <SheetHeader className="flex-row items-start justify-between gap-4 space-y-0">
-            <div>
-              <SheetTitle>Forhåndsvisning av tilbud</SheetTitle>
-              <SheetDescription>Slik ser tilbudet ut for kunden.</SheetDescription>
-            </div>
-            <Button variant="outline" size="sm" onClick={handlePrintPdf} disabled={lineItems.length === 0}>
-              <Download className="mr-2 h-4 w-4" />
-              Last ned PDF
-            </Button>
+        <SheetContent className="theme-preview-shell !max-w-[min(1100px,96vw)] w-[96vw] overflow-y-auto p-4 sm:!max-w-[min(1100px,96vw)]">
+          <SheetHeader className="space-y-1">
+            <SheetTitle>Forhåndsvisning av tilbud</SheetTitle>
+            <SheetDescription>Slik ser tilbudet ut for kunden.</SheetDescription>
           </SheetHeader>
 
-          <div className="mx-auto w-fit max-w-full">
-            <OfferDocumentPreview
-              className="mt-0 bg-transparent p-0"
-              documentClassName="mx-auto w-[794px] max-w-none bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)]"
-              title={offer.title}
-              description={offer.description}
-              projectSummary={offer.projectSummary}
-              quoteMessage={offer.sourceSummary}
-              projectName={offer.projectName}
-              customer={previewCustomer}
-              lineItems={lineItems}
-              company={company}
-              issuedDate={offer.createdAt}
-              quoteValidUntil={offer.quoteValidUntil}
+          <div className="mt-4">
+            <OfferDocumentViewer
+              {...documentData}
+              onDownload={() => void logPdfExport()}
             />
           </div>
         </SheetContent>
       </Sheet>
-
-      <div className="sr-only" aria-hidden="true">
-        <div ref={pdfDocRef}>
-          <OfferDocumentPreview
-            title={offer.title}
-            description={offer.description}
-            projectSummary={offer.projectSummary}
-            quoteMessage={offer.sourceSummary}
-            projectName={offer.projectName}
-            customer={previewCustomer}
-            lineItems={lineItems}
-            company={company}
-            issuedDate={offer.createdAt}
-            quoteValidUntil={offer.quoteValidUntil}
-          />
-        </div>
-      </div>
     </div>
   )
 }

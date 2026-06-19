@@ -7,7 +7,9 @@ import {
   ChevronRightIcon,
   HistoryIcon,
   LayoutDashboardIcon,
+  MailCheckIcon,
   MailIcon,
+  TargetIcon,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -40,6 +42,16 @@ const navItems = [
     title: "Oversikt",
     url: "/selger",
     icon: <LayoutDashboardIcon className="size-4" />,
+  },
+  {
+    title: "Leads",
+    url: "/selger/leads",
+    icon: <TargetIcon className="size-4" />,
+  },
+  {
+    title: "Godkjenning",
+    url: "/selger/godkjenning",
+    icon: <MailCheckIcon className="size-4" />,
   },
   {
     title: "E-post",

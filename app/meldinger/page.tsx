@@ -3,12 +3,15 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import InboxClient from "./inbox-client";
 import { AppPageShell } from "@/components/app-page-shell";
+import { checkRoleAccess } from "@/lib/auth-utils";
 
 export const metadata = {
   title: "Meldinger - Proanbud",
 };
 
 export default async function Page() {
+  await checkRoleAccess(["admin", "manager"]);
+
   const supabase = createClient();
 
   const {

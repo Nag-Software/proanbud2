@@ -18,6 +18,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { createClient } from "@/lib/supabase/client"
+import { useRouter } from "next/navigation"
+import { useUserRole } from "@/hooks/use-user-role"
 
 const formatNok = (val: number) =>
   new Intl.NumberFormat("no-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(val)
@@ -126,8 +128,17 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
+  const router = useRouter()
+  const { canonicalRole, loadingRole } = useUserRole()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Workers do not have access to the company dashboard — send them to projects.
+  useEffect(() => {
+    if (!loadingRole && canonicalRole === "worker") {
+      router.replace("/prosjekter")
+    }
+  }, [loadingRole, canonicalRole, router])
 
   useEffect(() => {
     async function load() {
@@ -398,6 +409,11 @@ export default function DashboardPage() {
       up: isUp(data.kunders, data.kundersPrev),
     },
   ] : []
+
+  // Avoid flashing company-wide dashboard data to workers while redirecting.
+  if (canonicalRole === "worker") {
+    return null
+  }
 
   return (
     <AppPageShell segments={["Dashbord"]}>

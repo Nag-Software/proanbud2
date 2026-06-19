@@ -5,6 +5,7 @@ import { ZodError } from "zod"
 
 import { createProjectSchema, type CreateProjectInput } from "./ny/removed-project-form-schema"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { enqueueEntityTripletexSync, processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
 import { canManageProjects } from "@/lib/roles"
 
@@ -193,12 +194,16 @@ export async function createProjectAction(input: CreateProjectInput) {
 
   const { data: userData, error: userError } = await supabase
     .from("users")
-    .select("company_id")
+    .select("company_id, role")
     .eq("id", user.id)
     .single()
 
   if (userError || !userData?.company_id) {
     throw new Error("Kunne ikke hente bedriftsinformasjon")
+  }
+
+  if (!canManageProjects(userData.role)) {
+    throw new Error("Du har ikke tilgang til å opprette prosjekter")
   }
 
   const companyId = userData.company_id
@@ -267,7 +272,8 @@ export async function createProjectAction(input: CreateProjectInput) {
   }))
 
   if (projectMembers.length > 0) {
-    const { error: memberError } = await supabase.from("project_members").upsert(projectMembers, {
+    const adminClient = createAdminClient()
+    const { error: memberError } = await adminClient.from("project_members").upsert(projectMembers, {
       onConflict: "project_id,user_id",
     })
 
@@ -316,6 +322,18 @@ export async function createProjectAction(input: CreateProjectInput) {
   return { id: project.id }
 }
 
+/** Columns that may be edited via updateProjectAction. Anything else is ignored. */
+const EDITABLE_PROJECT_FIELDS = [
+  "name",
+  "description",
+  "project_type",
+  "status",
+  "start_date",
+  "end_date",
+  "budget_nok",
+  "customer_id",
+] as const
+
 export async function updateProjectAction(projectId: string, values: Record<string, unknown>) {
   const supabase = await createClient()
 
@@ -328,7 +346,7 @@ export async function updateProjectAction(projectId: string, values: Record<stri
 
   const { data: userData, error: userError } = await supabase
     .from("users")
-    .select("company_id")
+    .select("company_id, role")
     .eq("id", user.id)
     .single()
 
@@ -336,13 +354,67 @@ export async function updateProjectAction(projectId: string, values: Record<stri
     throw new Error("Kunne ikke hente bedriftsinformasjon")
   }
 
+  // The project must belong to the caller's company, and the caller must be a
+  // company manager/admin or a project member with manager access.
+  const { data: existingProject } = await supabase
+    .from("projects")
+    .select("id, company_id")
+    .eq("id", projectId)
+    .maybeSingle()
+  if (!existingProject || existingProject.company_id !== userData.company_id) {
+    throw new Error("Ugyldig prosjekt")
+  }
+
+  let canManage = canManageProjects(userData.role)
+  if (!canManage) {
+    const { data: membership } = await supabase
+      .from("project_members")
+      .select("access_level")
+      .eq("project_id", projectId)
+      .eq("user_id", user.id)
+      .maybeSingle()
+    canManage = membership?.access_level === "manager"
+  }
+  if (!canManage) {
+    throw new Error("Du har ikke tilgang til å endre dette prosjektet")
+  }
+
+  // Whitelist editable columns so callers can never set sensitive fields
+  // (company_id, created_by, ...) through this action.
+  const updates: Record<string, unknown> = {}
+  for (const key of EDITABLE_PROJECT_FIELDS) {
+    if (key in values) updates[key] = values[key]
+  }
+
+  if ("name" in updates) {
+    const name = String(updates.name ?? "").trim()
+    if (!name) throw new Error("Prosjektnavn kan ikke være tomt")
+    updates.name = name
+  }
+  if ("budget_nok" in updates) {
+    const budget = Number(updates.budget_nok)
+    updates.budget_nok = Number.isFinite(budget) && budget >= 0 ? Math.round(budget) : 0
+  }
+  if ("description" in updates) {
+    const description = String(updates.description ?? "").trim()
+    updates.description = description || null
+  }
+  if ("start_date" in updates && !updates.start_date) updates.start_date = null
+  if ("end_date" in updates && !updates.end_date) updates.end_date = null
+  if ("customer_id" in updates && !updates.customer_id) updates.customer_id = null
+
+  if (Object.keys(updates).length === 0) {
+    throw new Error("Ingen gyldige felter å oppdatere")
+  }
+
   const { error } = await supabase
     .from("projects")
     .update({
-      ...values,
+      ...updates,
       updated_at: new Date().toISOString(),
     })
     .eq("id", projectId)
+    .eq("company_id", userData.company_id)
 
   if (error) {
     console.error("Error updating project:", error)

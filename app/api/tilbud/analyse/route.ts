@@ -225,6 +225,10 @@ async function runOpenAiAnalysis(
   }
 }
 
+// AI generation can take longer than the default serverless limit — allow up to
+// 60s so requests aren't killed mid-generation on Vercel.
+export const maxDuration = 60
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()

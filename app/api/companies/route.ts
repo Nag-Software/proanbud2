@@ -87,6 +87,23 @@ export async function POST(request: Request) {
       console.error('Billing setup error:', billingSetupError)
     }
 
+    // Close the outbound loop: if this company was a prospect, mark it converted.
+    if (org_number) {
+      try {
+        await supabaseAdmin
+          .from('prospects')
+          .update({
+            status: 'kunde',
+            matched_company_id: companyData.id,
+            is_existing_customer: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('org_number', org_number)
+      } catch (prospectError) {
+        console.error('Prospect conversion update error:', prospectError)
+      }
+    }
+
     return NextResponse.json({ success: true, company: companyData }, { status: 201 })
   } catch (err: any) {
     console.error('SERVER ROUTE ERROR:', err)

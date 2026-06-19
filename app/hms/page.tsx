@@ -6,7 +6,7 @@ import { checkRoleAccess } from "@/lib/auth-utils"
 export const dynamic = "force-dynamic"
 
 export default async function HmsPage() {
-  const { canonicalRole } = await checkRoleAccess(["admin", "manager", "worker"])
+  const { canonicalRole } = await checkRoleAccess(["admin", "manager"])
   const overview = await getHmsOverviewAction()
 
   return (
@@ -14,6 +14,9 @@ export default async function HmsPage() {
       <HmsPageClient
         isAdmin={canonicalRole === "admin"}
         stats={overview.stats}
+        deviationBreakdown={overview.deviationBreakdown}
+        checklistStats={overview.checklistStats}
+        projectHealth={overview.projectHealth}
         openDeviations={overview.openDeviations}
         handbookContent={overview.handbook.handbook_content || ""}
       />

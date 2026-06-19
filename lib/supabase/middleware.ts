@@ -11,6 +11,13 @@ import { isInvitedCompanyMember } from '@/lib/roles'
 import { LOGIN_PATH } from '@/lib/constants'
 import { isPlatformAdminEmail, isSjefenApiRoute, isSjefenRoute } from '@/lib/auth/platform-admin'
 import { canAccessSelger, isSelgerApiRoute, isSelgerRoute } from '@/lib/auth/platform-seller'
+import { MOCK_ROLE_COOKIE, isRoleMockEnabled, resolveMockRoleParam } from '@/lib/auth/role-mock'
+
+// Short-lived, per-user cache so steady-state navigation can skip the
+// onboarding/subscription RPCs. Only ever skips the already-verified "pass"
+// case — it can never introduce a redirect, and re-verifies after TTL.
+const GATE_COOKIE = 'pa_gate_ok'
+const GATE_TTL_SECONDS = 120
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -50,6 +57,29 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
   const isPublic = isPublicAuthRoute(pathname)
+
+  // Dev role mock: `?mock=worker|pm|admin|clear` sets a cookie and redirects to
+  // a clean URL. Applied to role gating only; real RLS still governs data.
+  if (isRoleMockEnabled() && user && request.nextUrl.searchParams.has('mock')) {
+    const resolution = resolveMockRoleParam(request.nextUrl.searchParams.get('mock'))
+    if (resolution.kind !== 'ignore') {
+      const url = request.nextUrl.clone()
+      url.searchParams.delete('mock')
+      const redirect = NextResponse.redirect(url)
+      supabaseResponse.cookies.getAll().forEach(({ name, value }) => {
+        redirect.cookies.set(name, value)
+      })
+      if (resolution.kind === 'set') {
+        redirect.cookies.set(MOCK_ROLE_COOKIE, resolution.role, {
+          path: '/',
+          sameSite: 'lax',
+        })
+      } else {
+        redirect.cookies.set(MOCK_ROLE_COOKIE, '', { path: '/', maxAge: 0 })
+      }
+      return redirect
+    }
+  }
 
   if (user && isAuthEntryRoute(pathname)) {
     const url = request.nextUrl.clone()
@@ -125,12 +155,31 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && !isPublic) {
+    // Onboarding/subscription gating only applies to normal app routes; the
+    // onboarding, subscription-exempt and create-company routes always run the
+    // full checks (and never get cached).
+    const cacheableGate =
+      !isAdminOnboardingRoute(pathname) &&
+      !isSubscriptionExemptRoute(pathname) &&
+      pathname !== '/create-company'
+
+    // Recently verified this exact user is fully onboarded + active → skip RPCs.
+    if (cacheableGate && request.cookies.get(GATE_COOKIE)?.value === user.id) {
+      return supabaseResponse
+    }
+
     // Prefer RPC (SECURITY DEFINER) to avoid false negatives from users table RLS visibility.
     let companyId: string | null = null
     let isCompanyAdmin = false
     let userRole: string | null = null
 
-    const { data: rpcCompanyId, error: rpcError } = await supabase.rpc('get_current_company_id')
+    // These two RPCs are independent — run them in parallel to save a round trip
+    // on every navigation.
+    const [companyIdResult, isAdminResult] = await Promise.all([
+      supabase.rpc('get_current_company_id'),
+      supabase.rpc('is_company_admin'),
+    ])
+    const { data: rpcCompanyId, error: rpcError } = companyIdResult
     if (rpcError) {
       console.error('Middleware get_current_company_id RPC failed', {
         userId: user.id,
@@ -142,7 +191,7 @@ export async function updateSession(request: NextRequest) {
       companyId = rpcCompanyId ?? null
     }
 
-    const { data: rpcIsAdmin, error: adminRpcError } = await supabase.rpc('is_company_admin')
+    const { data: rpcIsAdmin, error: adminRpcError } = isAdminResult
     if (adminRpcError) {
       console.error('Middleware is_company_admin RPC failed', {
         userId: user.id,
@@ -246,6 +295,17 @@ export async function updateSession(request: NextRequest) {
         })
         return redirect
       }
+    }
+
+    // All gating checks passed for this user — cache it briefly so subsequent
+    // navigations can skip the RPCs above.
+    if (cacheableGate) {
+      supabaseResponse.cookies.set(GATE_COOKIE, user.id, {
+        path: '/',
+        maxAge: GATE_TTL_SECONDS,
+        httpOnly: true,
+        sameSite: 'lax',
+      })
     }
   }
 
