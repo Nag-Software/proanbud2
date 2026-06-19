@@ -249,11 +249,14 @@ export async function updateSession(request: NextRequest) {
       return redirect
     }
 
-    if (!companyId && pathname !== '/create-company') {
+    if (!companyId && pathname !== '/create-company' && pathname !== '/ingen-tilgang') {
       if (isInvitedCompanyMember(userRole)) {
+        // Invited member (worker/manager) without a company link — send to a
+        // dedicated, whitelisted page. Must NOT redirect to '/' (which is itself
+        // gated and would re-trigger this same redirect → ERR_TOO_MANY_REDIRECTS).
         const url = request.nextUrl.clone()
-        url.pathname = '/'
-        url.searchParams.set('reason', 'missing-company-membership')
+        url.pathname = '/ingen-tilgang'
+        url.search = ''
         const redirect = NextResponse.redirect(url)
         supabaseResponse.cookies.getAll().forEach(({ name, value }) => {
           redirect.cookies.set(name, value)
@@ -297,9 +300,10 @@ export async function updateSession(request: NextRequest) {
       }
     }
 
-    // All gating checks passed for this user — cache it briefly so subsequent
-    // navigations can skip the RPCs above.
-    if (cacheableGate) {
+    // Fully verified (onboarded + active) — cache briefly so subsequent
+    // navigations can skip the RPCs above. Only cache users WITH a company, so
+    // a company-less user is never allowed to skip the onboarding redirect.
+    if (cacheableGate && companyId) {
       supabaseResponse.cookies.set(GATE_COOKIE, user.id, {
         path: '/',
         maxAge: GATE_TTL_SECONDS,

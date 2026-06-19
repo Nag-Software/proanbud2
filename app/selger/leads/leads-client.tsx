@@ -88,6 +88,11 @@ export function LeadsClient() {
       toast.error("Velg minst én bransje (NACE).")
       return
     }
+    if (kommuneNumber && kommuneNumber.length !== 4) {
+      toast.error("Kommunenummer må være 4 siffer (f.eks. 3801).")
+      return
+    }
+    const maxEmp = Number(maxEmployees)
     setImporting(true)
     try {
       const res = await fetch("/api/outreach/import", {
@@ -95,8 +100,8 @@ export function LeadsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           naeringskoder,
-          kommunenummer: kommuneNumber.trim() || undefined,
-          tilAntallAnsatte: maxEmployees.trim() ? Number(maxEmployees) : undefined,
+          kommunenummer: kommuneNumber || undefined,
+          tilAntallAnsatte: maxEmployees.trim() && Number.isFinite(maxEmp) ? maxEmp : undefined,
           maxPages: 3,
         }),
       })
@@ -218,9 +223,10 @@ export function LeadsClient() {
                 <Input
                   id="kommune"
                   inputMode="numeric"
-                  placeholder="f.eks. 3801 (Holmestrand)"
+                  maxLength={4}
+                  placeholder="f.eks. 3801"
                   value={kommuneNumber}
-                  onChange={(e) => setKommuneNumber(e.target.value)}
+                  onChange={(e) => setKommuneNumber(e.target.value.replace(/\D/g, "").slice(0, 4))}
                 />
               </div>
               <div className="space-y-1.5">

@@ -63,7 +63,17 @@ export async function searchBrregEnheter(params: BrregSearchParams): Promise<Brr
   })
 
   if (!res.ok) {
-    throw new Error(`Brønnøysund-søk feilet (${res.status})`)
+    let detail = ""
+    try {
+      const body = (await res.json()) as {
+        feilmelding?: string
+        valideringsfeil?: Array<{ feilmelding?: string }>
+      }
+      detail = body?.valideringsfeil?.[0]?.feilmelding || body?.feilmelding || ""
+    } catch {
+      // ignore — no parseable error body
+    }
+    throw new Error(`Brønnøysund-søk feilet (${res.status})${detail ? `: ${detail}` : ""}`)
   }
 
   const data = (await res.json()) as {

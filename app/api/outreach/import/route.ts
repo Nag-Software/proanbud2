@@ -26,8 +26,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Ugyldig forespørsel", details: parsed.error.flatten() }, { status: 400 })
   }
 
-  const { naeringskoder, kommunenummer, fraAntallAnsatte, tilAntallAnsatte } = parsed.data
+  const { naeringskoder, fraAntallAnsatte, tilAntallAnsatte } = parsed.data
   const maxPages = parsed.data.maxPages ?? 3
+
+  // Brønnøysund requires kommunenummer to be exactly 4 digits. Extract digits so
+  // "3801 (Holmestrand)" is forgiven, and reject anything that isn't 4 digits.
+  let kommunenummer: string | undefined
+  if (parsed.data.kommunenummer?.trim()) {
+    const digits = parsed.data.kommunenummer.replace(/\D/g, "")
+    if (digits.length !== 4) {
+      return NextResponse.json({ error: "Kommunenummer må være 4 siffer (f.eks. 3801)." }, { status: 400 })
+    }
+    kommunenummer = digits
+  }
+
   const admin = createAdminClient()
 
   // 1. Fetch entities from Brønnøysund, page by page.
