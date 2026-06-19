@@ -55,6 +55,7 @@ export function LeadsClient() {
   const [nace, setNace] = useState<Record<string, boolean>>({ "41": true, "42": true, "43": true })
   const [kommuneNumber, setKommuneNumber] = useState("")
   const [maxEmployees, setMaxEmployees] = useState("")
+  const [importCount, setImportCount] = useState("100")
   const [importing, setImporting] = useState(false)
 
   const loadProspects = useCallback(async () => {
@@ -106,7 +107,7 @@ export function LeadsClient() {
           naeringskoder,
           kommunenummer: kommuneNumber || undefined,
           tilAntallAnsatte: maxEmployees.trim() && Number.isFinite(maxEmp) ? maxEmp : undefined,
-          maxPages: 3,
+          count: Number(importCount),
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -219,7 +220,7 @@ export function LeadsClient() {
                 })}
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1.5">
                 <Label htmlFor="kommune" className="text-xs text-muted-foreground">
                   Kommunenummer (valgfritt)
@@ -232,6 +233,21 @@ export function LeadsClient() {
                   value={kommuneNumber}
                   onChange={(e) => setKommuneNumber(e.target.value.replace(/\D/g, "").slice(0, 4))}
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Antall firmaer</Label>
+                <Select value={importCount} onValueChange={setImportCount}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["50", "100", "200", "300", "500", "1000"].map((n) => (
+                      <SelectItem key={n} value={n}>
+                        {n} firmaer
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="max-emp" className="text-xs text-muted-foreground">
@@ -256,7 +272,7 @@ export function LeadsClient() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Henter inntil 300 firmaer per import. Eksisterende kunder filtreres automatisk bort.
+              Henter inntil {importCount} firmaer per import. Eksisterende kunder filtreres automatisk bort.
             </p>
           </CardContent>
         </Card>

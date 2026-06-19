@@ -14,7 +14,8 @@ const importSchema = z.object({
   kommunenummer: z.string().trim().optional(),
   fraAntallAnsatte: z.number().int().min(0).optional(),
   tilAntallAnsatte: z.number().int().min(0).optional(),
-  maxPages: z.number().int().min(1).max(10).optional(),
+  // How many companies to import this run.
+  count: z.number().int().min(1).max(2000).optional(),
 })
 
 export async function POST(request: Request) {
@@ -27,7 +28,8 @@ export async function POST(request: Request) {
   }
 
   const { naeringskoder, fraAntallAnsatte, tilAntallAnsatte } = parsed.data
-  const maxPages = parsed.data.maxPages ?? 3
+  const count = parsed.data.count ?? 100
+  const maxPages = Math.min(Math.ceil(count / 100), 20)
 
   // Brønnøysund requires kommunenummer to be exactly 4 digits. Extract digits so
   // "3801 (Holmestrand)" is forgiven, and reject anything that isn't 4 digits.
@@ -74,6 +76,7 @@ export async function POST(request: Request) {
         }
         mapped.set(row.org_number, row) // dedupe within batch by org_number
       }
+      if (mapped.size >= count) break
       if (page + 1 >= result.totalPages) break
     }
   } catch (error) {
@@ -84,7 +87,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const orgNumbers = [...mapped.keys()]
+  const orgNumbers = [...mapped.keys()].slice(0, count)
   if (orgNumbers.length === 0) {
     return NextResponse.json({ fetched, skipped, existingCustomers: 0, imported: 0, duplicates: 0 })
   }
