@@ -40,6 +40,15 @@ export async function POST(request: Request) {
     kommunenummer = digits
   }
 
+  // Brønnøysund forbids filtering to 1–4 employees (privacy). Only 0 or 5+ allowed.
+  const inForbiddenRange = (n?: number) => typeof n === "number" && n >= 1 && n <= 4
+  if (inForbiddenRange(fraAntallAnsatte) || inForbiddenRange(tilAntallAnsatte)) {
+    return NextResponse.json(
+      { error: "Brønnøysund tillater ikke søk på 1–4 ansatte (personvern). Bruk 0, eller 5 eller mer." },
+      { status: 400 }
+    )
+  }
+
   const admin = createAdminClient()
 
   // 1. Fetch entities from Brønnøysund, page by page.

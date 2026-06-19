@@ -93,6 +93,10 @@ export function LeadsClient() {
       return
     }
     const maxEmp = Number(maxEmployees)
+    if (maxEmployees.trim() && Number.isFinite(maxEmp) && maxEmp >= 1 && maxEmp <= 4) {
+      toast.error("Brønnøysund tillater ikke 1–4 ansatte (personvern). Bruk 5 eller mer.")
+      return
+    }
     setImporting(true)
     try {
       const res = await fetch("/api/outreach/import", {
@@ -238,8 +242,11 @@ export function LeadsClient() {
                   inputMode="numeric"
                   placeholder="f.eks. 20"
                   value={maxEmployees}
-                  onChange={(e) => setMaxEmployees(e.target.value)}
+                  onChange={(e) => setMaxEmployees(e.target.value.replace(/\D/g, ""))}
                 />
+                <p className="text-[11px] text-muted-foreground">
+                  Brønnøysund tillater ikke 1–4 (personvern) — bruk 5 eller mer.
+                </p>
               </div>
               <div className="flex items-end">
                 <Button onClick={runImport} disabled={importing} className="w-full gap-2">
