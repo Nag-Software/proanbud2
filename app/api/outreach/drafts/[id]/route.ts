@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { Resend } from "resend"
 
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerActivity, logSellerEmail } from "@/lib/selger/activity-log"
-import { buildOutreachEmailHtml } from "@/lib/outreach/templates"
-
-const resend = new Resend(process.env.RESEND_API_KEY || "re_defaultkey")
+import { isOptedOut, sendOutreachEmail } from "@/lib/outreach/send"
 
 const patchSchema = z.object({
   action: z.enum(["approve", "reject"]),
@@ -51,13 +48,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   // Opt-out check (markedsføringsloven/GDPR).
-  const { data: optOut } = await admin
-    .from("outreach_unsubscribes")
-    .select("id")
-    .or(`email.eq.${prospect.email},org_number.eq.${prospect.org_number}`)
-    .maybeSingle()
-
-  if (optOut) {
+  if (await isOptedOut(admin, { email: prospect.email, orgNumber: prospect.org_number })) {
     await admin
       .from("prospect_outreach")
       .update({ status: "unsubscribed", updated_at: new Date().toISOString() })
@@ -69,19 +60,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const bodyText = parsed.data.body ?? draft.ai_body ?? ""
   const origin = new URL(request.url).origin
   const unsubscribeUrl = `${origin}/api/outreach/unsubscribe?p=${prospect.id}`
-  const html = buildOutreachEmailHtml({ bodyText, unsubscribeUrl })
 
   try {
-    await resend.emails.send({
-      from:
-        process.env.OUTREACH_FROM_EMAIL?.trim() ||
-        process.env.RESEND_FROM_EMAIL?.trim() ||
-        "Proanbud <post@proanbud.no>",
-      to: prospect.email,
-      subject,
-      html,
-      headers: { "List-Unsubscribe": `<${unsubscribeUrl}>` },
-    })
+    await sendOutreachEmail({ to: prospect.email, subject, body: bodyText, unsubscribeUrl })
   } catch (error) {
     console.error("[outreach/drafts approve] send failed", error)
     return NextResponse.json({ error: "Kunne ikke sende e-post" }, { status: 502 })

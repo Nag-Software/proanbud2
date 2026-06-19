@@ -1,13 +1,21 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Download, Loader2, Phone, Search, Sparkles, Wand2 } from "lucide-react"
+import { Download, Loader2, Phone, Search, Sparkles, Wand2, Zap } from "lucide-react"
 import { toast } from "sonner"
 
 import { SelgerPageShell } from "@/components/selger/selger-page-shell"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -50,6 +58,8 @@ export function LeadsClient() {
   const [view, setView] = useState<View>("alle")
   const [enriching, setEnriching] = useState(false)
   const [draftingId, setDraftingId] = useState<string | null>(null)
+  const [autoSending, setAutoSending] = useState(false)
+  const [autoConfirmOpen, setAutoConfirmOpen] = useState(false)
 
   // Import form
   const [nace, setNace] = useState<Record<string, boolean>>({ "41": true, "42": true, "43": true })
@@ -155,6 +165,32 @@ export function LeadsClient() {
       toast.error(error instanceof Error ? error.message : "Berikning feilet")
     } finally {
       setEnriching(false)
+    }
+  }
+
+  const runAutoSend = async () => {
+    setAutoConfirmOpen(false)
+    setAutoSending(true)
+    try {
+      const res = await fetch("/api/outreach/auto-send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 25 }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "Full auto feilet")
+      if (data.capReached) {
+        toast.info(`Dagsgrensen på ${data.dailyLimit} e-poster er nådd. Prøv igjen i morgen.`)
+      } else {
+        toast.success(
+          `Sendt ${data.sent} e-poster · ${data.skipped} hoppet over · ${data.failed} feilet (${data.dailyRemaining} igjen i dag)`
+        )
+      }
+      await loadProspects()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Full auto feilet")
+    } finally {
+      setAutoSending(false)
     }
   }
 
@@ -292,6 +328,24 @@ export function LeadsClient() {
           ))}
         </div>
 
+        {/* Full auto */}
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="flex items-center gap-2 font-medium">
+              <Zap className="h-4 w-4 text-amber-600" />
+              Full auto
+            </p>
+            <p className="max-w-xl text-sm text-muted-foreground">
+              Lager og sender profesjonelle KI-e-poster automatisk fra post@proanbud.no til
+              prospekter med e-post. Avmelding og opt-out håndteres automatisk, med dagsgrense.
+            </p>
+          </div>
+          <Button onClick={() => setAutoConfirmOpen(true)} disabled={autoSending} className="gap-2">
+            {autoSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            Kjør full auto
+          </Button>
+        </div>
+
         {/* Enrich toolbar */}
         <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
@@ -302,6 +356,28 @@ export function LeadsClient() {
             Berik kontaktinfo
           </Button>
         </div>
+
+        <Dialog open={autoConfirmOpen} onOpenChange={setAutoConfirmOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Kjøre full auto?</DialogTitle>
+              <DialogDescription>
+                Dette lager og sender ekte e-poster automatisk fra <strong>post@proanbud.no</strong> til
+                opptil 25 prospekter med e-post (status «ny»/«kvalifisert»), uten manuell godkjenning.
+                Avmelding og opt-out respekteres, og en dagsgrense beskytter avsenderdomenet.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAutoConfirmOpen(false)}>
+                Avbryt
+              </Button>
+              <Button onClick={runAutoSend} className="gap-2">
+                <Zap className="h-4 w-4" />
+                Ja, send automatisk
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Filters */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

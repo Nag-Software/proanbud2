@@ -1,5 +1,6 @@
-// HTML wrapper for outreach emails. Includes clear sender identity and an
-// unsubscribe link — required by markedsføringsloven / GDPR for cold B2B email.
+// HTML wrapper for outreach emails. Includes a clear call-to-action button,
+// sender identity, and an unsubscribe link — required by markedsføringsloven /
+// GDPR for cold B2B email.
 
 function escapeHtml(value: string): string {
   return value
@@ -18,13 +19,26 @@ function bodyToHtml(bodyText: string): string {
     .join("")
 }
 
-export function buildOutreachEmailHtml(args: { bodyText: string; unsubscribeUrl: string }): string {
+export function buildOutreachEmailHtml(args: {
+  bodyText: string
+  unsubscribeUrl: string
+  ctaUrl?: string
+  ctaLabel?: string
+}): string {
+  const ctaLabel = args.ctaLabel || "Prøv Proanbud gratis i 14 dager"
+  const ctaBlock = args.ctaUrl
+    ? `<div style="margin:22px 0 8px;">
+         <a href="${escapeHtml(args.ctaUrl)}" style="display:inline-block;background:#1c1917;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 22px;border-radius:8px;">${escapeHtml(ctaLabel)}</a>
+       </div>`
+    : ""
+
   return `
   <div style="font-family:Arial,Helvetica,sans-serif;background:#f5f5f4;padding:24px;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e7e5e4;border-radius:10px;padding:28px;">
       <div style="font-size:15px;line-height:1.6;color:#1c1917;">
         ${bodyToHtml(args.bodyText)}
       </div>
+      ${ctaBlock}
       <hr style="border:none;border-top:1px solid #e7e5e4;margin:24px 0 14px;" />
       <p style="margin:0;font-size:12px;line-height:1.5;color:#78716c;">
         Proanbud — utviklet av Nag Software, Holmestrand (org.nr. 936593127).<br/>
