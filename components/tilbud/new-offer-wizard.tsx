@@ -443,8 +443,8 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
 
       <div className="flex h-full min-h-0 flex-col rounded-md bg-white">
         <div className="border-none px-4 pb-6">
-          <div className="mb-5 grid grid-cols-[1fr_auto_1fr] items-start gap-4">
-            <div aria-hidden="true" />
+          <div className="mb-5 flex flex-col items-center gap-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-start sm:gap-4">
+            <div aria-hidden="true" className="hidden sm:block" />
             <div className="flex items-center pt-0.5 mt-0.5">
               {steps.map((item, index) => {
                 const isActive = item.id === step
@@ -490,7 +490,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 )
               })}
             </div>
-            <div className="flex justify-end">
+            <div className="flex w-full justify-center sm:justify-end">
               <Button type="button" variant="outline" size="sm" onClick={handleSaveDraft} disabled={isPersisting}>
                 {isPersisting ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
                 Lagre som utkast
@@ -624,7 +624,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
               </div>
 
               {/* Compact markup + add row toolbar */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="theme-text-label text-sm font-medium">Påslag</span>
                 <Input
                   type="number"

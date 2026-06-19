@@ -582,7 +582,7 @@ export function PrisfilerPage() {
                     handleDelete(file.id)
                   }}
                   disabled={deletingId === file.id}
-                  className="absolute right-2 top-2 z-10 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted/80 hover:text-destructive group-hover:opacity-100 disabled:opacity-40"
+                  className="absolute right-2 top-2 z-10 rounded-md p-1 text-muted-foreground opacity-100 transition-opacity hover:bg-muted/80 hover:text-destructive md:opacity-0 md:group-hover:opacity-100 disabled:opacity-40"
                 >
                   {deletingId === file.id ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

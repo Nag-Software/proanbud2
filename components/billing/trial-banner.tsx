@@ -32,7 +32,7 @@ export function TrialBanner() {
 
   return (
     <div className="border border-orange-600/60 bg-orange-600/5 px-4 py-2">
-      <div className="flex max-w-[2000px] items-center justify-between gap-3 text-sm">
+      <div className="flex max-w-[2000px] flex-wrap items-center justify-between gap-2 text-sm">
         <p className="text-foreground">
           Du har <strong>{remaining} dager</strong> igjen av prøveperioden. Ingen belastning før prøven
           avsluttes. Avslutt når du vil.

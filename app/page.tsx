@@ -403,7 +403,7 @@ export default function DashboardPage() {
     <AppPageShell segments={["Dashbord"]}>
       <div className="flex flex-col max-w-[2000px] w-full mx-auto gap-5 pb-10">
 
-        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
           <div className="flex flex-col gap-4">
             {/* Welcome banner */}
             <Card className="hidden! border-border theme-surface-hero">
@@ -574,8 +574,8 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-          
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
+
           <Card className="bg-card/85">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Siste tilbud</CardTitle>
@@ -717,7 +717,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Table + Top projects */}
-        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
           <Card className="bg-card/85">
             <CardHeader className="border-b mt-0 py-0">
               <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Topp prosjekter</CardTitle>

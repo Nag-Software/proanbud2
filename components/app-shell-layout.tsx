@@ -5,6 +5,7 @@ import { type ReactNode } from "react"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppShellProvider, useAppShell } from "@/components/app-shell-context"
+import { MobileBottomNav } from "@/components/mobile-bottom-nav"
 import { TrialBanner } from "@/components/billing/trial-banner"
 import { ShellBreadcrumb } from "@/components/shell-breadcrumb"
 import { Separator } from "@/components/ui/separator"
@@ -49,12 +50,15 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
         <div
           className={cn(
             "flex min-h-0 w-full max-w-[2000px] min-w-0 flex-1 flex-col overflow-y-auto @apply [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;",
-            noPadding ? "overflow-hidden" : "gap-4 p-4 pt-0"
+            noPadding ? "overflow-hidden" : "gap-4 p-4 pt-0 pb-4 md:pb-4"
           )}
         >
           {children}
         </div>
+        {/* Spacer reserving room for the fixed mobile bottom nav */}
+        <div className="h-16 shrink-0 md:hidden" aria-hidden="true" />
       </SidebarInset>
+      <MobileBottomNav />
     </SidebarProvider>
   )
 }

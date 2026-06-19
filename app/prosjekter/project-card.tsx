@@ -122,7 +122,7 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground opacity-0 transition-opacity hover:bg-muted/80 hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100"
+                className="h-8 w-8 text-muted-foreground opacity-100 transition-opacity hover:bg-muted/80 hover:text-foreground md:opacity-0 md:group-hover:opacity-100 data-[state=open]:opacity-100"
                 onClick={(event) => event.preventDefault()}
               >
                 <MoreVertical className="h-4 w-4" />

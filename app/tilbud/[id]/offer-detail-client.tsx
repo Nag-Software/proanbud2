@@ -517,7 +517,7 @@ export function OfferDetailClient({
         offer.status === "rejected" ? "border-l-red-500" :
         "border-l-muted-foreground/30"
       }`}>
-        <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr] divide-x divide-border">
+        <div className="grid gap-0 divide-y divide-border lg:grid-cols-[1.2fr_0.8fr] lg:divide-x lg:divide-y-0">
           <div className="space-y-4 p-4 sm:p-5">
             <div className="flex flex-wrap items-center gap-2">
               {statusBadge(offer.status)}
@@ -642,16 +642,16 @@ export function OfferDetailClient({
               </div>
             ) : null}
 
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={sendOffer} disabled={isPending || isAutoSaving || lineItems.length === 0} className="h-9">
+            <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
+              <Button onClick={sendOffer} disabled={isPending || isAutoSaving || lineItems.length === 0} className="h-11 sm:h-9">
                 <Send className="mr-2 h-4 w-4" />
                 Send tilbud
               </Button>
-              <Button variant="outline" onClick={() => setIsPreviewOpen(true)} className="h-9">
+              <Button variant="outline" onClick={() => setIsPreviewOpen(true)} className="h-11 sm:h-9">
                 <Eye className="mr-2 h-4 w-4" />
                 Forhåndsvis tilbud
               </Button>
-              <Button variant="outline" onClick={handlePrintPdf} disabled={lineItems.length === 0} className="h-9">
+              <Button variant="outline" onClick={handlePrintPdf} disabled={lineItems.length === 0} className="h-11 sm:h-9">
                 <Download className="mr-2 h-4 w-4" />
                 Last ned PDF
               </Button>
@@ -778,9 +778,9 @@ export function OfferDetailClient({
 
         <TabsContent value="komponenter" className="m-0 focus-visible:outline-none focus-visible:ring-0">
           <div className="flex flex-col border border-border bg-background">
-            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-3">
               <h3 className="text-sm font-semibold tracking-tight text-foreground">Tilbudskomponenter</h3>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   size="sm"

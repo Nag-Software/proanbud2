@@ -146,9 +146,9 @@ export function AvvikClient({ deviations, stats, projects }: Props) {
         />
       </div>
 
-      <div className="flex flex-row gap-3">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger>
+          <SelectTrigger className="min-w-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -162,7 +162,7 @@ export function AvvikClient({ deviations, stats, projects }: Props) {
         </Select>
 
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger>
+          <SelectTrigger className="min-w-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -176,7 +176,7 @@ export function AvvikClient({ deviations, stats, projects }: Props) {
         </Select>
 
         <Select value={sourceFilter} onValueChange={setSourceFilter}>
-          <SelectTrigger>
+          <SelectTrigger className="min-w-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -188,7 +188,7 @@ export function AvvikClient({ deviations, stats, projects }: Props) {
 
         {projects.length > 1 && (
           <Select value={projectFilter} onValueChange={setProjectFilter}>
-            <SelectTrigger>
+            <SelectTrigger className="min-w-0">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -203,21 +203,21 @@ export function AvvikClient({ deviations, stats, projects }: Props) {
         )}
       </div>
 
-      <div className="flex flex-row gap-3 items-center justify-between w-fit">
+      <div className="flex flex-wrap gap-2 items-center">
         <DatePicker
           value={dateFrom}
           onChange={setDateFrom}
           placeholder="Fra dato"
-          className="w-fit min-w-32"
+          className="flex-1 min-w-32"
         />
         <DatePicker
           value={dateTo}
           onChange={setDateTo}
           placeholder="Til dato"
-          className="w-fit min-w-32"
+          className="flex-1 min-w-32"
         />
         <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
-          <SelectTrigger>
+          <SelectTrigger className="flex-1 min-w-32">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -228,7 +228,7 @@ export function AvvikClient({ deviations, stats, projects }: Props) {
           </SelectContent>
         </Select>
         <Select value={sortDir} onValueChange={(v) => setSortDir(v as "asc" | "desc")}>
-          <SelectTrigger>
+          <SelectTrigger className="flex-1 min-w-28">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
