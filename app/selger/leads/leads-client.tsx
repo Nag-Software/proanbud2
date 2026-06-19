@@ -112,7 +112,7 @@ export function LeadsClient() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || "Import feilet")
       toast.success(
-        `Importert ${data.imported} nye · ${data.duplicates} fantes fra før · ${data.existingCustomers} er allerede kunder`
+        `Importert ${data.imported} nye · ${data.backfilled ?? 0} fikk kontaktinfo · ${data.existingCustomers} er allerede kunder`
       )
       await loadProspects()
     } catch (error) {

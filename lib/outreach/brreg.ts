@@ -11,6 +11,10 @@ export type BrregEnhet = {
   naeringskode1?: { kode?: string; beskrivelse?: string }
   antallAnsatte?: number
   hjemmeside?: string
+  // Brønnøysund DOES return these contact fields (when registered).
+  epostadresse?: string
+  telefon?: string
+  mobil?: string
   konkurs?: boolean
   underAvvikling?: boolean
   underTvangsavviklingEllerTvangsopplosning?: boolean
@@ -96,12 +100,15 @@ export type MappedProspect = {
   nace_description: string | null
   employee_count: number | null
   website: string | null
+  email: string | null
+  phone: string | null
   address: string | null
   postal_code: string | null
   city: string | null
   kommune: string | null
   kommune_number: string | null
   source: "brreg"
+  enrichment_status: "pending" | "enriched" | "no_contact"
 }
 
 /** Convert a Brreg entity to a prospect insert row. Returns null for entities
@@ -114,6 +121,12 @@ export function mapEnhetToProspect(enhet: BrregEnhet): MappedProspect | null {
 
   const addr = enhet.forretningsadresse
   const website = enhet.hjemmeside?.trim() || null
+  const email = enhet.epostadresse?.trim().toLowerCase() || null
+  const phone = enhet.telefon?.trim() || enhet.mobil?.trim() || null
+
+  // Contact straight from Brreg → enriched. Otherwise a website means the scrape
+  // step can still try; no website and no contact → call list only.
+  const enrichment_status = email || phone ? "enriched" : website ? "pending" : "no_contact"
 
   return {
     org_number: enhet.organisasjonsnummer,
@@ -122,11 +135,14 @@ export function mapEnhetToProspect(enhet: BrregEnhet): MappedProspect | null {
     nace_description: enhet.naeringskode1?.beskrivelse ?? null,
     employee_count: typeof enhet.antallAnsatte === "number" ? enhet.antallAnsatte : null,
     website: website ? (website.startsWith("http") ? website : `https://${website}`) : null,
+    email: email && email.includes("@") ? email : null,
+    phone,
     address: addr?.adresse?.filter(Boolean).join(", ") || null,
     postal_code: addr?.postnummer ?? null,
     city: addr?.poststed ?? null,
     kommune: addr?.kommune ?? null,
     kommune_number: addr?.kommunenummer ?? null,
     source: "brreg",
+    enrichment_status,
   }
 }

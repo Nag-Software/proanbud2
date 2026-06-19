@@ -118,6 +118,26 @@ export async function POST(request: Request) {
     imported = inserted?.length ?? 0
   }
 
+  // 3b. Backfill Brreg contact info onto prospects that were imported earlier
+  // and still lack an email. Only fills when email IS NULL, so it never
+  // overwrites manually-edited/enriched contacts or touches CRM status.
+  let backfilled = 0
+  const withContact = toInsert.filter((p) => p.email || p.phone)
+  for (const p of withContact) {
+    const { data: updated } = await admin
+      .from("prospects")
+      .update({
+        email: p.email,
+        phone: p.phone,
+        enrichment_status: "enriched",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("org_number", p.org_number)
+      .is("email", null)
+      .select("id")
+    if (updated && updated.length > 0) backfilled += 1
+  }
+
   const duplicates = toInsert.length - imported
 
   await logSellerActivity({
@@ -130,6 +150,7 @@ export async function POST(request: Request) {
       fetched,
       imported,
       duplicates,
+      backfilled,
       existingCustomers: existingCustomerOrgs.size,
     },
   })
@@ -139,6 +160,7 @@ export async function POST(request: Request) {
     skipped,
     existingCustomers: existingCustomerOrgs.size,
     duplicates,
+    backfilled,
     imported,
   })
 }
