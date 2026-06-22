@@ -81,6 +81,7 @@ export async function tripletexRequest(connection: TripletexConnectionRow, optio
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
     cache: "no-store",
+    signal: AbortSignal.timeout(25000),
   })
 
   return parseTripletexResponse(response)
@@ -138,6 +139,7 @@ export async function refreshTripletexSession(
       Accept: "application/json",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(25000),
   })
 
   const json = await parseTripletexResponse(response)
@@ -429,6 +431,7 @@ export async function uploadTripletexProjectDocument(
     },
     body: formData,
     cache: "no-store",
+    signal: AbortSignal.timeout(30000),
   })
 
   return parseTripletexResponse(response)

@@ -229,7 +229,7 @@ export function BillingPageClient() {
 
         <div className="space-y-2 border-t px-5 py-4">
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">KI-tilbud</span>
+            <span className="text-muted-foreground">Tilbud generert</span>
             <span>
               {summary?.used ?? 0} / {summary?.quota_limit ?? 0}
             </span>

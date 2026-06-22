@@ -1,7 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 
 type LogSellerActivityInput = {
-  sellerUserId: string
+  // Nullable: automated jobs (e.g. the outreach cron) have no logged-in seller.
+  sellerUserId: string | null
   action: string
   targetType?: string | null
   targetId?: string | null
@@ -25,7 +26,8 @@ export async function logSellerActivity(input: LogSellerActivityInput) {
 }
 
 type LogSellerEmailInput = {
-  sentBy: string
+  // Nullable: the outreach cron sends with no logged-in seller.
+  sentBy: string | null
   templateId: string
   recipientEmail: string
   companyId?: string | null

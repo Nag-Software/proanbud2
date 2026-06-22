@@ -4,11 +4,12 @@ import { createAdminClient } from "@/lib/supabase/admin"
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const prospectId = searchParams.get("p")
-  const emailParam = searchParams.get("email")?.trim().toLowerCase()
 
   const admin = createAdminClient()
 
-  let email = emailParam ?? null
+  // Unsubscribe only via the unguessable prospect UUID — never a caller-supplied
+  // ?email= (which would let anyone suppress an arbitrary third-party address).
+  let email: string | null = null
   let orgNumber: string | null = null
 
   if (prospectId) {
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
       .eq("id", prospectId)
       .maybeSingle()
     if (prospect) {
-      email = email ?? prospect.email
+      email = prospect.email
       orgNumber = prospect.org_number
       await admin
         .from("prospects")

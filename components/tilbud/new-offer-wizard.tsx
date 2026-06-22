@@ -28,7 +28,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  CONTRACT_BASIS_LABELS,
   DEFAULT_PAYMENT_SCHEDULE,
   inferPricingModelFromLineItems,
   PRICING_MODEL_LABELS,
@@ -66,7 +65,7 @@ const steps = [
   {
     id: 2,
     title: "Rediger prisforslag",
-    description: "Juster pris basert på KI-analyse",
+    description: "Juster pris med automatisk prisforslag",
     icon: Zap,
   },
   {
@@ -579,7 +578,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   Fortsett manuelt
                 </Button>
                 <Button type="button" className="h-9 flex-1 text-sm" onClick={handleAnalyze} disabled={isPersisting || isUploadingDocuments}>
-                  Kjør KI-analyse
+                  Foreslå pris automatisk
                 </Button>
               </div>
             </div>
@@ -696,10 +695,6 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   <div>
                     <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Vederlagsform</dt>
                     <dd className="mt-0.5 font-medium text-foreground">{PRICING_MODEL_LABELS[pricingModel]}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Kontraktsgrunnlag</dt>
-                    <dd className="mt-0.5 font-medium text-foreground">{CONTRACT_BASIS_LABELS[contractBasis]}</dd>
                   </div>
                   <div>
                     <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Gyldighet</dt>

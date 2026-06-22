@@ -140,12 +140,15 @@ export async function POST(request: Request) {
 
       if (rendered) {
         try {
-          await resend.emails.send({
+          const { error: sendError } = await resend.emails.send({
             from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <post@proanbud.no>",
             to: normalizedEmail,
             subject: rendered.subject,
             html: rendered.html,
           })
+          if (sendError) {
+            throw new Error(sendError.message ?? JSON.stringify(sendError))
+          }
 
           await logSellerEmail({
             sentBy: auth.user!.id,

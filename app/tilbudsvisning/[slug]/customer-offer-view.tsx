@@ -508,8 +508,8 @@ export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?:
             <p className="font-medium text-neutral-900">Bindende tilbud</p>
             <p className="mt-1 leading-relaxed">
               Når du godtar tilbudet, inngår du en bindende avtale med {offer.company.name || "bedriften"} om
-              leveransen beskrevet i tilbudet, inkludert pris og vilkår. Tilbudet erstatter behov for separat
-              kontraktsignering.
+              leveransen beskrevet i tilbudet, inkludert pris og vilkår. Det aksepterte tilbudet utgjør avtalen
+              mellom partene — ingen separat kontrakt er nødvendig.
             </p>
           </div>
 

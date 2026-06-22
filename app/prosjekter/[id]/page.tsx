@@ -27,6 +27,7 @@ import TilbudTab from "./tilbud-tab"
 import TimeforingTab from "./timeforing-tab"
 import { ProjectOverviewTab, type OverviewTask } from "./project-overview-tab"
 import { ProjectTabsShell } from "./project-tabs-shell"
+import { EtterkalkyleTab } from "./etterkalkyle-tab"
 
 type MemberUser = {
   id: string
@@ -185,6 +186,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               { value: "oppgaver", label: "Oppgaver" },
               { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
               { value: "timeforing", label: "Timeføring" },
+              { value: "lonnsomhet", label: "Etterkalkyle", shortLabel: "Margin", hidden: isWorker },
               { value: "ks", label: "KS", hidden: isWorker },
               { value: "avvik", label: "Avvik" },
               { value: "deltakere", label: "Deltakere", hidden: isWorker },
@@ -257,6 +259,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 />
               )}
             </TabsContent>
+
+            {!isWorker && (
+              <TabsContent value="lonnsomhet">
+                <EtterkalkyleTab projectId={project.id} canManage={!isWorker} />
+              </TabsContent>
+            )}
 
             {!isWorker && (
               <TabsContent value="ks">

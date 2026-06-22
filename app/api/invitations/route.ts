@@ -129,7 +129,7 @@ export async function POST(request: Request) {
     const invitationUrl = `${baseUrl}/signup?invite=${rawToken}`;
 
     try {
-      await resend.emails.send({
+      const { error: sendError } = await resend.emails.send({
         from: 'Proanbud <post@proanbud.no>',
         to: normalizedEmail,
         subject: 'Du er invitert til Proanbud',
@@ -147,6 +147,9 @@ export async function POST(request: Request) {
           </div>
         `,
       });
+      if (sendError) {
+        console.error('Invitation email rejected by Resend:', sendError);
+      }
     } catch (emailError) {
       console.error('Failed to send email:', emailError);
     }

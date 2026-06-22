@@ -212,6 +212,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true })
   } catch (error) {
     console.error("[stripe/webhook]", event.type, error)
+    // Roll back the idempotency record so Stripe's retry re-processes this event
+    // instead of hitting the duplicate guard and silently dropping the work.
+    await createAdminClient().from("stripe_webhook_events").delete().eq("event_id", event.id)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Webhook-feil" },
       { status: 500 }

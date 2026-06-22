@@ -1,4 +1,5 @@
 import { type OfferLineItem } from "@/lib/tilbud/types"
+import { openaiFetch } from "@/lib/llm/openai-fetch"
 
 type GenerateProjectSummaryInput = {
   title: string
@@ -62,40 +63,29 @@ export async function generateProjectSummary(input: GenerateProjectSummaryInput)
     .join("\n")
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              "Du skriver korte, profesjonelle prosjektbeskrivelser for norske håndverkertilbud. Svar alltid med JSON: {\"summary\":\"...\"}. Maks 2 korte setninger, maks 220 tegn.",
-          },
-          {
-            role: "user",
-            content: [
-              `Prosjekt: ${input.projectName || input.title || "Ukjent"}`,
-              `Tittel: ${input.title}`,
-              `Jobbeskrivelse: ${input.description || "Ingen detaljert beskrivelse"}`,
-              lineItemHints ? `Hovedposter:\n${lineItemHints}` : "",
-            ]
-              .filter(Boolean)
-              .join("\n\n"),
-          },
-        ],
-      }),
+    const response = await openaiFetch("chat/completions", {
+      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "Du skriver korte, profesjonelle prosjektbeskrivelser for norske håndverkertilbud. Svar alltid med JSON: {\"summary\":\"...\"}. Maks 2 korte setninger, maks 220 tegn.",
+        },
+        {
+          role: "user",
+          content: [
+            `Prosjekt: ${input.projectName || input.title || "Ukjent"}`,
+            `Tittel: ${input.title}`,
+            `Jobbeskrivelse: ${input.description || "Ingen detaljert beskrivelse"}`,
+            lineItemHints ? `Hovedposter:\n${lineItemHints}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+        },
+      ],
     })
-
-    if (!response.ok) {
-      return fallback
-    }
 
     const payload = (await response.json()) as {
       choices?: Array<{ message?: { content?: string | null } }>

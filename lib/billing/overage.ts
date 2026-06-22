@@ -52,15 +52,22 @@ export async function applyOverageToUpcomingInvoice(input: {
     return { applied: false, reason: "no_overage" as const, used, quotaLimit }
   }
 
-  await stripe.invoiceItems.create({
-    customer: input.stripeCustomerId,
-    subscription: input.stripeSubscriptionId,
-    quantity: overage,
-    pricing: {
-      price: getOveragePriceId(),
+  await stripe.invoiceItems.create(
+    {
+      customer: input.stripeCustomerId,
+      subscription: input.stripeSubscriptionId,
+      quantity: overage,
+      pricing: {
+        price: getOveragePriceId(),
+      },
+      description: `Overforbruk AI-tilbud (${overage} stk à 9,50 kr)`,
     },
-    description: `Overforbruk AI-tilbud (${overage} stk à 9,50 kr)`,
-  })
+    {
+      // Deterministic per company+period so a webhook retry never double-charges,
+      // even if the snapshot insert below failed on a previous attempt.
+      idempotencyKey: `overage_${input.companyId}_${input.periodStart}_${input.periodEnd}`,
+    }
+  )
 
   await admin.from("billing_overage_snapshots").insert({
     company_id: input.companyId,

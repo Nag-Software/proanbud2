@@ -9,6 +9,8 @@ import {
   type CompanyPriceRow,
 } from "@/lib/tilbud/company-price-utils"
 import { createClient } from "@/lib/supabase/server"
+import { openaiFetch } from "@/lib/llm/openai-fetch"
+import { requireActiveSubscription } from "@/lib/billing/guards"
 import { matchNorwegianSupplierPrices } from "@/lib/tilbud/supplier-prices"
 import { formatNormalPriceForPrompt, mapNormalPriceRows, pickBestNormalPrice } from "@/lib/tilbud/normal-prices"
 import {
@@ -182,26 +184,14 @@ async function runOpenAiAnalysis(
     })),
   }).join("\n\n")
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-5.2-mini",
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
-    }),
+  const response = await openaiFetch("chat/completions", {
+    model: process.env.OPENAI_MODEL || "gpt-5.2-mini",
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
+    ],
   })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`OpenAI analyse feilet: ${errorText}`)
-  }
 
   const payload = (await response.json()) as {
     choices?: Array<{
@@ -239,6 +229,11 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: "Ikke autentisert" }, { status: 401 })
     }
+
+    // Gate the most expensive endpoint (OpenAI + up to 8 Brave searches) behind an
+    // active subscription, mirroring the ai-chat route — prevents uncapped cost.
+    const subscription = await requireActiveSubscription()
+    if (!subscription.ok) return subscription.response
 
     const body = await request.json()
     const parsed = analysisRequestSchema.safeParse(body)

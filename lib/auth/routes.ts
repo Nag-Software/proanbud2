@@ -11,6 +11,7 @@ export const AUTH_PUBLIC_ROUTE_PREFIXES = [
   '/create-company',
   '/auth/callback',
   '/tilbudsvisning',
+  '/eksempel-tilbud',
 ] as const
 
 export const SUBSCRIPTION_EXEMPT_ROUTE_PREFIXES = [

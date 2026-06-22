@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { enqueueOfferTripletexSyncAndProcess } from "@/lib/integrations/tripletex/sync"
+import { enqueueOfferFikenSyncAndProcess } from "@/lib/integrations/fiken/sync"
 import { notifyCompanyAdminsAboutAcceptedOffer } from "@/lib/tilbud/notify-accepted-offer"
 import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 
@@ -26,7 +27,10 @@ export async function handleOfferAccepted(input: {
   }
 
   if (offer.customer_id) {
-    const enqueued = await enqueueOfferTripletexSyncAndProcess({
+    // Only one accounting provider is connected at a time; each enqueue no-ops when
+    // its provider isn't the active one. For Fiken, phase "order" creates the invoice
+    // (Fiken has no mutable order — the quote→order→invoice flow collapses).
+    const tripletexEnqueued = await enqueueOfferTripletexSyncAndProcess({
       companyId: input.companyId,
       offerId: input.offerId,
       customerId: String(offer.customer_id),
@@ -36,14 +40,24 @@ export async function handleOfferAccepted(input: {
       waitForCompletion: false,
     })
 
-    if (enqueued) {
+    const fikenEnqueued = await enqueueOfferFikenSyncAndProcess({
+      companyId: input.companyId,
+      offerId: input.offerId,
+      customerId: String(offer.customer_id),
+      projectId: offer.project_id ? String(offer.project_id) : null,
+      source: input.source || "offer-accepted",
+      phase: "order",
+      waitForCompletion: false,
+    })
+
+    if (tripletexEnqueued || fikenEnqueued) {
       await logOfferActivity({
         offerId: input.offerId,
         companyId: input.companyId,
         actorUserId: input.actorUserId || null,
         eventType: OFFER_ACTIVITY.ERP_ORDER_SYNCED,
-        title: "Ordre opprettes i Tripletex",
-        metadata: { source: input.source || "offer-accepted" },
+        title: fikenEnqueued ? "Faktura opprettes i Fiken" : "Ordre opprettes i Tripletex",
+        metadata: { source: input.source || "offer-accepted", provider: fikenEnqueued ? "fiken" : "tripletex" },
       })
     }
   }

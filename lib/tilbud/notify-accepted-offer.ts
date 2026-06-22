@@ -1,5 +1,6 @@
 import { Resend } from "resend"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { escapeHtml } from "@/lib/outreach/templates"
 
 const resend = new Resend(process.env.RESEND_API_KEY || "re_defaultkey")
 
@@ -27,16 +28,19 @@ export async function notifyCompanyAdminsAboutAcceptedOffer(input: {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.proanbud.no"
   const offerUrl = `${appUrl}/tilbud/${input.offerId}`
 
-  await resend.emails.send({
-    from: process.env.RESEND_FROM_EMAIL || "Proanbud <noreply@proanbud.no>",
-    to: recipients,
-    subject: `Kunde godtok tilbud: ${input.offerTitle}`,
-    html: [
-      `<p>Kunden <strong>${input.customerName}</strong> har godkjent tilbudet <strong>${input.offerTitle}</strong>.</p>`,
-      `<p>Ordre opprettes i Tripletex.</p>`,
-      `<p><a href="${offerUrl}">Åpne tilbud</a></p>`,
-    ].join(""),
-  }).catch((error) => {
+  const { error } = await resend.emails
+    .send({
+      from: process.env.RESEND_FROM_EMAIL || "Proanbud <noreply@proanbud.no>",
+      to: recipients,
+      subject: `Kunde godtok tilbud: ${input.offerTitle}`,
+      html: [
+        `<p>Kunden <strong>${escapeHtml(input.customerName)}</strong> har godkjent tilbudet <strong>${escapeHtml(input.offerTitle)}</strong>.</p>`,
+        `<p>Ordre opprettes i Tripletex.</p>`,
+        `<p><a href="${offerUrl}">Åpne tilbud</a></p>`,
+      ].join(""),
+    })
+    .catch((err) => ({ error: err }))
+  if (error) {
     console.error("Failed to notify admins about accepted offer:", error)
-  })
+  }
 }

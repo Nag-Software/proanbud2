@@ -7,7 +7,7 @@ import { ROLE_DB_VALUES, normalizeRole, roleNameToDisplay } from '@/lib/roles';
 export async function POST(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
-    const { token, fullName = "Ny Ansatt", password, email } = await request.json();
+    const { token, fullName = "Ny Ansatt", password } = await request.json();
 
     if (!token || !password) {
       return NextResponse.json({ error: 'Mangler påkrevde felt' }, { status: 400 });
@@ -30,7 +30,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invitasjonen har utløpt' }, { status: 400 });
     }
 
-    const targetEmail = (email || invite.email).trim().toLowerCase();
+    // Always bind to the invitation's email — never trust a client-supplied address
+    // (prevents creating a confirmed account / joining a company on an arbitrary email).
+    const targetEmail = String(invite.email).trim().toLowerCase();
 
     const { data: authRecord, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: targetEmail,

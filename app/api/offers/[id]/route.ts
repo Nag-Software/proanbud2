@@ -106,7 +106,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const updateRow = {
     title: payload.title?.trim() || "Uten tittel",
     description: payload.description?.trim() || "",
-    status: payload.status || "draft",
+    status: payload.status ?? existingOffer.status ?? "draft",
     quote_valid_until: payload.quoteValidUntil || null,
     recipient_name: payload.recipientName?.trim() || null,
     recipient_email: payload.recipientEmail?.trim() || null,

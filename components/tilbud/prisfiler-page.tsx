@@ -553,8 +553,8 @@ export function PrisfilerPage() {
           </div>
           <p className="text-sm font-medium">Ingen prisfiler ennå</p>
           <p className="max-w-xs text-sm text-muted-foreground">
-            Last opp en prisfil fra byggevarehandleren din. AI-agenten bruker den automatisk når du
-            genererer tilbud.
+            Last opp en prisfil fra byggevarehandleren din. Den brukes automatisk til å hente
+            riktige priser når du lager tilbud.
           </p>
           <Button
             variant="outline"
@@ -968,8 +968,7 @@ export function PrisfilerPage() {
                 </div>
 
                 <p className="text-xs text-muted-foreground">
-                  Prisfilen blir tilgjengelig for AI-agenten med én gang og brukes automatisk når du
-                  genererer tilbud.
+                  Prisfilen tas i bruk umiddelbart og hentes automatisk inn når du lager tilbud.
                 </p>
               </div>
             )}

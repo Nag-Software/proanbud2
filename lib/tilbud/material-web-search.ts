@@ -135,8 +135,10 @@ export async function searchMaterialPricesForOffer(input: {
     })
   }
 
-  for (const term of terms) {
-    const webHits = await searchBraveWeb(term)
+  // Run the per-term web searches in parallel — sequential awaits (up to 8 terms ×
+  // 8s timeout = 64s) could exceed the route maxDuration before the LLM call runs.
+  const webResults = await Promise.all(terms.map((term) => searchBraveWeb(term).catch(() => [])))
+  for (const webHits of webResults) {
     for (const hit of webHits) {
       const key = `${hit.product}:${hit.sourceUrl}`
       if (!hits.has(key)) hits.set(key, hit)

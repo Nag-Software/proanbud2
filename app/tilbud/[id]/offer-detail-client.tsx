@@ -21,13 +21,14 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ResponsiveTabs, TabsContent } from "@/components/responsive-tabs"
+import { TilleggsarbeidTab } from "./tilleggsarbeid-tab"
 import { Textarea } from "@/components/ui/textarea"
 import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
-import { buildOfferDocumentPage, formatOfferReference, type OfferDocumentData } from "@/lib/tilbud/offer-document"
+import { formatOfferReference, type OfferDocumentData } from "@/lib/tilbud/offer-document"
 import { getOfferActivityTone, type OfferActivityEvent } from "@/lib/tilbud/offer-activity.shared"
-import { CONTRACT_BASIS_LABELS, DEFAULT_PAYMENT_SCHEDULE, PRICING_MODEL_LABELS } from "@/lib/contracts/pricing"
+import { DEFAULT_PAYMENT_SCHEDULE, PRICING_MODEL_LABELS } from "@/lib/contracts/pricing"
 import {
   type OfferCompanyContext,
   type OfferContractBasis,
@@ -394,14 +395,9 @@ export function OfferDetailClient({
 
   const handlePrintPdf = useCallback(() => {
     void logPdfExport()
-    const printWin = window.open("", "_blank")
-    if (!printWin) {
-      toast.error("Kunne ikke åpne utskriftsvindu")
-      return
-    }
-    printWin.document.write(buildOfferDocumentPage(documentData, { autoPrint: true }))
-    printWin.document.close()
-  }, [documentData, logPdfExport])
+    // Server-rendrer en ekte A4-PDF av tilbudet og åpner den i ny fane.
+    window.open(`/api/tilbud/${offer.id}/pdf`, "_blank")
+  }, [offer.id, logPdfExport])
 
   const triggerTripletexSyncInBackground = useCallback(async () => {
     try {
@@ -581,22 +577,6 @@ export function OfferDetailClient({
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label className="text-[11px] text-muted-foreground">Kontraktsgrunnlag</Label>
-                <Select
-                  value={offer.contractBasis}
-                  onValueChange={(value) =>
-                    setOffer((prev) => ({ ...prev, contractBasis: value as OfferContractBasis }))
-                  }
-                >
-                  <SelectTrigger className="mt-1 h-8 bg-background text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(CONTRACT_BASIS_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
               {offer.pricingModel === "time_materials" || offer.pricingModel === "mixed" ? (
                 <div>
                   <Label className="text-[11px] text-muted-foreground">Påslag %</Label>
@@ -716,6 +696,7 @@ export function OfferDetailClient({
         defaultValue="komponenter"
         tabs={[
           { value: "komponenter", label: "Komponenter" },
+          { value: "tillegg", label: "Tillegg" },
           { value: "kunde", label: "Kundeinfo" },
           { value: "dokumenter", label: "Dokumenter" },
           { value: "hendelser", label: "Hendelser" },
@@ -946,6 +927,10 @@ export function OfferDetailClient({
               </div>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="tillegg" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+          <TilleggsarbeidTab offerId={offer.id} />
         </TabsContent>
       </ResponsiveTabs>
 

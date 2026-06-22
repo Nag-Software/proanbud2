@@ -3,6 +3,18 @@
     {
       "path": "/api/integrations/tripletex/worker",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/outreach/cron",
+      "schedule": "0 8 * * 1-5"
+    },
+    {
+      "path": "/api/integrations/fiken/reconcile",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/integrations/fiken/worker",
+      "schedule": "30 2 * * *"
     }
   ]
 }

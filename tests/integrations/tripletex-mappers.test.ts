@@ -57,6 +57,23 @@ describe("mapOrderFromOffer", () => {
     expect(firstLine.vatType).toEqual({ id: 3 })
     expect(firstLine.account).toEqual({ id: 3000 })
     expect(String(firstLine.description)).toContain("Flislegging")
+    // No discount → no discount field.
+    expect(firstLine).not.toHaveProperty("discount")
+
+    // Regression guard for the double-discount bug: the unit price must be the
+    // BEFORE-discount price (950, not the net 902.5) with the discount passed
+    // separately, so Tripletex's unitPrice * count * (1 - discount/100) matches
+    // the accepted offer net.
+    const secondLine = payload.orderLines[1] as Record<string, number>
+    expect(secondLine.unitPriceExcludingVatCurrency).toBe(950)
+    expect(secondLine.discount).toBe(5)
+
+    const tripletexTotal = (payload.orderLines as Record<string, number>[]).reduce((sum, line) => {
+      const discount = line.discount || 0
+      return sum + line.unitPriceExcludingVatCurrency * line.count * (1 - discount / 100)
+    }, 0)
+    // 10*880 + 8*950*0.95 = 8800 + 7220 = 16020 (== calculateOfferTotals(...).totalNok)
+    expect(Math.round(tripletexTotal)).toBe(16020)
   })
 
   it("omits project when prosjektmodul is not synced", () => {

@@ -78,12 +78,15 @@ export async function POST(request: Request) {
             publicSlug,
           })
 
-          await resend.emails.send({
+          const { error: sendError } = await resend.emails.send({
             from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <post@proanbud.no>",
             to: recipientEmail,
             subject: `Ny melding fra ${company?.name || "Proanbud"}`,
             html,
           })
+          if (sendError) {
+            console.error("[messages email] resend error", sendError)
+          }
         } catch (emailError) {
           console.error("[messages email]", emailError)
         }

@@ -25,9 +25,9 @@ export const integrations = [
     },
     {
         name: "Fiken",
-        description: "Integrasjon med Fiken regnskapssystem. Kommer senere.",
-        url: "#",
-        status: "kommer senere",
+        description: "Koble til Fiken via sikker innlogging (OAuth). Synkroniser kunder, prosjekter, tilbud og fakturaer.",
+        url: "/min-bedrift/fiken",
+        status: "beta",
         logo: "/integrasjoner-logo/fiken.png"
     }
 ];
@@ -51,17 +51,33 @@ export default async function IntegrasjonerPage() {
     companyId = userRow?.company_id || null
   }
 
-  const connectionResult = companyId
-    ? await supabase
-        .from("tripletex_connections")
-        .select("company_id, sync_state")
-        .eq("company_id", companyId)
-        .maybeSingle()
-    : { data: null as null }
+  const [connectionResult, fikenConnectionResult] = companyId
+    ? await Promise.all([
+        supabase
+          .from("tripletex_connections")
+          .select("company_id, sync_state")
+          .eq("company_id", companyId)
+          .maybeSingle(),
+        supabase
+          .from("fiken_connections")
+          .select("company_id, sync_state")
+          .eq("company_id", companyId)
+          .maybeSingle(),
+      ])
+    : [{ data: null as null }, { data: null as null }]
 
   const hasTripletexConnection = Boolean(
     connectionResult.data?.company_id && connectionResult.data?.sync_state !== "disconnected"
   )
+
+  const hasFikenConnection = Boolean(
+    fikenConnectionResult.data?.company_id && fikenConnectionResult.data?.sync_state !== "disconnected"
+  )
+
+  const connectionByName: Record<string, boolean> = {
+    Tripletex: hasTripletexConnection,
+    Fiken: hasFikenConnection,
+  }
 
   return (
     <AppPageShell segments={["Min Bedrift", "Integrasjoner"]}>
@@ -76,9 +92,12 @@ export default async function IntegrasjonerPage() {
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {integrations.map((integration) => {
-                const isTripletex = integration.name === "Tripletex"
-                const isActive = integration.status === "active" && (!isTripletex || hasTripletexConnection)
-                const actionLabel = isTripletex ? (hasTripletexConnection ? "Administrer" : "Koble til") : "Åpne"
+                const hasConnectionToggle = integration.name in connectionByName
+                const isConnected = connectionByName[integration.name] ?? false
+                const isBeta = integration.status === "beta"
+                const isUsable = integration.status === "active" || isBeta
+                const isActive = isUsable && (!hasConnectionToggle || isConnected)
+                const actionLabel = hasConnectionToggle ? (isConnected ? "Administrer" : "Koble til") : "Åpne"
 
                 return (
                     <Card key={integration.name} className="">
@@ -87,18 +106,24 @@ export default async function IntegrasjonerPage() {
                           <CardTitle className="mb-2">
                             <Image src={integration.logo} alt={`${integration.name} logo`} width={120} height={40} />
                           </CardTitle>
-                          <Badge variant={isActive ? "outline" : "secondary"}>
-                              <span className="text-xs">
-                                  {integration.status === "active" ? isActive ? "Aktiv" : "Tilgjengelig" : "Kommer senere"}
-                              </span>
-                          </Badge>
+                          {isBeta ? (
+                            <Badge className="border-transparent bg-amber-100 text-amber-900 hover:bg-amber-100">
+                                <span className="text-xs">Beta</span>
+                            </Badge>
+                          ) : (
+                            <Badge variant={isActive ? "outline" : "secondary"}>
+                                <span className="text-xs">
+                                    {integration.status === "active" ? isActive ? "Aktiv" : "Tilgjengelig" : "Kommer senere"}
+                                </span>
+                            </Badge>
+                          )}
                         </div>
                       <CardDescription>
                           {integration.description}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="flex items-center justify-start gap-3 mt-auto">
-                      {integration.status === "active" ? (
+                      {isUsable ? (
                         <Button asChild variant="default" className="min-w-20">
                             <Link href={integration.url}>
                             {actionLabel}

@@ -32,7 +32,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   const respondedAt = new Date().toISOString()
   const admin = createAdminClient()
 
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from("offers")
     .update({
       status: nextStatus,
@@ -41,9 +41,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     })
     .eq("id", offer.id)
     .eq("status", "sent")
+    .select("id")
 
   if (error) {
     return NextResponse.json({ error: "Kunne ikke lagre svaret ditt" }, { status: 500 })
+  }
+
+  // Only run side-effects when THIS call actually flipped the status (it was still
+  // "sent") — prevents duplicate activity logs / admin e-poster on race/double-click.
+  if (!updated || updated.length === 0) {
+    return NextResponse.json({ ok: true, status: nextStatus, alreadyResponded: true })
   }
 
   await logOfferActivity({

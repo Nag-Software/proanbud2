@@ -174,6 +174,13 @@ function classifyError(error: unknown) {
     return { kind: "retry" as const, code: "network", message, rateLimitResetAt }
   }
 
+  // Transient auth/lock statuses (401 from a session-token refresh race, 423 locked,
+  // 409 conflict) should retry with backoff rather than dead-letter immediately;
+  // max_attempts still bounds the retries.
+  if (status === 401 || status === 403 || status === 409 || status === 423) {
+    return { kind: "retry" as const, code: `http_${status}`, message, rateLimitResetAt }
+  }
+
   return { kind: "failed" as const, code: `http_${status}`, message }
 }
 

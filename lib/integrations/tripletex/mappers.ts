@@ -2,7 +2,7 @@ import {
   buildTripletexOfferExternalAccountsNumber,
   buildTripletexOfferNumber,
 } from "@/lib/integrations/tripletex/offer-identity"
-import { calculateLineItemTotal, type OfferLineItem } from "@/lib/tilbud/types"
+import { calculateLineItemUnitPriceWithMarkupBeforeDiscount, type OfferLineItem } from "@/lib/tilbud/types"
 
 export function mapCustomerToTripletex(customer: {
   name: string
@@ -145,9 +145,11 @@ function normalizeOfferLineItems(input: unknown): OfferLineItem[] {
 }
 
 function lineUnitPriceExVat(item: OfferLineItem) {
-  const quantity = item.quantity > 0 ? item.quantity : 1
-  const lineTotal = calculateLineItemTotal(item)
-  return Math.round((lineTotal / quantity + Number.EPSILON) * 100) / 100
+  // Tripletex computes the line total as unitPriceExcludingVatCurrency * count * (1 - discount/100),
+  // and buildOrderLine / mapTilbudOrderLinesFromOffer pass line.discount = item.discountPercent
+  // separately. This MUST therefore be the unit price WITH markup but BEFORE discount — otherwise
+  // the discount is applied twice and Tripletex undercharges vs. the accepted offer.
+  return calculateLineItemUnitPriceWithMarkupBeforeDiscount(item)
 }
 
 function buildOrderLine(item: OfferLineItem, options?: { defaultVatTypeId?: number | null; defaultAccountId?: number | null }) {

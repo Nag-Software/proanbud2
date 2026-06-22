@@ -133,12 +133,17 @@ export async function sendOfferToCustomer(input: SendOfferInput) {
     publicSlug,
   })
 
-  await resend.emails.send({
+  const { error: sendError } = await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <post@proanbud.no>",
     to: recipientEmail,
     subject: `Tilbud ${offerReference} fra ${companyName}`,
     html: emailHtml,
   })
+  // Må kaste FØR offers.status settes til "sent" nedenfor — ellers markeres
+  // tilbudet som sendt selv om e-posten aldri nådde kunden.
+  if (sendError) {
+    throw new Error(`Kunne ikke sende tilbud på e-post: ${sendError.message ?? JSON.stringify(sendError)}`)
+  }
 
   const totals = calculateOfferTotals(lineItems)
   const { error: updateError } = await supabase

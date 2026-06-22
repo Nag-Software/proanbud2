@@ -2,7 +2,7 @@
 // sender identity, and an unsubscribe link — required by markedsføringsloven /
 // GDPR for cold B2B email.
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -41,7 +41,7 @@ export function buildOutreachEmailHtml(args: {
       ${ctaBlock}
       <hr style="border:none;border-top:1px solid #e7e5e4;margin:24px 0 14px;" />
       <p style="margin:0;font-size:12px;line-height:1.5;color:#78716c;">
-        Proanbud — utviklet av Nag Software, Holmestrand (org.nr. 936593127).<br/>
+        Proanbud — utviklet av Nag Software, Sydhøyveien 1, 3084 Holmestrand (org.nr. 936593127).<br/>
         Du mottar denne e-posten fordi bedriften din er i bygg- og anleggsbransjen.
         <a href="${escapeHtml(args.unsubscribeUrl)}" style="color:#78716c;">Meld deg av</a>.
       </p>

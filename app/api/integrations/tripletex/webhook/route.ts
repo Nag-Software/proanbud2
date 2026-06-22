@@ -36,15 +36,21 @@ export async function POST(request: Request) {
       signatureValid = verifySignature(rawBody, webhookSecret, request.headers.get("x-tripletex-signature"))
     }
 
+    // Reject unverified webhooks BEFORE any DB write — no fail-open when companyId
+    // or the stored secret is missing (prevents unauthenticated inserts / log spam).
+    if (!signatureValid) {
+      return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 })
+    }
+
     const { data: eventRow, error: insertError } = await admin
       .from("integration_webhook_events")
       .insert({
         provider: "tripletex",
-        company_id: companyId || null,
+        company_id: companyId,
         event_type: eventType,
         external_event_id: externalEventId,
         payload,
-        signature_valid: signatureValid,
+        signature_valid: true,
         process_status: "pending",
       })
       .select("id")
@@ -52,15 +58,6 @@ export async function POST(request: Request) {
 
     if (insertError && insertError.code !== "23505") {
       return NextResponse.json({ error: insertError.message }, { status: 500 })
-    }
-
-    if (!signatureValid && companyId) {
-      await admin
-        .from("integration_webhook_events")
-        .update({ process_status: "failed", error_message: "Invalid signature", processed_at: new Date().toISOString() })
-        .eq("id", eventRow?.id)
-
-      return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 })
     }
 
     if (companyId && eventType === "invoice.paid") {

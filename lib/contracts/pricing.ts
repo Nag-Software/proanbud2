@@ -18,8 +18,8 @@ export const PRICING_MODEL_LABELS: Record<OfferPricingModel, string> = {
 }
 
 export const CONTRACT_BASIS_LABELS = {
-  ns8405: "NS 8405",
-  ns8407: "NS 8407",
+  ns8405: "Basert på NS 8405",
+  ns8407: "Basert på NS 8407",
   custom: "Egen avtale",
   none: "Ingen standard",
 } as const

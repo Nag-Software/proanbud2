@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { recordUsageEvent, requireActiveSubscription } from "@/lib/billing/guards"
 import { createClient } from "@/lib/supabase/server"
+import { openaiFetch } from "@/lib/llm/openai-fetch"
 import type { CompanyPriceLevel } from "@/lib/tilbud/company-profile"
 import {
   buildAiPriceSelectionContext,
@@ -281,20 +282,7 @@ async function callOpenAiResponses(body: Record<string, unknown>): Promise<Respo
       })()
     : body
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify(requestBody),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`OpenAI feil (${response.status}): ${errorText.slice(0, 500)}`)
-  }
-
+  const response = await openaiFetch("responses", requestBody)
   return response.json() as Promise<ResponsesPayload>
 }
 
