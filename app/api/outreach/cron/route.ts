@@ -5,11 +5,21 @@ import { logSellerActivity } from "@/lib/selger/activity-log"
 import { runInitialOutreach } from "@/lib/outreach/initial-send"
 import { runOutreachFollowups } from "@/lib/outreach/followup"
 import { countOutreachSentToday, getOutreachDailyLimit } from "@/lib/outreach/send"
+import {
+  countSendableProspects,
+  getDefaultImportNace,
+  getImportBatchSize,
+  getPoolMinThreshold,
+  importProspects,
+  type ImportProspectsResult,
+} from "@/lib/outreach/import"
 
-// Drafting + sending a full daily batch can take a while.
+// Drafting + sending a full daily batch (and topping up the lead pool) can take a while.
 export const maxDuration = 300
 
 // Daily, hands-off run of the whole outbound lead engine:
+//   0. TOP UP the prospect pool from Brønnøysund if it's running low, so the engine
+//      never starves for fresh leads (this is what keeps the traffic flowing).
 //   1. Send all due FOLLOW-UPS to prospects who haven't replied (warmer — run first).
 //   2. Spend whatever's left of the daily cap on the first cold email to fresh prospects.
 //
@@ -28,6 +38,24 @@ async function run(request: Request) {
   const admin = createAdminClient()
   const origin = new URL(request.url).origin
   const dailyLimit = getOutreachDailyLimit()
+
+  // 0. Refill the lead pool if it's running low. Only imports contactable prospects
+  // (email/phone in Brreg) so what we pull is immediately sendable. Best-effort: a
+  // Brønnøysund hiccup must never block today's sending.
+  const poolMin = getPoolMinThreshold()
+  const sendableBefore = await countSendableProspects(admin)
+  let importResult: ImportProspectsResult | null = null
+  if (sendableBefore < poolMin) {
+    try {
+      importResult = await importProspects(admin, {
+        naeringskoder: getDefaultImportNace(),
+        count: getImportBatchSize(),
+        onlyWithContact: true,
+      })
+    } catch (err) {
+      console.error("[outreach/cron] pool top-up failed", err)
+    }
+  }
 
   const sentToday = await countOutreachSentToday(admin)
   let remaining = Math.max(0, dailyLimit - sentToday)
@@ -52,10 +80,25 @@ async function run(request: Request) {
     sellerUserId: null,
     action: "cron_outreach",
     targetType: "prospects",
-    metadata: { followups, initial, dailyLimit, sentBefore: sentToday },
+    metadata: {
+      followups,
+      initial,
+      dailyLimit,
+      sentBefore: sentToday,
+      poolTopUp: importResult
+        ? { imported: importResult.imported, sendableBefore, poolMin }
+        : { imported: 0, sendableBefore, poolMin },
+    },
   })
 
-  return NextResponse.json({ ok: true, followups, initial, dailyLimit, dailyRemaining: remaining })
+  return NextResponse.json({
+    ok: true,
+    followups,
+    initial,
+    dailyLimit,
+    dailyRemaining: remaining,
+    poolTopUp: importResult,
+  })
 }
 
 // Vercel Cron triggers via GET; allow POST too for manual/secret-protected triggering.

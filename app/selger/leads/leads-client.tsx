@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { ChevronDown, Download, Loader2, Phone, Search, Sparkles, Wand2, Zap } from "lucide-react"
+import { ChevronDown, Download, Loader2, Phone, Search, Sparkles, Trash2, Wand2, Zap } from "lucide-react"
 import { toast } from "sonner"
 
 import { SelgerPageShell } from "@/components/selger/selger-page-shell"
@@ -68,13 +68,16 @@ export function LeadsClient() {
   const [draftingId, setDraftingId] = useState<string | null>(null)
   const [autoSending, setAutoSending] = useState(false)
   const [autoConfirmOpen, setAutoConfirmOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // Import form
   const [nace, setNace] = useState<Record<string, boolean>>({ "41": true, "42": true, "43": true })
   const [selectedFylker, setSelectedFylker] = useState<string[]>([])
   const [maxEmployees, setMaxEmployees] = useState("")
   const [importCount, setImportCount] = useState("100")
-  const [onlyWithContact, setOnlyWithContact] = useState(false)
+  const [onlyWithEmail, setOnlyWithEmail] = useState(false)
+  const [onlyWithPhone, setOnlyWithPhone] = useState(false)
   const [importing, setImporting] = useState(false)
 
   const loadProspects = useCallback(async () => {
@@ -123,7 +126,8 @@ export function LeadsClient() {
           fylker: selectedFylker.length > 0 ? selectedFylker : undefined,
           tilAntallAnsatte: maxEmployees.trim() && Number.isFinite(maxEmp) ? maxEmp : undefined,
           count: Number(importCount),
-          onlyWithContact,
+          onlyWithEmail,
+          onlyWithPhone,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -197,6 +201,33 @@ export function LeadsClient() {
       toast.error(error instanceof Error ? error.message : "Full auto feilet")
     } finally {
       setAutoSending(false)
+    }
+  }
+
+  // Bulk-delete every prospect in the current view (filters included).
+  const runDeleteAll = async () => {
+    setDeleting(true)
+    try {
+      const body: Record<string, unknown> = { all: true }
+      if (statusFilter !== "all") body.status = statusFilter
+      if (search.trim()) body.q = search.trim()
+      if (view === "med-epost") body.has_email = "true"
+      if (view === "ringeliste") body.has_email = "false"
+
+      const res = await fetch("/api/outreach/prospects", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "Kunne ikke slette")
+      toast.success(`Slettet ${data.deleted} leads`)
+      setDeleteOpen(false)
+      await loadProspects()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Kunne ikke slette")
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -332,15 +363,20 @@ export function LeadsClient() {
                 </Button>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                id="only-with-contact"
-                checked={onlyWithContact}
-                onCheckedChange={setOnlyWithContact}
-              />
-              <Label htmlFor="only-with-contact" className="cursor-pointer text-sm">
-                Hent kun firmaer med kontaktinfo (e-post/telefon) fra Brønnøysund
-              </Label>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <span className="text-xs text-muted-foreground">Krev kontaktinfo fra Brønnøysund:</span>
+              <div className="flex items-center gap-2">
+                <Switch id="only-email" checked={onlyWithEmail} onCheckedChange={setOnlyWithEmail} />
+                <Label htmlFor="only-email" className="cursor-pointer text-sm">
+                  Kun med e-post
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch id="only-phone" checked={onlyWithPhone} onCheckedChange={setOnlyWithPhone} />
+                <Label htmlFor="only-phone" className="cursor-pointer text-sm">
+                  Kun med telefon
+                </Label>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">
               Henter inntil {importCount} firmaer per import. Eksisterende kunder filtreres automatisk bort.
@@ -391,6 +427,38 @@ export function LeadsClient() {
             Berik kontaktinfo
           </Button>
         </div>
+
+        <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Slette alle leads?</DialogTitle>
+              <DialogDescription>
+                {statusFilter !== "all" || search.trim() || view !== "alle" ? (
+                  <>
+                    Dette sletter <strong>alle leads som matcher gjeldende filter</strong> — ikke bare de{" "}
+                    {prospects.length} synlige i listen. Handlingen kan ikke angres. Registrerte kunder
+                    røres ikke.
+                  </>
+                ) : (
+                  <>
+                    Dette sletter <strong>alle prospekter</strong> permanent (inkludert utkast og
+                    sende-historikk i kundemaskinen). Handlingen kan ikke angres. Registrerte kunder røres
+                    ikke.
+                  </>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+                Avbryt
+              </Button>
+              <Button variant="destructive" onClick={runDeleteAll} disabled={deleting} className="gap-2">
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Ja, slett alle
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={autoConfirmOpen} onOpenChange={setAutoConfirmOpen}>
           <DialogContent>
@@ -451,6 +519,17 @@ export function LeadsClient() {
                 ))}
               </SelectContent>
             </Select>
+            {prospects.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-destructive hover:text-destructive"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Slett alle
+              </Button>
+            )}
           </div>
         </div>
 

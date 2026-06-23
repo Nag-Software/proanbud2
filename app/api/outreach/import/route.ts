@@ -4,7 +4,7 @@ import { z } from "zod"
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerActivity } from "@/lib/selger/activity-log"
-import { mapEnhetToProspect, searchBrregEnheter, type MappedProspect } from "@/lib/outreach/brreg"
+import { importProspects } from "@/lib/outreach/import"
 
 // Importing several Brreg pages can take a while.
 export const maxDuration = 60
@@ -19,6 +19,9 @@ const importSchema = z.object({
   count: z.number().int().min(1).max(2000).optional(),
   // Only import companies that have email/phone registered in Brønnøysund.
   onlyWithContact: z.boolean().optional(),
+  // Separate, stricter contact requirements.
+  onlyWithEmail: z.boolean().optional(),
+  onlyWithPhone: z.boolean().optional(),
 })
 
 export async function POST(request: Request) {
@@ -33,14 +36,9 @@ export async function POST(request: Request) {
   const { naeringskoder, fraAntallAnsatte, tilAntallAnsatte } = parsed.data
   const count = parsed.data.count ?? 100
   const onlyWithContact = parsed.data.onlyWithContact ?? false
+  const onlyWithEmail = parsed.data.onlyWithEmail ?? false
+  const onlyWithPhone = parsed.data.onlyWithPhone ?? false
   const fylker = parsed.data.fylker?.length ? parsed.data.fylker : undefined
-  // Fetch more pages when filtering by fylke or contact-only, since both
-  // reduce density and we need enough raw results to reach `count` matches.
-  const maxPages = fylker
-    ? 20
-    : onlyWithContact
-      ? Math.min(20, Math.max(Math.ceil(count / 25), 2))
-      : Math.min(20, Math.ceil(count / 100))
 
   // Brønnøysund forbids filtering to 1–4 employees (privacy). Only 0 or 5+ allowed.
   const inForbiddenRange = (n?: number) => typeof n === "number" && n >= 1 && n <= 4
@@ -53,96 +51,25 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient()
 
-  // 1. Fetch entities from Brønnøysund, page by page.
-  const mapped = new Map<string, MappedProspect>()
-  let fetched = 0
-  let skipped = 0
+  let result
   try {
-    for (let page = 0; page < maxPages; page++) {
-      const result = await searchBrregEnheter({
-        naeringskoder,
-        fraAntallAnsatte,
-        tilAntallAnsatte,
-        page,
-        size: 100,
-      })
-      fetched += result.enheter.length
-      for (const enhet of result.enheter) {
-        const row = mapEnhetToProspect(enhet)
-        if (!row) { skipped += 1; continue }
-        if (onlyWithContact && !row.email && !row.phone) { skipped += 1; continue }
-        if (fylker) {
-          const knr = row.kommune_number
-          if (!knr || !fylker.some((f) => knr.startsWith(f))) { skipped += 1; continue }
-        }
-        mapped.set(row.org_number, row) // dedupe within batch by org_number
-      }
-      if (mapped.size >= count) break
-      if (page + 1 >= result.totalPages) break
-    }
+    result = await importProspects(admin, {
+      naeringskoder,
+      fylker,
+      fraAntallAnsatte,
+      tilAntallAnsatte,
+      count,
+      onlyWithContact,
+      onlyWithEmail,
+      onlyWithPhone,
+    })
   } catch (error) {
-    console.error("[outreach/import] brreg fetch failed", error)
+    console.error("[outreach/import] failed", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Brønnøysund-import feilet" },
       { status: 502 }
     )
   }
-
-  const orgNumbers = [...mapped.keys()].slice(0, count)
-  if (orgNumbers.length === 0) {
-    return NextResponse.json({ fetched, skipped, existingCustomers: 0, imported: 0, duplicates: 0 })
-  }
-
-  // 2. Exclude companies that are already registered customers (dedupe by org_number).
-  const { data: existingCompanies } = await admin
-    .from("companies")
-    .select("org_number")
-    .in("org_number", orgNumbers)
-
-  const existingCustomerOrgs = new Set(
-    (existingCompanies ?? []).map((c) => c.org_number).filter(Boolean) as string[]
-  )
-
-  const toInsert = orgNumbers
-    .filter((org) => !existingCustomerOrgs.has(org))
-    .map((org) => mapped.get(org)!)
-
-  // 3. Insert new prospects (skip ones already imported earlier).
-  let imported = 0
-  if (toInsert.length > 0) {
-    const { data: inserted, error: insertError } = await admin
-      .from("prospects")
-      .upsert(toInsert, { onConflict: "org_number", ignoreDuplicates: true })
-      .select("id")
-
-    if (insertError) {
-      console.error("[outreach/import] insert failed", insertError)
-      return NextResponse.json({ error: "Kunne ikke lagre prospekter" }, { status: 500 })
-    }
-    imported = inserted?.length ?? 0
-  }
-
-  // 3b. Backfill Brreg contact info onto prospects that were imported earlier
-  // and still lack an email. Only fills when email IS NULL, so it never
-  // overwrites manually-edited/enriched contacts or touches CRM status.
-  let backfilled = 0
-  const withContact = toInsert.filter((p) => p.email || p.phone)
-  for (const p of withContact) {
-    const { data: updated } = await admin
-      .from("prospects")
-      .update({
-        email: p.email,
-        phone: p.phone,
-        enrichment_status: "enriched",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("org_number", p.org_number)
-      .is("email", null)
-      .select("id")
-    if (updated && updated.length > 0) backfilled += 1
-  }
-
-  const duplicates = toInsert.length - imported
 
   await logSellerActivity({
     sellerUserId: auth.user!.id,
@@ -151,20 +78,13 @@ export async function POST(request: Request) {
     metadata: {
       naeringskoder,
       fylker: fylker ?? null,
-      fetched,
-      imported,
-      duplicates,
-      backfilled,
-      existingCustomers: existingCustomerOrgs.size,
+      fetched: result.fetched,
+      imported: result.imported,
+      duplicates: result.duplicates,
+      backfilled: result.backfilled,
+      existingCustomers: result.existingCustomers,
     },
   })
 
-  return NextResponse.json({
-    fetched,
-    skipped,
-    existingCustomers: existingCustomerOrgs.size,
-    duplicates,
-    backfilled,
-    imported,
-  })
+  return NextResponse.json(result)
 }

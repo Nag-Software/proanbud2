@@ -83,14 +83,14 @@ export async function sendOutreachEmail(args: {
   unsubscribeUrl: string
   ctaUrl?: string
   ctaLabel?: string
-}): Promise<void> {
+}): Promise<{ providerMessageId: string | null }> {
   const html = buildOutreachEmailHtml({
     bodyText: args.body,
     unsubscribeUrl: args.unsubscribeUrl,
     ctaUrl: args.ctaUrl || getOutreachSignupUrl(),
     ctaLabel: args.ctaLabel,
   })
-  const { error } = await resend.emails.send({
+  const { data, error } = await resend.emails.send({
     from: getOutreachFromAddress(),
     to: args.to,
     subject: args.subject,
@@ -102,4 +102,7 @@ export async function sendOutreachEmail(args: {
   if (error) {
     throw new Error(`Resend-utsending feilet: ${error.message ?? JSON.stringify(error)}`)
   }
+  // The provider id lets the Resend webhook stamp delivery/open/click events back
+  // onto seller_email_log so we can measure what's actually working.
+  return { providerMessageId: data?.id ?? null }
 }

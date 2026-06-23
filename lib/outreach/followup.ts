@@ -151,7 +151,7 @@ export async function runOutreachFollowups(
           )
 
           const unsubscribeUrl = `${opts.origin}/api/outreach/unsubscribe?p=${p.id}`
-          await sendOutreachEmail({
+          const { providerMessageId } = await sendOutreachEmail({
             to: p.email!,
             subject,
             body,
@@ -182,6 +182,7 @@ export async function runOutreachFollowups(
             templateId: "outreach-followup",
             recipientEmail: p.email!,
             companyId: null,
+            providerMessageId,
           })
           result.sent += 1
           budget -= 1

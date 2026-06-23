@@ -96,6 +96,61 @@ export async function generateOutreachDraft(input: DraftInput): Promise<{ subjec
   return { subject, body }
 }
 
+/** One-tap tone instructions for the approval-card "skriv om"-chips. */
+export const REDRAFT_TONES = {
+  kortere: "Gjør e-posten merkbart kortere og mer konsis. Behold det viktigste.",
+  vennligere: "Gjør tonen varmere og mer personlig, som en fagperson til en annen.",
+  konkret: "Gjør den mer konkret — pek på én spesifikk nytte og et tydelig neste steg.",
+  ny_vinkel: "Skriv den om med en helt ny åpning og vinkel enn nåværende utkast.",
+} as const
+
+export type RedraftTone = keyof typeof REDRAFT_TONES
+
+/** Rewrite an existing cold-email draft with a one-tap tone, so the seller can
+ *  improve a draft without typing. Keeps the same Proanbud rules as the first draft. */
+export async function regenerateOutreachDraft(
+  input: DraftInput,
+  opts: { tone: RedraftTone; currentSubject?: string | null; currentBody?: string | null },
+): Promise<{ subject: string; body: string }> {
+  const instruction = REDRAFT_TONES[opts.tone] ?? REDRAFT_TONES.konkret
+  const userPrompt = [
+    `Bedrift: ${input.name}`,
+    input.city ? `Sted: ${input.city}` : null,
+    input.naceDescription ? `Bransje: ${input.naceDescription}` : null,
+    typeof input.employeeCount === "number" ? `Antall ansatte: ${input.employeeCount}` : null,
+    "",
+    "Nåværende utkast:",
+    `Emne: ${opts.currentSubject || "(tomt)"}`,
+    `Melding:\n${opts.currentBody || "(tomt)"}`,
+    "",
+    `Skriv om dette utkastet. ${instruction}`,
+  ]
+    .filter(Boolean)
+    .join("\n")
+
+  const response = await openaiFetch("chat/completions", {
+    model: process.env.OPENAI_MODEL || "gpt-5.2-mini",
+    temperature: 0.6,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
+    ],
+  })
+
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>
+  }
+  const raw = payload.choices?.[0]?.message?.content || "{}"
+  const parsed = JSON.parse(normalizeJsonFromModel(raw)) as { subject?: string; body?: string }
+
+  const subject = (parsed.subject || opts.currentSubject || "").trim()
+  const body = (parsed.body || "").trim()
+  if (!subject || !body) throw new Error("KI returnerte tomt utkast")
+
+  return { subject, body }
+}
+
 /** Threaded reply subject for a follow-up: "Re: <original>" (no double "Re:"). */
 export function followupSubject(previousSubject?: string | null): string {
   const base = (previousSubject || "").replace(/^\s*(re:\s*)+/i, "").trim()

@@ -81,7 +81,7 @@ export async function runInitialOutreach(
       })
 
       const unsubscribeUrl = `${opts.origin}/api/outreach/unsubscribe?p=${p.id}`
-      await sendOutreachEmail({
+      const { providerMessageId } = await sendOutreachEmail({
         to: p.email,
         subject: draft.subject,
         body: draft.body,
@@ -111,6 +111,7 @@ export async function runInitialOutreach(
         templateId: "outreach-cold",
         recipientEmail: p.email,
         companyId: null,
+        providerMessageId,
       })
       result.sent += 1
     } catch (err) {

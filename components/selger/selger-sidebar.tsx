@@ -5,11 +5,10 @@ import Image from "next/image"
 import { useRouter } from "next/navigation"
 import {
   ChevronRightIcon,
-  HistoryIcon,
+  GaugeIcon,
   LayoutDashboardIcon,
-  MailCheckIcon,
-  MailIcon,
   TargetIcon,
+  WrenchIcon,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -37,31 +36,36 @@ import {
 } from "@/components/ui/sidebar"
 import { createClient } from "@/lib/supabase/client"
 
+// Three daily destinations + a Verktøy group that keeps the old pages reachable
+// without cluttering the cockpit. The seller lives in "I dag".
 const navItems = [
   {
-    title: "Oversikt",
+    title: "I dag",
     url: "/selger",
     icon: <LayoutDashboardIcon className="size-4" />,
   },
   {
-    title: "Leads",
-    url: "/selger/leads",
+    title: "Pipeline",
+    url: "/selger/pipeline",
     icon: <TargetIcon className="size-4" />,
   },
   {
-    title: "Godkjenning",
-    url: "/selger/godkjenning",
-    icon: <MailCheckIcon className="size-4" />,
+    title: "Motor",
+    url: "/selger/motor",
+    icon: <GaugeIcon className="size-4" />,
   },
   {
-    title: "E-post",
-    url: "/selger/e-post",
-    icon: <MailIcon className="size-4" />,
-  },
-  {
-    title: "Aktivitet",
-    url: "/selger/aktivitet",
-    icon: <HistoryIcon className="size-4" />,
+    title: "Verktøy",
+    url: "#",
+    icon: <WrenchIcon className="size-4" />,
+    collapsible: true,
+    items: [
+      { title: "Godkjenning", url: "/selger/godkjenning" },
+      { title: "E-post", url: "/selger/e-post" },
+      { title: "Leads", url: "/selger/leads" },
+      { title: "Analyse", url: "/selger/analyse" },
+      { title: "Aktivitet", url: "/selger/aktivitet" },
+    ],
   },
 ]
 

@@ -31,6 +31,8 @@ type LogSellerEmailInput = {
   templateId: string
   recipientEmail: string
   companyId?: string | null
+  // Resend message id — lets the webhook stamp delivery/open/click engagement.
+  providerMessageId?: string | null
 }
 
 export async function logSellerEmail(input: LogSellerEmailInput) {
@@ -41,6 +43,7 @@ export async function logSellerEmail(input: LogSellerEmailInput) {
     template_id: input.templateId,
     recipient_email: input.recipientEmail.trim().toLowerCase(),
     company_id: input.companyId ?? null,
+    provider_message_id: input.providerMessageId ?? null,
   })
 
   if (error) {
