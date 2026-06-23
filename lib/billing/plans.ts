@@ -39,8 +39,8 @@ export const PLAN_PRICING: Record<
     year: { monthlyNok: 149, yearlyTotalNok: 149 * 12 },
   },
   proff: {
-    month: { monthlyNok: 349, yearlyTotalNok: 349 * 12 },
-    year: { monthlyNok: 289, yearlyTotalNok: 289 * 12 },
+    month: { monthlyNok: 399, yearlyTotalNok: 399 * 12 },
+    year: { monthlyNok: 329, yearlyTotalNok: 329 * 12 },
   },
 }
 

@@ -118,13 +118,13 @@ async function main() {
     ),
     STRIPE_PRICE_PROFF_MONTHLY: await ensureRecurringPrice(
       proffProduct.id,
-      34900,
+      39900,
       { interval: "month" },
       { kind: "base", plan_key: "proff", interval: "month" }
     ),
     STRIPE_PRICE_PROFF_YEARLY: await ensureRecurringPrice(
       proffProduct.id,
-      346800,
+      394800,
       { interval: "year" },
       { kind: "base", plan_key: "proff", interval: "year" }
     ),
