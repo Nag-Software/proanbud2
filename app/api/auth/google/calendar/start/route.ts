@@ -2,6 +2,10 @@ import { NextResponse } from "next/server"
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import { LOGIN_PATH } from "@/lib/constants"
 import {
+  companyHasFeature,
+  getCurrentCompanyIdForUser,
+} from "@/lib/billing/server-modules"
+import {
   beginCalendarOAuth,
   buildGoogleCalendarAuthUrl,
 } from "@/lib/calendar/oauth-flow"
@@ -15,6 +19,11 @@ export async function GET(request: Request) {
 
     if (!user) {
       return NextResponse.redirect(new URL(LOGIN_PATH, request.url))
+    }
+
+    const companyId = await getCurrentCompanyIdForUser(user.id)
+    if (!(await companyHasFeature(companyId, "kalender"))) {
+      return NextResponse.redirect(new URL("/innstillinger/betaling", request.url))
     }
 
     const state = await beginCalendarOAuth(user.id, "google")

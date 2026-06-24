@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { companyHasFeature } from "@/lib/billing/server-modules"
 import {
   encryptConnectionTokens,
   refreshTripletexSession,
@@ -230,10 +231,27 @@ function requireCompanyAdmin(ctx: { isCompanyAdmin: boolean }) {
   return null
 }
 
+async function requireIntegrasjonerFeature(ctx: { companyId: string }) {
+  if (!(await companyHasFeature(ctx.companyId, "integrasjoner"))) {
+    return NextResponse.json(
+      {
+        error: "Integrasjoner er inkludert i Proff eller kan aktiveres som modul.",
+        code: "plan_required",
+        feature: "integrasjoner",
+      },
+      { status: 403 }
+    )
+  }
+
+  return null
+}
+
 export async function GET() {
   try {
     const ctx = await resolveCompanyContext()
     if ("error" in ctx) return ctx.error
+    const planForbidden = await requireIntegrasjonerFeature(ctx)
+    if (planForbidden) return planForbidden
 
     const admin = createAdminClient()
     const [connectionResult, jobsResult, recentJobsResult, recentEventsResult] = await Promise.all([
@@ -312,6 +330,8 @@ export async function POST(request: Request) {
     if ("error" in ctx) return ctx.error
     const forbidden = requireCompanyAdmin(ctx)
     if (forbidden) return forbidden
+    const planForbidden = await requireIntegrasjonerFeature(ctx)
+    if (planForbidden) return planForbidden
 
     const body = await request.json()
     const apiKey = normalizeTripletexApiKey(String(body.apiKey || body.employeeToken || ""))
@@ -410,6 +430,8 @@ export async function PATCH(request: Request) {
     if ("error" in ctx) return ctx.error
     const forbidden = requireCompanyAdmin(ctx)
     if (forbidden) return forbidden
+    const planForbidden = await requireIntegrasjonerFeature(ctx)
+    if (planForbidden) return planForbidden
 
     const body = await request.json().catch(() => ({}))
     const action = String(body?.action || "")
@@ -598,6 +620,8 @@ export async function DELETE() {
     if ("error" in ctx) return ctx.error
     const forbidden = requireCompanyAdmin(ctx)
     if (forbidden) return forbidden
+    const planForbidden = await requireIntegrasjonerFeature(ctx)
+    if (planForbidden) return planForbidden
 
     const admin = createAdminClient()
     const { error } = await admin

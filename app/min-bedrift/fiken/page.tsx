@@ -1,4 +1,6 @@
 import { AppPageShell } from "@/components/app-page-shell"
+import { PlanGate } from "@/components/billing/plan-gate"
+import { companyHasFeature } from "@/lib/billing/server-modules"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { FIKEN_HELP_URL } from "@/lib/integrations/fiken/config"
@@ -24,6 +26,18 @@ export default async function FikenPage() {
 
     companyId = userRow?.company_id || null
     canManageIntegration = userRow?.role === "admin" || userRow?.role === "manager"
+  }
+
+  if (!companyId || !(await companyHasFeature(companyId, "integrasjoner"))) {
+    return (
+      <AppPageShell segments={["Min Bedrift", "Fiken"]}>
+        <PlanGate
+          featureName="Integrasjoner"
+          title="Integrasjoner er inkludert i Proff — eller som modul"
+          description="Koble Proanbud til Fiken. Integrasjoner er inkludert i Proff, eller kan aktiveres som modul (19 kr/mnd) på Mini under abonnement."
+        />
+      </AppPageShell>
+    )
   }
 
   const [connectionResult, jobsResult, tripletexResult] = companyId

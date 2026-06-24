@@ -2,13 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
-import { Loader2Icon } from "lucide-react"
+import { CheckIcon, Loader2Icon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
-import { MODULE_CATALOG, type BillingInterval, type ModuleKey, type PlanKey } from "@/lib/billing/plans"
+import {
+  MODULE_CATALOG,
+  PROFF_INCLUDED_FEATURES,
+  type BillingInterval,
+  type ModuleKey,
+  type PlanKey,
+} from "@/lib/billing/plans"
 
 type BillingSummary = {
   has_billing: boolean
@@ -205,6 +211,7 @@ export function BillingPageClient() {
 
   const trialEnd = formatDate(summary?.trial_ends_at ?? null)
   const interval = intervalLabel(summary?.billing_interval ?? null)
+  const isProff = summary?.plan_key === "proff"
 
   return (
     <div className="w-full max-w-lg space-y-8 px-4 py-6 md:px-6">
@@ -270,26 +277,73 @@ export function BillingPageClient() {
         </div>
       </section>
 
+      <section className="rounded-xl border">
+        <div className="space-y-1 border-b p-5">
+          <p className="font-semibold">Dette følger med i Proff</p>
+          <p className="text-sm text-muted-foreground">
+            {isProff ? "Inkludert i ditt abonnement" : "Oppgrader til Proff for å låse opp"}
+          </p>
+        </div>
+        <ul className="space-y-3 p-5">
+          {PROFF_INCLUDED_FEATURES.map((feature) => (
+            <li key={feature.key} className="flex items-start gap-3">
+              <CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{feature.label}</p>
+                <p className="text-xs text-muted-foreground">{feature.description}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+        {!isProff && (
+          <div className="border-t p-5">
+            <Button
+              type="button"
+              className="w-full"
+              onClick={startCheckout}
+              disabled={actionLoading !== null}
+            >
+              {actionLoading === "checkout" && (
+                <Loader2Icon className="mr-2 size-4 animate-spin" />
+              )}
+              Oppgrader til Proff
+            </Button>
+          </div>
+        )}
+      </section>
+
       <section className="space-y-3">
         <p className="text-sm text-muted-foreground">Moduler</p>
         <div className="space-y-2">
-          {MODULE_CATALOG.map((module) => (
-            <div
-              key={module.key}
-              className="flex items-center justify-between gap-3 rounded-xl border px-5 py-4"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium">{module.label}</p>
-                <p className="text-xs text-muted-foreground">{module.description}</p>
-                <p className="mt-1 text-xs font-medium text-foreground">{module.monthlyNok} kr/mnd</p>
+          {MODULE_CATALOG.map((module) => {
+            const includedInProff = module.key === "integrasjoner" && isProff
+            return (
+              <div
+                key={module.key}
+                className="flex items-center justify-between gap-3 rounded-xl border px-5 py-4"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{module.label}</p>
+                  <p className="text-xs text-muted-foreground">{module.description}</p>
+                  {!includedInProff && (
+                    <p className="mt-1 text-xs font-medium text-foreground">{module.monthlyNok} kr/mnd</p>
+                  )}
+                </div>
+                {includedInProff ? (
+                  <Badge variant="secondary" className="shrink-0 gap-1">
+                    <CheckIcon className="size-3" />
+                    Inkludert i Proff
+                  </Badge>
+                ) : (
+                  <Switch
+                    checked={enabledModules.has(module.key)}
+                    disabled={actionLoading !== null}
+                    onCheckedChange={(checked) => toggleModule(module.key, module.label, checked)}
+                  />
+                )}
               </div>
-              <Switch
-                checked={enabledModules.has(module.key)}
-                disabled={actionLoading !== null}
-                onCheckedChange={(checked) => toggleModule(module.key, module.label, checked)}
-              />
-            </div>
-          ))}
+            )
+          })}
         </div>
         <p className="text-xs text-muted-foreground">
           Outlook- og Google Drive-tilkobling er alltid gratis.

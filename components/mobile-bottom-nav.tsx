@@ -32,8 +32,20 @@ export function MobileBottomNav() {
   const pathname = usePathname()
   const { toggleSidebar } = useSidebar()
   const unreadCount = useUnreadMessages()
-  const { isWorker } = useUserRole()
-  const navItems = isWorker ? workerNavItems : fullNavItems
+  const { isWorker, hasFeature, loadingRole } = useUserRole()
+  // While the plan context loads, keep items visible to avoid flicker.
+  const featureEnabled = (feature: Parameters<typeof hasFeature>[0]) =>
+    loadingRole || hasFeature(feature)
+  // Hide Proff-only destinations when the plan lacks the feature.
+  const FEATURE_BY_HREF: Record<string, Parameters<typeof hasFeature>[0]> = {
+    "/hms": "hms",
+    "/meldinger": "meldinger",
+    "/kalender": "kalender",
+  }
+  const navItems = (isWorker ? workerNavItems : fullNavItems).filter((item) => {
+    const feature = FEATURE_BY_HREF[item.href]
+    return !feature || featureEnabled(feature)
+  })
 
   return (
     <nav

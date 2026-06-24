@@ -1,6 +1,6 @@
 export type PlanKey = "mini" | "proff"
 export type BillingInterval = "month" | "year"
-export type ModuleKey = "timeforing" | "dokumenter" | "integrasjoner"
+export type ModuleKey = "timeforing" | "dokumenter" | "integrasjoner" | "meldinger_ki"
 
 export const TRIAL_DAYS = 14
 export const OVERAGE_UNIT_NOK = 9.5
@@ -150,3 +150,93 @@ export function intervalFromPriceMetadata(metadata: PriceMetadata): BillingInter
   if (interval === "month" || interval === "year") return interval
   return null
 }
+
+// ---------------------------------------------------------------------------
+// Plan feature gating (Mini vs Proff)
+//
+// Mini = "vinn jobben": tilbud, KI-tilbud, kunder, prosjekt-kjerne, priser.
+// Proff = "lever jobben": adds the compliance bundle (HMS/KS/avvik), calendar,
+// project tasks, messaging and integrations.
+//
+// This is separate from the à-la-carte MODULE system (timeforing/dokumenter
+// stay independent add-ons on BOTH plans). `integrasjoner` is special: it is
+// included in Proff AND still purchasable as a module on Mini — see hasFeature.
+// ---------------------------------------------------------------------------
+
+export type FeatureKey =
+  | "hms"
+  | "ks"
+  | "avvik"
+  | "kalender"
+  | "project_tasks"
+  | "meldinger"
+  | "integrasjoner"
+
+export const PLAN_FEATURES: Record<PlanKey, FeatureKey[]> = {
+  mini: [],
+  proff: ["hms", "ks", "avvik", "kalender", "project_tasks", "meldinger", "integrasjoner"],
+}
+
+/** Features that can ALSO be unlocked à la carte via a module on any plan. */
+const FEATURE_MODULE_FALLBACK: Partial<Record<FeatureKey, ModuleKey>> = {
+  integrasjoner: "integrasjoner",
+}
+
+/**
+ * Pure resolver: does a company on `plan` owning `modules` have `feature`?
+ * Used by both the server guard (assertPlanFeature) and the client hook
+ * (useUserRole().hasFeature).
+ */
+export function hasFeature(
+  plan: PlanKey | null | undefined,
+  modules: Iterable<string>,
+  feature: FeatureKey
+): boolean {
+  if (plan && PLAN_FEATURES[plan]?.includes(feature)) return true
+  const fallbackModule = FEATURE_MODULE_FALLBACK[feature]
+  if (fallbackModule) {
+    for (const m of modules) {
+      if (m === fallbackModule) return true
+    }
+  }
+  return false
+}
+
+export const FEATURE_LABELS: Record<FeatureKey, string> = {
+  hms: "HMS",
+  ks: "KS",
+  avvik: "Avvik",
+  kalender: "Kalender",
+  project_tasks: "Oppgaver i prosjekter",
+  meldinger: "Meldinger",
+  integrasjoner: "Integrasjoner",
+}
+
+/**
+ * Human-facing summary of what Proff includes beyond Mini — drives the
+ * "dette følger med"-panels in the billing page, onboarding and (mirrored)
+ * the marketing site. Compliance keys are bundled into one display line.
+ */
+export const PROFF_INCLUDED_FEATURES: Array<{
+  key: FeatureKey
+  label: string
+  description: string
+}> = [
+  { key: "hms", label: "HMS, KS og avvik", description: "HMS-håndbok, KS-sjekklister og avvikshåndtering." },
+  { key: "kalender", label: "Kalender", description: "Delt kalender med Google- og Outlook-synk." },
+  {
+    key: "project_tasks",
+    label: "Oppgaver i prosjekter",
+    description: "Oppgavestyring og oppfølging på hvert prosjekt.",
+  },
+  {
+    key: "meldinger",
+    label: "Meldinger",
+    description: "Intern meldingsinnboks og kundechat på tilbudsvisning.",
+  },
+  {
+    key: "integrasjoner",
+    label: "Integrasjoner inkludert",
+    description: "Tripletex, Fiken og DocuSign uten ekstra modulkostnad.",
+  },
+]

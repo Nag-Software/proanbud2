@@ -22,6 +22,8 @@ import "moment/locale/nb"
 import { CalendarToolbar, type CalendarView } from "./calendar-toolbar"
 import { MonthCalendar } from "./month-calendar"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useUserRole } from "@/hooks/use-user-role"
+import { PlanGate } from "@/components/billing/plan-gate"
 
 moment.locale("nb");
 const localizer = momentLocalizer(moment);
@@ -48,6 +50,7 @@ function defaultSlotTimes(day: Date) {
 
 function KalenderPage() {
   const isMobile = useIsMobile()
+  const { loadingRole, hasFeature } = useUserRole()
   const [integrations, setIntegrations] = useState<{ provider: string }[]>([])
   const [loggedIn, setLoggedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -394,6 +397,27 @@ function KalenderPage() {
         borderRadius: 0,
       }
     }
+  }
+
+  if (loadingRole) {
+    return (
+      <AppPageShell segments={["Kalender"]} noPadding>
+        <div className="flex h-full min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
+          Laster inn...
+        </div>
+      </AppPageShell>
+    )
+  }
+
+  if (!hasFeature("kalender")) {
+    return (
+      <AppPageShell segments={["Kalender"]}>
+        <PlanGate
+          featureName="Kalender"
+          description="Koble til Google og Outlook for å se og administrere avtalene dine direkte i Proanbud."
+        />
+      </AppPageShell>
+    )
   }
 
   return (

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
-import { isActiveSubscriptionStatus } from "@/lib/billing/plans"
+import { isActiveSubscriptionStatus, type FeatureKey, type PlanKey } from "@/lib/billing/plans"
+import { companyHasFeature } from "@/lib/billing/server-modules"
 import type { BillingStatus, UsageSummary } from "@/lib/billing/types"
 import { isAdmin } from "@/lib/roles"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -13,6 +14,7 @@ export type BillingContext = {
   fullName: string
   status: BillingStatus
   isActive: boolean
+  planKey: PlanKey | null
 }
 
 export async function getAuthenticatedCompanyContext(): Promise<
@@ -50,7 +52,7 @@ export async function getAuthenticatedCompanyContext(): Promise<
   const admin = createAdminClient()
   const { data: billing } = await admin
     .from("company_billing")
-    .select("status")
+    .select("status, plan_key")
     .eq("company_id", userRow.company_id)
     .maybeSingle()
 
@@ -65,6 +67,7 @@ export async function getAuthenticatedCompanyContext(): Promise<
       fullName: userRow.full_name || user.user_metadata?.full_name || user.email || "",
       status,
       isActive: isActiveSubscriptionStatus(status),
+      planKey: (billing?.plan_key ?? null) as PlanKey | null,
     },
   }
 }
@@ -142,6 +145,35 @@ export async function requireModule(moduleKey: string): Promise<
           error: "Denne modulen er ikke aktivert på abonnementet ditt.",
           code: "module_required",
           module_key: moduleKey,
+        },
+        { status: 403 }
+      ),
+    }
+  }
+
+  return result
+}
+
+/**
+ * HTTP-route guard for a Proff-only (or hybrid) plan feature — the plan-level
+ * analogue of `requireModule`. Returns 403 `code: "plan_required"` when the
+ * company's plan (and any module fallback) does not include the feature.
+ */
+export async function requirePlanFeature(feature: FeatureKey): Promise<
+  | { ok: true; context: BillingContext }
+  | { ok: false; response: NextResponse }
+> {
+  const result = await requireActiveSubscription()
+  if (!result.ok) return result
+
+  if (!(await companyHasFeature(result.context.companyId, feature))) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "Denne funksjonen krever Proff-abonnement.",
+          code: "plan_required",
+          feature,
         },
         { status: 403 }
       ),

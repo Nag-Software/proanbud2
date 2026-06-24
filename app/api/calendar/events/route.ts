@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { ensureValidToken } from "@/lib/oauth"
 import { enqueueCalendarTripletexSync } from "@/lib/integrations/tripletex/sync"
+import { requirePlanFeature } from "@/lib/billing/guards"
 
 interface CalendarEvent {
   id: string
@@ -52,6 +53,9 @@ export async function GET(request: Request) {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    const plan = await requirePlanFeature("kalender")
+    if (!plan.ok) return plan.response
 
     // Fetch user's calendar integrations
     const { data: integrations, error } = await supabase
@@ -242,6 +246,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const plan = await requirePlanFeature("kalender")
+    if (!plan.ok) return plan.response
+
     const body = await request.json()
     const { title, start, end, description, targetProvider, projectId } = body
 
@@ -356,6 +363,9 @@ export async function PATCH(request: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+    const plan = await requirePlanFeature("kalender")
+    if (!plan.ok) return plan.response
+
     const body = await request.json()
     const { eventId, start, end, title, description, color, projectId } = body
     if (!eventId || !start || !end) return NextResponse.json({ error: "Missing fields" }, { status: 400 })
@@ -452,6 +462,9 @@ export async function DELETE(request: Request) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const plan = await requirePlanFeature("kalender")
+    if (!plan.ok) return plan.response
 
     const { searchParams } = new URL(request.url)
     const eventId = searchParams.get("eventId")

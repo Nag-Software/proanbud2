@@ -246,12 +246,20 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
   )
 }
 
-export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?: boolean }) {
+export function CustomerOfferView({
+  slug,
+  openChat,
+  chatEnabled = true,
+}: {
+  slug: string
+  openChat?: boolean
+  chatEnabled?: boolean
+}) {
   const [offer, setOffer] = useState<PublicOfferPayload | null>(null)
   const [messages, setMessages] = useState<PublicMessage[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isResponding, setIsResponding] = useState(false)
-  const [chatOpen, setChatOpen] = useState(Boolean(openChat))
+  const [chatOpen, setChatOpen] = useState(Boolean(openChat) && chatEnabled)
   const [messageDraft, setMessageDraft] = useState("")
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const chatScrollRef = useRef<HTMLDivElement>(null)
@@ -274,23 +282,25 @@ export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?:
   }, [slug])
 
   useEffect(() => {
-    if (openChat) {
+    if (openChat && chatEnabled) {
       setChatOpen(true)
     }
-  }, [openChat])
+  }, [openChat, chatEnabled])
 
   useEffect(() => {
     void (async () => {
       try {
         await loadOffer()
-        await loadMessages()
+        if (chatEnabled) {
+          await loadMessages()
+        }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Kunne ikke laste tilbud")
       } finally {
         setIsLoading(false)
       }
     })()
-  }, [loadOffer, loadMessages])
+  }, [loadOffer, loadMessages, chatEnabled])
 
   useEffect(() => {
     if (!chatOpen) return
@@ -424,28 +434,30 @@ export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?:
             >
               {statusText}
             </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 px-2.5 sm:px-3 lg:hidden"
-              onClick={() => setChatOpen(true)}
-            >
-              <MessageSquare className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Meldinger</span>
-              {messages.length > 0 ? (
-                <span className="ml-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-neutral-900 px-1 text-[10px] font-medium text-white">
-                  {messages.length}
-                </span>
-              ) : null}
-            </Button>
+            {chatEnabled ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 px-2.5 sm:px-3 lg:hidden"
+                onClick={() => setChatOpen(true)}
+              >
+                <MessageSquare className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Meldinger</span>
+                {messages.length > 0 ? (
+                  <span className="ml-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-neutral-900 px-1 text-[10px] font-medium text-white">
+                    {messages.length}
+                  </span>
+                ) : null}
+              </Button>
+            ) : null}
           </div>
         </div>
       </header>
 
       <main
-        className={`mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:gap-6 sm:px-6 sm:py-6 lg:grid-cols-[minmax(0,1fr)_360px] ${
-          offer.canRespond ? "pb-32 lg:pb-6" : "pb-6"
-        }`}
+        className={`mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:gap-6 sm:px-6 sm:py-6 ${
+          chatEnabled ? "lg:grid-cols-[minmax(0,1fr)_360px]" : ""
+        } ${offer.canRespond ? "pb-32 lg:pb-6" : "pb-6"}`}
       >
         <section className="space-y-3 sm:space-y-4">
           <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-6">
@@ -535,11 +547,13 @@ export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?:
           </div>
         </section>
 
-        <aside className="hidden lg:block">
-          <div className="sticky top-6 flex h-[min(720px,calc(100vh-6rem))] flex-col rounded-2xl border border-neutral-200 bg-white shadow-sm">
-            <OfferChatPanel {...chatPanelProps} />
-          </div>
-        </aside>
+        {chatEnabled ? (
+          <aside className="hidden lg:block">
+            <div className="sticky top-6 flex h-[min(720px,calc(100vh-6rem))] flex-col rounded-2xl border border-neutral-200 bg-white shadow-sm">
+              <OfferChatPanel {...chatPanelProps} />
+            </div>
+          </aside>
+        ) : null}
       </main>
 
       {offer.canRespond ? (
@@ -567,11 +581,13 @@ export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?:
         </div>
       ) : null}
 
-      <Sheet open={chatOpen} onOpenChange={setChatOpen}>
-        <SheetContent side="bottom" className="flex h-[min(92dvh,720px)] flex-col gap-0 p-0 lg:hidden">
-          <OfferChatPanel {...chatPanelProps} />
-        </SheetContent>
-      </Sheet>
+      {chatEnabled ? (
+        <Sheet open={chatOpen} onOpenChange={setChatOpen}>
+          <SheetContent side="bottom" className="flex h-[min(92dvh,720px)] flex-col gap-0 p-0 lg:hidden">
+            <OfferChatPanel {...chatPanelProps} />
+          </SheetContent>
+        </Sheet>
+      ) : null}
 
       <footer className="border-t border-neutral-200 bg-white">
         <div className="mx-auto max-w-6xl px-4 py-5 text-center text-xs leading-relaxed text-neutral-500 sm:px-6 sm:py-6">

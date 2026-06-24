@@ -3,10 +3,11 @@
 import { Suspense, useEffect, useState } from "react"
 import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Loader2Icon } from "lucide-react"
+import { CheckIcon, Loader2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { PROFF_INCLUDED_FEATURES } from "@/lib/billing/plans"
 
 function OnboardingAbonnementContent() {
   const router = useRouter()
@@ -119,6 +120,18 @@ function OnboardingAbonnementContent() {
               Fullfør aktivering for å bruke Proanbud.
             </p>
           )}
+        </div>
+
+        <div className="rounded-xl border p-5">
+          <p className="text-sm font-medium">Dette får du i Proff</p>
+          <ul className="mt-3 space-y-2">
+            {PROFF_INCLUDED_FEATURES.map((feature) => (
+              <li key={feature.key} className="flex items-start gap-2 text-sm">
+                <CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+                <span>{feature.label}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
         <Button

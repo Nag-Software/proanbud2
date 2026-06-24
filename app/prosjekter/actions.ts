@@ -7,6 +7,7 @@ import { createProjectSchema, type CreateProjectInput } from "./ny/removed-proje
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { enqueueEntityTripletexSync, processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
+import { assertPlanFeature, companyHasFeature } from "@/lib/billing/server-modules"
 import { canManageProjects } from "@/lib/roles"
 
 const taskStatusToDb: Record<string, string> = {
@@ -132,6 +133,7 @@ export async function createTaskAction(taskData: {
     throw new Error("Kunne ikke hente bedriftsinformasjon")
   }
 
+  await assertPlanFeature(userData.company_id, "project_tasks", "Oppgaver")
   await assertCanManageProjectTasks(supabase, user.id, taskData.project_id)
 
   const { data, error } = await supabase
@@ -159,6 +161,25 @@ export async function createTaskAction(taskData: {
 
 export async function updateTaskStatusAction(taskId: string, newStatus: string, projectId: string) {
   const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+
+  const { data: userData, error: userError } = await supabase
+    .from("users")
+    .select("company_id")
+    .eq("id", user.id)
+    .single()
+
+  if (userError || !userData?.company_id) {
+    throw new Error("Kunne ikke hente bedriftsinformasjon")
+  }
+
+  await assertPlanFeature(userData.company_id, "project_tasks", "Oppgaver")
 
   const { error } = await supabase
     .from("tasks")
@@ -287,7 +308,7 @@ export async function createProjectAction(input: CreateProjectInput) {
     new Set((values.task_titles || []).map((title) => title.trim()).filter((title) => title.length >= 2))
   )
 
-  if (taskTitles.length > 0) {
+  if (taskTitles.length > 0 && (await companyHasFeature(companyId, "project_tasks"))) {
     const initialTasks = taskTitles.map((title) => ({
       project_id: project.id,
       company_id: companyId,

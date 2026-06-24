@@ -7,6 +7,7 @@ import {
   createDeviationSchema,
   type CreateDeviationInput,
 } from "@/app/avvik/schemas"
+import { assertPlanFeature } from "@/lib/billing/server-modules"
 import { createClient } from "@/lib/supabase/server"
 import { OPEN_DEVIATION_STATUSES } from "@/lib/hms/constants"
 import type { DeviationStats, DeviationWithRelations } from "@/lib/hms/types"
@@ -225,6 +226,7 @@ export async function getAccessibleProjectsAction() {
 export async function createDeviationAction(input: CreateDeviationInput) {
   const parsed = createDeviationSchema.parse(input)
   const { supabase, user, companyId } = await getAuthContext()
+  await assertPlanFeature(companyId, "avvik", "Avvik")
 
   const { data: project } = await supabase
     .from("projects")
@@ -273,6 +275,7 @@ export async function createDeviationAction(input: CreateDeviationInput) {
 export async function closeDeviationAction(input: { id: string; followUpNotes?: string }) {
   const parsed = closeDeviationSchema.parse(input)
   const { supabase, user, companyId, role } = await getAuthContext()
+  await assertPlanFeature(companyId, "avvik", "Avvik")
 
   const { data: existing } = await supabase
     .from("deviations")
@@ -303,6 +306,7 @@ export async function closeDeviationAction(input: { id: string; followUpNotes?: 
 
 export async function uploadDeviationPhotoAction(formData: FormData) {
   const { supabase, user, companyId } = await getAuthContext()
+  await assertPlanFeature(companyId, "avvik", "Avvik")
 
   const deviationId = String(formData.get("deviationId") || "")
   const file = formData.get("file") as File | null

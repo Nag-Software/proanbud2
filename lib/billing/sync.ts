@@ -92,6 +92,7 @@ export async function syncModulesFromSubscription(
   subscription: Stripe.Subscription
 ) {
   const admin = createAdminClient()
+  const { planKey } = resolveBasePlanFromSubscription(subscription)
   const moduleItems = subscription.items.data.filter(
     (item) => item.price.metadata?.kind === "module"
   )
@@ -101,6 +102,22 @@ export async function syncModulesFromSubscription(
   for (const item of moduleItems) {
     const moduleKey = item.price.metadata?.module_key
     if (!moduleKey) continue
+
+    // Integrasjoner is bundled into Proff. If a company upgraded to Proff while
+    // still carrying the paid 19 kr integrasjoner module item, remove that item
+    // so they are not double-charged for a feature the plan already includes.
+    // Not adding it to enabledKeys lets the cleanup loop below drop the stale
+    // company_modules row too. (Re-runs are idempotent: the item is already gone.)
+    if (moduleKey === "integrasjoner" && planKey === "proff") {
+      try {
+        const stripe = getStripe()
+        await stripe.subscriptionItems.del(item.id)
+      } catch (error) {
+        console.error("Kunne ikke fjerne integrasjoner-modulledd på Proff", error)
+      }
+      continue
+    }
+
     enabledKeys.add(moduleKey)
 
     await admin.from("company_modules").upsert(

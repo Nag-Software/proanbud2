@@ -23,6 +23,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Ugyldig forespørsel." }, { status: 400 })
     }
 
+    // Integrasjoner is bundled into Proff — never let a Proff company add the
+    // paid 19 kr module on top (the UI hides the toggle, but enforce it here too
+    // so a direct POST cannot create a duplicate, double-charging subscription item).
+    if (
+      parsed.data.enabled &&
+      parsed.data.moduleKey === "integrasjoner" &&
+      auth.context.planKey === "proff"
+    ) {
+      return NextResponse.json(
+        { error: "Integrasjoner er allerede inkludert i Proff-abonnementet." },
+        { status: 400 }
+      )
+    }
+
     const result = await toggleModuleOnSubscription({
       companyId: auth.context.companyId,
       moduleKey: parsed.data.moduleKey as ModuleKey,

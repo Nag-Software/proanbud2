@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation"
 
 import { AppPageShell } from "@/components/app-page-shell"
+import { PlanGate } from "@/components/billing/plan-gate"
 import { getProjectChecklistByIdAction } from "@/app/ks/actions"
+import { companyHasFeature, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 
@@ -13,7 +15,19 @@ export default async function ChecklistFillPage({
   params: Promise<{ id: string; checklistId: string }>
 }) {
   const { id: projectId, checklistId } = await params
-  await checkRoleAccess(["admin", "manager"])
+  const { user } = await checkRoleAccess(["admin", "manager"])
+
+  const companyId = await getCurrentCompanyIdForUser(user.id)
+  if (!companyId || !(await companyHasFeature(companyId, "ks"))) {
+    return (
+      <AppPageShell segments={["Prosjekter", "KS"]}>
+        <PlanGate
+          featureName="KS"
+          description="Kvalitetssikring med sjekklister og maler er tilgjengelig i Proff-planen."
+        />
+      </AppPageShell>
+    )
+  }
 
   const supabase = await createClient()
   const { data: project } = await supabase

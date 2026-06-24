@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { Resend } from "resend"
 import { z } from "zod"
 
+import { companyHasFeature } from "@/lib/billing/server-modules"
 import { createClient } from "@/lib/supabase/server"
 import { buildCustomerMessageEmail } from "@/lib/tilbud/customer-emails"
 import { ensureOfferPublicSlug } from "@/lib/tilbud/public-offer"
@@ -30,6 +31,13 @@ export async function POST(request: Request) {
   const { data: userRow } = await supabase.from("users").select("company_id").eq("id", user.id).maybeSingle()
   if (!userRow?.company_id) {
     return NextResponse.json({ error: "Company context missing" }, { status: 400 })
+  }
+
+  if (!(await companyHasFeature(userRow.company_id, "meldinger"))) {
+    return NextResponse.json(
+      { error: "Meldinger krever Proff-abonnement.", code: "plan_required", feature: "meldinger" },
+      { status: 403 }
+    )
   }
 
   const body = await request.json().catch(() => null)

@@ -3,6 +3,7 @@ import crypto from "crypto"
 
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { companyHasFeature } from "@/lib/billing/server-modules"
 import {
   FIKEN_OAUTH_AUTHORIZE_URL,
   FIKEN_OAUTH_SCOPES,
@@ -39,6 +40,10 @@ export async function GET(request: Request) {
   const role = String(userRow?.role || "")
   if (!userRow?.company_id || !["admin", "manager"].includes(role)) {
     return NextResponse.redirect(`${settingsUrl}?fiken_error=forbidden`)
+  }
+
+  if (!(await companyHasFeature(userRow.company_id, "integrasjoner"))) {
+    return NextResponse.redirect(`${settingsUrl}?fiken_error=plan_required`)
   }
 
   if (!hasFikenOAuthConfig()) {

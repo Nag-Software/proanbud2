@@ -6,11 +6,12 @@ import { PlusCircle } from "lucide-react"
 
 import { AppPageShell } from "@/components/app-page-shell"
 import { ModuleGate } from "@/components/billing/module-gate"
+import { PlanGate } from "@/components/billing/plan-gate"
 import { Button } from "@/components/ui/button"
 import { TabsContent } from "@/components/responsive-tabs"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
-import { companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
+import { companyHasFeature, companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import { MODULE_PRICING } from "@/lib/billing/plans"
 import { getProjectParticipantHoursAction } from "@/app/timeforing/actions"
 import { getDeviationsAction } from "@/app/avvik/actions"
@@ -107,11 +108,24 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const isWorker = canonicalRole === "worker"
   const companyId = await getCurrentCompanyIdForUser(user.id)
   const hasTimeforing = companyId ? await companyHasModule(companyId, "timeforing") : false
+  // Proff-only feature flags for the embedded tabs (KS, Avvik, Oppgaver).
+  const [hasKs, hasAvvik, hasTasks] = await Promise.all([
+    companyHasFeature(companyId, "ks"),
+    companyHasFeature(companyId, "avvik"),
+    companyHasFeature(companyId, "project_tasks"),
+  ])
   const participantHours =
     hasTimeforing && isProjectAdmin ? await getProjectParticipantHoursAction(resolvedParams.id) : []
 
-  const projectDeviations = await getDeviationsAction({ projectId: resolvedParams.id })
-  const projectChecklists = await getProjectChecklistsAction(resolvedParams.id)
+  // Only call the gated read actions when the plan includes that specific feature,
+  // so Mini companies never hit the Proff-only data paths. Fetch granularity
+  // matches each tab's own gate (Avvik -> hasAvvik, KS -> hasKs).
+  const projectDeviations = hasAvvik
+    ? await getDeviationsAction({ projectId: resolvedParams.id })
+    : []
+  const projectChecklists = hasKs
+    ? await getProjectChecklistsAction(resolvedParams.id)
+    : []
 
   const projectDeltakere = normalizedMembers.map((member) => {
     const memberUser = member.users
@@ -183,12 +197,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             tabs={[
               { value: "oversikt", label: "Oversikt" },
               { value: "tilbud", label: "Tilbud" },
-              { value: "oppgaver", label: "Oppgaver" },
+              { value: "oppgaver", label: "Oppgaver", hidden: !hasTasks },
               { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
               { value: "timeforing", label: "Timeføring" },
               { value: "lonnsomhet", label: "Etterkalkyle", shortLabel: "Margin", hidden: isWorker },
-              { value: "ks", label: "KS", hidden: isWorker },
-              { value: "avvik", label: "Avvik" },
+              { value: "ks", label: "KS", hidden: isWorker || !hasKs },
+              { value: "avvik", label: "Avvik", hidden: !hasAvvik },
               { value: "deltakere", label: "Deltakere", hidden: isWorker },
             ]}
           >
@@ -241,7 +255,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             </TabsContent>
 
             <TabsContent value="oppgaver">
-              <OppgaverTab projectId={project.id} canManageTasks={isProjectAdmin || isWorker} />
+              {hasTasks ? (
+                <OppgaverTab projectId={project.id} canManageTasks={isProjectAdmin || isWorker} />
+              ) : (
+                <PlanGate
+                  featureName="Oppgaver"
+                  description="Planlegg og følg opp oppgaver direkte på prosjektet."
+                />
+              )}
             </TabsContent>
 
             <TabsContent value="filer">
@@ -268,12 +289,26 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
             {!isWorker && (
               <TabsContent value="ks">
-                <KsTab projectId={project.id} checklists={projectChecklists} />
+                {hasKs ? (
+                  <KsTab projectId={project.id} checklists={projectChecklists} />
+                ) : (
+                  <PlanGate
+                    featureName="KS"
+                    description="Kvalitetssikre prosjektet med sjekklister og maler."
+                  />
+                )}
               </TabsContent>
             )}
 
             <TabsContent value="avvik">
-              <AvvikTab projectId={project.id} deviations={projectDeviations} />
+              {hasAvvik ? (
+                <AvvikTab projectId={project.id} deviations={projectDeviations} />
+              ) : (
+                <PlanGate
+                  featureName="Avvik"
+                  description="Registrer og følg opp avvik på prosjektet."
+                />
+              )}
             </TabsContent>
 
             {!isWorker && (

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getDeviationsAction } from "@/app/avvik/actions"
+import { companyHasFeature, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import {
   DEVIATION_STATUS_LABELS,
   DEVIATION_TYPE_LABELS,
@@ -30,6 +31,14 @@ export async function GET(request: Request) {
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const companyId = await getCurrentCompanyIdForUser(user.id)
+  if (!(await companyHasFeature(companyId, "avvik"))) {
+    return NextResponse.json(
+      { error: "Avvik krever Proff-abonnement", code: "plan_required" },
+      { status: 403 }
+    )
   }
 
   const url = new URL(request.url)

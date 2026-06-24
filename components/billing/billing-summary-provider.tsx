@@ -12,11 +12,13 @@ import {
 
 import { useAuth } from "@/components/auth-provider"
 import { useUserRole } from "@/hooks/use-user-role"
+import type { PlanKey } from "@/lib/billing/plans"
 
 export type BillingSummary = {
   status?: string
   trial_ends_at?: string | null
   plan_label?: string | null
+  plan_key?: PlanKey | null
 }
 
 type BillingSummaryContextValue = {

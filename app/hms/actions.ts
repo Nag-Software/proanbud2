@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 import { getDeviationStatsAction, getDeviationsAction } from "@/app/avvik/actions"
+import { assertPlanFeature } from "@/lib/billing/server-modules"
 import { createClient } from "@/lib/supabase/server"
 import { isAdmin } from "@/lib/roles"
 
@@ -28,6 +29,8 @@ async function getAuthContext(requireAdmin = false) {
 
   if (!profile?.company_id) throw new Error("Fant ikke bedrift")
   if (requireAdmin && !isAdmin(profile.role)) throw new Error("Kun administrator har tilgang")
+
+  await assertPlanFeature(profile.company_id, "hms", "HMS")
 
   return { supabase, user, companyId: profile.company_id }
 }

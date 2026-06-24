@@ -2,6 +2,7 @@ import { Buffer } from "buffer"
 import { NextResponse } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
+import { companyHasFeature } from "@/lib/billing/server-modules"
 import { getDocusignAuthContext, getDocusignJwtConsentUrl } from "@/lib/integrations/docusign/client"
 
 type TestAction = "consent" | "auth" | "account" | "envelope"
@@ -36,6 +37,20 @@ async function resolveContext() {
   const canManage = userRow.role === "admin"
   if (!canManage) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
+  }
+
+  // DocuSign is part of the integrasjoner feature (Proff or the 19 kr module).
+  if (!(await companyHasFeature(userRow.company_id, "integrasjoner"))) {
+    return {
+      error: NextResponse.json(
+        {
+          error: "Integrasjoner er inkludert i Proff eller kan aktiveres som modul.",
+          code: "plan_required",
+          feature: "integrasjoner",
+        },
+        { status: 403 }
+      ),
+    }
   }
 
   return { companyId: userRow.company_id }
