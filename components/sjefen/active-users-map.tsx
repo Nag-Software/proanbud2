@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { SjefenAnalytics } from "@/lib/sjefen/analytics"
 import { MAP_VIEWBOX, NORWAY_PATH } from "@/lib/sjefen/norway-geo"
 
-const POLL_MS = 12_000
+const POLL_MS = 30_000
 
 // Compact "active users" map for the Sjefen overview. Shows only the Norway
 // silhouette, blips for locations with active users, and the live count.
@@ -15,6 +15,8 @@ export function ActiveUsersMap({ initial }: { initial: SjefenAnalytics }) {
   const timerRef = useRef<number | null>(null)
 
   const refresh = useCallback(async () => {
+    // Don't poll a backgrounded tab — the data isn't visible anyway.
+    if (document.visibilityState === "hidden") return
     try {
       const res = await fetch("/api/sjefen/analytics", { cache: "no-store" })
       if (!res.ok) return

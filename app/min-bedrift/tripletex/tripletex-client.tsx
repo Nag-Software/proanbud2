@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 type JobRow = {
   id: number
   status: string
@@ -180,6 +181,7 @@ export function TripletexClient({
   canManage,
   helpUrl,
 }: TripletexClientProps) {
+  const confirm = useConfirm()
   const [state, setState] = React.useState<StateResponse>({
     connected: Boolean(initialConnection && initialConnection.sync_state !== "disconnected"),
     connection: initialConnection,
@@ -321,7 +323,13 @@ export function TripletexClient({
   async function removeIntegration() {
     if (!canManage) return
 
-    const confirmed = window.confirm("Fjerne Tripletex-integrasjonen?")
+    const confirmed = await confirm({
+      title: "Fjerne Tripletex-integrasjonen?",
+      description: "API-nøkkelen slettes og all synkronisering med Tripletex stopper. Du må koble til på nytt med en ny nøkkel for å bruke integrasjonen igjen.",
+      confirmText: "Fjern",
+      cancelText: "Avbryt",
+      variant: "destructive",
+    })
     if (!confirmed) return
 
     setIsRemoving(true)

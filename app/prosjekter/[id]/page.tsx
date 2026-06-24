@@ -11,9 +11,10 @@ import { Button } from "@/components/ui/button"
 import { TabsContent } from "@/components/responsive-tabs"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
-import { companyHasFeature, companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
-import { MODULE_PRICING } from "@/lib/billing/plans"
-import { getProjectParticipantHoursAction } from "@/app/timeforing/actions"
+import { getCompanyPlanAndModules, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
+import { MODULE_PRICING, hasFeature } from "@/lib/billing/plans"
+import { canManageProjects } from "@/lib/roles"
+import { fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import { getDeviationsAction } from "@/app/avvik/actions"
 import { getProjectChecklistsAction } from "@/app/ks/actions"
 import { getProjectCustomer } from "@/app/prosjekter/project-utils"
@@ -62,11 +63,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const supabase = await createClient()
   const { user, canonicalRole } = await checkRoleAccess(["admin", "manager", "worker"])
 
+  // companyId only needs user.id (known above), so resolve it alongside the
+  // project reads instead of after them.
   const [
     { data: project },
     { data: tasksData },
     { data: offersData },
     { data: membersData },
+    companyId,
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -83,6 +87,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       .from("project_members")
       .select("access_level, users(id, email, full_name, role)")
       .eq("project_id", resolvedParams.id),
+    getCurrentCompanyIdForUser(user.id),
   ])
 
   if (!project) {
@@ -106,26 +111,34 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     canonicalRole === "manager" ||
     currentMember?.access_level === "manager"
   const isWorker = canonicalRole === "worker"
-  const companyId = await getCurrentCompanyIdForUser(user.id)
-  const hasTimeforing = companyId ? await companyHasModule(companyId, "timeforing") : false
-  // Proff-only feature flags for the embedded tabs (KS, Avvik, Oppgaver).
-  const [hasKs, hasAvvik, hasTasks] = await Promise.all([
-    companyHasFeature(companyId, "ks"),
-    companyHasFeature(companyId, "avvik"),
-    companyHasFeature(companyId, "project_tasks"),
-  ])
-  const participantHours =
-    hasTimeforing && isProjectAdmin ? await getProjectParticipantHoursAction(resolvedParams.id) : []
 
-  // Only call the gated read actions when the plan includes that specific feature,
-  // so Mini companies never hit the Proff-only data paths. Fetch granularity
-  // matches each tab's own gate (Avvik -> hasAvvik, KS -> hasKs).
-  const projectDeviations = hasAvvik
-    ? await getDeviationsAction({ projectId: resolvedParams.id })
-    : []
-  const projectChecklists = hasKs
-    ? await getProjectChecklistsAction(resolvedParams.id)
-    : []
+  // Resolve plan + enabled modules in ONE read, then derive every gate
+  // in-memory. Previously companyHasModule + 3× companyHasFeature issued ~8
+  // separate admin reads for data that is identical across the calls.
+  const { plan, modules } = companyId
+    ? await getCompanyPlanAndModules(companyId)
+    : { plan: null, modules: [] as string[] }
+  const hasTimeforing = modules.includes("timeforing")
+  // Proff-only feature flags for the embedded tabs (KS, Avvik, Oppgaver).
+  const hasKs = hasFeature(plan, modules, "ks")
+  const hasAvvik = hasFeature(plan, modules, "avvik")
+  const hasTasks = hasFeature(plan, modules, "project_tasks")
+
+  // The three gated datasets are independent — fetch them concurrently. Each
+  // keeps its own gate: timeføring (admin/manager only, matching the action's
+  // canManageProjects gate), Avvik -> hasAvvik, KS -> hasKs. Mini companies
+  // never hit the Proff-only data paths.
+  const [participantHours, projectDeviations, projectChecklists] = await Promise.all([
+    hasTimeforing && canManageProjects(canonicalRole)
+      ? fetchParticipantHours(supabase, resolvedParams.id)
+      : Promise.resolve([] as Awaited<ReturnType<typeof fetchParticipantHours>>),
+    hasAvvik
+      ? getDeviationsAction({ projectId: resolvedParams.id })
+      : Promise.resolve([] as Awaited<ReturnType<typeof getDeviationsAction>>),
+    hasKs
+      ? getProjectChecklistsAction(resolvedParams.id)
+      : Promise.resolve([] as Awaited<ReturnType<typeof getProjectChecklistsAction>>),
+  ])
 
   const projectDeltakere = normalizedMembers.map((member) => {
     const memberUser = member.users

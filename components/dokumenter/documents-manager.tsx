@@ -29,6 +29,7 @@ import {
   Folder,
   FolderPlus,
   HardDrive,
+  Loader2,
   PanelLeft,
   PencilLine,
   Plus,
@@ -251,8 +252,14 @@ export default function DocumentsManager() {
   async function onUpload(files: FileList | null) {
     if (!files || files.length === 0) return
 
+    const fileCount = files.length
     setBusyId("__upload__")
     let hasError = false
+    let errorCount = 0
+
+    const uploadingToastId = toast.loading(
+      fileCount === 1 ? `Laster opp ${files[0].name}…` : `Laster opp ${fileCount} filer…`
+    )
 
     try {
       // Loop via Array.from to support multiple file uploads
@@ -273,15 +280,27 @@ export default function DocumentsManager() {
           const data = await res.json()
           toast.error(`Kunne ikke laste opp ${file.name}: ${data.error ?? "Feil"}`)
           hasError = true
+          errorCount += 1
         }
       })
 
       await Promise.all(uploadPromises)
 
-      if (!hasError && files.length > 1) {
-        toast.success(`${files.length} filer lastet opp.`)
+      if (!hasError) {
+        toast.success(
+          fileCount === 1 ? "Filen ble lastet opp." : `${fileCount} filer lastet opp.`,
+          { id: uploadingToastId }
+        )
+      } else {
+        const ok = fileCount - errorCount
+        toast.error(
+          ok > 0
+            ? `${ok} av ${fileCount} filer lastet opp. ${errorCount} feilet.`
+            : "Ingen filer ble lastet opp.",
+          { id: uploadingToastId }
+        )
       }
-      
+
       await loadItems(provider, currentFolderId)
     } finally {
       setBusyId(null)
@@ -595,8 +614,12 @@ export default function DocumentsManager() {
               </Button>
               <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => void onUpload(e.target.files)} />
               <Button onClick={() => fileInputRef.current?.click()} disabled={busyId === "__upload__"} size="sm" className="h-8 gap-2">
-                <Upload className="h-4 w-4" />
-                Last opp
+                {busyId === "__upload__" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                {busyId === "__upload__" ? "Laster opp…" : "Last opp"}
               </Button>
             </>
             {provider !== "supabase" && activeProviderConnected() && (

@@ -110,7 +110,7 @@ export function ChecklistItemRow({ item, projectId, checklistId, index, onUpdate
               size="lg"
               variant={response === val ? "default" : "outline"}
               className={cn(
-                "h-11 text-sm font-medium",
+                "h-12 min-w-0 whitespace-normal px-1 text-center text-sm font-medium leading-tight sm:h-14",
                 val === "ok" && response === "ok" && "bg-emerald-600 hover:bg-emerald-700",
                 val === "not_ok" && response === "not_ok" && "bg-red-600 hover:bg-red-700",
                 val === "na" && response === "na" && "bg-muted-foreground hover:bg-muted-foreground/90"

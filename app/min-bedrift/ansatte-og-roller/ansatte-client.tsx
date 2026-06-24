@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Label } from "@/components/ui/label";
 import { Search, Plus, MoreHorizontal, Shield, Mail, X } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuPortal } from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
 import { updateUserRole } from "./actions";
 
 const fallbackEmployees: any[] = [];
@@ -56,7 +57,7 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
       setInviteLink(data.invitationUrl);
     } catch (error) {
       console.error(error);
-      alert(error instanceof Error ? error.message : "Kunne ikke sende invitasjon.");
+      toast.error(error instanceof Error ? error.message : "Kunne ikke sende invitasjon.");
     } finally {
       setIsSubmitting(false);
     }
@@ -66,13 +67,13 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
     try {
       const result = await updateUserRole(userId, newRole);
       if (result.error) {
-        alert(result.error);
+        toast.error(result.error);
         return;
       }
       setEmployees(employees.map(e => e.id === userId ? { ...e, role: newRole } : e));
     } catch (error) {
       console.error(error);
-      alert("Kunne ikke endre rolle.");
+      toast.error("Kunne ikke endre rolle.");
     }
   };
 

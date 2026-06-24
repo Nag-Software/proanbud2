@@ -61,7 +61,7 @@ export function ForgotPasswordForm({
           <CardTitle className="text-xl">Glemt passord</CardTitle>
           <CardDescription>
             {sent
-              ? "Hvis det finnes en konto med denne e-postadressen, har vi sendt deg en lenke for å tilbakestille passordet."
+              ? "Hvis adressen finnes hos oss, har vi sendt en lenke for å tilbakestille passordet."
               : "Skriv inn e-postadressen din, så sender vi deg en lenke for å tilbakestille passordet."}
           </CardDescription>
         </CardHeader>
@@ -69,9 +69,17 @@ export function ForgotPasswordForm({
           {sent ? (
             <FieldGroup>
               <Field>
-                <FieldDescription className="text-center">
-                  Sjekk innboksen din (og søppelpost). Lenken er gyldig i en begrenset periode.
-                </FieldDescription>
+                <div
+                  role="status"
+                  className="rounded-md border border-green-600/40 bg-green-50 p-4 text-center text-sm text-green-700 dark:bg-green-950/40 dark:text-green-400"
+                >
+                  <p className="font-medium">
+                    Hvis adressen finnes hos oss, har vi sendt en lenke for å tilbakestille passordet.
+                  </p>
+                  <p className="mt-1 text-green-700/80 dark:text-green-400/80">
+                    Sjekk innboks og spam. Lenken utløper om 60 minutter.
+                  </p>
+                </div>
               </Field>
               <Field>
                 <Button asChild variant="outline" className="w-full">

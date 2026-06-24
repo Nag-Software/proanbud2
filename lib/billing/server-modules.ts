@@ -1,3 +1,5 @@
+import { cache } from "react"
+
 import { hasFeature, type FeatureKey, type PlanKey } from "@/lib/billing/plans"
 import { createAdminClient } from "@/lib/supabase/admin"
 
@@ -27,7 +29,12 @@ export async function companyHasModule(companyId: string, moduleKey: string): Pr
   return Boolean(data)
 }
 
-export async function getCurrentCompanyIdForUser(userId: string): Promise<string | null> {
+// `cache()`-wrapped (keyed by userId): several pages resolve the company id and
+// then immediately resolve its plan/modules; this dedupes the lookup within one
+// render so we don't re-read `users` for the same user multiple times.
+export const getCurrentCompanyIdForUser = cache(async function getCurrentCompanyIdForUser(
+  userId: string
+): Promise<string | null> {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from("users")
@@ -40,13 +47,16 @@ export async function getCurrentCompanyIdForUser(userId: string): Promise<string
   }
 
   return data?.company_id ?? null
-}
+})
 
 /**
  * Resolve a company's plan + enabled modules in one admin-client read.
  * The admin client bypasses RLS, so this works regardless of the caller's role.
  */
-export async function getCompanyPlanAndModules(
+// `cache()`-wrapped (keyed by companyId): `companyHasFeature` is often called
+// several times per render for different features on the same company. Caching
+// here collapses those into a single billing+modules read per company per render.
+export const getCompanyPlanAndModules = cache(async function getCompanyPlanAndModules(
   companyId: string
 ): Promise<{ plan: PlanKey | null; modules: string[] }> {
   const admin = createAdminClient()
@@ -58,7 +68,7 @@ export async function getCompanyPlanAndModules(
     plan: (billing?.plan_key ?? null) as PlanKey | null,
     modules: (modules ?? []).map((m) => m.module_key as string),
   }
-}
+})
 
 /**
  * Does this company have access to `feature`? Honors plan inclusion (Proff

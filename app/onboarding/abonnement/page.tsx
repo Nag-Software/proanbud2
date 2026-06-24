@@ -88,7 +88,10 @@ function OnboardingAbonnementContent() {
   if (checking) {
     return (
       <div className="flex min-h-svh items-center justify-center bg-background px-6">
-        <Loader2Icon className="size-6 animate-spin text-muted-foreground" />
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Loader2Icon className="size-6 animate-spin" />
+          <span className="text-sm">Henter abonnementet ditt…</span>
+        </div>
       </div>
     )
   }

@@ -12,19 +12,13 @@ export const metadata = {
 };
 
 export default async function Page() {
-  await checkRoleAccess(["admin", "manager"]);
+  // checkRoleAccess already resolves (and guarantees) the authenticated user —
+  // reuse it instead of issuing a second auth.getUser() round-trip.
+  const { user } = await checkRoleAccess(["admin", "manager"]);
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await (await supabase).auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const { data: userData } = await (await supabase)
+  const { data: userData } = await supabase
     .from("users")
     .select("company_id")
     .eq("id", user.id)

@@ -35,7 +35,8 @@ export function TrialBanner() {
       <div className="flex max-w-[2000px] flex-wrap items-center justify-between gap-2 text-sm">
         <p className="text-foreground">
           Du har <strong>{remaining} dager</strong> igjen av prøveperioden. Ingen belastning før prøven
-          avsluttes. Avslutt når du vil.
+          avsluttes. Når prøveperioden går ut, må du velge et abonnement for å fortsette å bruke de
+          låste funksjonene. Avslutt når du vil.
         </p>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" asChild>

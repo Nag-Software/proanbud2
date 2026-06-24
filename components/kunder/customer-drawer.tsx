@@ -224,10 +224,10 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
                     <CardContent className="p-4 pt-2">
                       <div className="text-xs text-muted-foreground mb-3 flex items-center justify-between">
                         <span>Sist kontaktet:</span>
-                        <span className="font-medium text-foreground">{new Date(customer.lastContact).toLocaleDateString("nb-NO")}</span>
+                        <span className="font-medium text-foreground">—</span>
                       </div>
                       <div className="bg-muted/50 rounded-md p-3 text-sm border-l-2 border-primary/50 text-muted-foreground italic">
-                        "Kunde foretrekker å bli kontaktet via e-post etter kl 14."
+                        Ingen notater enda.
                       </div>
                     </CardContent>
                   </Card>

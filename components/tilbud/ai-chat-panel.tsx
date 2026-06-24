@@ -80,6 +80,13 @@ export type AiChatPanelProps = {
 
 const phaseLabels = ["Leser oppdrag", "Avklarer", "Bygger kalkyle", "Ferdig"]
 
+const generatingSteps = [
+  "Analyserer dokument…",
+  "Finner relevante poster…",
+  "Beregner mengder og priser…",
+  "Setter sammen forslag…",
+]
+
 export function AiChatPanel({
   title,
   description,
@@ -96,6 +103,7 @@ export function AiChatPanel({
   const [questionIndex, setQuestionIndex] = useState(0)
   const [customAnswer, setCustomAnswer] = useState("")
   const [errorText, setErrorText] = useState<string | null>(null)
+  const [generatingStepIndex, setGeneratingStepIndex] = useState(0)
   const generationIdRef = useRef(
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -136,6 +144,21 @@ export function AiChatPanel({
 
     return () => window.clearTimeout(timer)
   }, [currentAnswer, currentQuestion])
+
+  useEffect(() => {
+    if (phase !== "generating") {
+      setGeneratingStepIndex(0)
+      return
+    }
+
+    // Opplevd-fremdrift: roterer trinn-tekster mens vi venter på backend.
+    // Ikke koblet til faktisk progresjon.
+    const interval = window.setInterval(() => {
+      setGeneratingStepIndex((previous) => (previous + 1) % generatingSteps.length)
+    }, 2500)
+
+    return () => window.clearInterval(interval)
+  }, [phase])
 
   async function startAnalysis() {
     setPhase("loading")
@@ -450,7 +473,13 @@ export function AiChatPanel({
               </div>
             ) : null}
 
-            {phase === "generating" ? <CenteredState title="Bygger prisforslag" description="Velger produkter og beregner mengder." /> : null}
+            {phase === "generating" ? (
+              <CenteredState
+                title="Bygger prisforslag"
+                description={generatingSteps[generatingStepIndex]}
+                descriptionKey={generatingStepIndex}
+              />
+            ) : null}
 
             {phase === "done" ? <CenteredState title="Kalkyle klar" description="Prisforslaget overføres tilbake til tilbudet nå." success /> : null}
 
@@ -474,14 +503,24 @@ export function AiChatPanel({
   )
 }
 
-function CenteredState({ title, description, success = false }: { title: string; description: string; success?: boolean }) {
+function CenteredState({
+  title,
+  description,
+  success = false,
+  descriptionKey,
+}: {
+  title: string
+  description: string
+  success?: boolean
+  descriptionKey?: string | number
+}) {
   return (
     <div className="flex h-full flex-col items-center justify-center text-center">
       <div className={`flex h-16 w-16 items-center justify-center rounded-3xl ${success ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-700"}`}>
         {success ? <CheckCircle2 className="h-8 w-8" /> : <LoaderCircle className="h-8 w-8 animate-spin" />}
       </div>
       <div className="mt-5 text-lg font-semibold text-slate-950">{title}</div>
-      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{description}</p>
+      <p key={descriptionKey} className="mt-2 max-w-md text-sm leading-6 text-slate-500 animate-in fade-in duration-500">{description}</p>
     </div>
   )
 }

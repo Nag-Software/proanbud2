@@ -6,6 +6,8 @@ import { Suspense, useState, useEffect, useCallback, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { LOGIN_PATH } from '@/lib/constants'
+import { toast } from "sonner"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -50,6 +52,7 @@ function defaultSlotTimes(day: Date) {
 
 function KalenderPage() {
   const isMobile = useIsMobile()
+  const confirm = useConfirm()
   const { loadingRole, hasFeature } = useUserRole()
   const [integrations, setIntegrations] = useState<{ provider: string }[]>([])
   const [loggedIn, setLoggedIn] = useState(false)
@@ -203,7 +206,15 @@ function KalenderPage() {
   }
 
   const handleDisconnect = async (provider: "google" | "microsoft") => {
-    if (!confirm(`Koble fra ${provider === "google" ? "Google" : "Outlook"} Calendar?`)) return
+    const providerName = provider === "google" ? "Google" : "Outlook"
+    const ok = await confirm({
+      title: `Koble fra ${providerName} Calendar?`,
+      description: `Hendelsene fra ${providerName} Calendar fjernes fra Proanbud-kalenderen, og synkroniseringen stopper. Du kan koble til igjen senere.`,
+      confirmText: "Koble fra",
+      cancelText: "Avbryt",
+      variant: "destructive",
+    })
+    if (!ok) return
     setIsDisconnecting(true)
     try {
       const res = await fetch(`/api/integrations/calendar/revoke?provider=${provider}`, {
@@ -296,10 +307,10 @@ function KalenderPage() {
         triggerRefetch()
       } else {
         const data = await res.json()
-        alert(`Kunne ikke lagre: ${data.error}`)
+        toast.error(`Kunne ikke lagre: ${data.error}`)
       }
     } catch (e) {
-      alert("En feil oppstod ved lagring.")
+      toast.error("En feil oppstod ved lagring.")
     } finally {
       setIsSubmitting(false)
     }
@@ -329,11 +340,11 @@ function KalenderPage() {
         triggerRefetch()
       } else {
         const data = await res.json()
-        alert(`Kunne ikke lagre: ${data.error}`)
+        toast.error(`Kunne ikke lagre: ${data.error}`)
       }
     } catch (e) {
       console.error(e)
-      alert("Kunne ikke lagre oppdateringen.")
+      toast.error("Kunne ikke lagre oppdateringen.")
     } finally {
       setIsSubmitting(false)
     }
@@ -341,7 +352,14 @@ function KalenderPage() {
 
   const handleDeleteEvent = async () => {
     if (!activeEventId) return
-    if (!confirm("Er du sikker på at du vil slette dette eventet?")) return
+    const ok = await confirm({
+      title: "Slette hendelse?",
+      description: "Hendelsen slettes permanent fra kalenderen og kan ikke gjenopprettes.",
+      confirmText: "Slett hendelse",
+      cancelText: "Avbryt",
+      variant: "destructive",
+    })
+    if (!ok) return
     setIsDeleting(true)
 
     try {
@@ -354,10 +372,10 @@ function KalenderPage() {
         triggerRefetch()
       } else {
         const data = await res.json()
-        alert(`Kunne ikke slette: ${data.error}`)
+        toast.error(`Kunne ikke slette: ${data.error}`)
       }
     } catch (e) {
-      alert("En feil oppstod ved sletting.")
+      toast.error("En feil oppstod ved sletting.")
     } finally {
       setIsDeleting(false)
     }
@@ -383,7 +401,7 @@ function KalenderPage() {
       triggerRefetch()
     } catch (e) {
       console.error(e)
-      alert("Kunne ikke flytte/endre størrelse på møtet. Tilbakestiller visning.")
+      toast.error("Kunne ikke flytte/endre størrelse på møtet. Tilbakestiller visning.")
       triggerRefetch()
     }
   }

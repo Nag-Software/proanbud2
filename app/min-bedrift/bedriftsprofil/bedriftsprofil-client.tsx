@@ -83,7 +83,16 @@ export function BedriftsprofilClient({
       toast.success("Logo lastet opp.")
     } catch (error) {
       console.error("Logo upload error", error)
-      toast.error("Kunne ikke laste opp logo.")
+      const message = error instanceof Error ? error.message.toLowerCase() : ""
+      if (message.includes("exceeded") || message.includes("too large") || message.includes("maximum size")) {
+        toast.error("Filen er for stor.", { description: "Logoen kan maks være 2 MB." })
+      } else if (message.includes("mime") || message.includes("type") || message.includes("invalid")) {
+        toast.error("Ugyldig filtype.", { description: "Velg en bildefil (PNG, JPG eller SVG)." })
+      } else {
+        toast.error("Kunne ikke laste opp logo.", {
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
     } finally {
       setIsUploadingLogo(false)
     }
@@ -224,7 +233,7 @@ export function BedriftsprofilClient({
                 ) : (
                   <Upload className="mr-2 h-4 w-4" />
                 )}
-                Last opp logo
+                {isUploadingLogo ? "Laster opp…" : "Last opp logo"}
               </Button>
               <p className="text-xs text-muted-foreground">PNG, JPG eller SVG. Maks 2 MB.</p>
             </div>
@@ -362,7 +371,7 @@ export function BedriftsprofilClient({
       <div className="flex justify-end">
         <Button onClick={() => void handleSave()} disabled={isSaving || isUploadingLogo}>
           {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          Lagre endringer
+          {isSaving ? "Lagrer…" : "Lagre endringer"}
         </Button>
       </div>
     </div>

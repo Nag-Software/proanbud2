@@ -336,15 +336,25 @@ export default function DashboardPage() {
         status: o.status || "draft",
       }))
 
-      // Top projects by offer count
+      // Top projects by offer count — one .in() query + tally in JS instead of
+      // an offers count query per project (N+1). Uses idx_offers_project_id.
       const topProjects: DashboardData["topProjects"] = []
       if (topProjectsRes.data?.length) {
-        const counts = await Promise.all(
-          topProjectsRes.data.map(async p => {
-            const { count } = await supabase.from("offers").select("id", { count: "exact", head: true }).eq("project_id", p.id)
-            return { id: p.id, navn: p.name, offers: count || 0 }
-          })
-        )
+        const projectIds = topProjectsRes.data.map(p => p.id)
+        const { data: offerRows } = await supabase
+          .from("offers")
+          .select("project_id")
+          .in("project_id", projectIds)
+        const offerCountById = new Map<string, number>()
+        for (const row of offerRows || []) {
+          if (!row.project_id) continue
+          offerCountById.set(row.project_id, (offerCountById.get(row.project_id) || 0) + 1)
+        }
+        const counts = topProjectsRes.data.map(p => ({
+          id: p.id,
+          navn: p.name,
+          offers: offerCountById.get(p.id) || 0,
+        }))
         const max = Math.max(1, ...counts.map(c => c.offers))
         topProjects.push(
           ...counts

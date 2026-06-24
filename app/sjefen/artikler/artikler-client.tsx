@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { formatDateTime } from "@/lib/sjefen/format"
 import type { SanityArticleListItem } from "@/lib/sanity/articles"
 import { getPublicArticleUrl } from "@/lib/sanity/config"
@@ -103,6 +104,7 @@ const columns = (
 ]
 
 export function ArtiklerClient({ initialArticles }: { initialArticles: SanityArticleListItem[] }) {
+  const confirm = useConfirm()
   const [articles, setArticles] = useState(initialArticles)
   const [isGenerating, setIsGenerating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -174,9 +176,13 @@ export function ArtiklerClient({ initialArticles }: { initialArticles: SanityArt
 
   async function handleDelete(id: string) {
     const article = articles.find((item) => item._id === id)
-    const confirmed = window.confirm(
-      `Slette «${article?.title ?? "artikkelen"}» permanent fra Sanity?`
-    )
+    const confirmed = await confirm({
+      title: "Slette artikkel?",
+      description: `«${article?.title ?? "Artikkelen"}» slettes permanent fra Sanity og fjernes fra proanbud.no. Handlingen kan ikke angres.`,
+      confirmText: "Slett artikkel",
+      cancelText: "Avbryt",
+      variant: "destructive",
+    })
     if (!confirmed) return
 
     setDeletingId(id)

@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import AuthProvider from "@/components/auth-provider"
 import { RoleProvider } from "@/components/role-provider"
 import { Toaster } from "@/components/ui/sonner"
+import { ConfirmProvider } from "@/components/ui/confirm-dialog"
 import { MockRoleBanner } from "@/components/dev/mock-role-banner"
 import { Analytics } from "@vercel/analytics/next"
 
@@ -46,7 +47,9 @@ export default function RootLayout({
           <AuthProvider>
             <RoleProvider>
               <BillingSummaryProvider>
-                <AppShellLayout>{children}</AppShellLayout>
+                <ConfirmProvider>
+                  <AppShellLayout>{children}</AppShellLayout>
+                </ConfirmProvider>
               </BillingSummaryProvider>
             </RoleProvider>
           </AuthProvider>

@@ -46,7 +46,17 @@ export function PlanGate({ featureName, description, planLabel = "Proff", title 
               Oppgrader til <strong>{planLabel}</strong> for å låse opp denne funksjonen.
             </>
           ) : (
-            <>Kontakt bedriftens administrator for å oppgradere til {planLabel}.</>
+            <>
+              Be en administrator i bedriften om å oppgradere til {planLabel}. Du finner hvem som
+              er administrator under{" "}
+              <Link
+                href="/min-bedrift/ansatte-og-roller"
+                className="font-medium text-foreground underline underline-offset-2"
+              >
+                Ansatte og roller
+              </Link>
+              .
+            </>
           )}
         </p>
         {canManageBilling && !loadingRole && (

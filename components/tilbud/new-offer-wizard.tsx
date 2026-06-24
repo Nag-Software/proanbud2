@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 
+import { toast } from "sonner"
+
 import { AiChatPanel } from "@/components/tilbud/ai-chat-panel"
 import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
 import { useRouter } from "next/navigation"
@@ -361,11 +363,14 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     const validationError = validateStepOne()
     if (validationError) {
       setFeedback(validationError)
+      toast.error(validationError)
       return
     }
 
     if (lineItems.length === 0) {
-      setFeedback("Kjør analyse eller legg til minst én rad før lagring")
+      const message = "Kjør analyse eller legg til minst én rad før lagring"
+      setFeedback(message)
+      toast.error(message)
       return
     }
 
@@ -373,10 +378,13 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
       try {
         const result = await saveOfferDraftAction(buildPayload())
         setOfferId(result.id)
-        setFeedback("Utkast lagret")
+        setFeedback(null)
+        toast.success("Utkast lagret")
         onCompleted?.()
       } catch (error) {
-        setFeedback(error instanceof Error ? error.message : "Kunne ikke lagre utkast")
+        const message = error instanceof Error ? error.message : "Kunne ikke lagre utkast"
+        setFeedback(message)
+        toast.error(message)
       }
     })
   }

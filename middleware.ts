@@ -10,12 +10,15 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * Feel free to modify this pattern to include more paths.
+     * Match all request paths except for the ones below. `updateSession` does a
+     * supabase.auth.getUser() round-trip on every match, so we also skip routes
+     * that authenticate via signature/secret and never read the user cookie:
+     * - _next/static / _next/image (build assets)
+     * - favicon.ico and static asset extensions
+     * - the api/webhooks folder and any route ending in "webhook" (Stripe, Resend, DocuSign, Tripletex…)
+     * - api/outreach/cron (secret-authed cron)
+     * (Do NOT exclude /api/sjefen or /api/selger — those rely on the refreshed session.)
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/webhooks/|api/outreach/cron|api/(?:.*/)?webhook|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|map)$).*)',
   ],
 }

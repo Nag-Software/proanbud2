@@ -11,6 +11,7 @@ import {
 } from "@/app/ks/actions"
 import { PhotoAnnotatorDialog } from "@/components/ks/photo-annotator"
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import type { ProjectChecklistItem } from "@/lib/ks/types"
 
 type Props = {
@@ -117,6 +118,7 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
   const [annotateOpen, setAnnotateOpen] = React.useState(false)
   const cameraRef = React.useRef<HTMLInputElement>(null)
   const galleryRef = React.useRef<HTMLInputElement>(null)
+  const confirm = useConfirm()
 
   async function handleFiles(files: FileList | null) {
     if (!files?.length) return
@@ -146,6 +148,15 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
   }
 
   async function handleDelete(attachmentId: string) {
+    const ok = await confirm({
+      title: "Fjerne bildet?",
+      description: "Bildet slettes permanent og kan ikke gjenopprettes.",
+      confirmText: "Fjern",
+      cancelText: "Avbryt",
+      variant: "destructive",
+    })
+    if (!ok) return
+
     try {
       await deleteChecklistItemPhotoAction(attachmentId)
       toast.success("Bilde slettet")

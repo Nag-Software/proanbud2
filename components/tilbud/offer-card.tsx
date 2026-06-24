@@ -102,12 +102,6 @@ export function OfferCard({ offer, readOnly = false }: OfferCardProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuItem asChild>
-                <Link href={`/tilbud/${offer.id}`}>Rediger</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href={`/tilbud/${offer.id}`}>Forhåndsvis</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
                 <Link href={`/tilbud/${offer.id}`}>Åpne tilbud</Link>
               </DropdownMenuItem>
             </DropdownMenuContent>

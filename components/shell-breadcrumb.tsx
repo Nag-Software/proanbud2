@@ -5,8 +5,8 @@ import { Fragment } from "react"
 import {
   Breadcrumb,
   BreadcrumbItem,
-  BreadcrumbLink,
   BreadcrumbList,
+  BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 
@@ -24,7 +24,7 @@ export function ShellBreadcrumb({ segments }: { segments: string[] }) {
             <Fragment key={`${segment}-${index}`}>
               {index > 0 && <BreadcrumbSeparator />}
               <BreadcrumbItem>
-                <BreadcrumbLink href="#">{segment}</BreadcrumbLink>
+                <BreadcrumbPage>{segment}</BreadcrumbPage>
               </BreadcrumbItem>
             </Fragment>
           ))}

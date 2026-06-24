@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { deleteCustomerAction } from "@/app/kunder/actions"
 import { toast } from "sonner"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 
 type CustomerColumnHandlers = {
   onViewDetails: (customer: Customer) => void
@@ -31,17 +32,26 @@ function CustomerRowActions({
   onViewDetails: (customer: Customer) => void
 }) {
   const router = useRouter()
+  const confirm = useConfirm()
 
-  const handleDelete = () => {
-    deleteCustomerAction(customer.id)
-      .then(() => {
-        toast.success("Kunde fjernet")
-        router.refresh()
-      })
-      .catch((error: Error) => {
-        toast.error("Kunne ikke fjerne kunde")
-        console.error(error)
-      })
+  const handleDelete = async () => {
+    const ok = await confirm({
+      title: `Slette ${customer.name}?`,
+      description: "Kunden og tilknyttet historikk fjernes. Dette kan ikke angres.",
+      confirmText: "Slett kunde",
+      cancelText: "Avbryt",
+      variant: "destructive",
+    })
+    if (!ok) return
+
+    try {
+      await deleteCustomerAction(customer.id)
+      toast.success("Kunde slettet")
+      router.refresh()
+    } catch (error) {
+      toast.error("Kunne ikke slette kunde")
+      console.error(error)
+    }
   }
 
   return (
@@ -87,7 +97,7 @@ function CustomerRowActions({
             className="text-destructive"
             onSelect={(event) => {
               event.preventDefault()
-              handleDelete()
+              void handleDelete()
             }}
           >
             Fjern kunde

@@ -49,6 +49,7 @@ export function MobileBottomNav() {
 
   return (
     <nav
+      aria-label="Hovednavigasjon"
       className="fixed bottom-0 left-0 right-0 z-50 flex h-16 shrink-0 items-stretch border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
@@ -58,6 +59,8 @@ export function MobileBottomNav() {
           <Link
             key={href}
             href={href}
+            aria-label={label}
+            aria-current={isActive ? "page" : undefined}
             className={cn(
               "relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
               isActive ? "text-primary" : "text-muted-foreground"
@@ -81,6 +84,7 @@ export function MobileBottomNav() {
       <button
         type="button"
         onClick={toggleSidebar}
+        aria-label="Åpne meny"
         className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-colors active:text-foreground"
       >
         <MenuIcon className="h-[22px] w-[22px]" strokeWidth={1.8} />

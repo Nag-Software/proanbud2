@@ -10,6 +10,7 @@ import {
   calculateSessionHours,
   type TimeEntryRow,
 } from "@/lib/time-tracking"
+import { completedEntriesQuery, fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import { canManageProjects, normalizeRole } from "@/lib/roles"
 
 const TIMEFORING_MODULE = "timeforing" as const
@@ -39,16 +40,6 @@ async function getEffectiveRole(supabase: Awaited<ReturnType<typeof createClient
 async function hasTimeforingModule(companyId: string | null): Promise<boolean> {
   if (!companyId) return false
   return companyHasModule(companyId, TIMEFORING_MODULE)
-}
-
-function completedEntriesQuery(supabase: Awaited<ReturnType<typeof createClient>>) {
-  return supabase
-    .from("time_entries")
-    .select(
-      "id, project_id, user_id, entry_date, hours, description, started_at, ended_at, created_at, users(full_name, email), projects(name)"
-    )
-    .not("ended_at", "is", null)
-    .not("hours", "is", null)
 }
 
 export async function getActiveWorkSessionAction(projectId: string) {
@@ -235,22 +226,7 @@ export async function getProjectParticipantHoursAction(projectId: string) {
     return []
   }
 
-  const { data, error } = await completedEntriesQuery(supabase)
-    .eq("project_id", projectId)
-    .order("ended_at", { ascending: false })
-
-  if (error) {
-    console.error("Error fetching participant hours:", error)
-    return []
-  }
-
-  return buildEmployeeSummaries((data || []) as TimeEntryRow[]).map((summary) => ({
-    userId: summary.userId,
-    name: summary.name,
-    email: summary.email,
-    totalHours: summary.totalHours,
-    entryCount: summary.entryCount,
-  }))
+  return fetchParticipantHours(supabase, projectId)
 }
 
 export async function getCompanyTimeOverviewAction() {

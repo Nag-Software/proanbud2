@@ -6,7 +6,7 @@ import { SjefenPageShell } from "@/components/sjefen/sjefen-page-shell"
 import type { LiveLocation, SjefenAnalytics } from "@/lib/sjefen/analytics"
 import { MAP_VIEWBOX, NORWAY_PATH, project } from "@/lib/sjefen/norway-geo"
 
-const POLL_MS = 12_000
+const POLL_MS = 30_000
 
 // Latitude/longitude graticule for the HUD grid overlay (drawn with the same
 // projection as the silhouette so it lines up).
@@ -43,6 +43,8 @@ export function AnalyseClient({ initial }: { initial: SjefenAnalytics }) {
   const timerRef = useRef<number | null>(null)
 
   const refresh = useCallback(async () => {
+    // Don't poll a backgrounded tab — the data isn't visible anyway.
+    if (document.visibilityState === "hidden") return
     try {
       const res = await fetch("/api/sjefen/analytics", { cache: "no-store" })
       if (!res.ok) return

@@ -37,6 +37,16 @@ const steps = [
   { title: "Gjennomgang" }
 ]
 
+// Godtar norske telefonnummer: 8 sifre, evt. med +47 (eller 0047) foran. Mellomrom tillatt.
+function isValidNorwegianPhone(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  // Fjern mellomrom for validering
+  const compact = trimmed.replace(/\s+/g, "")
+  // +47/0047 prefiks er valgfritt, deretter nøyaktig 8 sifre
+  return /^(\+47|0047)?\d{8}$/.test(compact)
+}
+
 export default function CreateCompanyClient() {
   const router = useRouter()
   const supabase = createClient()
@@ -59,7 +69,11 @@ export default function CreateCompanyClient() {
 
   // Step 2
   const [phone, setPhone] = useState("")
+  const [phoneTouched, setPhoneTouched] = useState(false)
   const [website, setWebsite] = useState("")
+
+  const phoneValid = isValidNorwegianPhone(phone)
+  const showPhoneError = phoneTouched && phone.trim().length > 0 && !phoneValid
 
   // Step 3
   const [source, setSource] = useState("")
@@ -223,7 +237,13 @@ export default function CreateCompanyClient() {
                           </div>
                         ))
                       ) : (
-                        <div className="p-3 text-xs text-muted-foreground">Ingen bedrifter funnet</div>
+                        <div className="p-3 text-xs text-muted-foreground">
+                          <p className="font-medium text-foreground">Fant ikke bedriften?</p>
+                          <p className="mt-1">
+                            Prøv å søke på organisasjonsnummer, eller skriv inn navnet manuelt og gå
+                            videre med «Neste».
+                          </p>
+                        </div>
                       )}
                     </div>
                   )}
@@ -286,8 +306,15 @@ export default function CreateCompanyClient() {
                   required
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+47..."
+                  onBlur={() => setPhoneTouched(true)}
+                  placeholder="+47 123 45 678"
+                  aria-invalid={showPhoneError}
                 />
+                {showPhoneError && (
+                  <p className="text-xs text-destructive">
+                    Ugyldig telefonnummer. Skriv inn 8 sifre, gjerne med +47 foran.
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Nettside</Label>
@@ -300,7 +327,13 @@ export default function CreateCompanyClient() {
               <div className="flex justify-between pt-4">
                 <Button variant="outline" onClick={() => setActiveStep(1)}>
                   <ArrowLeft className="mr-2 size-4" />Tilbake</Button>
-                <Button onClick={() => setActiveStep(3)} disabled={!phone.trim()}>
+                <Button
+                  onClick={() => {
+                    setPhoneTouched(true)
+                    if (phoneValid) setActiveStep(3)
+                  }}
+                  disabled={!phoneValid}
+                >
                   Neste
                   <ArrowRight className="ml-2 size-4" />
                 </Button>

@@ -15,9 +15,8 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, Bell, CalendarDays, FolderIcon, FilesIcon, SearchIcon, ShieldCheckIcon } from "lucide-react"
+import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, Bell, CalendarDays, FolderIcon, FilesIcon, ShieldCheckIcon } from "lucide-react"
 import { Button } from "./ui/button"
-import { Input } from "./ui/input"
 import { useUserRole } from "@/hooks/use-user-role"
 import { canManageSubscription } from "@/lib/roles"
 import { useAuth } from "@/components/auth-provider"
@@ -214,14 +213,22 @@ function AppSidebarHeader({ unreadCount }: { unreadCount: number }) {
   return (
     <SidebarHeader className="pb-0">
       <div className="flex items-center justify-between p-2 pb-0">
-        <Image
-          src={isCollapsed ? "/logo/light/icon-primary.svg" : "/logo/light/logo-primary.svg"}
-          alt="Proanbud"
-          width={isCollapsed ? 24 : 120}
-          height={isCollapsed ? 24 : 40}
-          className="cursor-pointer"
-          onClick={() => router.push("/")}
-        />
+        <div className="relative">
+          <Image
+            src={isCollapsed ? "/logo/light/icon-primary.svg" : "/logo/light/logo-primary.svg"}
+            alt="Proanbud"
+            width={isCollapsed ? 24 : 120}
+            height={isCollapsed ? 24 : 40}
+            className="cursor-pointer"
+            onClick={() => router.push("/")}
+          />
+          {isCollapsed && unreadCount > 0 && (
+            <span
+              className="pointer-events-none absolute -right-1 -top-1 size-2 rounded-full bg-primary ring-2 ring-sidebar"
+              aria-label={`${unreadCount} uleste meldinger`}
+            />
+          )}
+        </div>
         {!isCollapsed && (
           <div className="relative shrink-0">
             <Button
@@ -245,16 +252,6 @@ function AppSidebarHeader({ unreadCount }: { unreadCount: number }) {
         label={isCollapsed ? "" : "Nytt prosjekt"}
         showIcon
       />
-      {!isCollapsed && (
-        <div hidden className="px-2 mt-2">
-          <div className="relative">
-            <SearchIcon className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Søk i prosjekter..."
-              className="w-full pl-8 h-8 hover:shadow-sm outline-none"
-             />
-          </div>
-        </div>
-      )}
     </SidebarHeader>
   )
 }

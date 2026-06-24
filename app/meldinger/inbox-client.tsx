@@ -84,6 +84,7 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const messagesRef = useRef<Message[]>([]);
@@ -284,7 +285,10 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!newMessage.trim() && !attachedFile) || !selectedCustomerId || isUploading) return;
+    if ((!newMessage.trim() && !attachedFile) || !selectedCustomerId || isUploading || isSending)
+      return;
+
+    setIsSending(true);
 
     let attachmentData = {};
 
@@ -302,6 +306,7 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
         console.error("Storage upload error", uploadError);
         toast.error("Kunne ikke laste opp filen", { description: uploadError.message });
         setIsUploading(false);
+        setIsSending(false);
         return;
       }
 
@@ -356,21 +361,31 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
 
     setMessages((prev) => [...prev, optimisticMsg]);
 
-    const response = await fetch("/api/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const result = await response.json().catch(() => ({}));
+    try {
+      const response = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json().catch(() => ({}));
 
-    if (!response.ok) {
-      console.error("Failed to send message", result);
+      if (!response.ok) {
+        console.error("Failed to send message", result);
+        toast.error("Kunne ikke sende melding", {
+          description: "Vennligst prøv igjen senere.",
+        });
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      } else if (result.message) {
+        setMessages((prev) => prev.map((m) => (m.id === tempId ? result.message : m)));
+      }
+    } catch (err) {
+      console.error("Failed to send message", err);
       toast.error("Kunne ikke sende melding", {
         description: "Vennligst prøv igjen senere.",
       });
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
-    } else if (result.message) {
-      setMessages((prev) => prev.map((m) => (m.id === tempId ? result.message : m)));
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -845,10 +860,13 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
                       type="submit"
                       size="sm"
                       className="h-9 shrink-0 bg-primary px-4 text-primary-foreground hover:bg-primary/90"
-                      disabled={(!newMessage.trim() && !attachedFile) || isUploading}
+                      disabled={(!newMessage.trim() && !attachedFile) || isUploading || isSending}
                     >
-                      {isUploading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                      {isUploading || isSending ? (
+                        <>
+                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                          {isUploading ? "Laster opp…" : "Sender…"}
+                        </>
                       ) : (
                         <>
                           <SendHorizonalIcon className="mr-1.5 h-4 w-4" />

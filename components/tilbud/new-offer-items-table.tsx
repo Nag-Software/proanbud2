@@ -33,6 +33,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { cn } from "@/lib/utils"
 import { calculateLineItemTotal, formatNok, type OfferLineItem } from "@/lib/tilbud/types"
 
@@ -369,6 +370,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
   { items, onItemsChange, supplierSuggestions },
   ref
 ) {
+  const confirm = useConfirm()
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [emptyGroups, setEmptyGroups] = useState<string[]>([])
   const [editingItem, setEditingItem] = useState<OfferLineItem | null>(null)
@@ -456,12 +458,16 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
   }, [])
 
   const removeCategory = useCallback(
-    (group: string) => {
+    async (group: string) => {
       const groupItems = groupsRef.current[group] || []
       if (groupItems.length > 0) {
-        const confirmed = window.confirm(
-          `Kategorien «${group}» inneholder ${groupItems.length} linje${groupItems.length === 1 ? "" : "r"}. Vil du fjerne kategorien og alle linjene?`
-        )
+        const confirmed = await confirm({
+          title: "Fjerne kategori?",
+          description: `Kategorien «${group}» inneholder ${groupItems.length} linje${groupItems.length === 1 ? "" : "r"}. Kategorien og alle linjene i den fjernes fra tilbudet.`,
+          confirmText: "Fjern kategori",
+          cancelText: "Avbryt",
+          variant: "destructive",
+        })
         if (!confirmed) return
       }
 
@@ -473,7 +479,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
         return next
       })
     },
-    [onItemsChange]
+    [confirm, onItemsChange]
   )
 
   useImperativeHandle(

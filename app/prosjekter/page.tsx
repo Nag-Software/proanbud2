@@ -1,5 +1,4 @@
 import { AppPageShell } from "@/components/app-page-shell"
-import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { ProsjekterFilters } from "./prosjekter-filters"
@@ -76,7 +75,6 @@ export default async function Page({
             </p>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-            <Button variant="outline">Eksporter</Button>
             <CreateProjectDrawer variant="outline" />
           </div>
         </div>

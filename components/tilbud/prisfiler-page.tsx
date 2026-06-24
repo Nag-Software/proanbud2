@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import {
@@ -336,8 +337,10 @@ function WizardStepper({ step }: { step: number }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function PrisfilerPage() {
+  const confirm = useConfirm()
   const [files, setFiles] = useState<PriceFile[]>([])
   const [loadingFiles, setLoadingFiles] = useState(true)
+  const [parsing, setParsing] = useState(false)
 
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState(1)
@@ -381,11 +384,13 @@ export function PrisfilerPage() {
     setCustomSupplierMode(false)
     setFileName("")
     setSaving(false)
+    setParsing(false)
   }
 
   const onDrop = useCallback((accepted: File[]) => {
     const file = accepted[0]
     if (!file) return
+    setParsing(true)
     setFileName(file.name)
     const matched = matchKnownSupplier(file.name)
     if (matched) {
@@ -412,6 +417,7 @@ export function PrisfilerPage() {
       const parsed = parseCSV(text)
       if (parsed.headers.length === 0) {
         toast.error("Kunne ikke lese filen. Sjekk at den er i CSV-format.")
+        setParsing(false)
         return
       }
       const mapping: Record<string, ColumnField> = {}
@@ -421,6 +427,11 @@ export function PrisfilerPage() {
       setParsedData(parsed)
       setColumnMapping(mapping)
       setStep(2)
+      setParsing(false)
+    }
+    reader.onerror = () => {
+      toast.error("Kunne ikke lese filen. Prøv igjen.")
+      setParsing(false)
     }
     reader.readAsArrayBuffer(file)
   }, [])
@@ -502,6 +513,17 @@ export function PrisfilerPage() {
   }
 
   async function handleDelete(id: string) {
+    const file = files.find((f) => f.id === id)
+    const confirmed = await confirm({
+      title: "Slette prisfil?",
+      description: file
+        ? `Prisfilen fra ${file.supplier_name} (${file.original_filename}) fjernes permanent og brukes ikke lenger i tilbud.`
+        : "Prisfilen fjernes permanent og kan ikke gjenopprettes.",
+      confirmText: "Slett prisfil",
+      variant: "destructive",
+    })
+    if (!confirmed) return
+
     setDeletingId(id)
     try {
       const res = await fetch(`/api/mine-priser/prisfiler/${id}`, { method: "DELETE" })
@@ -764,20 +786,31 @@ export function PrisfilerPage() {
             {step === 1 && (
               <div className="space-y-4">
                 <div
-                  {...getRootProps()}
+                  {...getRootProps({ onClick: (e) => { if (parsing) e.stopPropagation() } })}
                   className={cn(
-                    "flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-8 py-16 text-center transition-colors",
-                    isDragActive
+                    "flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-8 py-16 text-center transition-colors",
+                    parsing
+                      ? "cursor-default border-primary bg-primary/5"
+                      : "cursor-pointer",
+                    !parsing && isDragActive
                       ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50 hover:bg-muted/20"
+                      : !parsing && "border-border hover:border-primary/50 hover:bg-muted/20"
                   )}
                 >
-                  <input {...getInputProps()} />
+                  <input {...getInputProps()} disabled={parsing} />
                   <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                    <Upload className="h-5 w-5 text-muted-foreground" />
+                    {parsing ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    ) : (
+                      <Upload className="h-5 w-5 text-muted-foreground" />
+                    )}
                   </div>
                   <p className="text-sm font-medium">
-                    {isDragActive ? "Slipp filen her..." : "Slipp filen her, eller klikk for å velge"}
+                    {parsing
+                      ? "Leser og prosesserer filen…"
+                      : isDragActive
+                        ? "Slipp filen her..."
+                        : "Slipp filen her, eller klikk for å velge"}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     CSV, TSV eller TXT · maks 50 000 rader

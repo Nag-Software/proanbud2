@@ -4,6 +4,7 @@ import * as React from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import {
+  ArrowLeftIcon,
   ChevronRightIcon,
   GaugeIcon,
   LayoutDashboardIcon,
@@ -91,8 +92,19 @@ function SelgerSidebarHeader() {
           </span>
         )}
       </div>
-      {!isCollapsed && (
-        <div className="px-2 pt-2">
+      <div className="px-2 pt-2">
+        {isCollapsed ? (
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-8 hover:shadow-sm"
+            onClick={() => router.push("/")}
+            title="Tilbake til Proanbud"
+            aria-label="Tilbake til Proanbud"
+          >
+            <ArrowLeftIcon className="size-4" />
+          </Button>
+        ) : (
           <Button
             variant="outline"
             size="sm"
@@ -101,8 +113,8 @@ function SelgerSidebarHeader() {
           >
             Tilbake til Proanbud
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </SidebarHeader>
   )
 }
