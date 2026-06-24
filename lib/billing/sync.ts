@@ -19,7 +19,7 @@ function toIso(unix: number | null | undefined): string | null {
   return new Date(unix * 1000).toISOString()
 }
 
-function resolveBasePlanFromSubscription(
+export function resolveBasePlanFromSubscription(
   subscription: Stripe.Subscription
 ): { planKey: PlanKey | null; interval: BillingInterval | null; baseItemId: string | null } {
   for (const item of subscription.items.data) {

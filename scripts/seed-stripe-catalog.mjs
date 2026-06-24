@@ -110,25 +110,25 @@ async function main() {
   const prices = {
     STRIPE_PRICE_MINI_MONTHLY: await ensureRecurringPrice(
       miniProduct.id,
-      19900,
+      22900,
       { interval: "month" },
       { kind: "base", plan_key: "mini", interval: "month" }
     ),
     STRIPE_PRICE_MINI_YEARLY: await ensureRecurringPrice(
       miniProduct.id,
-      178800,
+      226800,
       { interval: "year" },
       { kind: "base", plan_key: "mini", interval: "year" }
     ),
     STRIPE_PRICE_PROFF_MONTHLY: await ensureRecurringPrice(
       proffProduct.id,
-      39900,
+      49900,
       { interval: "month" },
       { kind: "base", plan_key: "proff", interval: "month" }
     ),
     STRIPE_PRICE_PROFF_YEARLY: await ensureRecurringPrice(
       proffProduct.id,
-      394800,
+      502800,
       { interval: "year" },
       { kind: "base", plan_key: "proff", interval: "year" }
     ),
@@ -137,31 +137,31 @@ async function main() {
     }),
     STRIPE_PRICE_MODULE_TIMEFORING: await ensureRecurringPrice(
       moduleProduct.id,
-      2900,
+      3900,
       { interval: "month" },
       { kind: "module", module_key: "timeforing" }
     ),
     STRIPE_PRICE_MODULE_DOKUMENTER: await ensureRecurringPrice(
       dokumenterProduct.id,
-      2900,
+      3900,
       { interval: "month" },
       { kind: "module", module_key: "dokumenter" }
     ),
     STRIPE_PRICE_MODULE_INTEGRASJONER: await ensureRecurringPrice(
       integrasjonerProduct.id,
-      1900,
+      2900,
       { interval: "month" },
       { kind: "module", module_key: "integrasjoner" }
     ),
     STRIPE_PRICE_MODULE_MELDINGER_KI: await ensureRecurringPrice(
       meldingerKiProduct.id,
-      1900,
+      2900,
       { interval: "month" },
       { kind: "module", module_key: "meldinger_ki" }
     ),
     STRIPE_PRICE_SEAT_EMPLOYEE: await ensureRecurringPrice(
       seatProduct.id,
-      1900,
+      3900,
       { interval: "month" },
       { kind: "seat" }
     ),

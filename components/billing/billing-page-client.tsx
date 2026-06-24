@@ -87,7 +87,10 @@ export function BillingPageClient() {
     loadSummary()
   }, [loadSummary])
 
-  async function startCheckout() {
+  // Trial → opens Stripe checkout (no subscription yet). Upgrade → the server
+  // changes the plan in place on the existing subscription and returns
+  // { changed: true } (no redirect), avoiding a second/double-charged sub.
+  async function submitPlanChange(opts: { trial?: boolean }) {
     setActionLoading("checkout")
     try {
       const res = await fetch("/api/stripe/checkout", {
@@ -96,16 +99,21 @@ export function BillingPageClient() {
         body: JSON.stringify({
           plan: "proff",
           interval: "month",
-          trial: true,
+          ...(opts.trial ? { trial: true } : {}),
           successPath: "/innstillinger/betaling?checkout=success",
           cancelPath: "/innstillinger/betaling",
         }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Checkout feilet")
-      if (data.url) window.location.href = data.url
+      if (!res.ok) throw new Error(data.error || "Noe gikk galt")
+      if (data.url) {
+        window.location.href = data.url
+        return
+      }
+      if (data.changed) toast.success("Abonnementet er oppgradert til Proff.")
+      await loadSummary()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Checkout feilet")
+      toast.error(error instanceof Error ? error.message : "Noe gikk galt")
     } finally {
       setActionLoading(null)
     }
@@ -198,7 +206,7 @@ export function BillingPageClient() {
         </div>
         <Button
           className="mt-8 h-11 w-full"
-          onClick={startCheckout}
+          onClick={() => submitPlanChange({ trial: true })}
           disabled={actionLoading !== null}
         >
           {actionLoading === "checkout" && (
@@ -301,7 +309,7 @@ export function BillingPageClient() {
             <Button
               type="button"
               className="w-full"
-              onClick={startCheckout}
+              onClick={() => submitPlanChange({})}
               disabled={actionLoading !== null}
             >
               {actionLoading === "checkout" && (

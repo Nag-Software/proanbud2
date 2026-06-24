@@ -34,7 +34,7 @@ export default async function FikenPage() {
         <PlanGate
           featureName="Integrasjoner"
           title="Integrasjoner er inkludert i Proff — eller som modul"
-          description="Koble Proanbud til Fiken. Integrasjoner er inkludert i Proff, eller kan aktiveres som modul (19 kr/mnd) på Mini under abonnement."
+          description="Koble Proanbud til Fiken. Integrasjoner er inkludert i Proff, eller kan aktiveres som modul (29 kr/mnd) på Mini under abonnement."
         />
       </AppPageShell>
     )

@@ -3,12 +3,20 @@ import type Stripe from "stripe"
 import {
   getModulePriceId,
   getStripePriceId,
+  isActiveSubscriptionStatus,
   TRIAL_DAYS,
   type BillingInterval,
   type ModuleKey,
   type PlanKey,
 } from "@/lib/billing/plans"
-import { ensureCompanyBillingRow } from "@/lib/billing/sync"
+import {
+  ensureCompanyBillingRow,
+  fetchSubscription,
+  resolveBasePlanFromSubscription,
+  syncModulesFromSubscription,
+  syncSeatQuantity,
+  upsertCompanyBillingFromSubscription,
+} from "@/lib/billing/sync"
 import { getStripe } from "@/lib/stripe/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
@@ -89,6 +97,25 @@ export async function createSubscriptionCheckoutSession(
   const stripe = getStripe()
   await ensureCompanyBillingRow(input.companyId)
 
+  // Safety net: never open a new checkout for a company that already has an
+  // active/trialing subscription — that creates a SECOND live subscription and
+  // double-charges. Plan changes must go through changeSubscriptionPlan; the
+  // /api/stripe/checkout route branches on this before it ever calls us.
+  const admin = createAdminClient()
+  const { data: existingBilling } = await admin
+    .from("company_billing")
+    .select("stripe_subscription_id, status")
+    .eq("company_id", input.companyId)
+    .maybeSingle()
+  if (
+    existingBilling?.stripe_subscription_id &&
+    isActiveSubscriptionStatus(existingBilling.status)
+  ) {
+    throw new Error(
+      "Bedriften har allerede et aktivt abonnement. Bruk planbytte i stedet for ny betaling."
+    )
+  }
+
   const customerId = await findOrCreateCustomer({
     companyId: input.companyId,
     email: input.email,
@@ -145,6 +172,72 @@ export async function createSubscriptionCheckoutSession(
   }
 
   return stripe.checkout.sessions.create(sessionParams)
+}
+
+/**
+ * Switch an existing subscription to a different plan/interval IN PLACE.
+ *
+ * The in-app "Oppgrader til Proff" button must never open a new checkout when
+ * the company already has a subscription — that would create a second live
+ * subscription and double-charge (incl. a standalone integrasjoner module that
+ * is bundled into Proff). Instead we swap the base subscription item's price
+ * with proration, mirroring how toggleModuleOnSubscription edits the live
+ * subscription. Returns { changed:false } when already on that plan+interval.
+ */
+export async function changeSubscriptionPlan(input: {
+  companyId: string
+  plan: PlanKey
+  interval: BillingInterval
+}): Promise<{ changed: boolean; status: string }> {
+  const stripe = getStripe()
+  const admin = createAdminClient()
+
+  const { data: billing } = await admin
+    .from("company_billing")
+    .select("stripe_subscription_id, stripe_customer_id, status, plan_key, billing_interval")
+    .eq("company_id", input.companyId)
+    .maybeSingle()
+
+  if (!billing?.stripe_subscription_id || !billing.stripe_customer_id) {
+    throw new Error("Aktivt abonnement mangler")
+  }
+
+  // Already on the requested plan + interval — nothing to do.
+  if (billing.plan_key === input.plan && billing.billing_interval === input.interval) {
+    return { changed: false, status: billing.status ?? "active" }
+  }
+
+  const subscription = await fetchSubscription(billing.stripe_subscription_id)
+  const { baseItemId } = resolveBasePlanFromSubscription(subscription)
+  if (!baseItemId) {
+    throw new Error("Fant ikke abonnementets grunnplan")
+  }
+
+  await stripe.subscriptions.update(billing.stripe_subscription_id, {
+    items: [{ id: baseItemId, price: getStripePriceId(input.plan, input.interval) }],
+    proration_behavior: "create_prorations",
+    metadata: {
+      company_id: input.companyId,
+      plan_key: input.plan,
+      billing_interval: input.interval,
+    },
+  })
+
+  // Re-fetch with expanded prices, then re-sync. Order matters: billing first
+  // (refreshes plan_key + included_seats), then modules, then seats.
+  const fresh = await fetchSubscription(billing.stripe_subscription_id)
+  await upsertCompanyBillingFromSubscription({
+    companyId: input.companyId,
+    customerId: billing.stripe_customer_id,
+    subscription: fresh,
+  })
+  // Drops the standalone integrasjoner module item when upgrading to Proff
+  // (bundled in the plan) so it is not billed on top.
+  await syncModulesFromSubscription(input.companyId, fresh)
+  // Included seats differ between plans (Mini 0 / Proff 5) → recompute charges.
+  await syncSeatQuantity(input.companyId)
+
+  return { changed: true, status: fresh.status }
 }
 
 export async function toggleModuleOnSubscription(input: {

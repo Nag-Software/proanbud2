@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { createSubscriptionCheckoutSession } from "@/lib/billing/checkout"
-import type { BillingInterval, PlanKey } from "@/lib/billing/plans"
+import { changeSubscriptionPlan, createSubscriptionCheckoutSession } from "@/lib/billing/checkout"
+import { isActiveSubscriptionStatus, type BillingInterval, type PlanKey } from "@/lib/billing/plans"
 import { requireCompanyAdmin } from "@/lib/billing/guards"
 import { isStripeConfigured } from "@/lib/stripe/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 const bodySchema = z.object({
@@ -46,6 +47,27 @@ export async function POST(request: Request) {
       .select("name, org_number")
       .eq("id", auth.context.companyId)
       .maybeSingle()
+
+    // If the company already has an active/trialing subscription, change the
+    // plan in place instead of creating a SECOND subscription (double-charge).
+    const admin = createAdminClient()
+    const { data: existingBilling } = await admin
+      .from("company_billing")
+      .select("stripe_subscription_id, status")
+      .eq("company_id", auth.context.companyId)
+      .maybeSingle()
+
+    if (
+      existingBilling?.stripe_subscription_id &&
+      isActiveSubscriptionStatus(existingBilling.status)
+    ) {
+      const result = await changeSubscriptionPlan({
+        companyId: auth.context.companyId,
+        plan: parsed.data.plan as PlanKey,
+        interval: parsed.data.interval as BillingInterval,
+      })
+      return NextResponse.json({ changed: result.changed, status: result.status })
+    }
 
     const session = await createSubscriptionCheckoutSession({
       companyId: auth.context.companyId,

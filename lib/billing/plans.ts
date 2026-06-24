@@ -35,20 +35,20 @@ export const PLAN_PRICING: Record<
   Record<BillingInterval, { monthlyNok: number; yearlyTotalNok: number }>
 > = {
   mini: {
-    month: { monthlyNok: 199, yearlyTotalNok: 199 * 12 },
-    year: { monthlyNok: 149, yearlyTotalNok: 149 * 12 },
+    month: { monthlyNok: 229, yearlyTotalNok: 229 * 12 },
+    year: { monthlyNok: 189, yearlyTotalNok: 189 * 12 },
   },
   proff: {
-    month: { monthlyNok: 399, yearlyTotalNok: 399 * 12 },
-    year: { monthlyNok: 329, yearlyTotalNok: 329 * 12 },
+    month: { monthlyNok: 499, yearlyTotalNok: 499 * 12 },
+    year: { monthlyNok: 419, yearlyTotalNok: 419 * 12 },
   },
 }
 
 export const MODULE_PRICING: Record<ModuleKey, number> = {
-  timeforing: 29,
-  dokumenter: 29,
-  integrasjoner: 19,
-  meldinger_ki: 19,
+  timeforing: 39,
+  dokumenter: 39,
+  integrasjoner: 29,
+  meldinger_ki: 29,
 }
 
 /**
@@ -88,7 +88,7 @@ export const MODULE_CATALOG: Array<{
   },
 ]
 
-export const SEAT_PRICE_NOK = 19
+export const SEAT_PRICE_NOK = 39
 
 const PRICE_ENV_KEYS: Record<string, string> = {
   "mini-month": "STRIPE_PRICE_MINI_MONTHLY",
