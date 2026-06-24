@@ -50,8 +50,11 @@ export function MobileBottomNav() {
   return (
     <nav
       aria-label="Hovednavigasjon"
-      className="fixed bottom-0 left-0 right-0 z-50 flex h-16 shrink-0 items-stretch border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden"
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      className="fixed bottom-0 left-0 right-0 z-50 flex shrink-0 items-stretch border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden"
+      style={{
+        height: "calc(4rem + env(safe-area-inset-bottom))",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
     >
       {navItems.map(({ href, icon: Icon, label, exact }) => {
         const isActive = exact ? pathname === href : pathname === href || pathname.startsWith(href + "/")
@@ -62,18 +65,23 @@ export function MobileBottomNav() {
             aria-label={label}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
+              "relative flex flex-1 flex-col items-center justify-center gap-1 py-1.5 text-[11px] font-medium transition-transform active:scale-90",
               isActive ? "text-primary" : "text-muted-foreground"
             )}
           >
-            <div className="relative">
-              <Icon className={cn("h-[22px] w-[22px]", isActive && "text-primary")} strokeWidth={isActive ? 2.2 : 1.8} />
+            <span
+              className={cn(
+                "relative flex h-7 w-14 items-center justify-center rounded-full transition-colors",
+                isActive && "bg-primary/10"
+              )}
+            >
+              <Icon className={cn("h-[23px] w-[23px]", isActive && "text-primary")} strokeWidth={isActive ? 2.2 : 1.8} />
               {href === "/meldinger" && unreadCount > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-bold text-primary-foreground">
+                <span className="absolute right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-bold text-primary-foreground">
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
-            </div>
+            </span>
             <span className={cn("leading-none", isActive ? "text-primary" : "text-muted-foreground/80")}>
               {label}
             </span>
@@ -85,9 +93,11 @@ export function MobileBottomNav() {
         type="button"
         onClick={toggleSidebar}
         aria-label="Åpne meny"
-        className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-colors active:text-foreground"
+        className="flex flex-1 flex-col items-center justify-center gap-1 py-1.5 text-[11px] font-medium text-muted-foreground transition-transform active:scale-90"
       >
-        <MenuIcon className="h-[22px] w-[22px]" strokeWidth={1.8} />
+        <span className="flex h-7 w-14 items-center justify-center rounded-full">
+          <MenuIcon className="h-[23px] w-[23px]" strokeWidth={1.8} />
+        </span>
         <span className="leading-none text-muted-foreground/80">Meny</span>
       </button>
     </nav>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
+import { companyHasFeature } from "@/lib/billing/server-modules"
 import {
   enqueueOfferTripletexSyncAndProcess,
   fetchOfferTripletexSyncStatus,
@@ -16,12 +17,16 @@ async function resolveContext() {
     return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
   }
 
-  const { data: userRow } = await supabase.from("users").select("company_id").eq("id", user.id).maybeSingle()
+  const { data: userRow } = await supabase
+    .from("users")
+    .select("company_id, role")
+    .eq("id", user.id)
+    .maybeSingle()
   if (!userRow?.company_id) {
     return { error: NextResponse.json({ error: "Company context missing" }, { status: 400 }) }
   }
 
-  return { supabase, companyId: userRow.company_id }
+  return { supabase, companyId: userRow.company_id, role: String(userRow.role || "") }
 }
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -54,6 +59,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await resolveContext()
   if ("error" in ctx) return ctx.error
+
+  // Mutating: enqueues real order/invoice creation in Tripletex. Admins and managers may
+  // trigger an offer sync (matches retry-failed/route.ts); the integrasjoner plan must be
+  // active. Note: the connection-management route (integrations/tripletex/route.ts) is
+  // admin-only via requireCompanyAdmin — this offer-action gate is intentionally broader.
+  if (!["admin", "manager"].includes(ctx.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+  if (!(await companyHasFeature(ctx.companyId, "integrasjoner"))) {
+    return NextResponse.json({ error: "Tripletex-integrasjon er ikke aktiv på abonnementet." }, { status: 403 })
+  }
 
   const { id } = await params
 

@@ -56,12 +56,15 @@ async function parseTripletexResponse(response: Response) {
     error.status = response.status
     error.body = json
 
-    const reset = response.headers.get("x-rate-limit-reset")
-    if (reset) {
-      const resetMs = Number(reset) * 1000
-      if (Number.isFinite(resetMs)) {
-        error.rateLimitResetAt = new Date(resetMs).toISOString()
-      }
+    // Prefer an explicit reset epoch if Tripletex sends one; otherwise honour the standard
+    // HTTP `Retry-After` (delta-seconds), commonly returned on 429. If neither is present,
+    // rateLimitResetAt stays undefined and the queue falls back to exponential backoff.
+    const resetEpoch = response.headers.get("x-rate-limit-reset")
+    const retryAfter = response.headers.get("retry-after")
+    if (resetEpoch && Number.isFinite(Number(resetEpoch))) {
+      error.rateLimitResetAt = new Date(Number(resetEpoch) * 1000).toISOString()
+    } else if (retryAfter && Number.isFinite(Number(retryAfter))) {
+      error.rateLimitResetAt = new Date(Date.now() + Number(retryAfter) * 1000).toISOString()
     }
 
     throw error
@@ -327,15 +330,18 @@ export async function replaceTripletexTilbudOrderLines(
   }
 
   const existingLineIds = await listTripletexProjectOrderLineIds(connection, tilbudProjectId)
+
+  // Create the new lines FIRST, then delete the old ones. If creation fails, the tilbud
+  // keeps its previous lines instead of being left empty (delete-then-create would wipe a
+  // customer-facing quote during the failure window). Each run captures the lines present
+  // at its start and removes exactly those, so retries converge to just the new set.
+  const created = lines.length > 0 ? await createTripletexProjectOrderLines(connection, lines) : null
+
   for (const lineId of existingLineIds) {
     await deleteTripletexProjectOrderLine(connection, lineId)
   }
 
-  if (lines.length === 0) {
-    return null
-  }
-
-  return createTripletexProjectOrderLines(connection, lines)
+  return created
 }
 
 export async function createTripletexProjectOrderLines(

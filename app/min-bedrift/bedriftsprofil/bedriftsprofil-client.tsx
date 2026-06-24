@@ -253,6 +253,8 @@ export function BedriftsprofilClient({
               <Label htmlFor="org-number">Organisasjonsnummer</Label>
               <Input
                 id="org-number"
+                inputMode="numeric"
+                autoComplete="organization"
                 value={orgNumber}
                 onChange={(event) => setOrgNumber(event.target.value)}
                 placeholder="9 siffer"
@@ -272,6 +274,8 @@ export function BedriftsprofilClient({
               <Label htmlFor="phone">Telefon</Label>
               <Input
                 id="phone"
+                type="tel"
+                autoComplete="tel"
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
                 placeholder="+47 ..."
@@ -299,6 +303,8 @@ export function BedriftsprofilClient({
               <Label htmlFor="postal-code">Postnummer</Label>
               <Input
                 id="postal-code"
+                inputMode="numeric"
+                autoComplete="postal-code"
                 value={postalCode}
                 onChange={(event) => setPostalCode(event.target.value)}
                 placeholder="0000"

@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import localFont from "next/font/local"
 import "./globals.css"
 import { AppShellLayout } from "@/components/app-shell-layout"
@@ -8,6 +8,7 @@ import AuthProvider from "@/components/auth-provider"
 import { RoleProvider } from "@/components/role-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { ConfirmProvider } from "@/components/ui/confirm-dialog"
+import { PwaRegister } from "@/components/pwa-register"
 import { MockRoleBanner } from "@/components/dev/mock-role-banner"
 import { Analytics } from "@vercel/analytics/next"
 
@@ -30,6 +31,24 @@ export const metadata: Metadata = {
   title: "Proanbud — fra lead til betalt for bygg-SMB",
   description:
     "Samlet arbeidsflyt for bygg- og anleggsbedrifter: anbud, kontrakter, HMS/KS, timeføring og fakturering rett til Tripletex. Smart automatikk som akselererer hvert steg.",
+  applicationName: "ProAnbud",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "ProAnbud",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+}
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Lets content extend under the notch/home indicator so env(safe-area-inset-*)
+  // padding actually takes effect in standalone (installed) mode.
+  viewportFit: "cover",
+  themeColor: "#ffffff",
 }
 
 export default function RootLayout({
@@ -38,7 +57,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="nb" suppressHydrationWarning>
       <body
         className={`${satoshi.className} ${satoshi.variable} antialiased`}
         suppressHydrationWarning
@@ -54,7 +73,8 @@ export default function RootLayout({
             </RoleProvider>
           </AuthProvider>
         </TooltipProvider>
-        <Toaster position="top-right" richColors closeButton />
+        <Toaster richColors closeButton />
+        <PwaRegister />
         <MockRoleBanner />
         <Analytics />
       </body>

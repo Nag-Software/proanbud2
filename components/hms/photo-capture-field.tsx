@@ -189,6 +189,7 @@ export function PhotoCaptureField({
           type="button"
           variant="outline"
           size="sm"
+          className="h-11"
           disabled={disabled || compressing || photos.length >= maxPhotos}
           onClick={() => cameraInputRef.current?.click()}
         >
@@ -203,6 +204,7 @@ export function PhotoCaptureField({
           type="button"
           variant="outline"
           size="sm"
+          className="h-11"
           disabled={disabled || compressing || photos.length >= maxPhotos}
           onClick={() => galleryInputRef.current?.click()}
         >
@@ -242,7 +244,7 @@ export function PhotoCaptureField({
               <img src={photo.previewUrl} alt="Forhåndsvisning" className="size-full object-cover" />
               <button
                 type="button"
-                className="absolute right-1 top-1 flex min-h-11 min-w-11 items-center justify-center rounded-full bg-black/60 text-white"
+                className="absolute right-2 top-2 flex min-h-11 min-w-11 items-center justify-center rounded-full bg-black/60 text-white"
                 onClick={() => removePhoto(photo.id)}
               >
                 <X className="size-4" />

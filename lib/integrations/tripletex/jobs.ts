@@ -30,6 +30,25 @@ export async function enqueueIntegrationJob(input: {
   }
 }
 
+/**
+ * Recover jobs orphaned in status='processing' by a worker that died mid-run — the claim
+ * RPC only ever picks up 'pending'/'retry', so without this they stay locked forever.
+ * Idempotent / search-first-protected steps are requeued to 'retry'; non-idempotent
+ * creators (orders, invoices, customers, projects) are failed for manual review because
+ * we can't tell whether their POST/PUT already created the entity (see db/44). Best-effort:
+ * a failure here must never block the run.
+ */
+export async function reapStuckJobs(staleSeconds = 900) {
+  const supabase = createAdminClient()
+  const { error } = await supabase.rpc("integration_reap_stuck_jobs", {
+    p_provider: "tripletex",
+    p_stale_seconds: staleSeconds,
+  })
+  if (error) {
+    console.error("[tripletex] reapStuckJobs failed (continuing):", error.message)
+  }
+}
+
 export async function claimJobs(workerId: string, limit = 20) {
   const supabase = createAdminClient()
 

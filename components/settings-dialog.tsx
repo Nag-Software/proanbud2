@@ -275,7 +275,7 @@ export function SettingsDialog({
           {triggerLabel}
         </Button>
       </DialogTrigger>
-      <DialogContent className="overflow-hidden p-0 md:max-h-[500px] md:max-w-[700px] lg:max-w-[800px]">
+      <DialogContent className="overflow-hidden p-0 max-sm:h-[100dvh] max-sm:max-h-[100dvh] max-sm:max-w-full max-sm:rounded-none md:max-h-[500px] md:max-w-[700px] lg:max-w-[800px]">
         <DialogTitle className="sr-only">Innstillinger</DialogTitle>
         <DialogDescription className="sr-only">
           Tilpass innstillingene dine her.
@@ -308,7 +308,7 @@ export function SettingsDialog({
               </SidebarGroup>
             </SidebarContent>
           </Sidebar>
-          <main className="flex h-[480px] p-0 m-0 flex-1 flex-col overflow-hidden">
+          <main className="flex h-[100dvh] p-0 m-0 flex-1 flex-col overflow-hidden md:h-[480px]">
             <header className="flex shrink-0 flex-col gap-2 border-b md:border-b-0">
               <div className="px-4 pt-3 md:hidden">
                 <Select value={currentSection} onValueChange={setCurrentSection}>
@@ -371,7 +371,7 @@ export function SettingsDialog({
               )}
             </div>
             {onSave && (
-              <div className="flex justify-end px-5">
+              <div className="flex shrink-0 justify-end px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 max-sm:border-t md:pb-3">
                 <Button disabled={isSaving} onClick={() => onSave(values)} className="h-9">
                   {isSaving ? "Lagrer..." : "Lagre endringer"}
                 </Button>

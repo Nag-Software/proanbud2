@@ -833,7 +833,7 @@ export default function DocumentsManager() {
                             <span className="theme-doc-file-name truncate text-sm">{item.name}</span>
 
                             {item.itemType === "folder" && (
-                              <Button variant="ghost" size="icon" className="ml-auto h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100" onClick={() => openFolder(item)}>
+                              <Button variant="ghost" size="icon" className="ml-auto h-6 w-6 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100" onClick={() => openFolder(item)}>
                                 <ChevronRight className="h-4 w-4" />
                               </Button>
                             )}
@@ -845,7 +845,7 @@ export default function DocumentsManager() {
                           <div className="flex items-center justify-between gap-2">
                             <span className="theme-doc-meta text-xs">{formatBytes(item.sizeBytes)}</span>
 
-                            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                            <div className="flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
                               <Button size="icon" variant="ghost" className="h-7 w-7" disabled={isBusy || !(item.webUrl || item.downloadUrl)} asChild>
                                 <a href={item.webUrl ?? item.downloadUrl ?? "#"} target="_blank" rel="noreferrer">
                                   <ExternalLink className="h-4 w-4" />

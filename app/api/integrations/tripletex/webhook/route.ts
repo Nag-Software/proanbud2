@@ -9,8 +9,12 @@ import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
 function verifySignature(rawBody: string, secret: string, signature: string | null) {
   if (!secret) return false
   if (!signature) return false
-  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex")
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
+  const expected = Buffer.from(crypto.createHmac("sha256", secret).update(rawBody).digest("hex"))
+  const provided = Buffer.from(signature.trim())
+  // timingSafeEqual throws on a length mismatch, and `signature` is attacker-controlled —
+  // length-check first so a malformed header is a clean `false` (→ 401), not a thrown 500.
+  if (provided.length !== expected.length) return false
+  return crypto.timingSafeEqual(expected, provided)
 }
 
 export async function POST(request: Request) {
@@ -78,8 +82,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
-    return NextResponse.json({ error: message }, { status: 500 })
+    // Don't echo internal error text (decrypt/DB messages) to an unauthenticated caller.
+    console.error("[tripletex webhook] processing failed", error)
+    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 })
   }
 }
 

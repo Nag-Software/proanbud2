@@ -101,7 +101,7 @@ export function DataTable<TData extends Customer, TValue>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  className="cursor-pointer hover:bg-muted/50 active:bg-muted transition-colors"
                   onClick={(event) => {
                     if ((event.target as HTMLElement).closest("[data-prevent-row-click]")) {
                       return
@@ -133,7 +133,7 @@ export function DataTable<TData extends Customer, TValue>({
             return (
               <div
                 key={row.id}
-                className="cursor-pointer px-4 py-3 hover:bg-muted/50"
+                className="cursor-pointer px-4 py-3 hover:bg-muted/50 active:bg-muted transition-colors"
                 onClick={(event) => {
                   if ((event.target as HTMLElement).closest("[data-prevent-row-click]")) return
                   onRowClick?.(customer)

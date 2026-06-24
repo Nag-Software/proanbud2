@@ -103,10 +103,10 @@ function PhotoThumb({
       <button
         type="button"
         onClick={onDelete}
-        className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-full bg-background/90 shadow"
+        className="absolute right-1.5 top-1.5 flex size-8 items-center justify-center rounded-full bg-background/90 shadow"
         aria-label="Slett bilde"
       >
-        <X className="size-3.5" />
+        <X className="size-4" />
       </button>
     </div>
   )
@@ -212,7 +212,7 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
           type="button"
           variant="outline"
           size="sm"
-          className="h-10 flex-1"
+          className="h-11 flex-1"
           disabled={uploading}
           onClick={() => cameraRef.current?.click()}
         >
@@ -227,7 +227,7 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
           type="button"
           variant="outline"
           size="sm"
-          className="h-10 flex-1"
+          className="h-11 flex-1"
           disabled={uploading}
           onClick={() => galleryRef.current?.click()}
         >

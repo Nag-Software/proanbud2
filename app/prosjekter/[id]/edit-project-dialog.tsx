@@ -7,14 +7,14 @@ import { Archive, Loader2, Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogTrigger,
+} from "@/components/ui/responsive-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -137,18 +137,18 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
   const busy = isSaving || isArchiving
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ResponsiveDialog open={open} onOpenChange={setOpen}>
+      <ResponsiveDialogTrigger asChild>
         <Button variant="outline" className="h-9 gap-2">
           <Settings2 className="h-4 w-4" />
           Innstillinger
         </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Prosjektinnstillinger</DialogTitle>
-          <DialogDescription>Rediger detaljer, fremdrift og arkivering for prosjektet.</DialogDescription>
-        </DialogHeader>
+      </ResponsiveDialogTrigger>
+      <ResponsiveDialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>Prosjektinnstillinger</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>Rediger detaljer, fremdrift og arkivering for prosjektet.</ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
 
         <div className="space-y-5 py-1">
           {/* Generelt */}
@@ -304,7 +304,7 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
           </section>
         </div>
 
-        <DialogFooter>
+        <ResponsiveDialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>
             Avbryt
           </Button>
@@ -312,8 +312,8 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Lagre endringer
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }

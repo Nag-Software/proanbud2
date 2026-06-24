@@ -917,6 +917,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                 <Label className="text-xs text-muted-foreground">Rabatt (%)</Label>
                 <Input
                   type="number"
+                  inputMode="decimal"
                   value={editingItem.discountPercent}
                   onChange={(e) => setEditingItem((prev) => prev ? { ...prev, discountPercent: parseNumber(e.target.value, prev.discountPercent) } : null)}
                   min={0}

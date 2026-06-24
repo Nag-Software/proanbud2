@@ -98,7 +98,7 @@ export function AddCustomerDrawer({ open, onOpenChange, onCreated }: AddCustomer
                 {type === "bedrift" && (
                   <div className="grid gap-2">
                     <Label htmlFor="orgNumber">Organisasjonsnummer</Label>
-                    <Input id="orgNumber" name="orgNumber" placeholder="9 sifre" />
+                    <Input id="orgNumber" name="orgNumber" inputMode="numeric" autoComplete="organization" placeholder="9 sifre" />
                   </div>
                 )}
               </div>
@@ -106,11 +106,11 @@ export function AddCustomerDrawer({ open, onOpenChange, onCreated }: AddCustomer
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="email">E-post *</Label>
-                  <Input id="email" name="email" type="email" required placeholder="ola@eksempel.no" />
+                  <Input id="email" name="email" type="email" inputMode="email" autoComplete="email" required placeholder="ola@eksempel.no" />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="phone">Telefon</Label>
-                  <Input id="phone" name="phone" type="tel" placeholder="+47 123 45 678" />
+                  <Input id="phone" name="phone" type="tel" autoComplete="tel" placeholder="+47 123 45 678" />
                 </div>
               </div>
 
@@ -123,7 +123,7 @@ export function AddCustomerDrawer({ open, onOpenChange, onCreated }: AddCustomer
               <div className="grid grid-cols-3 gap-4">
                 <div className="grid gap-2 col-span-1">
                   <Label htmlFor="postalCode">Postnr</Label>
-                  <Input id="postalCode" name="postalCode" placeholder="0101" />
+                  <Input id="postalCode" name="postalCode" inputMode="numeric" autoComplete="postal-code" placeholder="0101" />
                 </div>
                 <div className="grid gap-2 col-span-2">
                   <Label htmlFor="city">Poststed</Label>
@@ -138,7 +138,7 @@ export function AddCustomerDrawer({ open, onOpenChange, onCreated }: AddCustomer
             </div>
           </div>
 
-          <div className="p-4 sm:p-6 border-t shrink-0 flex justify-end gap-3 bg-background mt-auto">
+          <div className="p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] border-t shrink-0 flex justify-end gap-3 bg-background mt-auto">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>Avbryt</Button>
             <Button type="submit" disabled={isPending}>{isPending ? "Lagrer..." : "Lagre kunde"}</Button>
           </div>

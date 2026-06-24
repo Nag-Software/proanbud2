@@ -252,9 +252,11 @@ export default function CreateCompanyClient() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Organisasjonsnummer</Label>
-                    <Input 
-                      value={orgNumber} 
-                      onChange={(e) => setOrgNumber(e.target.value)} 
+                    <Input
+                      inputMode="numeric"
+                      autoComplete="organization"
+                      value={orgNumber}
+                      onChange={(e) => setOrgNumber(e.target.value)}
                       placeholder="9-sifret orgnr..."
                     />
                   </div>
@@ -303,6 +305,7 @@ export default function CreateCompanyClient() {
                 <Input
                   id="phone"
                   type="tel"
+                  autoComplete="tel"
                   required
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
@@ -318,9 +321,11 @@ export default function CreateCompanyClient() {
               </div>
               <div className="space-y-2">
                 <Label>Nettside</Label>
-                <Input 
-                  value={website} 
-                  onChange={(e) => setWebsite(e.target.value)} 
+                <Input
+                  type="url"
+                  inputMode="url"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
                   placeholder="https://..."
                 />
               </div>

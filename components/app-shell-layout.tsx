@@ -40,12 +40,14 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
       <AppSidebar />
       <SidebarInset className="h-svh min-h-0 overflow-hidden">
         <TrialBanner />
-        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+        <header className="flex h-14 shrink-0 items-center gap-2 transition-[width,height] ease-linear md:h-16 group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
           <div className="flex items-center gap-2 px-4">
-            <SidebarTrigger className="-ml-1" />
+            {/* On mobile the bottom-nav "Meny" tab opens the sidebar, so the
+                header hamburger is redundant — hide it to save vertical space. */}
+            <SidebarTrigger className="-ml-1 hidden md:flex" />
             <Separator
               orientation="vertical"
-              className="mr-2 data-vertical:h-4 data-vertical:self-auto"
+              className="mr-2 hidden data-vertical:h-4 data-vertical:self-auto md:block"
             />
             <ShellBreadcrumb segments={segments} />
           </div>
@@ -58,8 +60,12 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
         >
           {children}
         </div>
-        {/* Spacer reserving room for the fixed mobile bottom nav */}
-        <div className="h-16 shrink-0 md:hidden" aria-hidden="true" />
+        {/* Spacer reserving room for the fixed mobile bottom nav (incl. safe area) */}
+        <div
+          className="shrink-0 md:hidden"
+          style={{ height: "calc(4rem + env(safe-area-inset-bottom))" }}
+          aria-hidden="true"
+        />
       </SidebarInset>
       <MobileBottomNav />
     </SidebarProvider>
