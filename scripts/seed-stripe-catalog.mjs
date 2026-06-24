@@ -101,6 +101,10 @@ async function main() {
     kind: "module_product",
     module_key: "integrasjoner",
   })
+  const meldingerKiProduct = await ensureProduct("Proanbud KI-svar i meldinger", {
+    kind: "module_product",
+    module_key: "meldinger_ki",
+  })
   const seatProduct = await ensureProduct("Proanbud Ansatt", { kind: "seat_product" })
 
   const prices = {
@@ -148,6 +152,12 @@ async function main() {
       1900,
       { interval: "month" },
       { kind: "module", module_key: "integrasjoner" }
+    ),
+    STRIPE_PRICE_MODULE_MELDINGER_KI: await ensureRecurringPrice(
+      meldingerKiProduct.id,
+      1900,
+      { interval: "month" },
+      { kind: "module", module_key: "meldinger_ki" }
     ),
     STRIPE_PRICE_SEAT_EMPLOYEE: await ensureRecurringPrice(
       seatProduct.id,

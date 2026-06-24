@@ -6,7 +6,7 @@ import { requireActiveSubscription, requireCompanyAdmin } from "@/lib/billing/gu
 import type { ModuleKey } from "@/lib/billing/plans"
 
 const bodySchema = z.object({
-  moduleKey: z.enum(["timeforing", "dokumenter", "integrasjoner"]),
+  moduleKey: z.enum(["timeforing", "dokumenter", "integrasjoner", "meldinger_ki"]),
   enabled: z.boolean(),
 })
 

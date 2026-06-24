@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
 import {
   MODULE_CATALOG,
+  MODULES_INCLUDED_IN_PROFF,
   PROFF_INCLUDED_FEATURES,
   type BillingInterval,
   type ModuleKey,
@@ -316,7 +317,7 @@ export function BillingPageClient() {
         <p className="text-sm text-muted-foreground">Moduler</p>
         <div className="space-y-2">
           {MODULE_CATALOG.map((module) => {
-            const includedInProff = module.key === "integrasjoner" && isProff
+            const includedInProff = MODULES_INCLUDED_IN_PROFF.includes(module.key) && isProff
             return (
               <div
                 key={module.key}

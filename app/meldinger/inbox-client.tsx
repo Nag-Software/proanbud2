@@ -21,9 +21,13 @@ import {
   Download,
   Search,
   ArrowLeft,
+  Sparkles,
+  RefreshCw,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useUserRole } from "@/hooks/use-user-role";
 
 interface Customer {
   id: string;
@@ -66,6 +70,8 @@ function formatMessageTime(date: Date) {
 
 export default function InboxClient({ companyId, currentUserId }: InboxClientProps) {
   const supabase = createClient();
+  const { hasFeature } = useUserRole();
+  const canUseAi = hasFeature("meldinger_ki");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -78,6 +84,8 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [isSuggesting, setIsSuggesting] = useState(false);
   const messagesRef = useRef<Message[]>([]);
   const selectedCustomerIdRef = useRef<string | null>(null);
   const customersRef = useRef<Customer[]>([]);
@@ -217,6 +225,46 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
     }
   }, [messages, selectedCustomerId]);
 
+  // Forkast et åpent KI-forslag når man bytter samtale.
+  useEffect(() => {
+    setAiSuggestion(null);
+    setIsSuggesting(false);
+  }, [selectedCustomerId]);
+
+  const requestSuggestion = useCallback(async () => {
+    if (!selectedCustomerId || isSuggesting) return;
+    setIsSuggesting(true);
+    try {
+      const res = await fetch("/api/messages/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: selectedCustomerId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Kunne ikke lage forslag");
+      setAiSuggestion(typeof data.suggestion === "string" ? data.suggestion : "");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Kunne ikke lage forslag");
+    } finally {
+      setIsSuggesting(false);
+    }
+  }, [selectedCustomerId, isSuggesting]);
+
+  const acceptSuggestion = useCallback(() => {
+    if (!aiSuggestion) return;
+    setNewMessage(aiSuggestion);
+    setAiSuggestion(null);
+    requestAnimationFrame(() => {
+      const ta = document.getElementById("chat-textarea") as HTMLTextAreaElement | null;
+      if (ta) {
+        ta.style.height = "40px";
+        ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+      }
+    });
+  }, [aiSuggestion]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -284,6 +332,7 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
     setNewMessage("");
     setAttachedFile(null);
     setIsUploading(false);
+    setAiSuggestion(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (imageInputRef.current) imageInputRef.current.value = "";
 
@@ -670,6 +719,53 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
                       )}
                     </div>
                   )}
+                  {canUseAi && (aiSuggestion !== null || isSuggesting) && (
+                    <div className="relative mx-auto mb-3 max-w-3xl rounded-lg border border-primary/30 bg-primary/5 p-3 shadow-sm">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                          <Sparkles className="h-3.5 w-3.5" />
+                          KI-forslag
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setAiSuggestion(null)}
+                          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          aria-label="Forkast forslag"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      {isSuggesting && !aiSuggestion ? (
+                        <div className="flex items-center gap-2 py-1.5 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          KI skriver et forslag…
+                        </div>
+                      ) : (
+                        <>
+                          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
+                            {aiSuggestion}
+                          </p>
+                          <div className="mt-3 flex items-center gap-2">
+                            <Button type="button" size="sm" className="h-8" onClick={acceptSuggestion}>
+                              <Check className="mr-1.5 h-3.5 w-3.5" />
+                              Sett inn
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 text-muted-foreground"
+                              onClick={requestSuggestion}
+                              disabled={isSuggesting}
+                            >
+                              <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", isSuggesting && "animate-spin")} />
+                              Nytt forslag
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                   <form
                     onSubmit={handleSendMessage}
                     className="mx-auto flex max-w-3xl items-end gap-2 border border-border bg-background p-2 shadow-sm transition-colors focus-within:border-primary focus-within:ring-1 focus-within:ring-ring"
@@ -711,6 +807,24 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
                       >
                         <Paperclip className="h-4 w-4" />
                       </Button>
+                      {canUseAi && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 shrink-0 text-primary hover:bg-primary/10 hover:text-primary"
+                          onClick={requestSuggestion}
+                          disabled={isSuggesting || isUploading}
+                          title="Foreslå svar med KI"
+                          aria-label="Foreslå svar med KI"
+                        >
+                          {isSuggesting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-4 w-4" />
+                          )}
+                        </Button>
+                      )}
                     </div>
                     <Textarea
                       id="chat-textarea"

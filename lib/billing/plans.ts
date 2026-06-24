@@ -48,6 +48,7 @@ export const MODULE_PRICING: Record<ModuleKey, number> = {
   timeforing: 29,
   dokumenter: 29,
   integrasjoner: 19,
+  meldinger_ki: 19,
 }
 
 /**
@@ -73,6 +74,13 @@ export const MODULE_CATALOG: Array<{
     monthlyNok: MODULE_PRICING.dokumenter,
   },
   {
+    key: "meldinger_ki",
+    label: "KI-svar i meldinger",
+    description:
+      "Få KI-forslag til svar på kundemeldinger med ett klikk — du godkjenner før det sendes. På Mini får du også selve meldingsinnboksen.",
+    monthlyNok: MODULE_PRICING.meldinger_ki,
+  },
+  {
     key: "integrasjoner",
     label: "Integrasjoner",
     description: "Koble til Tripletex, DocuSign m.m. Outlook og Google Drive er alltid gratis.",
@@ -91,6 +99,7 @@ const PRICE_ENV_KEYS: Record<string, string> = {
   "module-timeforing": "STRIPE_PRICE_MODULE_TIMEFORING",
   "module-dokumenter": "STRIPE_PRICE_MODULE_DOKUMENTER",
   "module-integrasjoner": "STRIPE_PRICE_MODULE_INTEGRASJONER",
+  "module-meldinger_ki": "STRIPE_PRICE_MODULE_MELDINGER_KI",
   seat: "STRIPE_PRICE_SEAT_EMPLOYEE",
 }
 
@@ -170,17 +179,30 @@ export type FeatureKey =
   | "kalender"
   | "project_tasks"
   | "meldinger"
+  | "meldinger_ki"
   | "integrasjoner"
 
 export const PLAN_FEATURES: Record<PlanKey, FeatureKey[]> = {
   mini: [],
-  proff: ["hms", "ks", "avvik", "kalender", "project_tasks", "meldinger", "integrasjoner"],
+  proff: ["hms", "ks", "avvik", "kalender", "project_tasks", "meldinger", "meldinger_ki", "integrasjoner"],
 }
 
-/** Features that can ALSO be unlocked à la carte via a module on any plan. */
+/**
+ * Features that can ALSO be unlocked à la carte via a module on any plan.
+ *
+ * `meldinger_ki` is special: buying the module both unlocks the KI reply
+ * suggestions AND the base `meldinger` feature, so Mini customers get a usable
+ * customer-messaging inbox bundled with the KI add-on (Proff already includes
+ * both via PLAN_FEATURES).
+ */
 const FEATURE_MODULE_FALLBACK: Partial<Record<FeatureKey, ModuleKey>> = {
   integrasjoner: "integrasjoner",
+  meldinger: "meldinger_ki",
+  meldinger_ki: "meldinger_ki",
 }
+
+/** Modules whose value is already bundled into Proff — shown as "Inkludert i Proff". */
+export const MODULES_INCLUDED_IN_PROFF: ModuleKey[] = ["integrasjoner", "meldinger_ki"]
 
 /**
  * Pure resolver: does a company on `plan` owning `modules` have `feature`?
@@ -209,6 +231,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   kalender: "Kalender",
   project_tasks: "Oppgaver i prosjekter",
   meldinger: "Meldinger",
+  meldinger_ki: "KI-svar i meldinger",
   integrasjoner: "Integrasjoner",
 }
 
@@ -231,8 +254,8 @@ export const PROFF_INCLUDED_FEATURES: Array<{
   },
   {
     key: "meldinger",
-    label: "Meldinger",
-    description: "Intern meldingsinnboks og kundechat på tilbudsvisning.",
+    label: "Meldinger med KI-svar",
+    description: "Meldingsinnboks og kundechat på tilbudsvisning — med KI-svarforslag på ett klikk.",
   },
   {
     key: "integrasjoner",
