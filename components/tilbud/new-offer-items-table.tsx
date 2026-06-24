@@ -37,7 +37,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog"
 import { cn } from "@/lib/utils"
 import { calculateLineItemTotal, formatNok, type OfferLineItem } from "@/lib/tilbud/types"
 
-type NewOfferItemsTableProps = {
+export type NewOfferItemsTableProps = {
   items: OfferLineItem[]
   onItemsChange: (next: OfferLineItem[]) => void
   supplierSuggestions: string[]
@@ -302,6 +302,7 @@ function EditableNumber({
   max,
   step,
   className,
+  inputMode,
 }: {
   value: number
   onChange: (v: number) => void
@@ -310,6 +311,7 @@ function EditableNumber({
   max?: number
   step?: number
   className?: string
+  inputMode?: "numeric" | "decimal"
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(String(value))
@@ -332,6 +334,7 @@ function EditableNumber({
       <input
         ref={inputRef}
         type="number"
+        inputMode={inputMode}
         value={draft}
         min={min}
         max={max}
@@ -686,6 +689,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                                           }
                                           min={0}
                                           step={0.01}
+                                          inputMode="decimal"
                                           className="w-28"
                                         />
                                       </td>
@@ -695,6 +699,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                                           onChange={(v) => updateRow(item.id, { quantity: v })}
                                           min={0}
                                           step={1}
+                                          inputMode="numeric"
                                           className="w-16"
                                         />
                                       </td>
@@ -725,6 +730,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                                           min={0}
                                           max={100}
                                           step={0.1}
+                                          inputMode="decimal"
                                           className="w-16"
                                         />
                                       </td>
@@ -876,6 +882,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                 <Label className="text-xs text-muted-foreground">Antall</Label>
                 <Input
                   type="number"
+                  inputMode="numeric"
                   value={editingItem.quantity}
                   onChange={(e) => setEditingItem((prev) => prev ? { ...prev, quantity: parseNumber(e.target.value, prev.quantity) } : null)}
                   min={0}
@@ -898,6 +905,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                 <Label className="text-xs text-muted-foreground">Enhetspris (kr)</Label>
                 <Input
                   type="number"
+                  inputMode="decimal"
                   value={editingItem.unitPriceNok}
                   onChange={(e) => setEditingItem((prev) => prev ? { ...prev, unitPriceNok: parseNumber(e.target.value, prev.unitPriceNok) } : null)}
                   min={0}

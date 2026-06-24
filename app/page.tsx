@@ -5,8 +5,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { AppPageShell } from "@/components/app-page-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Area, AreaChart, CartesianGrid, XAxis, RadialBarChart, RadialBar, PolarAngleAxis } from "recharts"
-import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import dynamic from "next/dynamic"
 import { TrendingUp, FileText, FolderKanban, Users, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -101,10 +100,17 @@ function OfferRowActions({ offerId }: { offerId: string }) {
   )
 }
 
-const areaChartConfig = {
-  omsetning: { label: "Omsetning", color: "var(--color-primary)" },
-  tilbud: { label: "Tilbud sendt", color: "var(--color-accent)" },
-} satisfies ChartConfig
+// Charts live in a separate chunk so recharts is not in the dashboard's
+// first-load JS — loaded on demand once the page mounts (ssr:false: data is
+// fetched client-side anyway). Fixed-height placeholders avoid layout shift.
+const RevenueAreaChart = dynamic(
+  () => import("./dashboard-charts").then((m) => m.RevenueAreaChart),
+  { ssr: false, loading: () => <div className="h-[240px] w-full animate-pulse bg-muted/40" /> }
+)
+const PerformanceGauge = dynamic(
+  () => import("./dashboard-charts").then((m) => m.PerformanceGauge),
+  { ssr: false, loading: () => <div className="h-[130px] w-[180px] animate-pulse bg-muted/40" /> }
+)
 
 interface DashboardData {
   omsetning: number
@@ -524,25 +530,7 @@ export default function DashboardPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="px-2 pb-0 pt-2">
-                  <ChartContainer config={areaChartConfig} className="h-[240px] w-full">
-                    <AreaChart data={data?.chartData || []} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="fillOmsetning" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.08} />
-                          <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="fillTilbud" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.32} />
-                          <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.2} />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--chart-axis-muted)" }} dy={8} />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Area type="monotone" dataKey="omsetning" stroke="var(--color-primary)" strokeWidth={2.5} fill="url(#fillOmsetning)" dot={false} />
-                      <Area type="monotone" dataKey="tilbud" stroke="var(--color-accent)" strokeWidth={2.5} fill="url(#fillTilbud)" dot={false} />
-                    </AreaChart>
-                  </ChartContainer>
+                  <RevenueAreaChart chartData={data?.chartData || []} />
                 </CardContent>
               </Card>
             </div>
@@ -563,12 +551,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="flex flex-col items-center px-5 gap-0 flex-1">
               <div className="relative w-full flex justify-center my-1">
-                <ChartContainer config={{ ytelse: { label: "Ytelse", color: "var(--color-primary)" } }} className="h-[130px] w-[180px]">
-                  <RadialBarChart data={[{ name: "Ytelse", value: loading ? 0 : gaugeValue }]} startAngle={180} endAngle={0} innerRadius={55} outerRadius={80}>
-                    <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                    <RadialBar dataKey="value" background={{ fill: "var(--color-secondary)" }} fill="var(--color-primary)" cornerRadius={6} />
-                  </RadialBarChart>
-                </ChartContainer>
+                <PerformanceGauge value={loading ? 0 : gaugeValue} />
                 <div className="absolute bottom-4 flex flex-col items-center">
                   <span className="text-2xl font-medium">{loading ? "—" : formatNok(data?.omsetning ?? 0)}</span>
                   <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Måneds omsetning</span>

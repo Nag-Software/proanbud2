@@ -17,8 +17,9 @@ export const config = {
      * - favicon.ico and static asset extensions
      * - the api/webhooks folder and any route ending in "webhook" (Stripe, Resend, DocuSign, Tripletex…)
      * - api/outreach/cron (secret-authed cron)
+     * - sw.js and the web app manifest (must be reachable while logged out so the PWA installs)
      * (Do NOT exclude /api/sjefen or /api/selger — those rely on the refreshed session.)
      */
-    '/((?!_next/static|_next/image|favicon.ico|api/webhooks/|api/outreach/cron|api/(?:.*/)?webhook|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|map)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|api/webhooks/|api/outreach/cron|api/(?:.*/)?webhook|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|map|webmanifest)$).*)',
   ],
 }

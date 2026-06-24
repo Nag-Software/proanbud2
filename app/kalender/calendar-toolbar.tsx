@@ -24,9 +24,12 @@ import {
   Settings2,
   SlidersHorizontal,
 } from "lucide-react"
-import { Views } from "react-big-calendar"
 
-export type CalendarView = typeof Views.MONTH | typeof Views.WEEK | typeof Views.DAY
+// String literals instead of importing `Views` from react-big-calendar — that
+// import alone would pull the (non-tree-shakeable) library into the toolbar's
+// bundle, defeating the lazy-loading of the calendar grid. These are the exact
+// runtime values of Views.MONTH/WEEK/DAY.
+export type CalendarView = "month" | "week" | "day"
 
 type CalendarToolbarProps = {
   date: Date
@@ -47,9 +50,9 @@ type CalendarToolbarProps = {
 }
 
 const VIEW_LABELS: Record<CalendarView, string> = {
-  [Views.MONTH]: "Måned",
-  [Views.WEEK]: "Uke",
-  [Views.DAY]: "Dag",
+  month: "Måned",
+  week: "Uke",
+  day: "Dag",
 }
 
 export function CalendarToolbar({
@@ -71,9 +74,9 @@ export function CalendarToolbar({
 }: CalendarToolbarProps) {
   const navigate = (direction: -1 | 1) => {
     const next = new Date(date)
-    if (view === Views.MONTH) {
+    if (view === "month") {
       next.setMonth(next.getMonth() + direction)
-    } else if (view === Views.WEEK) {
+    } else if (view === "week") {
       next.setDate(next.getDate() + direction * 7)
     } else {
       next.setDate(next.getDate() + direction)
@@ -100,12 +103,12 @@ export function CalendarToolbar({
           <SelectContent>
             <SelectGroup>
               <SelectLabel>Visning</SelectLabel>
-              <SelectItem value={Views.MONTH}>{VIEW_LABELS[Views.MONTH]}</SelectItem>
-              <SelectItem value={Views.WEEK} className="hidden md:flex">
-                {VIEW_LABELS[Views.WEEK]}
+              <SelectItem value="month">{VIEW_LABELS.month}</SelectItem>
+              <SelectItem value="week" className="hidden md:flex">
+                {VIEW_LABELS.week}
               </SelectItem>
-              <SelectItem value={Views.DAY} className="hidden md:flex">
-                {VIEW_LABELS[Views.DAY]}
+              <SelectItem value="day" className="hidden md:flex">
+                {VIEW_LABELS.day}
               </SelectItem>
             </SelectGroup>
           </SelectContent>

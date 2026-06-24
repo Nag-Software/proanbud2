@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { ChevronDown, Download, Loader2, Phone, Search, Sparkles, Trash2, Wand2, Zap } from "lucide-react"
 import { toast } from "sonner"
 
@@ -58,10 +58,168 @@ function statusVariant(status: ProspectStatus): "default" | "secondary" | "destr
   return "secondary"
 }
 
+type ProspectRowHandlers = {
+  isDrafting: boolean
+  onUpdate: (id: string, patch: { status?: ProspectStatus; logCall?: boolean }) => void
+  onDraft: (id: string) => void
+}
+
+// Memoized rows: a single status/draft change rebuilds the prospects array but
+// keeps the object reference for every unchanged row (setProspects map), so only
+// the row that actually changed re-renders — not all ~300 rows + their Radix
+// Selects. Handlers are stable (useCallback) so memo isn't defeated.
+const ProspectTableRow = memo(function ProspectTableRow({
+  prospect: p,
+  isDrafting,
+  onUpdate,
+  onDraft,
+}: { prospect: ProspectRow } & ProspectRowHandlers) {
+  return (
+    <TableRow>
+      <TableCell>
+        <div className="font-medium">{p.name}</div>
+        <div className="text-xs text-muted-foreground">
+          {p.nace_description || p.nace_code || "—"} · {p.org_number}
+        </div>
+      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">{p.city || "—"}</TableCell>
+      <TableCell className="tabular-nums">{p.employee_count ?? "—"}</TableCell>
+      <TableCell className="text-sm">
+        {p.email ? (
+          <span className="text-foreground">{p.email}</span>
+        ) : p.phone ? (
+          <span className="text-muted-foreground">{p.phone}</span>
+        ) : (
+          <Badge variant="outline" className="text-[10px]">
+            mangler kontakt
+          </Badge>
+        )}
+      </TableCell>
+      <TableCell>
+        <Select
+          value={p.status}
+          onValueChange={(v) => onUpdate(p.id, { status: v as ProspectStatus })}
+        >
+          <SelectTrigger className="h-8 w-32">
+            <SelectValue>
+              <Badge variant={statusVariant(p.status)}>{PROSPECT_STATUS_LABELS[p.status]}</Badge>
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {PROSPECT_STATUSES.map((s) => (
+              <SelectItem key={s} value={s}>
+                {PROSPECT_STATUS_LABELS[s]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex items-center justify-end gap-2">
+          {p.email && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              disabled={isDrafting}
+              onClick={() => onDraft(p.id)}
+            >
+              {isDrafting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Wand2 className="h-3.5 w-3.5" />
+              )}
+              Utkast
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => onUpdate(p.id, { logCall: true })}
+          >
+            <Phone className="h-3.5 w-3.5" />
+            Logg samtale
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+})
+
+const ProspectMobileCard = memo(function ProspectMobileCard({
+  prospect: p,
+  isDrafting,
+  onUpdate,
+  onDraft,
+}: { prospect: ProspectRow } & ProspectRowHandlers) {
+  return (
+    <div className="space-y-2 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-medium">{p.name}</p>
+          <p className="text-xs text-muted-foreground">
+            {p.city || "—"} · {p.employee_count ?? "?"} ansatte · {p.org_number}
+          </p>
+        </div>
+        <Badge variant={statusVariant(p.status)}>{PROSPECT_STATUS_LABELS[p.status]}</Badge>
+      </div>
+      <p className="text-sm text-muted-foreground">{p.email || p.phone || "Mangler kontaktinfo"}</p>
+      <div className="flex flex-wrap gap-2">
+        <Select
+          value={p.status}
+          onValueChange={(v) => onUpdate(p.id, { status: v as ProspectStatus })}
+        >
+          <SelectTrigger className="h-9 flex-1">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PROSPECT_STATUSES.map((s) => (
+              <SelectItem key={s} value={s}>
+                {PROSPECT_STATUS_LABELS[s]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 gap-1.5"
+          onClick={() => onUpdate(p.id, { logCall: true })}
+        >
+          <Phone className="h-3.5 w-3.5" />
+          Logg
+        </Button>
+        {p.email && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5"
+            disabled={isDrafting}
+            onClick={() => onDraft(p.id)}
+          >
+            {isDrafting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Wand2 className="h-3.5 w-3.5" />
+            )}
+            Utkast
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+})
+
 export function LeadsClient() {
   const [prospects, setProspects] = useState<ProspectRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  // Debounced copy of `search` — the input stays bound to `search` for instant
+  // feedback, but the prospects fetch only re-runs 300ms after typing stops,
+  // collapsing N keystroke fetches (a leading-wildcard ilike on ~300 rows) into
+  // one and avoiding a full-list re-render per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [view, setView] = useState<View>("alle")
   const [enriching, setEnriching] = useState(false)
@@ -85,7 +243,7 @@ export function LeadsClient() {
     try {
       const params = new URLSearchParams()
       if (statusFilter !== "all") params.set("status", statusFilter)
-      if (search.trim()) params.set("q", search.trim())
+      if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim())
       if (view === "med-epost") params.set("has_email", "true")
       if (view === "ringeliste") params.set("has_email", "false")
       const res = await fetch(`/api/outreach/prospects?${params.toString()}`)
@@ -97,7 +255,13 @@ export function LeadsClient() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, search, view])
+  }, [statusFilter, debouncedSearch, view])
+
+  // Sync the debounced search 300ms after the user stops typing.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
 
   useEffect(() => {
     void loadProspects()
@@ -143,7 +307,9 @@ export function LeadsClient() {
     }
   }
 
-  const updateProspect = async (id: string, patch: { status?: ProspectStatus; logCall?: boolean }) => {
+  // Stable identity (useCallback + functional setState) so memoized rows don't
+  // re-render when this handler is recreated.
+  const updateProspect = useCallback(async (id: string, patch: { status?: ProspectStatus; logCall?: boolean }) => {
     try {
       const res = await fetch(`/api/outreach/prospects/${id}`, {
         method: "PATCH",
@@ -157,7 +323,7 @@ export function LeadsClient() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Kunne ikke oppdatere")
     }
-  }
+  }, [])
 
   const runEnrich = async () => {
     setEnriching(true)
@@ -231,7 +397,7 @@ export function LeadsClient() {
     }
   }
 
-  const createDraft = async (id: string) => {
+  const createDraft = useCallback(async (id: string) => {
     setDraftingId(id)
     try {
       const res = await fetch(`/api/outreach/prospects/${id}/draft`, { method: "POST" })
@@ -243,7 +409,7 @@ export function LeadsClient() {
     } finally {
       setDraftingId(null)
     }
-  }
+  }, [])
 
   const stats = useMemo(() => {
     const withEmail = prospects.filter((p) => p.email).length
@@ -557,75 +723,13 @@ export function LeadsClient() {
               </TableHeader>
               <TableBody>
                 {prospects.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell>
-                      <div className="font-medium">{p.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {p.nace_description || p.nace_code || "—"} · {p.org_number}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{p.city || "—"}</TableCell>
-                    <TableCell className="tabular-nums">{p.employee_count ?? "—"}</TableCell>
-                    <TableCell className="text-sm">
-                      {p.email ? (
-                        <span className="text-foreground">{p.email}</span>
-                      ) : p.phone ? (
-                        <span className="text-muted-foreground">{p.phone}</span>
-                      ) : (
-                        <Badge variant="outline" className="text-[10px]">
-                          mangler kontakt
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Select
-                        value={p.status}
-                        onValueChange={(v) => updateProspect(p.id, { status: v as ProspectStatus })}
-                      >
-                        <SelectTrigger className="h-8 w-32">
-                          <SelectValue>
-                            <Badge variant={statusVariant(p.status)}>{PROSPECT_STATUS_LABELS[p.status]}</Badge>
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {PROSPECT_STATUSES.map((s) => (
-                            <SelectItem key={s} value={s}>
-                              {PROSPECT_STATUS_LABELS[s]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {p.email && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-1.5"
-                            disabled={draftingId === p.id}
-                            onClick={() => createDraft(p.id)}
-                          >
-                            {draftingId === p.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Wand2 className="h-3.5 w-3.5" />
-                            )}
-                            Utkast
-                          </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5"
-                          onClick={() => updateProspect(p.id, { logCall: true })}
-                        >
-                          <Phone className="h-3.5 w-3.5" />
-                          Logg samtale
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                  <ProspectTableRow
+                    key={p.id}
+                    prospect={p}
+                    isDrafting={draftingId === p.id}
+                    onUpdate={updateProspect}
+                    onDraft={createDraft}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -636,60 +740,13 @@ export function LeadsClient() {
         {!loading && prospects.length > 0 && (
           <div className="divide-y overflow-hidden rounded-lg border md:hidden">
             {prospects.map((p) => (
-              <div key={p.id} className="space-y-2 p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-medium">{p.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {p.city || "—"} · {p.employee_count ?? "?"} ansatte · {p.org_number}
-                    </p>
-                  </div>
-                  <Badge variant={statusVariant(p.status)}>{PROSPECT_STATUS_LABELS[p.status]}</Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">{p.email || p.phone || "Mangler kontaktinfo"}</p>
-                <div className="flex flex-wrap gap-2">
-                  <Select
-                    value={p.status}
-                    onValueChange={(v) => updateProspect(p.id, { status: v as ProspectStatus })}
-                  >
-                    <SelectTrigger className="h-9 flex-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PROSPECT_STATUSES.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {PROSPECT_STATUS_LABELS[s]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 gap-1.5"
-                    onClick={() => updateProspect(p.id, { logCall: true })}
-                  >
-                    <Phone className="h-3.5 w-3.5" />
-                    Logg
-                  </Button>
-                  {p.email && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-9 gap-1.5"
-                      disabled={draftingId === p.id}
-                      onClick={() => createDraft(p.id)}
-                    >
-                      {draftingId === p.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Wand2 className="h-3.5 w-3.5" />
-                      )}
-                      Utkast
-                    </Button>
-                  )}
-                </div>
-              </div>
+              <ProspectMobileCard
+                key={p.id}
+                prospect={p}
+                isDrafting={draftingId === p.id}
+                onUpdate={updateProspect}
+                onDraft={createDraft}
+              />
             ))}
           </div>
         )}

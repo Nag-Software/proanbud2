@@ -25,7 +25,7 @@ import {
 
 import { saveOfferDraftAction } from "@/app/nytt-tilbud/actions"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
-import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
+import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table-lazy"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
