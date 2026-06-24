@@ -1,6 +1,6 @@
 "use client"
 
-import { ColumnDef } from "@tanstack/react-table"
+import { ColumnDef, Row } from "@tanstack/react-table"
 import { useRouter } from "next/navigation"
 import { Customer } from "./schema"
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +19,8 @@ import { toast } from "sonner"
 
 type CustomerColumnHandlers = {
   onViewDetails: (customer: Customer) => void
+  /** Show the Tripletex sync-status column. Only when Tripletex is connected. */
+  showTripletex?: boolean
 }
 
 function CustomerRowActions({
@@ -98,6 +100,7 @@ function CustomerRowActions({
 
 export function createCustomerColumns({
   onViewDetails,
+  showTripletex = false,
 }: CustomerColumnHandlers): ColumnDef<Customer>[] {
   return [
   {
@@ -145,27 +148,31 @@ export function createCustomerColumns({
       return <div className="text-right font-medium">{amount}</div>
     },
   },
-  {
-    accessorKey: "syncStatus",
-    header: "Tripletex",
-    cell: ({ row }) => {
-      const value = row.original.syncStatus || "none"
+  ...(showTripletex
+    ? [
+        {
+          accessorKey: "syncStatus",
+          header: "Tripletex",
+          cell: ({ row }: { row: Row<Customer> }) => {
+            const value = row.original.syncStatus || "none"
 
-      if (value === "synced") {
-        return <Badge variant="outline">Synced</Badge>
-      }
+            if (value === "synced") {
+              return <Badge variant="outline">Synced</Badge>
+            }
 
-      if (value === "syncing") {
-        return <Badge variant="secondary">Syncer...</Badge>
-      }
+            if (value === "syncing") {
+              return <Badge variant="secondary">Syncer...</Badge>
+            }
 
-      if (value === "attention") {
-        return <Badge variant="destructive">Krever handling</Badge>
-      }
+            if (value === "attention") {
+              return <Badge variant="destructive">Krever handling</Badge>
+            }
 
-      return <Badge variant="secondary">Ikke synkronisert</Badge>
-    },
-  },
+            return <Badge variant="secondary">Ikke synkronisert</Badge>
+          },
+        } satisfies ColumnDef<Customer>,
+      ]
+    : []),
   {
     id: "actions",
     cell: ({ row }) => (
