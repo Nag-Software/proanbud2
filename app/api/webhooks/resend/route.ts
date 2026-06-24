@@ -3,6 +3,7 @@ import { Webhook } from "svix"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { computeLeadScore } from "@/lib/selger/scoring"
+import { recordUnsubscribe } from "@/lib/outreach/send"
 
 export const runtime = "nodejs"
 
@@ -190,9 +191,7 @@ export async function POST(request: Request) {
     await stampEmailEvent(admin, provider, isComplaint ? "complained_at" : "bounced_at")
   }
 
-  await admin
-    .from("outreach_unsubscribes")
-    .upsert({ email, org_number: null, reason }, { onConflict: "email", ignoreDuplicates: true })
+  await recordUnsubscribe(admin, { email, orgNumber: null, reason })
 
   // Best-effort: mark the matching prospects' outreach rows as bounced.
   const { data: prospects } = await admin.from("prospects").select("id").eq("email", email)

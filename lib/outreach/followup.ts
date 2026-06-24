@@ -131,6 +131,7 @@ export async function runOutreachFollowups(
         }
         const rowId = claimed[0].id as string
 
+        let emailSent = false
         try {
           const subject = followupSubject(row.ai_subject)
 
@@ -159,6 +160,7 @@ export async function runOutreachFollowups(
             ctaUrl: bransje ? buildExampleOfferUrl(bransje) : undefined,
             ctaLabel: bransje ? EXAMPLE_OFFER_CTA_LABEL : undefined,
           })
+          emailSent = true
 
           const now = new Date().toISOString()
           await admin
@@ -187,10 +189,18 @@ export async function runOutreachFollowups(
           result.sent += 1
           budget -= 1
         } catch (sendErr) {
-          // Release the claim so the step can be retried next run.
-          console.error("[outreach/followup] send failed for", p.id, "step", step, sendErr)
-          await admin.from("prospect_outreach").delete().eq("id", rowId)
-          result.failed += 1
+          if (emailSent) {
+            // Email went out but post-send bookkeeping failed. Keep the claim (it blocks
+            // a re-send) so a hiccup can never re-mail the prospect; count it as sent.
+            console.error("[outreach/followup] post-send bookkeeping failed for", p.id, "step", step, sendErr)
+            result.sent += 1
+            budget -= 1
+          } else {
+            // Nothing was sent — release the claim so the step can be retried next run.
+            console.error("[outreach/followup] send failed for", p.id, "step", step, sendErr)
+            await admin.from("prospect_outreach").delete().eq("id", rowId)
+            result.failed += 1
+          }
         }
       } catch (err) {
         console.error("[outreach/followup] failed for", p.id, err)

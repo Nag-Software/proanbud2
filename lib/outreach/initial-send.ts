@@ -68,52 +68,93 @@ export async function runInitialOutreach(
         return
       }
 
+      // Atomically claim the first step (step_index 0) BEFORE sending, so two
+      // overlapping runs (the daily cron + the manual "Full auto" button, or a retry
+      // after a hiccup) can never double-send the cold email. ON CONFLICT DO NOTHING →
+      // empty array means the step is already claimed/sent; skip. Mirrors the followup
+      // claim in followup.ts.
+      const { data: claimed, error: claimErr } = await admin
+        .from("prospect_outreach")
+        .upsert(
+          { prospect_id: p.id, channel: "email", step_index: 0, status: "queued" },
+          { onConflict: "prospect_id,step_index", ignoreDuplicates: true },
+        )
+        .select("id")
+      if (claimErr) {
+        console.error("[outreach/initial-send] claim failed for", p.id, claimErr)
+        result.failed += 1
+        return
+      }
+      if (!claimed || claimed.length === 0) {
+        result.skipped += 1
+        return
+      }
+      const rowId = claimed[0].id as string
+
       // Pick a real, trade-specific example offer to show off ("vis, ikke fortell").
       const bransje = resolveBransje({ naceCode: p.nace_code, naceDescription: p.nace_description })
       const exampleLabel = BRANSJE_LABELS[bransje]
 
-      const draft = await generateOutreachDraft({
-        name: p.name,
-        city: p.city,
-        naceDescription: p.nace_description,
-        employeeCount: p.employee_count,
-        exampleLabel,
-      })
+      let emailSent = false
+      try {
+        const draft = await generateOutreachDraft({
+          name: p.name,
+          city: p.city,
+          naceDescription: p.nace_description,
+          employeeCount: p.employee_count,
+          exampleLabel,
+        })
 
-      const unsubscribeUrl = `${opts.origin}/api/outreach/unsubscribe?p=${p.id}`
-      const { providerMessageId } = await sendOutreachEmail({
-        to: p.email,
-        subject: draft.subject,
-        body: draft.body,
-        unsubscribeUrl,
-        ctaUrl: buildExampleOfferUrl(bransje),
-        ctaLabel: EXAMPLE_OFFER_CTA_LABEL,
-      })
+        const unsubscribeUrl = `${opts.origin}/api/outreach/unsubscribe?p=${p.id}`
+        const { providerMessageId } = await sendOutreachEmail({
+          to: p.email,
+          subject: draft.subject,
+          body: draft.body,
+          unsubscribeUrl,
+          ctaUrl: buildExampleOfferUrl(bransje),
+          ctaLabel: EXAMPLE_OFFER_CTA_LABEL,
+        })
+        emailSent = true
 
-      const now = new Date().toISOString()
-      await admin.from("prospect_outreach").insert({
-        prospect_id: p.id,
-        channel: "email",
-        step_index: 0,
-        status: "sent",
-        ai_subject: draft.subject,
-        ai_body: draft.body,
-        sent_at: now,
-        approved_by: opts.sentByUserId,
-      })
-      await admin
-        .from("prospects")
-        .update({ status: "kontaktet", last_contacted_at: now, updated_at: now })
-        .eq("id", p.id)
+        const now = new Date().toISOString()
+        await admin
+          .from("prospect_outreach")
+          .update({
+            status: "sent",
+            ai_subject: draft.subject,
+            ai_body: draft.body,
+            sent_at: now,
+            approved_by: opts.sentByUserId,
+            updated_at: now,
+          })
+          .eq("id", rowId)
+        await admin
+          .from("prospects")
+          .update({ status: "kontaktet", last_contacted_at: now, updated_at: now })
+          .eq("id", p.id)
 
-      await logSellerEmail({
-        sentBy: opts.sentByUserId,
-        templateId: "outreach-cold",
-        recipientEmail: p.email,
-        companyId: null,
-        providerMessageId,
-      })
-      result.sent += 1
+        await logSellerEmail({
+          sentBy: opts.sentByUserId,
+          templateId: "outreach-cold",
+          recipientEmail: p.email,
+          companyId: null,
+          providerMessageId,
+        })
+        result.sent += 1
+      } catch (sendErr) {
+        if (emailSent) {
+          // The email went out but the follow-up bookkeeping failed. Do NOT release the
+          // claim — the row stays and blocks a re-send, so a hiccup can never re-mail the
+          // prospect. It was sent, so count it.
+          console.error("[outreach/initial-send] post-send bookkeeping failed for", p.id, sendErr)
+          result.sent += 1
+        } else {
+          // Nothing was sent — release the claim so the step retries on the next run.
+          console.error("[outreach/initial-send] send failed for", p.id, sendErr)
+          await admin.from("prospect_outreach").delete().eq("id", rowId)
+          result.failed += 1
+        }
+      }
     } catch (err) {
       console.error("[outreach/initial-send] failed for", p.id, err)
       result.failed += 1
