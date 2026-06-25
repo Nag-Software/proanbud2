@@ -19,6 +19,7 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { useUserRole } from "@/hooks/use-user-role"
+import { useAuth } from "@/components/auth-provider"
 
 const formatNok = (val: number) =>
   new Intl.NumberFormat("no-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(val)
@@ -136,8 +137,14 @@ interface DashboardData {
 export default function DashboardPage() {
   const router = useRouter()
   const { canonicalRole, loadingRole } = useUserRole()
+  // Reuse the session AuthProvider already resolved instead of a 3rd getUser()
+  // round-trip on the dashboard's hot path.
+  const { user: authUser, loading: authLoading } = useAuth()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  // Feeds (recent/active offers, top projects) need extra name-lookup queries
+  // after the KPIs are ready — tracked separately so the KPIs can paint first.
+  const [feedsLoading, setFeedsLoading] = useState(true)
 
   // Workers do not have access to the company dashboard — send them to projects.
   useEffect(() => {
@@ -147,6 +154,7 @@ export default function DashboardPage() {
   }, [loadingRole, canonicalRole, router])
 
   useEffect(() => {
+    let cancelled = false
     async function load() {
       // Temporary: support ?mock=1 to inject static mock data for screenshots.
       // Remove this block once screenshots are captured.
@@ -205,25 +213,28 @@ export default function DashboardPage() {
           }
           setData(mock)
           setLoading(false)
+          setFeedsLoading(false)
           return
         }
       } catch (e) {
         // ignore and continue to real load
       }
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { setLoading(false); return }
+      // Wait for the shared session to resolve; reuse it instead of a fresh
+      // network getUser() (middleware + AuthProvider already validated it).
+      if (authLoading) return
+      if (!authUser) { setLoading(false); return }
 
+      const supabase = createClient()
       const { data: userData } = await supabase
         .from("users")
         .select("company_id, full_name")
-        .eq("id", user.id)
+        .eq("id", authUser.id)
         .single()
       const companyId = userData?.company_id
       const rawName = userData?.full_name
-        || (user.user_metadata?.full_name as string | undefined)
-        || (user.user_metadata?.name as string | undefined)
-        || (user.email?.split("@")[0] ?? "")
+        || (authUser.user_metadata?.full_name as string | undefined)
+        || (authUser.user_metadata?.name as string | undefined)
+        || (authUser.email?.split("@")[0] ?? "")
       const firstName = rawName.split(" ")[0]
       if (!companyId) { setLoading(false); return }
 
@@ -306,6 +317,23 @@ export default function DashboardPage() {
       const companyLogo = companyRes.data?.logo_url?.trim() || null
       const companyStatus = "aktiv" as const
 
+      // PHASE 1 — paint KPIs / chart / gauge / company the moment the aggregates
+      // resolve, with empty feeds. The feed name-lookups below add 1-2 more
+      // serial round-trips; gating the whole dashboard on them kept every number
+      // skeletoned far longer than necessary.
+      if (cancelled) return
+      setData({
+        omsetning, omsetningPrev,
+        activeProjects, activeProjectsPrev,
+        tilbudSendt, tilbudSentPrev,
+        kunders, kundersPrev,
+        todayOmsetning, yesterdayOmsetning,
+        chartData,
+        recentOffers: [], tableOffers: [], topProjects: [],
+        userName, companyName, companyLogo, companyStatus,
+      })
+      setLoading(false)
+
       if (uniqueProjectIds.length) {
         const { data: projRows } = await supabase.from("projects").select("id, name, customer_id").in("id", uniqueProjectIds)
         ;(projRows || []).forEach(p => {
@@ -370,19 +398,22 @@ export default function DashboardPage() {
         )
       }
 
-      setData({
-        omsetning, omsetningPrev,
-        activeProjects, activeProjectsPrev,
-        tilbudSendt, tilbudSentPrev,
-        kunders, kundersPrev,
-        todayOmsetning, yesterdayOmsetning,
-        chartData, recentOffers, tableOffers, topProjects,
-        userName, companyName, companyLogo, companyStatus,
-      })
-      setLoading(false)
+      // PHASE 2 — patch the resolved feeds into the already-painted dashboard.
+      if (cancelled) return
+      setData((prev) =>
+        prev ? { ...prev, recentOffers, tableOffers, topProjects } : prev
+      )
+      setFeedsLoading(false)
     }
     load()
-  }, [])
+    return () => {
+      cancelled = true
+    }
+    // Key on the user id (not the authUser object) so a token refresh — which
+    // hands us a new user object with the same id — does not reload the whole
+    // dashboard.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser?.id, authLoading])
 
   const gaugeValue = !data ? 0
     : data.omsetningPrev > 0
@@ -609,7 +640,7 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {loading
+                    {feedsLoading
                       ? Array.from({ length: 4 }).map((_, i) => (
                         <tr key={i}>
                           {Array.from({ length: 6 }).map((_, j) => (
@@ -642,12 +673,12 @@ export default function DashboardPage() {
                     }
                   </tbody>
                 </table>
-                {!loading && data?.tableOffers.length === 0 && (
+                {!feedsLoading && data?.tableOffers.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-6">Ingen tilbud ennå</p>
                 )}
               </div>
               <div className="divide-y md:hidden">
-                {loading
+                {feedsLoading
                   ? Array.from({ length: 4 }).map((_, i) => (
                       <div key={i} className="py-3">
                         <div className="h-4 w-2/3 animate-pulse bg-muted" />
@@ -678,7 +709,7 @@ export default function DashboardPage() {
                         </div>
                       </Link>
                     ))}
-                {!loading && data?.tableOffers.length === 0 && (
+                {!feedsLoading && data?.tableOffers.length === 0 && (
                   <p className="py-6 text-center text-xs text-muted-foreground">Ingen tilbud ennå</p>
                 )}
               </div>
@@ -690,7 +721,7 @@ export default function DashboardPage() {
               <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Aktive tilbud</CardTitle>
             </CardHeader>
             <CardContent className="p-0 flex-1 overflow-auto">
-              {loading ? (
+              {feedsLoading ? (
                 <div className="divide-y">
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div key={i} className="px-4 py-3 space-y-1.5 animate-pulse">
@@ -736,7 +767,7 @@ export default function DashboardPage() {
                 <span>Prosjektnavn</span>
                 <span>Tilbud sendt</span>
               </div>
-              {loading
+              {feedsLoading
                 ? Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="space-y-1.5 animate-pulse">
                     <div className="flex justify-between">

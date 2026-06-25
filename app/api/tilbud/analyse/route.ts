@@ -275,6 +275,7 @@ export async function POST(request: Request) {
         supabase.from("companies").select("name").eq("id", companyId).maybeSingle(),
       ])
 
+      const fileIds = ((fileRows ?? []) as Array<{ id: string }>).map((row) => row.id)
       const expectedRowCount = ((fileRows ?? []) as Array<{ row_count?: number | null }>).reduce(
         (sum, row) => sum + Math.max(row.row_count || 0, 0),
         0
@@ -282,11 +283,14 @@ export async function POST(request: Request) {
 
       const fetchedRows: Array<CompanyPriceRow & { file_id?: string | null }> = []
       const batchSize = 1000
-      for (let offset = 0; ; offset += batchSize) {
+      // Scope to the files loaded above so rows from files beyond the cap don't
+      // make the expectedRowCount early-break drop rows of the included files.
+      for (let offset = 0; fileIds.length > 0; offset += batchSize) {
         const { data: batch } = await supabase
           .from("supplier_price_rows")
           .select("product, unit, net_price, list_price, category, nobb, supplier_sku, file_id, product_group_code")
           .eq("company_id", companyId)
+          .in("file_id", fileIds)
           .not("product", "is", null)
           .order("id", { ascending: true })
           .range(offset, offset + batchSize - 1)

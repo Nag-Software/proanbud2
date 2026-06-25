@@ -18,7 +18,7 @@ export async function GET(
 
     const { data: file, error: fileError } = await supabase
       .from("supplier_price_files")
-      .select("id, supplier_name, original_filename, row_count, created_at")
+      .select("id, supplier_name, original_filename, row_count, source, created_at")
       .eq("id", id)
       .maybeSingle()
 

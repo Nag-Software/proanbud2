@@ -27,8 +27,8 @@ export type OutreachMetrics = {
   clicked30d: number
   bounced30d: number
   complained30d: number
-  openRate: number // 0–1, opened / sent
-  clickRate: number // 0–1, clicked / sent
+  openRate: number // 0–1, opened / delivered (opens can only happen on delivered mail)
+  clickRate: number // 0–1, clicked / delivered
   bounceRate: number // 0–1, bounced / sent
   // Lead pool ("fuel gauge")
   sendableNow: number // fresh prospects we can email right now
@@ -152,7 +152,12 @@ export async function fetchOutreachMetrics(): Promise<OutreachMetrics> {
   }
 
   const sent30d = rows.length
-  const safeRate = (n: number) => (sent30d > 0 ? n / sent30d : 0)
+  const overSent = (n: number) => (sent30d > 0 ? n / sent30d : 0)
+  // Open/click rates are measured over DELIVERED mail (industry standard): a
+  // recipient can't open an email that never arrived, and ~150 of our sent rows
+  // are undelivered or legacy pre-tracking rows that can never register an open —
+  // dividing by `sent` would permanently understate true engagement.
+  const overDelivered = (n: number) => (delivered30d > 0 ? n / delivered30d : 0)
 
   return {
     sentToday,
@@ -163,9 +168,9 @@ export async function fetchOutreachMetrics(): Promise<OutreachMetrics> {
     clicked30d,
     bounced30d,
     complained30d,
-    openRate: safeRate(opened30d),
-    clickRate: safeRate(clicked30d),
-    bounceRate: safeRate(bounced30d),
+    openRate: overDelivered(opened30d),
+    clickRate: overDelivered(clicked30d),
+    bounceRate: overSent(bounced30d),
     sendableNow,
     prospectsTotal: prospectsTotal.count ?? 0,
     prospectsContacted: prospectsContacted.count ?? 0,

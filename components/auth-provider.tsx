@@ -21,11 +21,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true
 
-    const getUser = async () => {
+    // Seed from the locally-stored session (no network round-trip) so the
+    // sidebar/role UI can boot immediately. Middleware already validated the
+    // user server-side moments earlier; RLS + middleware remain the security
+    // boundary — this client value is for UI bootstrap only, never an authz
+    // check. Token refresh + cross-tab sign-out still flow via
+    // onAuthStateChange below.
+    const seedUser = async () => {
       try {
-        const { data } = await supabase.auth.getUser()
+        const { data } = await supabase.auth.getSession()
         if (mounted) {
-          setUser(data?.user ?? null)
+          setUser(data?.session?.user ?? null)
         }
       } catch (e) {
         if (mounted) setUser(null)
@@ -34,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    getUser()
+    seedUser()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)

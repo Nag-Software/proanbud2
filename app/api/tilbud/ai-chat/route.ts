@@ -392,15 +392,22 @@ async function resolvePriceContext(
     .limit(10)
 
   const files = (fileData || []) as PriceFileSummary[]
+  // Scope the row fetch to exactly the files we loaded above. Otherwise, for a
+  // company with more files than the cap, rows from excluded files count toward
+  // the company total and the expectedRowCount early-break can stop before all
+  // rows of the *included* files are loaded — silently dropping prices (manual
+  // prices, each their own file, make crossing the cap far more likely).
+  const fileIds = files.map((file) => file.id)
   const expectedRowCount = files.reduce((sum, file) => sum + Math.max(file.row_count || 0, 0), 0)
 
   const allFetchedRows: DbPriceRow[] = []
   const batchSize = 1000
-  for (let offset = 0; ; offset += batchSize) {
+  for (let offset = 0; fileIds.length > 0; offset += batchSize) {
     const { data: batch } = await supabase
       .from("supplier_price_rows")
       .select("product, unit, net_price, list_price, category, nobb, supplier_sku, file_id, product_group_code")
       .eq("company_id", companyId)
+      .in("file_id", fileIds)
       .not("product", "is", null)
       .order("id", { ascending: true })
       .range(offset, offset + batchSize - 1)

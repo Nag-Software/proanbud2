@@ -13,12 +13,21 @@ import {
   ArrowRight,
   Search,
   ChevronRight,
+  Pencil,
+  PencilLine,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Select,
   SelectContent,
@@ -60,6 +69,7 @@ type PriceFile = {
   original_filename: string
   row_count: number
   status: "ready" | "error"
+  source?: "upload" | "manual"
   created_at: string
 }
 
@@ -281,6 +291,20 @@ function fmtDate(iso: string) {
   })
 }
 
+// ─── Manual price helpers ─────────────────────────────────────────────────────
+
+const MANUAL_UNIT_SUGGESTIONS = ["stk", "m", "m²", "lm", "kg", "l", "pk", "sekk", "rull", "pall", "time"]
+
+function parsePriceInput(value: string): number | null {
+  const normalized = value.replace(/\s/g, "").replace(/kr/gi, "").replace(",", ".")
+  const parsed = Number.parseFloat(normalized)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+}
+
+function fmtPrice(value: number) {
+  return value.toLocaleString("no-NO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 // ─── Stepper ─────────────────────────────────────────────────────────────────
 
 const STEPS = ["Last opp", "Kolonner", "Bekreft"] as const
@@ -358,6 +382,17 @@ export function PrisfilerPage() {
   const [viewerHasMore, setViewerHasMore] = useState(false)
   const [viewerSearch, setViewerSearch] = useState("")
   const [viewerLoading, setViewerLoading] = useState(false)
+
+  // Manual price entry
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualEditId, setManualEditId] = useState<string | null>(null)
+  const [manualSupplierLocked, setManualSupplierLocked] = useState(false)
+  const [manualProduct, setManualProduct] = useState("")
+  const [manualPrice, setManualPrice] = useState("")
+  const [manualUnit, setManualUnit] = useState("")
+  const [manualSupplier, setManualSupplier] = useState("")
+  const [manualSaving, setManualSaving] = useState(false)
+  const [deletingRowId, setDeletingRowId] = useState<string | null>(null)
 
   useEffect(() => {
     loadFiles()
@@ -540,6 +575,133 @@ export function PrisfilerPage() {
     }
   }
 
+  // ── Manual price handlers ───────────────────────────────────────
+  function openManualCreate(supplier?: string) {
+    setManualEditId(null)
+    setManualProduct("")
+    setManualPrice("")
+    setManualUnit("")
+    setManualSupplier(supplier ?? "")
+    setManualSupplierLocked(!!supplier)
+    setManualOpen(true)
+  }
+
+  function openManualEdit(row: PriceRow, supplier: string) {
+    setManualEditId(row.id)
+    setManualProduct(row.product ?? "")
+    setManualPrice(row.list_price != null ? String(row.list_price) : "")
+    setManualUnit(row.unit ?? "")
+    setManualSupplier(supplier)
+    setManualSupplierLocked(true)
+    setManualOpen(true)
+  }
+
+  function closeManual() {
+    if (manualSaving) return
+    setManualOpen(false)
+  }
+
+  async function handleManualSave() {
+    const produkt = manualProduct.trim()
+    const leverandor = manualSupplier.trim()
+    const enhetspris = parsePriceInput(manualPrice)
+
+    if (!produkt) {
+      toast.error("Produktnavn er påkrevd.")
+      return
+    }
+    if (enhetspris == null) {
+      toast.error("Oppgi en gyldig enhetspris.")
+      return
+    }
+    if (!manualEditId && !leverandor) {
+      toast.error("Leverandør er påkrevd.")
+      return
+    }
+
+    setManualSaving(true)
+    try {
+      const isEdit = !!manualEditId
+      const res = await fetch("/api/mine-priser/prisfiler/manual", {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          isEdit
+            ? { rowId: manualEditId, produkt, enhetspris, enhet: manualUnit.trim() }
+            : { produkt, enhetspris, enhet: manualUnit.trim(), leverandor }
+        ),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error ?? "Kunne ikke lagre prisen")
+        return
+      }
+
+      const savedRow = data.row as PriceRow | undefined
+
+      if (isEdit) {
+        // With an active search filter the edited product may no longer match,
+        // so re-fetch instead of patching the row in place (mirrors create).
+        if (viewerFile && viewerSearch.trim()) {
+          await fetchViewerRows(viewerFile.id, 0, viewerSearch)
+        } else if (savedRow) {
+          setViewerRows((prev) => prev.map((r) => (r.id === savedRow.id ? savedRow : r)))
+        }
+        toast.success("Prisen ble oppdatert")
+      } else {
+        toast.success(`Pris lagt til for ${leverandor}`)
+        // Refresh the open viewer if we just added to the file being viewed.
+        if (viewerFile && data.fileId === viewerFile.id) {
+          await fetchViewerRows(viewerFile.id, 0, viewerSearch)
+          if (typeof data.rowCount === "number") {
+            setViewerFile((prev) => (prev ? { ...prev, row_count: data.rowCount } : prev))
+          }
+        }
+      }
+
+      await loadFiles()
+      setManualOpen(false)
+    } catch {
+      toast.error("Noe gikk galt. Prøv igjen.")
+    } finally {
+      setManualSaving(false)
+    }
+  }
+
+  async function handleDeleteManualRow(row: PriceRow) {
+    const confirmed = await confirm({
+      title: "Slette pris?",
+      description: row.product
+        ? `"${row.product}" fjernes permanent fra de manuelle prisene.`
+        : "Prisen fjernes permanent.",
+      confirmText: "Slett pris",
+      variant: "destructive",
+    })
+    if (!confirmed) return
+
+    setDeletingRowId(row.id)
+    try {
+      const res = await fetch(`/api/mine-priser/prisfiler/manual?rowId=${row.id}`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error ?? "Kunne ikke slette prisen")
+        return
+      }
+      setViewerRows((prev) => prev.filter((r) => r.id !== row.id))
+      toast.success("Pris slettet")
+      if (data.fileDeleted) {
+        setViewerFile(null)
+      } else if (viewerFile && typeof data.rowCount === "number") {
+        setViewerFile((prev) => (prev ? { ...prev, row_count: data.rowCount } : prev))
+      }
+      await loadFiles()
+    } catch {
+      toast.error("Noe gikk galt")
+    } finally {
+      setDeletingRowId(null)
+    }
+  }
+
   const mappedCount = Object.values(columnMapping).filter((v) => v !== "ignore").length
   const previewRows = parsedData?.rows.slice(0, 3) ?? []
   const totalRows = parsedData?.rows.length ?? 0
@@ -555,10 +717,16 @@ export function PrisfilerPage() {
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Mine Priser</p>
           <h1 className="text-2xl font-semibold tracking-tight">Prisfiler</h1>
         </div>
-        <Button className="px-4 h-9" onClick={() => { resetWizard(); setOpen(true) }}>
-          <Plus className="mr-2 h-4 w-4" />
-          Last opp prisfil
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button variant="outline" className="px-4 h-9" onClick={() => openManualCreate()}>
+            <PencilLine className="mr-2 h-4 w-4" />
+            Legg til pris manuelt
+          </Button>
+          <Button className="px-4 h-9" onClick={() => { resetWizard(); setOpen(true) }}>
+            <Plus className="mr-2 h-4 w-4" />
+            Last opp prisfil
+          </Button>
+        </div>
       </div>
 
       {/* ── File list ────────────────────────────────────── */}
@@ -575,17 +743,19 @@ export function PrisfilerPage() {
           </div>
           <p className="text-sm font-medium">Ingen prisfiler ennå</p>
           <p className="max-w-xs text-sm text-muted-foreground">
-            Last opp en prisfil fra byggevarehandleren din. Den brukes automatisk til å hente
-            riktige priser når du lager tilbud.
+            Last opp en prisfil fra byggevarehandleren din, eller legg inn enkeltpriser manuelt. De
+            brukes automatisk til å hente riktige priser når du lager tilbud.
           </p>
-          <Button
-            variant="outline"
-            className="mt-2"
-            onClick={() => { resetWizard(); setOpen(true) }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Last opp din første prisfil
-          </Button>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+            <Button onClick={() => { resetWizard(); setOpen(true) }}>
+              <Plus className="mr-2 h-4 w-4" />
+              Last opp din første prisfil
+            </Button>
+            <Button variant="outline" onClick={() => openManualCreate()}>
+              <PencilLine className="mr-2 h-4 w-4" />
+              Legg til pris manuelt
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -627,15 +797,18 @@ export function PrisfilerPage() {
 
                   <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span className="tabular-nums">
-                      {file.row_count.toLocaleString("no-NO")} produkter
+                      {file.row_count.toLocaleString("no-NO")} {file.row_count === 1 ? "produkt" : "produkter"}
                     </span>
                     <span className="tabular-nums">{fmtDate(file.created_at)}</span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between border-t border-border/50 bg-muted/25 px-3.5 py-2">
-                  <Badge variant="secondary" className="text-[10px] font-medium uppercase tracking-[0.12em]">
-                    Klar
+                  <Badge
+                    variant={file.source === "manual" ? "outline" : "secondary"}
+                    className="text-[10px] font-medium uppercase tracking-[0.12em]"
+                  >
+                    {file.source === "manual" ? "Manuell" : "Klar"}
                   </Badge>
                   <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
                 </div>
@@ -654,14 +827,26 @@ export function PrisfilerPage() {
                 supplier={viewerFile ? findSupplier(viewerFile.supplier_name) : null}
                 className="h-10 w-[5.5rem] shrink-0"
               />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <SheetTitle className="truncate text-sm font-semibold leading-tight">
                   {viewerFile?.supplier_name}
                 </SheetTitle>
                 <p className="truncate text-xs text-muted-foreground">
-                  {viewerFile?.original_filename} · {viewerFile?.row_count.toLocaleString("no-NO")} produkter
+                  {viewerFile?.source === "manual" ? "Manuelle priser" : viewerFile?.original_filename} ·{" "}
+                  {viewerFile?.row_count.toLocaleString("no-NO")}{" "}
+                  {viewerFile?.row_count === 1 ? "produkt" : "produkter"}
                 </p>
               </div>
+              {viewerFile?.source === "manual" && (
+                <Button
+                  size="sm"
+                  className="h-8 shrink-0"
+                  onClick={() => openManualCreate(viewerFile.supplier_name)}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Legg til pris
+                </Button>
+              )}
             </div>
             <div className="relative mt-3">
               <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -683,6 +868,91 @@ export function PrisfilerPage() {
               <div className="flex h-40 flex-col items-center justify-center gap-2 text-center">
                 <p className="text-sm text-muted-foreground">Ingen produkter funnet</p>
               </div>
+            ) : viewerFile?.source === "manual" ? (
+              <>
+              <table className="hidden w-full text-xs md:table">
+                <thead className="sticky top-0 border-b bg-muted/60 backdrop-blur">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Produktnavn</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Enhet</th>
+                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Enhetspris</th>
+                    <th className="w-[84px] px-4 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {viewerRows.map((row, i) => (
+                    <tr key={row.id} className={i % 2 === 1 ? "bg-muted/20" : ""}>
+                      <td className="max-w-[280px] truncate px-4 py-2 font-medium">{row.product ?? "—"}</td>
+                      <td className="px-4 py-2 text-muted-foreground">{row.unit ?? "—"}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">
+                        {row.list_price != null ? fmtPrice(row.list_price) : "—"}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex items-center justify-end gap-0.5">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => openManualEdit(row, viewerFile?.supplier_name ?? "")}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            disabled={deletingRowId === row.id}
+                            onClick={() => handleDeleteManualRow(row)}
+                          >
+                            {deletingRowId === row.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="divide-y md:hidden">
+                {viewerRows.map((row) => (
+                  <div key={row.id} className="flex items-center justify-between gap-2 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{row.product ?? "—"}</p>
+                      <p className="mt-1 text-sm tabular-nums text-muted-foreground">
+                        {row.list_price != null ? `${fmtPrice(row.list_price)} kr` : "—"}
+                        {row.unit ? ` / ${row.unit}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => openManualEdit(row, viewerFile?.supplier_name ?? "")}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        disabled={deletingRowId === row.id}
+                        onClick={() => handleDeleteManualRow(row)}
+                      >
+                        {deletingRowId === row.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              </>
             ) : (
               <>
               <table className="hidden w-full text-xs md:table">
@@ -1049,6 +1319,102 @@ export function PrisfilerPage() {
               </Button>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Manual price dialog ──────────────────────────── */}
+      <Dialog open={manualOpen} onOpenChange={(v) => { if (v) setManualOpen(true); else closeManual() }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{manualEditId ? "Rediger pris" : "Legg til pris manuelt"}</DialogTitle>
+            <DialogDescription>
+              {manualEditId
+                ? "Oppdater produkt, enhet eller enhetspris."
+                : "Legg inn en enkeltpris. Den brukes på lik linje med prisene fra opplastede prisfiler når du lager tilbud."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="manual-product">Produkt</Label>
+              <Input
+                id="manual-product"
+                placeholder="F.eks. Gipsplate 13 mm"
+                value={manualProduct}
+                onChange={(e) => setManualProduct(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="manual-price">Enhetspris (kr)</Label>
+                <Input
+                  id="manual-price"
+                  inputMode="decimal"
+                  placeholder="129,90"
+                  value={manualPrice}
+                  onChange={(e) => setManualPrice(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="manual-unit">
+                  Enhet <span className="font-normal text-muted-foreground">(valgfritt)</span>
+                </Label>
+                <Input
+                  id="manual-unit"
+                  list="manual-unit-suggestions"
+                  placeholder="stk"
+                  value={manualUnit}
+                  onChange={(e) => setManualUnit(e.target.value)}
+                />
+                <datalist id="manual-unit-suggestions">
+                  {MANUAL_UNIT_SUGGESTIONS.map((u) => (
+                    <option key={u} value={u} />
+                  ))}
+                </datalist>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="manual-supplier">Leverandør</Label>
+              <Input
+                id="manual-supplier"
+                list="manual-supplier-suggestions"
+                placeholder="F.eks. Biltema"
+                value={manualSupplier}
+                onChange={(e) => setManualSupplier(e.target.value)}
+                disabled={manualSupplierLocked}
+              />
+              {!manualSupplierLocked && (
+                <datalist id="manual-supplier-suggestions">
+                  {Array.from(
+                    new Set([...SUPPLIERS.map((s) => s.name), ...files.map((f) => f.supplier_name)])
+                  ).map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              )}
+              {manualSupplierLocked && (
+                <p className="text-xs text-muted-foreground">
+                  {manualEditId
+                    ? "Leverandør kan ikke endres her – slett og legg til på nytt for å bytte."
+                    : `Legges til under «${manualSupplier}».`}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeManual} disabled={manualSaving}>
+              Avbryt
+            </Button>
+            <Button onClick={handleManualSave} disabled={manualSaving}>
+              {manualSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : manualEditId ? (
+                "Lagre endringer"
+              ) : (
+                "Legg til pris"
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

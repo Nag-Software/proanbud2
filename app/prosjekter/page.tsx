@@ -24,7 +24,10 @@ export default async function Page({
 
   let queryBuilder = supabase
     .from("projects")
-    .select("*, customers(name,email,phone), tasks(status)")
+    // Narrowed to the columns ProjectRow/ProjectCard actually use. The previous
+    // `tasks(status)` embed was dead (no consumer reads it) and scaled the query
+    // with task count, and `*` pulled unused wide columns on a primary nav target.
+    .select("id, name, status, customer_id, budget_nok, start_date, end_date, updated_at, customers(name,email,phone)")
 
   if (params.status && params.status !== "all") {
     queryBuilder = queryBuilder.eq("status", params.status)

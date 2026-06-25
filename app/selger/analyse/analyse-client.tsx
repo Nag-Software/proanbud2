@@ -80,12 +80,12 @@ export function OutreachAnalyseClient({ metrics }: { metrics: OutreachMetrics })
               <StatCard
                 label="Åpningsrate"
                 value={pct(metrics.openRate)}
-                hint={`${metrics.opened30d} åpnet`}
+                hint={`${metrics.opened30d} av ${metrics.delivered30d} levert`}
               />
               <StatCard
                 label="Klikkrate"
                 value={pct(metrics.clickRate)}
-                hint={`${metrics.clicked30d} klikket`}
+                hint={`${metrics.clicked30d} av ${metrics.delivered30d} levert`}
                 tone={metrics.clickRate > 0 ? "success" : "default"}
               />
               <StatCard

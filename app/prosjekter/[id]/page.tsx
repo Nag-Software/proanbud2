@@ -8,7 +8,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 import { ModuleGate } from "@/components/billing/module-gate"
 import { PlanGate } from "@/components/billing/plan-gate"
 import { Button } from "@/components/ui/button"
-import { TabsContent } from "@/components/responsive-tabs"
+import { ProjectTabPanel } from "./project-tab-panel"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { getCompanyPlanAndModules, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
@@ -82,7 +82,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       .select("id, title, status, priority, due_date, assigned_to")
       .eq("project_id", resolvedParams.id)
       .order("due_date"),
-    supabase.from("offers").select("*").eq("project_id", resolvedParams.id),
+    supabase
+      .from("offers")
+      .select("id, title, description, amount_nok, status, created_at, analysis_result")
+      .eq("project_id", resolvedParams.id),
     supabase
       .from("project_members")
       .select("access_level, users(id, email, full_name, role)")
@@ -219,7 +222,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               { value: "deltakere", label: "Deltakere", hidden: isWorker },
             ]}
           >
-            <TabsContent value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+            <ProjectTabPanel value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
               <ProjectOverviewTab
                 projectId={project.id}
                 project={{
@@ -255,9 +258,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   hasTimeforing,
                 }}
               />
-            </TabsContent>
+            </ProjectTabPanel>
 
-            <TabsContent value="tilbud">
+            <ProjectTabPanel value="tilbud">
               <TilbudTab
                 projectId={project.id}
                 projectName={project.name}
@@ -265,9 +268,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 offers={offers}
                 readOnly={isWorker}
               />
-            </TabsContent>
+            </ProjectTabPanel>
 
-            <TabsContent value="oppgaver">
+            <ProjectTabPanel value="oppgaver">
               {hasTasks ? (
                 <OppgaverTab projectId={project.id} canManageTasks={isProjectAdmin || isWorker} />
               ) : (
@@ -276,13 +279,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   description="Planlegg og følg opp oppgaver direkte på prosjektet."
                 />
               )}
-            </TabsContent>
+            </ProjectTabPanel>
 
-            <TabsContent value="filer">
+            <ProjectTabPanel value="filer">
               <ProjectDocumentsTab projectId={project.id} />
-            </TabsContent>
+            </ProjectTabPanel>
 
-            <TabsContent value="timeforing">
+            <ProjectTabPanel value="timeforing">
               {hasTimeforing ? (
                 <TimeforingTab projectId={project.id} canViewAllEntries={isProjectAdmin} />
               ) : (
@@ -292,16 +295,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   description="Registrer og følg arbeidstimer direkte på prosjektet."
                 />
               )}
-            </TabsContent>
+            </ProjectTabPanel>
 
             {!isWorker && (
-              <TabsContent value="lonnsomhet">
+              <ProjectTabPanel value="lonnsomhet">
                 <EtterkalkyleTab projectId={project.id} canManage={!isWorker} />
-              </TabsContent>
+              </ProjectTabPanel>
             )}
 
             {!isWorker && (
-              <TabsContent value="ks">
+              <ProjectTabPanel value="ks">
                 {hasKs ? (
                   <KsTab projectId={project.id} checklists={projectChecklists} />
                 ) : (
@@ -310,10 +313,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                     description="Kvalitetssikre prosjektet med sjekklister og maler."
                   />
                 )}
-              </TabsContent>
+              </ProjectTabPanel>
             )}
 
-            <TabsContent value="avvik">
+            <ProjectTabPanel value="avvik">
               {hasAvvik ? (
                 <AvvikTab projectId={project.id} deviations={projectDeviations} />
               ) : (
@@ -322,17 +325,17 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   description="Registrer og følg opp avvik på prosjektet."
                 />
               )}
-            </TabsContent>
+            </ProjectTabPanel>
 
             {!isWorker && (
-              <TabsContent value="deltakere">
+              <ProjectTabPanel value="deltakere">
                 <DeltakereTab
                   projectId={project.id}
                   initialParticipants={projectDeltakere}
                   isProjectAdmin={isProjectAdmin}
                   participantHours={participantHours}
                 />
-              </TabsContent>
+              </ProjectTabPanel>
             )}
           </ProjectTabsShell>
         </Suspense>

@@ -61,8 +61,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const origin = new URL(request.url).origin
   const unsubscribeUrl = `${origin}/api/outreach/unsubscribe?p=${prospect.id}`
 
+  let providerMessageId: string | null = null
   try {
-    await sendOutreachEmail({ to: prospect.email, subject, body: bodyText, unsubscribeUrl })
+    const sent = await sendOutreachEmail({ to: prospect.email, subject, body: bodyText, unsubscribeUrl })
+    providerMessageId = sent.providerMessageId
   } catch (error) {
     console.error("[outreach/drafts approve] send failed", error)
     return NextResponse.json({ error: "Kunne ikke sende e-post" }, { status: 502 })
@@ -96,6 +98,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     templateId: "outreach-cold",
     recipientEmail: prospect.email,
     companyId: null,
+    providerMessageId,
   })
   await logSellerActivity({
     sellerUserId: auth.user!.id,

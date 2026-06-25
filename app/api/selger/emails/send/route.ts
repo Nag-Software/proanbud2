@@ -59,7 +59,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Ukjent e-postmal" }, { status: 400 })
     }
 
-    const { error: sendError } = await resend.emails.send({
+    const { data: sent, error: sendError } = await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <post@proanbud.no>",
       to: normalizedEmail,
       subject: rendered.subject,
@@ -75,6 +75,7 @@ export async function POST(request: Request) {
       templateId: template_id,
       recipientEmail: normalizedEmail,
       companyId: company_id ?? null,
+      providerMessageId: sent?.id ?? null,
     })
 
     await logSellerActivity({

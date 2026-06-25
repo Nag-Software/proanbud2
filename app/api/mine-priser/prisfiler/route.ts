@@ -30,7 +30,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from("supplier_price_files")
-      .select("id, supplier_name, original_filename, row_count, status, created_at")
+      .select("id, supplier_name, original_filename, row_count, status, source, created_at")
       .order("created_at", { ascending: false })
 
     if (error) {
