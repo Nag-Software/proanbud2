@@ -9,6 +9,7 @@ import { RoleProvider } from "@/components/role-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { ConfirmProvider } from "@/components/ui/confirm-dialog"
 import { PwaRegister } from "@/components/pwa-register"
+import { NativeAuthBridge } from "@/components/native-auth-bridge"
 import { MockRoleBanner } from "@/components/dev/mock-role-banner"
 import { Analytics } from "@vercel/analytics/next"
 
@@ -75,6 +76,7 @@ export default function RootLayout({
         </TooltipProvider>
         <Toaster richColors closeButton />
         <PwaRegister />
+        <NativeAuthBridge />
         <MockRoleBanner />
         <Analytics />
       </body>

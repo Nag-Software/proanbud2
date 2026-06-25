@@ -66,6 +66,29 @@ export async function GET(request: Request) {
       await supabase.from("user_profiles").upsert({ user_id: user.id, avatar_url: avatar })
     }
 
+    // Native app (Expo WebView) handoff: if this OAuth flow was started from the
+    // app (pa_oauth_native cookie set by /start?native=1), hand the session back
+    // via the proanbud:// deep link so the app can inject it into its WebView.
+    // The tokens go in the URL fragment (#) so they are never sent to a server.
+    const isNative =
+      (request as Request & { cookies: { get(name: string): { value: string } | undefined } }).cookies.get(
+        "pa_oauth_native"
+      )?.value === "1"
+    if (isNative && data?.session) {
+      const fragment = new URLSearchParams({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      }).toString()
+      const deepLink = `proanbud://auth#${fragment}`
+      // Raw 302 (not NextResponse.redirect) so the custom scheme isn't rejected.
+      const response = new NextResponse(null, {
+        status: 302,
+        headers: { Location: deepLink },
+      })
+      response.cookies.set("pa_oauth_native", "", { path: "/", maxAge: 0 })
+      return response
+    }
+
     const redirectUrl = `${url.origin}/`
     const response = NextResponse.redirect(redirectUrl)
     pendingCookies.forEach(({ name, value, options }) => response.cookies.set(name, value, options))

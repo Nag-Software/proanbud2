@@ -6,6 +6,7 @@ import { Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { completeClientLogin } from "@/lib/auth/client-login"
+import { startGoogleLogin } from "@/lib/native-bridge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -83,7 +84,7 @@ function LoginFormInner({
                   type="button"
                   disabled={loading}
                   onClick={() => {
-                    window.location.href = '/api/auth/google/start'
+                    startGoogleLogin()
                   }}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
