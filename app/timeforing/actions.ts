@@ -183,6 +183,75 @@ export async function stopWorkSessionAction(projectId: string) {
   return data
 }
 
+export async function addManualTimeEntryAction(
+  projectId: string,
+  input: { entryDate: string; startedAt: string; endedAt: string; description?: string }
+) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+
+  const { companyId } = await getEffectiveRole(supabase, user.id)
+  if (!companyId) {
+    throw new Error("Kunne ikke hente bedriftsinformasjon")
+  }
+
+  await assertCompanyHasModule(companyId, TIMEFORING_MODULE, "Timeføring")
+
+  const startedAt = new Date(input.startedAt)
+  const endedAt = new Date(input.endedAt)
+
+  if (Number.isNaN(startedAt.getTime()) || Number.isNaN(endedAt.getTime())) {
+    throw new Error("Ugyldig tidspunkt")
+  }
+
+  const diffHours = (endedAt.getTime() - startedAt.getTime()) / (1000 * 60 * 60)
+  if (diffHours <= 0) {
+    throw new Error("Sluttid må være etter starttid")
+  }
+  if (diffHours > 24) {
+    throw new Error("En arbeidsøkt kan ikke være lengre enn 24 timer")
+  }
+
+  const hours = Math.round(diffHours * 100) / 100
+  if (hours <= 0) {
+    throw new Error("Tidsrommet er for kort")
+  }
+
+  const entryDate = /^\d{4}-\d{2}-\d{2}$/.test(input.entryDate)
+    ? input.entryDate
+    : startedAt.toISOString().slice(0, 10)
+
+  const { data, error } = await supabase
+    .from("time_entries")
+    .insert({
+      project_id: projectId,
+      user_id: user.id,
+      company_id: companyId,
+      entry_date: entryDate,
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString(),
+      hours,
+      description: input.description?.trim() || null,
+    })
+    .select("id, project_id, user_id, started_at, ended_at, hours, description, entry_date")
+    .single()
+
+  if (error) {
+    console.error("Error adding manual time entry:", error)
+    throw new Error("Kunne ikke lagre timeføring")
+  }
+
+  revalidatePath(`/prosjekter/${projectId}`)
+  revalidatePath("/min-bedrift/timeforing")
+  return data
+}
+
 export async function getProjectTimeEntriesAction(projectId: string, viewAll = false) {
   const supabase = await createClient()
   const {

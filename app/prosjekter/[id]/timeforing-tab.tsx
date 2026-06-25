@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useState } from "react"
 import { format } from "date-fns"
 import { nb } from "date-fns/locale"
-import { Clock, Play, Square } from "lucide-react"
+import { Clock, Pencil, Play, Square } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {
+  addManualTimeEntryAction,
   getActiveWorkSessionAction,
   getProjectTimeEntriesAction,
   startWorkSessionAction,
@@ -32,6 +34,28 @@ type ActiveSession = {
   entry_date: string
 }
 
+function pad2(value: number) {
+  return String(value).padStart(2, "0")
+}
+
+function todayLocalISODate() {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+}
+
+/** Build a Date in the browser's local timezone from a `YYYY-MM-DD` date and `HH:mm` time. */
+function buildLocalDateTime(dateStr: string, timeStr: string): Date | null {
+  const dateParts = dateStr.split("-").map(Number)
+  const timeParts = timeStr.split(":").map(Number)
+  if (dateParts.length !== 3 || timeParts.length < 2) return null
+
+  const [year, month, day] = dateParts
+  const [hour, minute] = timeParts
+  if ([year, month, day, hour, minute].some((n) => Number.isNaN(n))) return null
+
+  return new Date(year, month - 1, day, hour, minute, 0, 0)
+}
+
 export default function TimeforingTab({
   projectId,
   canViewAllEntries = false,
@@ -46,6 +70,14 @@ export default function TimeforingTab({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastSavedHours, setLastSavedHours] = useState<number | null>(null)
+
+  const [showManual, setShowManual] = useState(false)
+  const [manualDate, setManualDate] = useState("")
+  const [manualFrom, setManualFrom] = useState("07:00")
+  const [manualTo, setManualTo] = useState("15:00")
+  const [manualNote, setManualNote] = useState("")
+  const [manualError, setManualError] = useState<string | null>(null)
+  const [manualSubmitting, setManualSubmitting] = useState(false)
 
   const loadData = useCallback(async () => {
     const [session, completedEntries] = await Promise.all([
@@ -82,6 +114,11 @@ export default function TimeforingTab({
   const totalHours = sumHours(entries)
   const isWorking = Boolean(activeSession)
 
+  const manualStart = manualDate ? buildLocalDateTime(manualDate, manualFrom) : null
+  const manualEnd = manualDate ? buildLocalDateTime(manualDate, manualTo) : null
+  const manualHours =
+    manualStart && manualEnd ? (manualEnd.getTime() - manualStart.getTime()) / 3_600_000 : null
+
   async function handleStart() {
     setError(null)
     setLastSavedHours(null)
@@ -114,67 +151,206 @@ export default function TimeforingTab({
     }
   }
 
+  function handleToggleManual() {
+    setManualError(null)
+    setShowManual((open) => {
+      const next = !open
+      if (next && !manualDate) {
+        setManualDate(todayLocalISODate())
+      }
+      return next
+    })
+  }
+
+  async function handleSaveManual() {
+    setManualError(null)
+
+    const start = buildLocalDateTime(manualDate, manualFrom)
+    const end = buildLocalDateTime(manualDate, manualTo)
+
+    if (!start || !end) {
+      setManualError("Fyll inn dato, fra og til")
+      return
+    }
+
+    const diffHours = (end.getTime() - start.getTime()) / 3_600_000
+    if (diffHours <= 0) {
+      setManualError("Sluttid må være etter starttid")
+      return
+    }
+    if (diffHours > 24) {
+      setManualError("En arbeidsøkt kan ikke være lengre enn 24 timer")
+      return
+    }
+
+    setManualSubmitting(true)
+    try {
+      const saved = await addManualTimeEntryAction(projectId, {
+        entryDate: manualDate,
+        startedAt: start.toISOString(),
+        endedAt: end.toISOString(),
+        description: manualNote,
+      })
+      setLastSavedHours(Number(saved.hours || 0))
+      setManualNote("")
+      setShowManual(false)
+      await loadData()
+    } catch (saveError) {
+      setManualError(saveError instanceof Error ? saveError.message : "Kunne ikke lagre timeføring")
+    } finally {
+      setManualSubmitting(false)
+    }
+  }
+
   return (
     <div className="grid gap-4 xl:grid-cols-[380px_1fr]">
-      <div className="space-y-4 rounded-lg border p-5">
-        <div className="flex items-center gap-2">
-          <Clock className="h-5 w-5 text-primary" />
-          <div>
-            <h3 className="font-semibold">Arbeidstimer</h3>
-            <p className="text-sm text-muted-foreground">Start og stopp arbeid — lagres automatisk ved avslutt</p>
+      <div className="space-y-4">
+        <div className="space-y-4 rounded-lg border p-5">
+          <div className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-primary" />
+            <div>
+              <h3 className="font-semibold">Arbeidstimer</h3>
+              <p className="text-sm text-muted-foreground">
+                Start og stopp arbeid — lagres automatisk ved avslutt
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-muted/30 px-4 py-6 text-center">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Aktiv tid</p>
+            <p className="mt-2 text-4xl font-semibold tabular-nums">{elapsedLabel}</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {isWorking
+                ? `Startet ${format(new Date(activeSession!.started_at), "HH:mm", { locale: nb })}`
+                : "Ingen aktiv økt"}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="work-description">Notat (valgfritt)</Label>
+            <Textarea
+              id="work-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Hva jobber du med?"
+              rows={3}
+              disabled={isWorking || isSubmitting}
+            />
+          </div>
+
+          {lastSavedHours !== null && (
+            <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              Lagret: {formatHours(lastSavedHours)}
+            </div>
+          )}
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button
+              type="button"
+              className="gap-2"
+              onClick={handleStart}
+              disabled={isWorking || isSubmitting}
+            >
+              <Play className="h-4 w-4" />
+              Start arbeid
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="gap-2"
+              onClick={handleStop}
+              disabled={!isWorking || isSubmitting}
+            >
+              <Square className="h-4 w-4" />
+              Avslutt arbeid
+            </Button>
           </div>
         </div>
 
-        <div className="rounded-lg border bg-muted/30 px-4 py-6 text-center">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Aktiv tid</p>
-          <p className="mt-2 text-4xl font-semibold tabular-nums">{elapsedLabel}</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {isWorking
-              ? `Startet ${format(new Date(activeSession!.started_at), "HH:mm", { locale: nb })}`
-              : "Ingen aktiv økt"}
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="work-description">Notat (valgfritt)</Label>
-          <Textarea
-            id="work-description"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="Hva jobber du med?"
-            rows={3}
-            disabled={isWorking || isSubmitting}
-          />
-        </div>
-
-        {lastSavedHours !== null && (
-          <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-            Lagret automatisk: {formatHours(lastSavedHours)}
-          </div>
-        )}
-
-        {error && <p className="text-sm text-destructive">{error}</p>}
-
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Button
+        <div className="space-y-4 rounded-lg border p-5">
+          <button
             type="button"
-            className="gap-2"
-            onClick={handleStart}
-            disabled={isWorking || isSubmitting}
+            onClick={handleToggleManual}
+            className="flex w-full items-center gap-2 text-left"
           >
-            <Play className="h-4 w-4" />
-            Start arbeid
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            className="gap-2"
-            onClick={handleStop}
-            disabled={!isWorking || isSubmitting}
-          >
-            <Square className="h-4 w-4" />
-            Avslutt arbeid
-          </Button>
+            <Pencil className="h-5 w-5 text-primary" />
+            <div>
+              <h3 className="font-semibold">Registrer timer manuelt</h3>
+              <p className="text-sm text-muted-foreground">
+                Før opp arbeid i ettertid — velg dato og tidsrom
+              </p>
+            </div>
+          </button>
+
+          {showManual && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="manual-date">Dato</Label>
+                <Input
+                  id="manual-date"
+                  type="date"
+                  value={manualDate}
+                  max={todayLocalISODate()}
+                  onChange={(event) => setManualDate(event.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="manual-from">Fra</Label>
+                  <Input
+                    id="manual-from"
+                    type="time"
+                    value={manualFrom}
+                    onChange={(event) => setManualFrom(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="manual-to">Til</Label>
+                  <Input
+                    id="manual-to"
+                    type="time"
+                    value={manualTo}
+                    onChange={(event) => setManualTo(event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="manual-note">Notat (valgfritt)</Label>
+                <Textarea
+                  id="manual-note"
+                  value={manualNote}
+                  onChange={(event) => setManualNote(event.target.value)}
+                  placeholder="Hva jobbet du med?"
+                  rows={2}
+                />
+              </div>
+
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                {manualHours && manualHours > 0 ? (
+                  <span>
+                    Beregnet: <span className="font-semibold">{formatHours(manualHours)}</span>
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">Velg gyldig tidsrom for å beregne timer</span>
+                )}
+              </div>
+
+              {manualError && <p className="text-sm text-destructive">{manualError}</p>}
+
+              <Button
+                type="button"
+                className="w-full"
+                onClick={handleSaveManual}
+                disabled={manualSubmitting}
+              >
+                {manualSubmitting ? "Lagrer …" : "Lagre timeføring"}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -182,7 +358,7 @@ export default function TimeforingTab({
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div>
             <h3 className="font-semibold">
-              {canViewAllEntries ? "Timeføring per prosjekt (automatisk)" : "Mine registrerte timer"}
+              {canViewAllEntries ? "Timeføring per prosjekt" : "Mine registrerte timer"}
             </h3>
             <p className="text-sm text-muted-foreground">Totalt {formatHours(totalHours)}</p>
           </div>
