@@ -459,27 +459,14 @@ export function CustomerOfferView({
           chatEnabled ? "lg:grid-cols-[minmax(0,1fr)_360px]" : ""
         } ${offer.canRespond ? "pb-32 lg:pb-6" : "pb-6"}`}
       >
-        <section className="space-y-3 sm:space-y-4">
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-6">
+        <section className="flex flex-col gap-3 sm:gap-4">
+          <div className="order-1 hidden rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-6 lg:block">
             <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{offer.title}</h1>
                 {offer.projectName ? <p className="mt-1 text-sm text-neutral-500">{offer.projectName}</p> : null}
               </div>
-              <div className="rounded-xl bg-neutral-50 px-4 py-3 sm:bg-transparent sm:p-0 sm:text-right">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">Total inkl. mva</p>
-                <p className="text-2xl font-semibold tabular-nums sm:text-xl">{formatNok(totalInclVat)}</p>
-              </div>
-            </div>
-
-            {offer.sourceSummary ? (
-              <p className="mt-4 rounded-xl bg-neutral-50 px-4 py-3 text-sm leading-relaxed text-neutral-700">
-                {offer.sourceSummary}
-              </p>
-            ) : null}
-
-            {offer.canRespond ? (
-              <div className="mt-5 hidden space-y-3 lg:block">
+              {offer.canRespond ? (
                 <div className="flex flex-wrap gap-3">
                   <Button onClick={() => respond("accept")} disabled={isResponding} className="min-w-[140px]">
                     <Check className="mr-2 h-4 w-4" />
@@ -490,14 +477,23 @@ export function CustomerOfferView({
                     Avslå
                   </Button>
                 </div>
-                <p className="text-xs text-neutral-500">
-                  Ved å godta bekrefter du at tilbudet er bindende og gjelder som avtale mellom deg og{" "}
-                  {offer.company.name || "bedriften"}.{" "}
-                  <a href="#bindende-tilbud" className="underline underline-offset-2">
-                    Les mer
-                  </a>
-                </p>
-              </div>
+              ) : null}
+            </div>
+
+            {offer.sourceSummary ? (
+              <p className="mt-4 rounded-xl bg-neutral-50 px-4 py-3 text-sm leading-relaxed text-neutral-700">
+                {offer.sourceSummary}
+              </p>
+            ) : null}
+
+            {offer.canRespond ? (
+              <p className="mt-4 text-xs text-neutral-500">
+                Ved å godta bekrefter du at tilbudet er bindende og gjelder som avtale mellom deg og{" "}
+                {offer.company.name || "bedriften"}.{" "}
+                <a href="#bindende-tilbud" className="underline underline-offset-2">
+                  Les mer
+                </a>
+              </p>
             ) : null}
 
             {offer.status === "accepted" ? (
@@ -515,7 +511,7 @@ export function CustomerOfferView({
 
           <div
             id="bindende-tilbud"
-            className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600"
+            className="order-last rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600"
           >
             <p className="font-medium text-neutral-900">Bindende tilbud</p>
             <p className="mt-1 leading-relaxed">
@@ -525,9 +521,11 @@ export function CustomerOfferView({
             </p>
           </div>
 
-          <PublicOfferMobileDocument offer={offer} totalInclVat={totalInclVat} />
+          <div className="order-2 lg:hidden">
+            <PublicOfferMobileDocument offer={offer} totalInclVat={totalInclVat} />
+          </div>
 
-          <div className="hidden overflow-x-auto rounded-2xl border border-neutral-200 bg-[#eceae4] p-3 shadow-sm sm:p-4 lg:block">
+          <div className="order-4 hidden overflow-x-auto rounded-2xl border border-neutral-200 bg-[#eceae4] p-3 shadow-sm sm:p-4 lg:block">
             <OfferDocumentPreview
               showSupplier={false}
               className="bg-transparent p-0"

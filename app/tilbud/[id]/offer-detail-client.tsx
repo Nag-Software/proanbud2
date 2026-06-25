@@ -28,7 +28,6 @@ import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-me
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
 import { formatOfferReference, type OfferDocumentData } from "@/lib/tilbud/offer-document"
 import { getOfferActivityTone, type OfferActivityEvent } from "@/lib/tilbud/offer-activity.shared"
-import { DEFAULT_PAYMENT_SCHEDULE, PRICING_MODEL_LABELS } from "@/lib/contracts/pricing"
 import {
   type OfferCompanyContext,
   type OfferContractBasis,
@@ -559,84 +558,6 @@ export function OfferDetailClient({
               </Select>
               <Input type="date" className="h-8 w-36 bg-background text-xs" value={toInputDate(offer.quoteValidUntil)} onChange={(e) => setOffer((prev) => ({ ...prev, quoteValidUntil: e.target.value || null }))} />
             </div>
-
-            <div className="grid gap-2 sm:grid-cols-3">
-              <div>
-                <Label className="text-[11px] text-muted-foreground">Vederlagsform</Label>
-                <Select
-                  value={offer.pricingModel}
-                  onValueChange={(value) =>
-                    setOffer((prev) => ({ ...prev, pricingModel: value as OfferPricingModel }))
-                  }
-                >
-                  <SelectTrigger className="mt-1 h-8 bg-background text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(PRICING_MODEL_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {offer.pricingModel === "time_materials" || offer.pricingModel === "mixed" ? (
-                <div>
-                  <Label className="text-[11px] text-muted-foreground">Påslag %</Label>
-                  <Input
-                    type="number"
-                    className="mt-1 h-8 bg-background text-xs"
-                    value={offer.markupPercent}
-                    onChange={(event) =>
-                      setOffer((prev) => ({
-                        ...prev,
-                        markupPercent: Number(event.target.value || 0),
-                      }))
-                    }
-                  />
-                </div>
-              ) : null}
-            </div>
-
-            {offer.pricingModel === "fixed" || offer.pricingModel === "mixed" ? (
-              <div className="rounded-md border bg-muted/20 p-3">
-                <Label className="text-[11px] text-muted-foreground">Avdragsplan</Label>
-                <div className="mt-2 space-y-2">
-                  {(offer.paymentSchedule.length ? offer.paymentSchedule : DEFAULT_PAYMENT_SCHEDULE).map((entry, index) => (
-                    <div key={index} className="grid gap-2 sm:grid-cols-3">
-                      <Input
-                        className="h-8 bg-background text-xs"
-                        value={entry.label}
-                        onChange={(event) => {
-                          const base = offer.paymentSchedule.length ? offer.paymentSchedule : DEFAULT_PAYMENT_SCHEDULE
-                          const next = [...base]
-                          next[index] = { ...entry, label: event.target.value }
-                          setOffer((prev) => ({ ...prev, paymentSchedule: next }))
-                        }}
-                      />
-                      <Input
-                        type="number"
-                        className="h-8 bg-background text-xs"
-                        value={entry.percent}
-                        onChange={(event) => {
-                          const base = offer.paymentSchedule.length ? offer.paymentSchedule : DEFAULT_PAYMENT_SCHEDULE
-                          const next = [...base]
-                          next[index] = { ...entry, percent: Number(event.target.value || 0) }
-                          setOffer((prev) => ({ ...prev, paymentSchedule: next }))
-                        }}
-                      />
-                      <Input
-                        className="h-8 bg-background text-xs"
-                        value={entry.dueDescription || ""}
-                        onChange={(event) => {
-                          const base = offer.paymentSchedule.length ? offer.paymentSchedule : DEFAULT_PAYMENT_SCHEDULE
-                          const next = [...base]
-                          next[index] = { ...entry, dueDescription: event.target.value }
-                          setOffer((prev) => ({ ...prev, paymentSchedule: next }))
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
 
             <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
               <Button onClick={sendOffer} disabled={isPending || isAutoSaving || lineItems.length === 0} className="h-11 sm:h-9">
