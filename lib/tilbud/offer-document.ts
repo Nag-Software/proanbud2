@@ -116,7 +116,7 @@ export function buildOfferEmailHtml(data: OfferDocumentData & { offerReference?:
       const itemRows = items
         .map((item) => {
           const description = item.description
-            ? `<span style="display:block;font-size:10px;color:#6b7280;line-height:1.2;">${escapeHtml(item.description.slice(0, 120))}${item.description.length > 120 ? "…" : ""}</span>`
+            ? `<span style="display:block;font-size:10px;color:#6b7280;line-height:1.4;white-space:pre-line;overflow-wrap:anywhere;">${escapeHtml(item.description)}</span>`
             : ""
           const supplier = item.supplier
             ? `<span style="display:block;font-size:10px;color:#9ca3af;">${escapeHtml(item.supplier)}</span>`
@@ -147,7 +147,7 @@ export function buildOfferEmailHtml(data: OfferDocumentData & { offerReference?:
     : ""
 
   const descriptionBlock = (data.projectSummary?.trim() || data.description?.trim())
-    ? `<p style="margin:8px 0 0;font-size:12px;color:#4b5563;line-height:1.5;">${escapeHtml((data.projectSummary?.trim() || data.description?.trim() || "").slice(0, 280))}${(data.projectSummary?.trim() || data.description?.trim() || "").length > 280 ? "…" : ""}</p>`
+    ? `<p style="margin:8px 0 0;font-size:12px;color:#4b5563;line-height:1.5;white-space:pre-line;overflow-wrap:anywhere;">${escapeHtml(data.projectSummary?.trim() || data.description?.trim() || "")}</p>`
     : ""
 
   return `
@@ -273,7 +273,7 @@ export function buildOfferDocumentSheet(data: OfferDocumentData, options: OfferD
       const itemRows = items
         .map((item) => {
           const description = item.description
-            ? `<span style="display:block;font-size:10px;color:#6b7280;line-height:1.3;">${escapeHtml(item.description.slice(0, 60))}${item.description.length > 60 ? "…" : ""}</span>`
+            ? `<span style="display:block;font-size:10px;color:#6b7280;line-height:1.4;white-space:pre-line;overflow-wrap:anywhere;">${escapeHtml(item.description)}</span>`
             : ""
           const supplier = showSupplier && item.supplier
             ? `<span style="display:block;font-size:10px;color:#9ca3af;">${escapeHtml(item.supplier)}</span>`
@@ -301,11 +301,11 @@ export function buildOfferDocumentSheet(data: OfferDocumentData, options: OfferD
 
   const projectText = (data.projectSummary?.trim() || data.description?.trim() || "")
   const descriptionBlock = projectText
-    ? `<p style="margin:8px 0 0;font-size:12px;color:#4b5563;line-height:1.5;">${escapeHtml(projectText.slice(0, 140))}${projectText.length > 140 ? "…" : ""}</p>`
+    ? `<p style="margin:8px 0 0;font-size:12px;color:#4b5563;line-height:1.5;white-space:pre-line;overflow-wrap:anywhere;">${escapeHtml(projectText)}</p>`
     : ""
   const quoteMessageText = data.quoteMessage?.trim() || ""
   const quoteMessageBlock = quoteMessageText
-    ? `<p style="margin:8px 0 0;font-size:12px;font-style:italic;color:#6b7280;">"${escapeHtml(quoteMessageText.slice(0, 100))}${quoteMessageText.length > 100 ? "…" : ""}"</p>`
+    ? `<p style="margin:8px 0 0;font-size:12px;font-style:italic;color:#6b7280;white-space:pre-line;overflow-wrap:anywhere;">"${escapeHtml(quoteMessageText)}"</p>`
     : ""
 
   return `

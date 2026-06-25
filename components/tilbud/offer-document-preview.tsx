@@ -85,15 +85,13 @@ export function OfferDocumentPreview({
             <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Prosjekt</p>
             <p className="font-semibold text-gray-900">{projectName || "—"}</p>
             {(projectSummary?.trim() || description?.trim()) ? (
-              <p className="mt-1 text-gray-600">
-                {(projectSummary?.trim() || description?.trim() || "").slice(0, 140)}
-                {(projectSummary?.trim() || description?.trim() || "").length > 140 ? "…" : ""}
+              <p className="mt-1 whitespace-pre-line break-words text-gray-600">
+                {projectSummary?.trim() || description?.trim() || ""}
               </p>
             ) : null}
             {quoteMessage?.trim() ? (
-              <p className="mt-2 italic leading-4 text-gray-500">
-                &quot;{quoteMessage.trim().slice(0, 100)}
-                {quoteMessage.trim().length > 100 ? "…" : ""}&quot;
+              <p className="mt-2 whitespace-pre-line break-words italic leading-5 text-gray-500">
+                &quot;{quoteMessage.trim()}&quot;
               </p>
             ) : null}
           </div>
@@ -124,9 +122,8 @@ export function OfferDocumentPreview({
                       <td className="py-1.5 pr-3 font-medium text-gray-900">
                         {item.title}
                         {item.description ? (
-                          <span className="block text-[10px] font-normal leading-3 text-gray-500">
-                            {item.description.slice(0, 60)}
-                            {item.description.length > 60 ? "…" : ""}
+                          <span className="block whitespace-pre-line break-words text-[10px] font-normal leading-[1.4] text-gray-500">
+                            {item.description}
                           </span>
                         ) : null}
                         {showSupplier && item.supplier ? (
