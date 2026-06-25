@@ -26,6 +26,18 @@ export async function handleOfferAccepted(input: {
     return { synced: false as const, reason: "offer_not_accepted" as const }
   }
 
+  // An accepted offer means work begins — move the project into execution.
+  // Only promote projects that are still in planning so we never override an
+  // intentionally paused/completed project.
+  if (offer.project_id) {
+    await admin
+      .from("projects")
+      .update({ status: "active", updated_at: new Date().toISOString() })
+      .eq("id", offer.project_id)
+      .eq("company_id", input.companyId)
+      .eq("status", "planning")
+  }
+
   if (offer.customer_id) {
     // Only one accounting provider is connected at a time; each enqueue no-ops when
     // its provider isn't the active one. For Fiken, phase "order" creates the invoice
