@@ -12,8 +12,11 @@ const patchSchema = z.object({
   logCall: z.boolean().optional(),
 })
 
+// Must stay in sync with the list route's select so a PATCHed row returned to the
+// client keeps every field ProspectRow renders (incl. engagement) and doesn't blank
+// out the flame/opens/clicks when a status change swaps it into state.
 const PROSPECT_SELECT =
-  "id, org_number, name, nace_code, nace_description, employee_count, website, email, phone, address, postal_code, city, kommune, kommune_number, enrichment_status, status, is_existing_customer, notes, last_contacted_at, created_at"
+  "id, org_number, name, nace_code, nace_description, employee_count, website, email, phone, address, postal_code, city, kommune, kommune_number, enrichment_status, status, is_existing_customer, notes, last_contacted_at, created_at, lead_score, open_count, click_count, is_hot, hot_since"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requirePlatformSellerForApi()

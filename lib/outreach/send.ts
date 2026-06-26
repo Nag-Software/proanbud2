@@ -40,6 +40,15 @@ export function getOutreachReplyToAddress(): string {
   )
 }
 
+/** Just the bare email address used for cold outreach (strips the "Proanbud <…>"
+ *  display-name wrapper), for showing the real sender in the seller UI instead of a
+ *  hardcoded post@proanbud.no. */
+export function getOutreachFromEmail(): string {
+  const from = getOutreachFromAddress()
+  const match = from.match(/<([^>]+)>/)
+  return (match ? match[1] : from).trim()
+}
+
 /** Signup/landing CTA the outreach invites recipients to. */
 export function getOutreachSignupUrl(): string {
   return process.env.OUTREACH_SIGNUP_URL?.trim() || "https://nye.proanbud.no/signup?utm_source=outreach"
@@ -50,9 +59,13 @@ export function getOutreachSignupUrl(): string {
  *  never exceeds a safe sending volume regardless of how the run is triggered. */
 export const OUTREACH_TEMPLATE_IDS = ["outreach-cold", "outreach-followup"] as const
 
-/** Daily send cap protecting sender reputation (cold + follow-up combined). */
+/** Daily send cap protecting sender reputation (cold + follow-up combined).
+ *  Default is deliberately conservative (50/day): cold outreach currently sends from
+ *  the main transactional domain (post@proanbud.no), so a high cold volume would put
+ *  tilbud/varsler deliverability at risk. Raise gradually via OUTREACH_DAILY_LIMIT as
+ *  the domain warms — see docs/cold-outreach-domain.md. */
 export function getOutreachDailyLimit(): number {
-  return Number(process.env.OUTREACH_DAILY_LIMIT) || 200
+  return Number(process.env.OUTREACH_DAILY_LIMIT) || 50
 }
 
 /** How many outreach emails (cold + follow-up) have been sent so far today (UTC). */

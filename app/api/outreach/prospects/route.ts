@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerActivity } from "@/lib/selger/activity-log"
 
 const PROSPECT_SELECT =
-  "id, org_number, name, nace_code, nace_description, employee_count, website, email, phone, address, postal_code, city, kommune, kommune_number, enrichment_status, status, is_existing_customer, notes, last_contacted_at, created_at"
+  "id, org_number, name, nace_code, nace_description, employee_count, website, email, phone, address, postal_code, city, kommune, kommune_number, enrichment_status, status, is_existing_customer, notes, last_contacted_at, created_at, lead_score, open_count, click_count, is_hot, hot_since"
 
 export async function GET(request: Request) {
   const auth = await requirePlatformSellerForApi()
@@ -19,8 +19,20 @@ export async function GET(request: Request) {
     .from("prospects")
     .select(PROSPECT_SELECT)
     .eq("is_existing_customer", false)
-    .order("created_at", { ascending: false })
     .limit(Math.min(Number(searchParams.get("limit") ?? 300), 1000))
+
+  // Sort: "hot" surfaces engaged leads (hottest, then highest score) first; default
+  // "recent" keeps the newest imports on top.
+  if (searchParams.get("sort") === "hot") {
+    query = query
+      .order("is_hot", { ascending: false })
+      .order("lead_score", { ascending: false })
+      .order("created_at", { ascending: false })
+  } else {
+    query = query.order("created_at", { ascending: false })
+  }
+
+  if (searchParams.get("hot") === "true") query = query.eq("is_hot", true)
 
   const status = searchParams.get("status")
   if (status && status !== "all") query = query.eq("status", status)

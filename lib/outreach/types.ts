@@ -43,6 +43,11 @@ export type ProspectRow = {
   notes: string | null
   last_contacted_at: string | null
   created_at: string
+  lead_score: number
+  open_count: number
+  click_count: number
+  is_hot: boolean
+  hot_since: string | null
 }
 
 /** Norwegian counties (fylker) with their 2-digit kommunenummer prefix (2024 structure). */

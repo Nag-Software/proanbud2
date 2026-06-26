@@ -1,7 +1,20 @@
 "use client"
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
-import { ChevronDown, Download, Loader2, Phone, Search, Sparkles, Trash2, Wand2, Zap } from "lucide-react"
+import {
+  ChevronDown,
+  Download,
+  Flame,
+  Loader2,
+  MousePointerClick,
+  Eye,
+  Phone,
+  Search,
+  Sparkles,
+  Trash2,
+  Wand2,
+  Zap,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { SelgerPageShell } from "@/components/selger/selger-page-shell"
@@ -49,13 +62,59 @@ import {
   type ProspectStatus,
 } from "@/lib/outreach/types"
 
-type View = "alle" | "med-epost" | "ringeliste"
+type View = "alle" | "med-epost" | "ringeliste" | "hot"
+type SortKey = "recent" | "hot"
 
 function statusVariant(status: ProspectStatus): "default" | "secondary" | "destructive" | "outline" {
   if (status === "kunde") return "default"
   if (status === "avvist") return "destructive"
   if (status === "ny") return "outline"
   return "secondary"
+}
+
+/** Short Norwegian relative date for "last contacted" — keeps the table compact. */
+function relativeDateNo(iso: string | null): string | null {
+  if (!iso) return null
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return null
+  const days = Math.floor((Date.now() - then) / 86_400_000)
+  if (days <= 0) return "i dag"
+  if (days === 1) return "i går"
+  if (days < 7) return `${days} d siden`
+  if (days < 30) return `${Math.floor(days / 7)} u siden`
+  return `${Math.floor(days / 30)} mnd siden`
+}
+
+/** Compact engagement cell: hot badge + open/click counters + last-contacted. */
+function EngagementCell({ p }: { p: ProspectRow }) {
+  const last = relativeDateNo(p.last_contacted_at)
+  const hasActivity = p.is_hot || p.open_count > 0 || p.click_count > 0 || last
+  if (!hasActivity) return <span className="text-xs text-muted-foreground">—</span>
+  return (
+    <div className="flex flex-col gap-1 text-xs">
+      <div className="flex items-center gap-2">
+        {p.is_hot && (
+          <Badge className="gap-1 bg-amber-500 text-white hover:bg-amber-500">
+            <Flame className="h-3 w-3" />
+            Het
+          </Badge>
+        )}
+        {p.open_count > 0 && (
+          <span className="flex items-center gap-0.5 text-muted-foreground" title="Åpninger">
+            <Eye className="h-3 w-3" />
+            {p.open_count}
+          </span>
+        )}
+        {p.click_count > 0 && (
+          <span className="flex items-center gap-0.5 text-foreground" title="Klikk">
+            <MousePointerClick className="h-3 w-3" />
+            {p.click_count}
+          </span>
+        )}
+      </div>
+      {last && <span className="text-muted-foreground">Kontaktet {last}</span>}
+    </div>
+  )
 }
 
 type ProspectRowHandlers = {
@@ -75,9 +134,12 @@ const ProspectTableRow = memo(function ProspectTableRow({
   onDraft,
 }: { prospect: ProspectRow } & ProspectRowHandlers) {
   return (
-    <TableRow>
+    <TableRow className={p.is_hot ? "bg-amber-500/5" : undefined}>
       <TableCell>
-        <div className="font-medium">{p.name}</div>
+        <div className="flex items-center gap-1.5 font-medium">
+          {p.is_hot && <Flame className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+          {p.name}
+        </div>
         <div className="text-xs text-muted-foreground">
           {p.nace_description || p.nace_code || "—"} · {p.org_number}
         </div>
@@ -94,6 +156,9 @@ const ProspectTableRow = memo(function ProspectTableRow({
             mangler kontakt
           </Badge>
         )}
+      </TableCell>
+      <TableCell>
+        <EngagementCell p={p} />
       </TableCell>
       <TableCell>
         <Select
@@ -154,10 +219,13 @@ const ProspectMobileCard = memo(function ProspectMobileCard({
   onDraft,
 }: { prospect: ProspectRow } & ProspectRowHandlers) {
   return (
-    <div className="space-y-2 p-3">
+    <div className={`space-y-2 p-3 ${p.is_hot ? "bg-amber-500/5" : ""}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-medium">{p.name}</p>
+          <p className="flex items-center gap-1.5 font-medium">
+            {p.is_hot && <Flame className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+            {p.name}
+          </p>
           <p className="text-xs text-muted-foreground">
             {p.city || "—"} · {p.employee_count ?? "?"} ansatte · {p.org_number}
           </p>
@@ -165,6 +233,9 @@ const ProspectMobileCard = memo(function ProspectMobileCard({
         <Badge variant={statusVariant(p.status)}>{PROSPECT_STATUS_LABELS[p.status]}</Badge>
       </div>
       <p className="text-sm text-muted-foreground">{p.email || p.phone || "Mangler kontaktinfo"}</p>
+      {(p.is_hot || p.open_count > 0 || p.click_count > 0 || p.last_contacted_at) && (
+        <EngagementCell p={p} />
+      )}
       <div className="flex flex-wrap gap-2">
         <Select
           value={p.status}
@@ -211,7 +282,7 @@ const ProspectMobileCard = memo(function ProspectMobileCard({
   )
 })
 
-export function LeadsClient() {
+export function LeadsClient({ outreachFrom }: { outreachFrom: string }) {
   const [prospects, setProspects] = useState<ProspectRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -222,6 +293,7 @@ export function LeadsClient() {
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [view, setView] = useState<View>("alle")
+  const [sort, setSort] = useState<SortKey>("recent")
   const [enriching, setEnriching] = useState(false)
   const [draftingId, setDraftingId] = useState<string | null>(null)
   const [autoSending, setAutoSending] = useState(false)
@@ -246,6 +318,8 @@ export function LeadsClient() {
       if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim())
       if (view === "med-epost") params.set("has_email", "true")
       if (view === "ringeliste") params.set("has_email", "false")
+      if (view === "hot") params.set("hot", "true")
+      if (sort === "hot" || view === "hot") params.set("sort", "hot")
       const res = await fetch(`/api/outreach/prospects?${params.toString()}`)
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || "Kunne ikke hente prospekter")
@@ -255,7 +329,7 @@ export function LeadsClient() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, debouncedSearch, view])
+  }, [statusFilter, debouncedSearch, view, sort])
 
   // Sync the debounced search 300ms after the user stops typing.
   useEffect(() => {
@@ -296,9 +370,15 @@ export function LeadsClient() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || "Import feilet")
-      toast.success(
-        `Importert ${data.imported} nye · ${data.backfilled ?? 0} fikk kontaktinfo · ${data.existingCustomers} er allerede kunder`
-      )
+      if (data.imported === 0) {
+        toast.info(
+          "Fant ingen nye firmaer denne gangen. Prøv igjen — hver import søker i ny rekkefølge — eller juster bransje/fylke."
+        )
+      } else {
+        toast.success(
+          `Importert ${data.imported} nye firmaer · ${data.backfilled ?? 0} fikk kontaktinfo · ${data.existingCustomers} er allerede kunder`
+        )
+      }
       await loadProspects()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Import feilet")
@@ -418,6 +498,8 @@ export function LeadsClient() {
       withEmail,
       callList: prospects.length - withEmail,
       contacted: prospects.filter((p) => p.status === "kontaktet" || p.status === "svar").length,
+      hot: prospects.filter((p) => p.is_hot).length,
+      replied: prospects.filter((p) => p.status === "svar").length,
     }
   }, [prospects])
 
@@ -545,21 +627,31 @@ export function LeadsClient() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Henter inntil {importCount} firmaer per import. Eksisterende kunder filtreres automatisk bort.
+              Henter inntil {importCount} <strong>nye</strong> firmaer per import. Hver import søker i
+              ny, tilfeldig rekkefølge i Brønnøysund, så du får ferske firmaer hver gang — allerede
+              importerte og eksisterende kunder hoppes automatisk over.
             </p>
           </CardContent>
         </Card>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {[
-            { label: "Prospekter", value: stats.total },
-            { label: "Med e-post", value: stats.withEmail },
-            { label: "Ringeliste", value: stats.callList },
-            { label: "Kontaktet", value: stats.contacted },
+            { label: "Prospekter", value: stats.total, hot: false },
+            { label: "Med e-post", value: stats.withEmail, hot: false },
+            { label: "Ringeliste", value: stats.callList, hot: false },
+            { label: "Kontaktet", value: stats.contacted, hot: false },
+            { label: "Svar", value: stats.replied, hot: false },
+            { label: "Hete leads", value: stats.hot, hot: true },
           ].map((s) => (
-            <div key={s.label} className="rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">{s.label}</p>
+            <div
+              key={s.label}
+              className={`rounded-lg border p-3 ${s.hot && s.value > 0 ? "border-amber-500/40 bg-amber-500/5" : ""}`}
+            >
+              <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                {s.hot && <Flame className="h-3 w-3 text-amber-500" />}
+                {s.label}
+              </p>
               <p className="text-2xl font-semibold tabular-nums">{s.value}</p>
             </div>
           ))}
@@ -573,8 +665,8 @@ export function LeadsClient() {
               Full auto
             </p>
             <p className="max-w-xl text-sm text-muted-foreground">
-              Lager og sender profesjonelle KI-e-poster automatisk fra post@proanbud.no til
-              prospekter med e-post. Avmelding og opt-out håndteres automatisk, med dagsgrense.
+              Lager og sender profesjonelle KI-e-poster automatisk fra {outreachFrom} til prospekter
+              med e-post. Avmelding og opt-out håndteres automatisk, med dagsgrense.
             </p>
           </div>
           <Button onClick={() => setAutoConfirmOpen(true)} disabled={autoSending} className="gap-2">
@@ -631,7 +723,7 @@ export function LeadsClient() {
             <DialogHeader>
               <DialogTitle>Kjøre full auto?</DialogTitle>
               <DialogDescription>
-                Dette lager og sender ekte e-poster automatisk fra <strong>post@proanbud.no</strong> til
+                Dette lager og sender ekte e-poster automatisk fra <strong>{outreachFrom}</strong> til
                 opptil 25 prospekter med e-post (status «ny»/«kvalifisert»), uten manuell godkjenning.
                 Avmelding og opt-out respekteres, og en dagsgrense beskytter avsenderdomenet.
               </DialogDescription>
@@ -651,16 +743,35 @@ export function LeadsClient() {
         {/* Filters */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            {(["alle", "med-epost", "ringeliste"] as View[]).map((v) => (
+            {(["alle", "med-epost", "ringeliste", "hot"] as View[]).map((v) => (
               <Button
                 key={v}
                 variant={view === v ? "secondary" : "ghost"}
                 size="sm"
+                className={v === "hot" ? "gap-1.5" : undefined}
                 onClick={() => setView(v)}
               >
-                {v === "alle" ? "Alle" : v === "med-epost" ? "Med e-post" : "Ringeliste"}
+                {v === "hot" && <Flame className="h-3.5 w-3.5 text-amber-500" />}
+                {v === "alle"
+                  ? "Alle"
+                  : v === "med-epost"
+                    ? "Med e-post"
+                    : v === "ringeliste"
+                      ? "Ringeliste"
+                      : "Hete"}
               </Button>
             ))}
+            <div className="mx-1 h-5 w-px bg-border" />
+            <Button
+              variant={sort === "hot" ? "secondary" : "ghost"}
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setSort((s) => (s === "hot" ? "recent" : "hot"))}
+              title="Sorter mest engasjerte øverst"
+            >
+              <Flame className="h-3.5 w-3.5" />
+              {sort === "hot" ? "Sortert: engasjement" : "Sorter: nyeste"}
+            </Button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
@@ -717,6 +828,7 @@ export function LeadsClient() {
                   <TableHead>Sted</TableHead>
                   <TableHead>Ansatte</TableHead>
                   <TableHead>Kontakt</TableHead>
+                  <TableHead>Engasjement</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Handling</TableHead>
                 </TableRow>

@@ -36,6 +36,11 @@ export type BrregSearchParams = {
   tilAntallAnsatte?: number
   page?: number
   size?: number
+  /** Brreg sort expression, e.g. "navn,asc" or "organisasjonsnummer,desc".
+   *  Rotating the sort opens a different reachable slice of the registry (Brreg
+   *  caps deep paging at size*(page+1) <= 10_000), so repeated imports surface
+   *  fresh companies instead of re-scanning the same alphabetical head. */
+  sort?: string
 }
 
 export type BrregPage = {
@@ -59,6 +64,7 @@ export async function searchBrregEnheter(params: BrregSearchParams): Promise<Brr
   }
   search.set("size", String(Math.min(Math.max(params.size ?? 100, 1), 100)))
   search.set("page", String(Math.max(params.page ?? 0, 0)))
+  if (params.sort?.trim()) search.set("sort", params.sort.trim())
 
   const res = await fetch(`${BRREG_BASE}?${search.toString()}`, {
     headers: { Accept: "application/json" },
