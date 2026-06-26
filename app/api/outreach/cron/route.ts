@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerActivity } from "@/lib/selger/activity-log"
+import { logServerError } from "@/lib/errors/log"
 import { runInitialOutreach } from "@/lib/outreach/initial-send"
 import { runOutreachFollowups } from "@/lib/outreach/followup"
 import { countOutreachSentToday, getOutreachDailyLimit } from "@/lib/outreach/send"
@@ -54,6 +55,14 @@ async function run(request: Request) {
       })
     } catch (err) {
       console.error("[outreach/cron] pool top-up failed", err)
+      await logServerError({
+        message: "Lead-pool top-up feilet i outreach-cron",
+        error: err,
+        level: "warning",
+        source: "worker",
+        route: "outreach/cron pool top-up",
+        context: { sendableBefore, poolMin },
+      })
     }
   }
 
@@ -73,6 +82,13 @@ async function run(request: Request) {
       initial = await runInitialOutreach(admin, { origin, sentByUserId: null, maxBatch: remaining })
     } catch (err) {
       console.error("[outreach/cron] initial send failed", err)
+      await logServerError({
+        message: "Initial kald-utsending feilet i outreach-cron",
+        error: err,
+        source: "worker",
+        route: "outreach/cron initial send",
+        context: { remaining, dailyLimit },
+      })
     }
   }
 

@@ -6,6 +6,7 @@ import { getProjectChecklistByIdAction } from "@/app/ks/actions"
 import { companyHasFeature, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
+import { logServerError } from "@/lib/errors/log"
 
 import { ChecklistFillClient } from "./checklist-fill-client"
 
@@ -41,7 +42,15 @@ export default async function ChecklistFillPage({
   let checklist
   try {
     checklist = await getProjectChecklistByIdAction(checklistId)
-  } catch {
+  } catch (error) {
+    await logServerError({
+      message: "Kunne ikke hente sjekkliste for KS-utfylling",
+      error,
+      level: "warning",
+      source: "server",
+      route: "/prosjekter/[id]/ks/[checklistId]",
+      context: { projectId, checklistId, companyId, userId: user.id },
+    })
     notFound()
   }
 

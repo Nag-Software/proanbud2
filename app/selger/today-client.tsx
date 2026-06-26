@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, Gauge, Settings2, Sparkles } from "lucide-react"
 
+import { reportClientError } from "@/lib/errors/client"
 import { SelgerPageShell } from "@/components/selger/selger-page-shell"
 import { QueueCardView } from "@/components/selger/queue-card"
 import { CallDrawer } from "@/app/selger/_components/call-drawer"
@@ -48,6 +49,7 @@ export function TodayClient({ standup, metrics, health, initialCards }: TodayCli
       .catch((error) => {
         // Non-fatal: the deterministic standup is already shown. Log for visibility.
         console.error("[TodayClient] kunne ikke oppgradere standup", error)
+        reportClientError(error, { level: "warning", context: { action: "oppgradere standup" } })
       })
     return () => {
       active = false

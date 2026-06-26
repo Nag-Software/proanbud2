@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
 const rowSchema = z.object({
@@ -40,6 +41,12 @@ export async function GET() {
     return NextResponse.json({ files: data ?? [] })
   } catch (err) {
     console.error("[prisfiler GET] catch", err)
+    await logServerError({
+      message: "Henting av prisfiler feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/prisfiler GET",
+    })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
@@ -128,6 +135,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ id: fileRecord.id })
   } catch (err) {
     console.error("[prisfiler POST] catch", err)
+    await logServerError({
+      message: "Lagring av prisfil feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/prisfiler POST",
+    })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

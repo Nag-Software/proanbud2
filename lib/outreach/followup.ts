@@ -12,6 +12,7 @@
 
 import type { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerEmail } from "@/lib/selger/activity-log"
+import { logServerError } from "@/lib/errors/log"
 import { BRANSJE_LABELS, resolveBransje } from "@/lib/outreach/bransje"
 import { buildExampleOfferUrl, EXAMPLE_OFFER_CTA_LABEL } from "@/lib/outreach/example-offers"
 import { followupSubject, generateFollowupDraft } from "@/lib/outreach/draft"
@@ -88,6 +89,13 @@ export async function runOutreachFollowups(
 
     if (error) {
       console.error("[outreach/followup] load failed for step", step, error)
+      await logServerError({
+        message: "Kunne ikke hente prospekter for oppfølgingssteg",
+        error,
+        source: "worker",
+        route: "lib/outreach/followup runOutreachFollowups",
+        context: { step },
+      })
       continue
     }
 
@@ -122,6 +130,13 @@ export async function runOutreachFollowups(
           .select("id")
         if (claimErr) {
           console.error("[outreach/followup] claim failed for", p.id, claimErr)
+          await logServerError({
+            message: "Kunne ikke reservere oppfølgingssteg for prospekt",
+            error: claimErr,
+            source: "worker",
+            route: "lib/outreach/followup runOutreachFollowups",
+            context: { prospectId: p.id, step },
+          })
           result.failed += 1
           return
         }
@@ -193,17 +208,39 @@ export async function runOutreachFollowups(
             // Email went out but post-send bookkeeping failed. Keep the claim (it blocks
             // a re-send) so a hiccup can never re-mail the prospect; count it as sent.
             console.error("[outreach/followup] post-send bookkeeping failed for", p.id, "step", step, sendErr)
+            await logServerError({
+              message: "Etterarbeid feilet etter sendt oppfølgings-e-post (e-post gikk ut)",
+              error: sendErr,
+              level: "warning",
+              source: "worker",
+              route: "lib/outreach/followup runOutreachFollowups",
+              context: { prospectId: p.id, step, rowId },
+            })
             result.sent += 1
             budget -= 1
           } else {
             // Nothing was sent — release the claim so the step can be retried next run.
             console.error("[outreach/followup] send failed for", p.id, "step", step, sendErr)
+            await logServerError({
+              message: "Kunne ikke sende oppfølgings-e-post",
+              error: sendErr,
+              source: "worker",
+              route: "lib/outreach/followup runOutreachFollowups",
+              context: { prospectId: p.id, step, rowId },
+            })
             await admin.from("prospect_outreach").delete().eq("id", rowId)
             result.failed += 1
           }
         }
       } catch (err) {
         console.error("[outreach/followup] failed for", p.id, err)
+        await logServerError({
+          message: "Uventet feil under oppfølging av prospekt",
+          error: err,
+          source: "worker",
+          route: "lib/outreach/followup runOutreachFollowups",
+          context: { prospectId: p.id, step },
+        })
         result.failed += 1
       }
     }

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
+import { reportClientError } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -61,7 +62,8 @@ export function ResetPasswordForm({
 
       await supabase.auth.signOut()
       router.push("/login?message=password-updated")
-    } catch {
+    } catch (error) {
+      reportClientError(error, { context: { action: "reset-password" } })
       setError("Uventet feil. Prøv igjen.")
     } finally {
       setLoading(false)

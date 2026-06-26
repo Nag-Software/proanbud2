@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { reportClientError } from "@/lib/errors/client";
 import { useUserRole } from "@/hooks/use-user-role";
 
 interface Customer {
@@ -116,6 +117,10 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
 
       if (error) {
         console.error("Failed to mark messages as read:", error);
+        reportClientError(error, {
+          level: "warning",
+          context: { action: "Marker meldinger som lest", customerId },
+        });
         setMessages((prev) =>
           prev.map((m) => (unreadIds.includes(m.id) ? { ...m, read_at: null } : m))
         );
@@ -141,6 +146,10 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
 
       if (customersError) {
         console.error("Error fetching customers:", customersError);
+        reportClientError(customersError, {
+          context: { action: "Hent kunder i meldinger", companyId },
+        });
+        toast.error("Kunne ikke hente kunder");
       }
 
       if (customersData) setCustomers(customersData);
@@ -153,6 +162,9 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
 
       if (messagesError) {
         console.error("Error fetching messages:", messagesError);
+        reportClientError(messagesError, {
+          context: { action: "Hent meldinger", companyId },
+        });
         toast.error("Kunne ikke hente meldinger");
       }
 
@@ -245,6 +257,9 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
       if (!res.ok) throw new Error(data.error || "Kunne ikke lage forslag");
       setAiSuggestion(typeof data.suggestion === "string" ? data.suggestion : "");
     } catch (err) {
+      reportClientError(err, {
+        context: { action: "Be om KI-svarforslag", customerId: selectedCustomerId },
+      });
       toast.error(err instanceof Error ? err.message : "Kunne ikke lage forslag");
     } finally {
       setIsSuggesting(false);
@@ -304,6 +319,9 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
 
       if (uploadError) {
         console.error("Storage upload error", uploadError);
+        reportClientError(uploadError, {
+          context: { action: "Last opp vedlegg i melding", companyId, customerId: selectedCustomerId },
+        });
         toast.error("Kunne ikke laste opp filen", { description: uploadError.message });
         setIsUploading(false);
         setIsSending(false);
@@ -371,6 +389,9 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
 
       if (!response.ok) {
         console.error("Failed to send message", result);
+        reportClientError(result?.error || "Kunne ikke sende melding", {
+          context: { action: "Send melding til kunde", companyId, customerId: selectedCustomerId, status: response.status },
+        });
         toast.error("Kunne ikke sende melding", {
           description: "Vennligst prøv igjen senere.",
         });
@@ -380,6 +401,9 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
       }
     } catch (err) {
       console.error("Failed to send message", err);
+      reportClientError(err, {
+        context: { action: "Send melding til kunde", companyId, customerId: selectedCustomerId },
+      });
       toast.error("Kunne ikke sende melding", {
         description: "Vennligst prøv igjen senere.",
       });

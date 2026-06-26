@@ -13,6 +13,7 @@ import {
   Send,
 } from "lucide-react"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -368,6 +369,7 @@ export function OfferDetailClient({
 
         return true
       } catch (error) {
+        reportClientError(error, { context: { action: "save offer snapshot", offerId: offer.id } })
         toast.error(error instanceof Error ? error.message : "Kunne ikke lagre tilbud")
         return false
       } finally {
@@ -387,8 +389,9 @@ export function OfferDetailClient({
     try {
       await fetch(`/api/offers/${offer.id}/pdf-export`, { method: "POST" })
       void refreshActivity()
-    } catch {
+    } catch (error) {
       // Logging should not block export.
+      reportClientError(error, { level: "warning", context: { action: "log pdf export", offerId: offer.id } })
     }
   }, [offer.id, refreshActivity])
 
@@ -411,8 +414,9 @@ export function OfferDetailClient({
         const payload = await statusResponse.json()
         setTripletexSync(payload)
       }
-    } catch {
+    } catch (error) {
       // Non-blocking background sync.
+      reportClientError(error, { level: "warning", context: { action: "background Tripletex sync", offerId: offer.id } })
     }
   }, [offer.id])
 
@@ -456,6 +460,7 @@ export function OfferDetailClient({
         toast.success("Tilbud sendt til kunde på e-post")
         void refreshActivity()
       } catch (error) {
+        reportClientError(error, { context: { action: "send offer to customer", offerId: offer.id } })
         toast.error(error instanceof Error ? error.message : "Kunne ikke sende tilbud")
       }
     })
@@ -506,8 +511,9 @@ export function OfferDetailClient({
           setOffer((prev) => ({ ...prev, projectSummary: payload.summary.trim() }))
         }
       })
-      .catch(() => {
+      .catch((error) => {
         // Silent fallback.
+        reportClientError(error, { level: "warning", context: { action: "generate project summary", offerId: offer.id } })
       })
       .finally(() => {
         if (!cancelled) {

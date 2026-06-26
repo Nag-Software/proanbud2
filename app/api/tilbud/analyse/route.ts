@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { logServerError } from "@/lib/errors/log"
 import {
   buildAiPriceSelectionContext,
   type CompanyPriceFileMeta,
@@ -10,7 +11,7 @@ import {
 } from "@/lib/tilbud/company-price-utils"
 import { createClient } from "@/lib/supabase/server"
 import { openaiFetch } from "@/lib/llm/openai-fetch"
-import { requireActiveSubscription } from "@/lib/billing/guards"
+import { getUsageSummary, recordUsageEvent, requireActiveSubscription } from "@/lib/billing/guards"
 import { matchNorwegianSupplierPrices } from "@/lib/tilbud/supplier-prices"
 import { formatNormalPriceForPrompt, mapNormalPriceRows, pickBestNormalPrice } from "@/lib/tilbud/normal-prices"
 import {
@@ -37,6 +38,8 @@ const analysisRequestSchema = z.object({
   sourceSummary: z.string().trim().default(""),
   subprojects: z.array(z.string().trim()).default([]),
   assignmentMode: z.enum(["project", "customer"]).default("project"),
+  // Stable id for the generation attempt so retries don't double-count usage.
+  generationId: z.string().trim().min(1).max(100).optional(),
 })
 
 const aiLineItemSchema = z.object({
@@ -235,6 +238,21 @@ export async function POST(request: Request) {
     const subscription = await requireActiveSubscription()
     if (!subscription.ok) return subscription.response
 
+    // Absolute safety ceiling, independent of plan quota/overage — a billing desync
+    // ("zombie active") must never translate into unbounded OpenAI + Brave spend.
+    // Mirrors the ai-chat route, which this endpoint previously failed to match.
+    const HARD_AI_CAP = 1000
+    const preUsage = await getUsageSummary(subscription.context.companyId)
+    if ((preUsage.used ?? 0) >= HARD_AI_CAP) {
+      return NextResponse.json(
+        {
+          error: "Du har nådd maksgrensen for AI-tilbud denne perioden. Kontakt support hvis du trenger mer.",
+          code: "ai_hard_cap",
+        },
+        { status: 429 }
+      )
+    }
+
     const body = await request.json()
     const parsed = analysisRequestSchema.safeParse(body)
 
@@ -364,6 +382,15 @@ export async function POST(request: Request) {
       }
     } catch (error) {
       warnings.push(error instanceof Error ? error.message : "OpenAI-analyse feilet, bruker fallback")
+      void logServerError({
+        message: "OpenAI offer analysis failed; using fallback line items",
+        error,
+        source: "api",
+        route: "POST /api/tilbud/analyse",
+        level: "warning",
+        companyId,
+        userId: user.id,
+      })
     }
 
     if (lineItems.length === 0) {
@@ -418,12 +445,33 @@ export async function POST(request: Request) {
       supplierSnapshots,
     }
 
+    // Meter the generation against plan quota/overage. Idempotency key keeps retries
+    // of the same attempt from double-counting.
+    const usage = await recordUsageEvent({
+      companyId: subscription.context.companyId,
+      eventType: "ai_tilbud",
+      idempotencyKey: `ai_tilbud:${input.generationId ?? crypto.randomUUID()}`,
+      metadata: { user_id: user.id, model },
+    })
+
     return NextResponse.json({
       lineItems,
       totals,
       analysis: analysisResult,
+      usage: {
+        used: usage.used,
+        quota_limit: usage.quota_limit,
+        overage: usage.overage,
+      },
     })
   } catch (error) {
+    await logServerError({
+      message: "Offer analysis request failed",
+      error,
+      source: "api",
+      route: "POST /api/tilbud/analyse",
+      statusCode: 500,
+    })
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Ukjent feil under analyse",

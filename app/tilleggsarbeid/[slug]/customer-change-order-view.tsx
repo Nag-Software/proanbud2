@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Check, X } from "lucide-react"
 
+import { reportClientError } from "@/lib/errors/client"
 import type { PublicChangeOrder } from "@/lib/tilleggsarbeid/change-order"
 
 function formatNok(value: number) {
@@ -29,6 +30,7 @@ export function CustomerChangeOrderView({ co, slug }: { co: PublicChangeOrder; s
       if (!res.ok && !data.alreadyResponded) throw new Error(data.error || "Noe gikk galt")
       setDone(action === "accept" ? "accepted" : "rejected")
     } catch (e) {
+      reportClientError(e, { context: { action: "respond to change order", slug, response: action } })
       setError(e instanceof Error ? e.message : "Noe gikk galt")
     } finally {
       setSubmitting(null)

@@ -2,6 +2,8 @@
 
 import { useEffect } from "react"
 
+import { reportClientError } from "@/lib/errors/client"
+
 /**
  * Registers the service worker so the app is installable as a PWA.
  * Only runs in production to avoid dev-time caching surprises.
@@ -16,8 +18,9 @@ export function PwaRegister() {
       return
     }
     const register = () => {
-      navigator.serviceWorker.register("/sw.js").catch(() => {
-        /* installability is best-effort; ignore failures */
+      navigator.serviceWorker.register("/sw.js").catch((error) => {
+        /* installability is best-effort; just log it for visibility */
+        reportClientError(error, { level: "warning", context: { action: "register-service-worker" } })
       })
     }
     if (document.readyState === "complete") register()

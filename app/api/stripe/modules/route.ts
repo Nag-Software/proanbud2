@@ -5,6 +5,7 @@ import { toggleModuleOnSubscription } from "@/lib/billing/checkout"
 import { requireActiveSubscription, requireCompanyAdmin } from "@/lib/billing/guards"
 import type { ModuleKey } from "@/lib/billing/plans"
 import { SubscriptionMissingError } from "@/lib/billing/stripe-helpers"
+import { logServerError } from "@/lib/errors/log"
 
 const bodySchema = z.object({
   moduleKey: z.enum(["timeforing", "dokumenter", "integrasjoner", "meldinger_ki"]),
@@ -47,6 +48,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, module: result })
   } catch (error) {
     console.error("[stripe/modules]", error)
+    await logServerError({
+      message: "Oppdatering av modul på abonnement feilet",
+      error,
+      source: "api",
+      route: "/api/stripe/modules",
+    })
     if (error instanceof SubscriptionMissingError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 409 })
     }
@@ -76,6 +83,12 @@ export async function GET() {
     return NextResponse.json({ modules: data ?? [] })
   } catch (error) {
     console.error("[stripe/modules GET]", error)
+    await logServerError({
+      message: "Henting av moduler feilet",
+      error,
+      source: "api",
+      route: "/api/stripe/modules",
+    })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Kunne ikke hente moduler." },
       { status: 500 }

@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 
+import { reportClientError } from "@/lib/errors/client"
 import { SelgerPageShell } from "@/components/selger/selger-page-shell"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -86,6 +87,7 @@ export function EpostClient() {
       setMessage(`Sendt til ${recipientEmail}`)
       setCustomMessage("")
     } catch (submitError) {
+      reportClientError(submitError, { context: { action: "sende selger-e-post", templateId } })
       setError(submitError instanceof Error ? submitError.message : "Noe gikk galt")
     } finally {
       setLoading(false)

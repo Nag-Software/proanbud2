@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
 import { runTripletexWorker } from "@/lib/integrations/tripletex/worker"
 import type { TripletexScopeConfig } from "@/lib/integrations/tripletex/scopes"
@@ -215,6 +216,13 @@ export function processTripletexQueueInBackground(input?: { batchSize?: number; 
     maxBatches: input?.maxBatches ?? 5,
   }).catch((error) => {
     console.error("Tripletex background worker failed:", error)
+    void logServerError({
+      message: "Tripletex background worker failed",
+      error,
+      level: "warning",
+      source: "worker",
+      route: "processTripletexQueueInBackground",
+    })
   })
 }
 

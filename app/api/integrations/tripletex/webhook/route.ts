@@ -2,6 +2,7 @@ import crypto from "crypto"
 import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import { decryptSecret } from "@/lib/integrations/tripletex/crypto"
 import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
@@ -84,6 +85,12 @@ export async function POST(request: Request) {
   } catch (error) {
     // Don't echo internal error text (decrypt/DB messages) to an unauthenticated caller.
     console.error("[tripletex webhook] processing failed", error)
+    await logServerError({
+      message: "Tripletex webhook processing failed",
+      error,
+      source: "api",
+      route: "POST /api/integrations/tripletex/webhook",
+    })
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 })
   }
 }

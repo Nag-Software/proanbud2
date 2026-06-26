@@ -1,4 +1,5 @@
 import type { createClient } from "@/lib/supabase/server"
+import { logServerError } from "@/lib/errors/log"
 import { buildEmployeeSummaries, type TimeEntryRow } from "@/lib/time-tracking"
 
 type ServerClient = Awaited<ReturnType<typeof createClient>>
@@ -25,6 +26,13 @@ export async function fetchParticipantHours(supabase: ServerClient, projectId: s
 
   if (error) {
     console.error("Error fetching participant hours:", error)
+    await logServerError({
+      message: "Kunne ikke hente deltakertimer for prosjekt",
+      error,
+      source: "server",
+      route: "fetchParticipantHours",
+      context: { projectId },
+    })
     return []
   }
 

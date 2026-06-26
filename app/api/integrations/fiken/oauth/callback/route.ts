@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { encryptSecret } from "@/lib/integrations/shared/crypto"
 import { exchangeFikenCode, getFikenCompanies } from "@/lib/integrations/fiken/connector"
 import { enqueueFikenJob } from "@/lib/integrations/fiken/jobs"
@@ -102,6 +103,12 @@ export async function GET(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown"
     console.error("Fiken OAuth callback failed:", message)
+    await logServerError({
+      message: "Fiken OAuth callback failed",
+      error,
+      source: "api",
+      route: "GET /api/integrations/fiken/oauth/callback",
+    })
     return NextResponse.redirect(`${redirectTo}?fiken_error=oauth_failed`)
   }
 }

@@ -63,14 +63,19 @@ export async function handleOfferAccepted(input: {
     })
 
     if (tripletexEnqueued || fikenEnqueued) {
-      await logOfferActivity({
-        offerId: input.offerId,
-        companyId: input.companyId,
-        actorUserId: input.actorUserId || null,
-        eventType: OFFER_ACTIVITY.ERP_ORDER_SYNCED,
-        title: fikenEnqueued ? "Faktura opprettes i Fiken" : "Ordre opprettes i Tripletex",
-        metadata: { source: input.source || "offer-accepted", provider: fikenEnqueued ? "fiken" : "tripletex" },
-      })
+      await logOfferActivity(
+        {
+          offerId: input.offerId,
+          companyId: input.companyId,
+          actorUserId: input.actorUserId || null,
+          eventType: OFFER_ACTIVITY.ERP_ORDER_SYNCED,
+          title: fikenEnqueued ? "Faktura opprettes i Fiken" : "Ordre opprettes i Tripletex",
+          metadata: { source: input.source || "offer-accepted", provider: fikenEnqueued ? "fiken" : "tripletex" },
+        },
+        // Reached from the unauthenticated public-accept path — cookie client has no
+        // company and RLS would silently drop this insert; use the admin client.
+        { admin: true }
+      )
     }
   }
 

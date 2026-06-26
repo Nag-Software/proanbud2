@@ -8,6 +8,7 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { PROFF_INCLUDED_FEATURES } from "@/lib/billing/plans"
+import { reportClientError } from "@/lib/errors/client"
 
 function OnboardingAbonnementContent() {
   const router = useRouter()
@@ -45,8 +46,9 @@ function OnboardingAbonnementContent() {
             return
           }
         }
-      } catch {
-        // ignore — show onboarding
+      } catch (error) {
+        // best-effort — fall through and show onboarding
+        reportClientError(error, { level: "warning", context: { action: "check existing subscription on onboarding" } })
       } finally {
         if (!cancelled) setChecking(false)
       }
@@ -80,6 +82,7 @@ function OnboardingAbonnementContent() {
       }
       throw new Error("Manglende checkout-lenke")
     } catch (error) {
+      reportClientError(error, { context: { action: "start trial checkout" } })
       toast.error(error instanceof Error ? error.message : "Noe gikk galt")
       setLoading(false)
     }

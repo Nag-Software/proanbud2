@@ -11,6 +11,7 @@ import { SjefenPageShell } from "@/components/sjefen/sjefen-page-shell"
 import { StatusBadge } from "@/components/sjefen/status-badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { reportClientError } from "@/lib/errors/client"
 import {
   Dialog,
   DialogContent,
@@ -168,6 +169,7 @@ export function ArtiklerClient({ initialArticles }: { initialArticles: SanityArt
       setGenerateDialogOpen(false)
       await refreshArticles()
     } catch (error) {
+      reportClientError(error, { context: { action: "generer artikkel" } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke generere artikkel")
     } finally {
       setIsGenerating(false)
@@ -200,6 +202,7 @@ export function ArtiklerClient({ initialArticles }: { initialArticles: SanityArt
       toast.success("Artikkelen er slettet")
       setArticles((current) => current.filter((item) => item._id !== id))
     } catch (error) {
+      reportClientError(error, { context: { action: "slett artikkel", id } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke slette artikkel")
     } finally {
       setDeletingId(null)

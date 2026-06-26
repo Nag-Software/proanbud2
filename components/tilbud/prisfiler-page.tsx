@@ -17,6 +17,7 @@ import {
   PencilLine,
 } from "lucide-react"
 import { toast } from "sonner"
+import { reportClientError } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -505,7 +506,8 @@ export function PrisfilerPage() {
       setOpen(false)
       resetWizard()
       loadFiles()
-    } catch {
+    } catch (error) {
+      reportClientError(error, { context: { action: "save price file", supplierName: supplierName.trim() } })
       toast.error("Noe gikk galt. Prøv igjen.")
     } finally {
       setSaving(false)
@@ -568,7 +570,8 @@ export function PrisfilerPage() {
       } else {
         toast.error("Kunne ikke slette prisfilen")
       }
-    } catch {
+    } catch (error) {
+      reportClientError(error, { context: { action: "delete price file", fileId: id } })
       toast.error("Noe gikk galt")
     } finally {
       setDeletingId(null)
@@ -661,7 +664,8 @@ export function PrisfilerPage() {
 
       await loadFiles()
       setManualOpen(false)
-    } catch {
+    } catch (error) {
+      reportClientError(error, { context: { action: "save manual price", rowId: manualEditId } })
       toast.error("Noe gikk galt. Prøv igjen.")
     } finally {
       setManualSaving(false)
@@ -695,7 +699,8 @@ export function PrisfilerPage() {
         setViewerFile((prev) => (prev ? { ...prev, row_count: data.rowCount } : prev))
       }
       await loadFiles()
-    } catch {
+    } catch (error) {
+      reportClientError(error, { context: { action: "delete manual price row", rowId: row.id } })
       toast.error("Noe gikk galt")
     } finally {
       setDeletingRowId(null)

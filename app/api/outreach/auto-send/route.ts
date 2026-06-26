@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerActivity } from "@/lib/selger/activity-log"
+import { logServerError } from "@/lib/errors/log"
 import { runInitialOutreach } from "@/lib/outreach/initial-send"
 import { countOutreachSentToday, getOutreachDailyLimit } from "@/lib/outreach/send"
 
@@ -37,6 +38,13 @@ export async function POST(request: Request) {
     })
   } catch (err) {
     console.error("[outreach/auto-send] run failed", err)
+    await logServerError({
+      message: "Kunne ikke kjøre auto-send av kald-e-post",
+      error: err,
+      source: "api",
+      route: "POST /api/outreach/auto-send",
+      context: { userId: auth.user!.id, batchLimit },
+    })
     runError = true
   }
 

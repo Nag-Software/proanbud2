@@ -12,6 +12,7 @@ import {
 import { PhotoAnnotatorDialog } from "@/components/ks/photo-annotator"
 import { Button } from "@/components/ui/button"
 import { useConfirm } from "@/components/ui/confirm-dialog"
+import { reportClientError } from "@/lib/errors/client"
 import type { ProjectChecklistItem } from "@/lib/ks/types"
 
 type Props = {
@@ -130,7 +131,8 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
         setAnnotateOpen(true)
         break
       }
-    } catch {
+    } catch (err) {
+      reportClientError(err, { context: { action: "Behandle bilde (KS)", itemId: item.id } })
       toast.error("Kunne ikke behandle bilde")
     } finally {
       setUploading(false)
@@ -161,7 +163,8 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
       await deleteChecklistItemPhotoAction(attachmentId)
       toast.success("Bilde slettet")
       onUpdated()
-    } catch {
+    } catch (err) {
+      reportClientError(err, { context: { action: "Slette KS-bilde", attachmentId } })
       toast.error("Kunne ikke slette bilde")
     }
   }

@@ -9,6 +9,7 @@ import { addMonths, endOfMonth, startOfMonth, subMonths } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
 import { LOGIN_PATH } from '@/lib/constants'
 import { toast } from "sonner"
+import { reportClientError } from "@/lib/errors/client"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -113,6 +114,7 @@ function KalenderPage() {
       }
     } catch (e) {
       console.error("Failed to fetch events", e)
+      reportClientError(e, { level: "warning", context: { action: "Hente kalenderhendelser" } })
     }
   }, [])
 
@@ -132,7 +134,8 @@ function KalenderPage() {
         setLoggedIn(false)
         setIntegrations([])
       }
-    } catch {
+    } catch (e) {
+      reportClientError(e, { level: "warning", context: { action: "Laste kalenderintegrasjoner" } })
       setLoggedIn(false)
       setIntegrations([])
     } finally {
@@ -222,7 +225,8 @@ function KalenderPage() {
         const data = await res.json()
         setStatusMessage(data.error ?? "Kunne ikke koble fra kalender.")
       }
-    } catch {
+    } catch (e) {
+      reportClientError(e, { context: { action: "Koble fra kalender", provider } })
       setStatusMessage("Kunne ikke koble fra kalender.")
     } finally {
       setIsDisconnecting(false)
@@ -304,6 +308,7 @@ function KalenderPage() {
         toast.error(`Kunne ikke lagre: ${data.error}`)
       }
     } catch (e) {
+      reportClientError(e, { context: { action: "Opprette kalenderhendelse" } })
       toast.error("En feil oppstod ved lagring.")
     } finally {
       setIsSubmitting(false)
@@ -338,6 +343,7 @@ function KalenderPage() {
       }
     } catch (e) {
       console.error(e)
+      reportClientError(e, { context: { action: "Oppdatere kalenderhendelse" } })
       toast.error("Kunne ikke lagre oppdateringen.")
     } finally {
       setIsSubmitting(false)
@@ -369,6 +375,7 @@ function KalenderPage() {
         toast.error(`Kunne ikke slette: ${data.error}`)
       }
     } catch (e) {
+      reportClientError(e, { context: { action: "Slette kalenderhendelse" } })
       toast.error("En feil oppstod ved sletting.")
     } finally {
       setIsDeleting(false)
@@ -395,6 +402,7 @@ function KalenderPage() {
       triggerRefetch()
     } catch (e) {
       console.error(e)
+      reportClientError(e, { context: { action: "Flytte/endre kalenderhendelse" } })
       toast.error("Kunne ikke flytte/endre størrelse på møtet. Tilbakestiller visning.")
       triggerRefetch()
     }

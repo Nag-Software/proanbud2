@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { requirePlatformAdminForApi } from "@/lib/auth/require-platform-admin-api"
+import { logServerError } from "@/lib/errors/log"
 import { generateAndPublishArticle } from "@/lib/sanity/articles"
 import { getPublicArticleUrl } from "@/lib/sanity/config"
 
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("POST /api/sjefen/artikler/generate", error)
+    await logServerError({ message: "Kunne ikke generere artikkel", error, source: "api", route: "POST /api/sjefen/artikler/generate" })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Kunne ikke generere artikkel" },
       { status: 500 }

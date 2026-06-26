@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
+import { logServerError } from "@/lib/errors/log"
 
 // Lightweight presence ping. The authenticated app shell calls this on a timer
 // so Sjefen → Analyse can show a live active-user count and map. Best-effort:
@@ -21,6 +22,13 @@ export async function POST() {
       .eq("id", user.id)
   } catch (error) {
     console.error("[presence/heartbeat]", error)
+    await logServerError({
+      message: "Presence-heartbeat feilet",
+      error,
+      source: "api",
+      route: "app/api/presence/heartbeat/route.ts",
+      level: "warning",
+    })
   }
   return new NextResponse(null, { status: 204 })
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Briefcase, ChevronDown, FilePlus2, Loader2, Package, Plus, Search } from "lucide-react"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -167,7 +168,8 @@ export function AddOfferLineItemMenu({
         if (!cancelled) {
           setMaterialResults(payload.materials || [])
         }
-      } catch {
+      } catch (error) {
+        reportClientError(error, { level: "warning", context: { action: "search material prices" } })
         if (!cancelled) {
           setMaterialResults([])
         }
@@ -208,7 +210,8 @@ export function AddOfferLineItemMenu({
         if (!cancelled) {
           setJobResults(payload.jobs || [])
         }
-      } catch {
+      } catch (error) {
+        reportClientError(error, { level: "warning", context: { action: "search saved jobs" } })
         if (!cancelled) {
           setJobResults([])
         }

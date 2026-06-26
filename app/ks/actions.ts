@@ -12,6 +12,7 @@ import {
   type UpdateTemplateInput,
 } from "@/app/ks/schemas"
 import { assertPlanFeature } from "@/lib/billing/server-modules"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 import type { ChecklistSummary, ChecklistTemplate, ProjectChecklist } from "@/lib/ks/types"
 import { canManageProjects } from "@/lib/roles"
@@ -564,7 +565,10 @@ export async function uploadChecklistItemPhotoAction(formData: FormData) {
 }
 
 export async function getChecklistPhotoUrlAction(storagePath: string) {
-  const { supabase } = await getAuthContext()
+  const { supabase, companyId } = await getAuthContext()
+  // Defense-in-depth on top of the storage RLS policy: only sign paths inside the
+  // caller's own company folder ({companyId}/...).
+  if (!storagePath.startsWith(`${companyId}/`)) return null
   const { data } = await supabase.storage.from("ks_checklists").createSignedUrl(storagePath, 3600)
   return data?.signedUrl || null
 }
@@ -618,6 +622,16 @@ export async function getProjectChecklistPhotosAction(projectId: string) {
     .order("created_at", { ascending: false })
 
   if (error && isMissingRelationError(error)) return []
+  if (error) {
+    await logServerError({
+      message: "Kunne ikke hente sjekklistebilder",
+      error,
+      source: "action",
+      route: "getProjectChecklistPhotosAction",
+      context: { companyId, projectId },
+    })
+    return []
+  }
 
   return (data || []).filter((att) => {
     const item = att.item as {

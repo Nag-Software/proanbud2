@@ -4,6 +4,7 @@ import { useState, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { completeClientLogin } from "@/lib/auth/client-login"
+import { reportClientError } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -97,6 +98,7 @@ export default function CreateCompanyClient() {
           }
         } catch (e) {
           console.error("Brreg search error", e)
+          reportClientError(e, { level: "warning", context: { action: "search Brreg for company name" } })
           setBrregResults([])
         } finally {
           setSearchingBrreg(false)
@@ -153,6 +155,7 @@ export default function CreateCompanyClient() {
       completeClientLogin(router, "/onboarding/abonnement")
     } catch (e: any) {
       console.error(e)
+      reportClientError(e, { context: { action: "create company" } })
       setError(e.message || "En ukjent feil oppsto under opprettelsen av bedriften. Kontakt support hvis problemet vedvarer.")
       setLoading(false)
     }

@@ -4,6 +4,7 @@ import { Webhook } from "svix"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { computeLeadScore } from "@/lib/selger/scoring"
 import { recordUnsubscribe } from "@/lib/outreach/send"
+import { logServerError } from "@/lib/errors/log"
 
 export const runtime = "nodejs"
 
@@ -104,6 +105,13 @@ async function bumpProspectEngagement(
   })
   if (error) {
     console.error("[resend webhook] bump_prospect_engagement failed", error)
+    await logServerError({
+      message: "bump_prospect_engagement RPC failed",
+      error,
+      source: "api",
+      route: "POST /api/webhooks/resend",
+      context: { kind },
+    })
     return
   }
   const prospect = (data as EngagedProspect[] | null)?.[0]

@@ -6,6 +6,7 @@ import { Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { completeClientLogin } from "@/lib/auth/client-login"
+import { reportClientError } from "@/lib/errors/client"
 import { startGoogleLogin } from "@/lib/native-bridge"
 import { Button } from "@/components/ui/button"
 import {
@@ -58,7 +59,8 @@ function LoginFormInner({
       }
 
       completeClientLogin(router)
-    } catch {
+    } catch (error) {
+      reportClientError(error, { context: { action: "login" } })
       setError('Uventet feil ved innlogging')
       emailRef.current?.focus()
     } finally {

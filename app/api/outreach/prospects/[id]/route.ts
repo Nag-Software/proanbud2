@@ -4,6 +4,7 @@ import { z } from "zod"
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerActivity } from "@/lib/selger/activity-log"
+import { logServerError } from "@/lib/errors/log"
 import { PROSPECT_STATUSES } from "@/lib/outreach/types"
 
 const patchSchema = z.object({
@@ -48,6 +49,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (error) {
     console.error("[outreach/prospects PATCH]", error)
+    await logServerError({
+      message: "Kunne ikke oppdatere prospekt",
+      error,
+      source: "api",
+      route: "PATCH /api/outreach/prospects/[id]",
+      context: { prospectId: id, userId: auth.user!.id },
+    })
     return NextResponse.json({ error: "Kunne ikke oppdatere prospekt" }, { status: 500 })
   }
   if (!data) return NextResponse.json({ error: "Fant ikke prospekt" }, { status: 404 })

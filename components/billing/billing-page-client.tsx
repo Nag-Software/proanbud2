@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
+import { reportClientError } from "@/lib/errors/client"
 import {
   MODULE_CATALOG,
   MODULES_INCLUDED_IN_PROFF,
@@ -79,6 +80,7 @@ export function BillingPageClient() {
       setSummary(data)
       setEnabledModules(new Set(data.modules.map((m) => m.module_key)))
     } catch (error) {
+      reportClientError(error, { context: { action: "hent abonnement-sammendrag" } })
       toast.error(error instanceof Error ? error.message : "Noe gikk galt")
     } finally {
       setLoading(false)
@@ -115,6 +117,7 @@ export function BillingPageClient() {
       if (data.changed) toast.success("Abonnementet er oppgradert til Proff.")
       await loadSummary()
     } catch (error) {
+      reportClientError(error, { context: { action: "start checkout / planbytte" } })
       toast.error(error instanceof Error ? error.message : "Noe gikk galt")
     } finally {
       setActionLoading(null)
@@ -131,6 +134,7 @@ export function BillingPageClient() {
       window.location.replace(data.url)
     } catch (error) {
       setActionLoading(null)
+      reportClientError(error, { context: { action: "åpne betalingsportal" } })
       toast.error(error instanceof Error ? error.message : "Portal feilet")
     }
   }
@@ -144,6 +148,7 @@ export function BillingPageClient() {
       toast.success("Abonnementet er nå aktivt.")
       await loadSummary()
     } catch (error) {
+      reportClientError(error, { context: { action: "avslutt prøveperiode" } })
       toast.error(error instanceof Error ? error.message : "Noe gikk galt")
     } finally {
       setActionLoading(null)
@@ -170,6 +175,7 @@ export function BillingPageClient() {
       toast.success(enabled ? `${label} aktivert` : `${label} deaktivert`)
       await loadSummary()
     } catch (error) {
+      reportClientError(error, { context: { action: "veksle modul", moduleKey, enabled } })
       toast.error(error instanceof Error ? error.message : "Noe gikk galt")
       // Revert optimistic update
       setEnabledModules((prev) => {

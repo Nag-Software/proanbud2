@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
 // Columns returned to the client so a freshly added/edited manual row renders
@@ -170,6 +171,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ fileId, row, rowCount })
   } catch (err) {
     console.error("[prisfiler/manual POST] catch", err)
+    await logServerError({
+      message: "Lagring av manuell pris feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/prisfiler/manual POST",
+    })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
@@ -217,6 +224,12 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ row })
   } catch (err) {
     console.error("[prisfiler/manual PATCH] catch", err)
+    await logServerError({
+      message: "Endring av manuell pris feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/prisfiler/manual PATCH",
+    })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
@@ -275,6 +288,12 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: true, fileDeleted: false, fileId, rowCount: count ?? 0 })
   } catch (err) {
     console.error("[prisfiler/manual DELETE] catch", err)
+    await logServerError({
+      message: "Sletting av manuell pris feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/prisfiler/manual DELETE",
+    })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

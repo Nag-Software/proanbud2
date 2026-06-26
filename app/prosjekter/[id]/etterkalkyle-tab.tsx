@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { formatNok } from "@/lib/tilbud/types"
+import { reportClientError } from "@/lib/errors/client"
 import {
   addMaterialCostAction,
   deleteMaterialCostAction,
@@ -45,7 +46,10 @@ export function EtterkalkyleTab({ projectId, canManage }: { projectId: string; c
     setLoading(true)
     getProjectJobCostingAction(projectId)
       .then(setData)
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Kunne ikke laste etterkalkyle"))
+      .catch((e) => {
+        reportClientError(e, { context: { action: "laste etterkalkyle", projectId } })
+        toast.error(e instanceof Error ? e.message : "Kunne ikke laste etterkalkyle")
+      })
       .finally(() => setLoading(false))
   }, [projectId])
 
@@ -74,6 +78,7 @@ export function EtterkalkyleTab({ projectId, canManage }: { projectId: string; c
       load()
       toast.success("Materialkost lagt til")
     } catch (e) {
+      reportClientError(e, { context: { action: "legge til materialkost", projectId } })
       toast.error(e instanceof Error ? e.message : "Kunne ikke lagre")
     } finally {
       setSaving(false)
@@ -85,6 +90,7 @@ export function EtterkalkyleTab({ projectId, canManage }: { projectId: string; c
       await deleteMaterialCostAction({ projectId, id })
       load()
     } catch (e) {
+      reportClientError(e, { context: { action: "slette materialkost", projectId, id } })
       toast.error(e instanceof Error ? e.message : "Kunne ikke slette")
     }
   }

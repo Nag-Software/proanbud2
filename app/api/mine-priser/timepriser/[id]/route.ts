@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
 const updateSchema = z.object({
@@ -42,6 +43,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ rate: data })
   } catch (err) {
     console.error("[timepriser PATCH] catch", err)
+    await logServerError({
+      message: "Endring av timepris feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/timepriser/[id] PATCH",
+    })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
@@ -65,6 +72,12 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error("[timepriser DELETE] catch", err)
+    await logServerError({
+      message: "Sletting av timepris feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/timepriser/[id] DELETE",
+    })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

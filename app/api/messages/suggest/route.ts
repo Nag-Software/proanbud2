@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { companyHasFeature } from "@/lib/billing/server-modules"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 import { generateMessageReply, type ThreadMessage } from "@/lib/meldinger/suggest-reply"
 
@@ -74,6 +75,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ suggestion })
   } catch (error) {
     console.error("[messages/suggest]", error)
+    await logServerError({
+      message: "Kunne ikke generere KI-svarforslag for melding",
+      error,
+      source: "api",
+      route: "POST /api/messages/suggest",
+      context: { companyId, customerId: parsed.data.customerId, userId: user.id },
+    })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Kunne ikke lage forslag" },
       { status: 500 }

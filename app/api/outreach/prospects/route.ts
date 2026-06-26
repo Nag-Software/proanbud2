@@ -4,6 +4,7 @@ import { z } from "zod"
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerActivity } from "@/lib/selger/activity-log"
+import { logServerError } from "@/lib/errors/log"
 
 const PROSPECT_SELECT =
   "id, org_number, name, nace_code, nace_description, employee_count, website, email, phone, address, postal_code, city, kommune, kommune_number, enrichment_status, status, is_existing_customer, notes, last_contacted_at, created_at, lead_score, open_count, click_count, is_hot, hot_since"
@@ -53,6 +54,13 @@ export async function GET(request: Request) {
   const { data, error } = await query
   if (error) {
     console.error("[outreach/prospects GET]", error)
+    await logServerError({
+      message: "Kunne ikke hente prospekter",
+      error,
+      source: "api",
+      route: "GET /api/outreach/prospects",
+      context: { userId: auth.user!.id },
+    })
     return NextResponse.json({ error: "Kunne ikke hente prospekter" }, { status: 500 })
   }
 
@@ -107,6 +115,13 @@ export async function DELETE(request: Request) {
   const { data, error } = await query.select("id")
   if (error) {
     console.error("[outreach/prospects DELETE]", error)
+    await logServerError({
+      message: "Kunne ikke slette prospekter",
+      error,
+      source: "api",
+      route: "DELETE /api/outreach/prospects",
+      context: { userId: auth.user!.id, mode: ids && ids.length > 0 ? "ids" : "all" },
+    })
     return NextResponse.json({ error: "Kunne ikke slette prospekter" }, { status: 500 })
   }
 

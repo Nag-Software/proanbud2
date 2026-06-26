@@ -26,6 +26,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useUserRole } from "@/hooks/use-user-role";
 import { AddParticipantDialog } from "./add-participant-dialog";
 import { removeProjectParticipantAction } from "./deltakere-actions";
+import { reportClientError } from "@/lib/errors/client";
 
 import { formatHours } from "@/lib/time-tracking";
 
@@ -67,6 +68,7 @@ export default function DeltakereTab({
     try {
       await removeProjectParticipantAction(projectId, participantId);
     } catch (err: any) {
+      reportClientError(err, { context: { action: "fjerne deltaker fra prosjekt", projectId, participantId } });
       toast.error("Kunne ikke fjerne deltaker: " + err.message);
     }
   };

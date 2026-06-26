@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/select"
 import { createCustomerAction } from "@/app/kunder/actions"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+import { reportClientError } from "@/lib/errors/client"
 
 interface AddCustomerDrawerProps {
   open: boolean
@@ -53,6 +55,8 @@ export function AddCustomerDrawer({ open, onOpenChange, onCreated }: AddCustomer
       onOpenChange(false)
     } catch (error) {
       console.error("Failed to create customer:", error)
+      reportClientError(error, { context: { action: "create-customer" } })
+      toast.error(error instanceof Error ? error.message : "Kunne ikke opprette kunde")
     } finally {
       setIsPending(false)
     }

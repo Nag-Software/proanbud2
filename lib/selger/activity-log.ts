@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 
 type LogSellerActivityInput = {
   // Nullable: automated jobs (e.g. the outreach cron) have no logged-in seller.
@@ -22,6 +23,14 @@ export async function logSellerActivity(input: LogSellerActivityInput) {
 
   if (error) {
     console.error("logSellerActivity", error)
+    await logServerError({
+      message: "Kunne ikke skrive seller_activity_log",
+      error,
+      level: "warning",
+      source: "server",
+      route: "logSellerActivity",
+      context: { sellerUserId: input.sellerUserId, action: input.action, targetId: input.targetId },
+    })
   }
 }
 
@@ -48,5 +57,13 @@ export async function logSellerEmail(input: LogSellerEmailInput) {
 
   if (error) {
     console.error("logSellerEmail", error)
+    await logServerError({
+      message: "Kunne ikke skrive seller_email_log",
+      error,
+      level: "warning",
+      source: "server",
+      route: "logSellerEmail",
+      context: { sentBy: input.sentBy, templateId: input.templateId, companyId: input.companyId },
+    })
   }
 }

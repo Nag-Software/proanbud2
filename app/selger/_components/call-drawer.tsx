@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { CheckCircle2, Loader2, PhoneCall, Sparkles, ThumbsDown, CalendarCheck } from "lucide-react"
 import { toast } from "sonner"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -59,6 +60,10 @@ export function CallDrawer({ card, open, onOpenChange, onResolved }: CallDrawerP
         setBrief(data.brief as CallBrief)
       } else {
         console.error("[CallDrawer] kunne ikke hente brief", data?.error)
+        reportClientError(data?.error ?? "Kunne ikke hente call-brief", {
+          level: "warning",
+          context: { action: "hente call-brief", prospectId },
+        })
       }
     } finally {
       setLoadingBrief(false)
@@ -88,6 +93,7 @@ export function CallDrawer({ card, open, onOpenChange, onResolved }: CallDrawerP
       onResolved(card.id)
       onOpenChange(false)
     } catch (error) {
+      reportClientError(error, { context: { action: "lagre samtaleutfall", prospectId: card?.id, status } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke lagre")
     } finally {
       setSaving(false)

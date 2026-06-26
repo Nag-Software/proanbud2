@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 
 import { toast } from "sonner"
 
+import { reportClientError } from "@/lib/errors/client"
 import { AiChatPanel } from "@/components/tilbud/ai-chat-panel"
 import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
 import { useRouter } from "next/navigation"
@@ -336,6 +337,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
         await uploadPendingSourceDocuments()
         setShowAiChat(true)
       } catch (error) {
+        reportClientError(error, { context: { action: "upload source documents before analysis", projectId } })
         setAnalysisError(error instanceof Error ? error.message : "Kunne ikke forberede vedlegg")
       }
     })()
@@ -382,6 +384,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
         toast.success("Utkast lagret")
         onCompleted?.()
       } catch (error) {
+        reportClientError(error, { context: { action: "save offer draft", projectId } })
         const message = error instanceof Error ? error.message : "Kunne ikke lagre utkast"
         setFeedback(message)
         toast.error(message)
@@ -404,6 +407,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
         onCompleted?.()
         router.push(`/tilbud/${result.id}`)
       } catch (error) {
+        reportClientError(error, { context: { action: "save and open offer", projectId } })
         setFeedback(error instanceof Error ? error.message : "Kunne ikke lagre tilbud")
       }
     })

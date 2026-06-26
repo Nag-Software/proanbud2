@@ -3,6 +3,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react"
 import { ArrowLeft, ArrowRight, CheckCircle2, LoaderCircle, Sparkles, X } from "lucide-react"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import {
   type OfferAnalysisResult,
@@ -194,6 +195,7 @@ export function AiChatPanel({
 
       applyResult(payload)
     } catch (error) {
+      reportClientError(error, { context: { action: "ai-chat start phase" } })
       setErrorText(error instanceof Error ? error.message : "Ukjent feil")
       setPhase("error")
     }
@@ -342,6 +344,7 @@ export function AiChatPanel({
 
       applyResult(payload)
     } catch (error) {
+      reportClientError(error, { context: { action: "ai-chat answer phase" } })
       setErrorText(error instanceof Error ? error.message : "Ukjent feil")
       setPhase("error")
     }

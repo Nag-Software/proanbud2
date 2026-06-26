@@ -4,6 +4,7 @@ import { z } from "zod"
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerActivity, logSellerEmail } from "@/lib/selger/activity-log"
+import { logServerError } from "@/lib/errors/log"
 import { isOptedOut, sendOutreachEmail } from "@/lib/outreach/send"
 
 const patchSchema = z.object({
@@ -47,6 +48,25 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Prospektet mangler e-post" }, { status: 400 })
   }
 
+  // Atomically claim the draft so two concurrent approvals (two tabs, a reload
+  // mid-send, a retry) can't both send the same cold email — double-sends hurt
+  // sender reputation and double-count against the reputation cap. Only the request
+  // that flips awaiting_approval -> approved proceeds; any loser gets 409.
+  const { data: claimed } = await admin
+    .from("prospect_outreach")
+    .update({ status: "approved", updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("status", "awaiting_approval")
+    .select("id")
+    .maybeSingle()
+
+  if (!claimed) {
+    return NextResponse.json(
+      { error: "Utkastet er allerede behandlet.", status: draft.status },
+      { status: 409 }
+    )
+  }
+
   // Opt-out check (markedsføringsloven/GDPR).
   if (await isOptedOut(admin, { email: prospect.email, orgNumber: prospect.org_number })) {
     await admin
@@ -67,6 +87,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     providerMessageId = sent.providerMessageId
   } catch (error) {
     console.error("[outreach/drafts approve] send failed", error)
+    await logServerError({
+      message: "Kunne ikke sende godkjent kald-e-post",
+      error,
+      source: "api",
+      route: "PATCH /api/outreach/drafts/[id]",
+      context: { draftId: id, prospectId: prospect.id, userId: auth.user!.id, recipientEmail: prospect.email },
+    })
+    // Release the claim so the draft returns to the approval queue and can be retried,
+    // instead of being stuck in "approved" forever.
+    await admin
+      .from("prospect_outreach")
+      .update({ status: "awaiting_approval", updated_at: new Date().toISOString() })
+      .eq("id", id)
     return NextResponse.json({ error: "Kunne ikke sende e-post" }, { status: 502 })
   }
 

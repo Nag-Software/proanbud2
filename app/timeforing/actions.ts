@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { createClient } from "@/lib/supabase/server"
+import { logServerError } from "@/lib/errors/log"
 import { assertCompanyHasModule, companyHasModule } from "@/lib/billing/server-modules"
 import {
   buildEmployeeSummaries,
@@ -63,6 +64,13 @@ export async function getActiveWorkSessionAction(projectId: string) {
 
   if (error) {
     console.error("Error fetching active session:", error)
+    await logServerError({
+      message: "Kunne ikke hente aktiv arbeidsøkt",
+      error,
+      source: "action",
+      route: "getActiveWorkSessionAction",
+      context: { projectId, userId: user.id, companyId },
+    })
     return null
   }
 
@@ -125,6 +133,13 @@ export async function startWorkSessionAction(projectId: string, description?: st
 
   if (error) {
     console.error("Error starting work session:", error)
+    await logServerError({
+      message: "Kunne ikke starte arbeidsøkt",
+      error,
+      source: "action",
+      route: "startWorkSessionAction",
+      context: { projectId, userId: user.id, companyId },
+    })
     throw new Error("Kunne ikke starte arbeid")
   }
 
@@ -175,6 +190,13 @@ export async function stopWorkSessionAction(projectId: string) {
 
   if (error) {
     console.error("Error stopping work session:", error)
+    await logServerError({
+      message: "Kunne ikke avslutte arbeidsøkt",
+      error,
+      source: "action",
+      route: "stopWorkSessionAction",
+      context: { projectId, userId: user.id, companyId, entryId: activeSession.id },
+    })
     throw new Error("Kunne ikke avslutte arbeid")
   }
 
@@ -244,6 +266,13 @@ export async function addManualTimeEntryAction(
 
   if (error) {
     console.error("Error adding manual time entry:", error)
+    await logServerError({
+      message: "Kunne ikke lagre manuell timeføring",
+      error,
+      source: "action",
+      route: "addManualTimeEntryAction",
+      context: { projectId, userId: user.id, companyId },
+    })
     throw new Error("Kunne ikke lagre timeføring")
   }
 
@@ -275,6 +304,13 @@ export async function getProjectTimeEntriesAction(projectId: string, viewAll = f
 
   if (error) {
     console.error("Error fetching project time entries:", error)
+    await logServerError({
+      message: "Kunne ikke hente timeføringer for prosjekt",
+      error,
+      source: "action",
+      route: "getProjectTimeEntriesAction",
+      context: { projectId, userId: user.id, companyId, viewAll },
+    })
     return []
   }
 
@@ -340,6 +376,13 @@ export async function getCompanyTimeOverviewAction() {
 
   if (error) {
     console.error("Error fetching company time overview:", error)
+    await logServerError({
+      message: "Kunne ikke hente timeoversikt for bedrift",
+      error,
+      source: "action",
+      route: "getCompanyTimeOverviewAction",
+      context: { userId: user.id, companyId, canViewAll },
+    })
     return {
       canViewAll,
       totalHours: 0,

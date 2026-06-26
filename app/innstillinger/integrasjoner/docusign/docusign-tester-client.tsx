@@ -3,6 +3,7 @@
 import * as React from "react"
 import { toast } from "sonner"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -67,6 +68,7 @@ export function DocusignTesterClient() {
       toast.success(`DocuSign test OK: ${action}`)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Test failed"
+      reportClientError(error, { context: { action: `docusign tester: ${action}` } })
       setResult({ ok: false, error: message, action })
       toast.error(message)
     } finally {

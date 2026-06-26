@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { BRANSJE_LABELS, resolveBransje } from "@/lib/outreach/bransje"
 import { regenerateOutreachDraft, REDRAFT_TONES, type RedraftTone } from "@/lib/outreach/draft"
 
@@ -54,6 +55,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ draft })
   } catch (error) {
     console.error("[outreach/redraft]", error)
+    await logServerError({
+      message: "KI kunne ikke skrive om utkastet",
+      error,
+      source: "api",
+      route: "POST /api/outreach/prospects/[id]/redraft",
+      context: { prospectId: id, userId: auth.user!.id, tone: parsed.data.tone },
+    })
     return NextResponse.json({ error: "KI kunne ikke skrive om utkastet" }, { status: 502 })
   }
 }

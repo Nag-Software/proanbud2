@@ -1,5 +1,9 @@
 import { type OfferLineItem } from "@/lib/tilbud/types"
 import { openaiFetch } from "@/lib/llm/openai-fetch"
+import { logServerError } from "@/lib/errors/log"
+
+// Re-export the client-safe pure helpers so existing server-side importers keep working.
+export { readProjectSummaryFromAnalysis, mergeAnalysisSummary } from "@/lib/tilbud/project-summary.shared"
 
 type GenerateProjectSummaryInput = {
   title: string
@@ -41,13 +45,6 @@ function normalizeJsonFromModel(raw: string) {
   }
 
   return trimmed
-}
-
-export function readProjectSummaryFromAnalysis(analysisResult: unknown) {
-  if (!analysisResult || typeof analysisResult !== "object") return ""
-
-  const summary = (analysisResult as Record<string, unknown>).summary
-  return typeof summary === "string" ? summary.trim() : ""
 }
 
 export async function generateProjectSummary(input: GenerateProjectSummaryInput) {
@@ -102,16 +99,14 @@ export async function generateProjectSummary(input: GenerateProjectSummaryInput)
     }
 
     return summary.length > 220 ? `${summary.slice(0, 217).trim()}…` : summary
-  } catch {
+  } catch (error) {
+    await logServerError({
+      message: "AI project summary generation failed; using fallback",
+      error,
+      source: "server",
+      route: "generateProjectSummary",
+      level: "warning",
+    })
     return fallback
-  }
-}
-
-export function mergeAnalysisSummary(analysisResult: unknown, summary: string) {
-  const base = analysisResult && typeof analysisResult === "object" ? { ...(analysisResult as Record<string, unknown>) } : {}
-  return {
-    ...base,
-    summary,
-    generatedAt: new Date().toISOString(),
   }
 }

@@ -6,6 +6,7 @@ import { requireCompanyAdmin } from "@/lib/billing/guards"
 import { isStripeResourceMissing } from "@/lib/billing/stripe-helpers"
 import { isStripeConfigured } from "@/lib/stripe/server"
 import { getStripe } from "@/lib/stripe/server"
+import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
@@ -133,6 +134,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ url: portalSession.url })
   } catch (error) {
     console.error("Stripe customer portal error", error)
+    await logServerError({
+      message: "Kunne ikke opprette Stripe-kundeportal",
+      error,
+      source: "api",
+      route: "/api/stripe/customer-portal",
+    })
     return NextResponse.json(
       {
         error:

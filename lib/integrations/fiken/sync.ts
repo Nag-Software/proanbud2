@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { enqueueFikenJob } from "@/lib/integrations/fiken/jobs"
 import { runFikenWorker } from "@/lib/integrations/fiken/worker"
 import { normalizeFikenScopeConfig } from "@/lib/integrations/fiken/scopes"
@@ -101,6 +102,13 @@ export function processFikenQueueInBackground(input?: { batchSize?: number; maxB
     maxBatches: input?.maxBatches ?? 5,
   }).catch((error) => {
     console.error("Fiken background worker failed:", error)
+    void logServerError({
+      message: "Fiken background worker failed",
+      error,
+      level: "warning",
+      source: "worker",
+      route: "processFikenQueueInBackground",
+    })
   })
 }
 

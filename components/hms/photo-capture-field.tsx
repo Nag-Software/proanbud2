@@ -5,6 +5,7 @@ import { Camera, ImagePlus, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { reportClientError } from "@/lib/errors/client"
 import { DEVIATION_PHOTO_MAX_WIDTH } from "@/lib/hms/constants"
 
 type PhotoPreview = {
@@ -149,7 +150,8 @@ export function PhotoCaptureField({
       }
 
       setPhotos((prev) => [...prev, ...newPhotos])
-    } catch {
+    } catch (err) {
+      reportClientError(err, { context: { action: "Behandle bilde (avvik)" } })
       toast.error("Kunne ikke behandle bilde")
     } finally {
       setCompressing(false)

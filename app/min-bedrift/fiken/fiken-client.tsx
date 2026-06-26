@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { ExternalLink, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -176,6 +177,7 @@ export function FikenClient({
       setCompanyChoices(null)
       router.refresh()
     } catch (error) {
+      reportClientError(error, { context: { action: "fiken_connect_personal_token" } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke koble til")
     } finally {
       setBusy(false)
@@ -188,6 +190,7 @@ export function FikenClient({
       await call("PATCH", { action: "sync_now" })
       toast.success("Synkronisering startet.")
     } catch (error) {
+      reportClientError(error, { context: { action: "fiken_sync_now" } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke synkronisere")
     } finally {
       setBusy(false)
@@ -209,6 +212,7 @@ export function FikenClient({
       })
       toast.success("Synkomfang oppdatert.")
     } catch (error) {
+      reportClientError(error, { context: { action: "fiken_update_scope" } })
       setScope(scope)
       toast.error(error instanceof Error ? error.message : "Kunne ikke oppdatere")
     }
@@ -221,6 +225,7 @@ export function FikenClient({
       setConnection((prev) => (prev ? { ...prev, sync_state: "disconnected" } : prev))
       toast.success("Fiken er frakoblet.")
     } catch (error) {
+      reportClientError(error, { context: { action: "fiken_disconnect" } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke koble fra")
     } finally {
       setBusy(false)
@@ -235,6 +240,7 @@ export function FikenClient({
       toast.success("Fiken-integrasjonen er fjernet.")
       router.refresh()
     } catch (error) {
+      reportClientError(error, { context: { action: "fiken_remove" } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke fjerne")
     } finally {
       setBusy(false)

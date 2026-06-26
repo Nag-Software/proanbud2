@@ -8,6 +8,7 @@
 // re-links a still-live replacement, or downgrades the row to canceled.
 
 import { reconcileCompanyBillingFromStripe } from "@/lib/billing/confirm-checkout"
+import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 export type BillingReconcileResult = {
@@ -62,6 +63,14 @@ export async function runBillingReconcile(limit = 200): Promise<BillingReconcile
       }
     } catch (err) {
       console.error("[billing-reconcile] failed for", row.company_id, err)
+      void logServerError({
+        message: "Billing-reconcile feilet for bedrift",
+        error: err,
+        level: "warning",
+        source: "worker",
+        route: "runBillingReconcile",
+        context: { companyId: row.company_id },
+      })
       result.failed += 1
     }
   }

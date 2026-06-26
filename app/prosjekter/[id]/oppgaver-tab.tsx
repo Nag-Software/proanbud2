@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { getProjectTasksAction, createTaskAction, updateTaskStatusAction } from "../actions";
+import { toast } from "sonner";
+import { getProjectTasksAction, createTaskAction, updateTaskStatusAction, updateTaskAction, deleteTaskAction } from "../actions";
+import { reportClientError } from "@/lib/errors/client";
 import { 
   Plus, 
   List, 
@@ -84,6 +86,8 @@ export default function OppgaverTab({
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [syncToCalendar, setSyncToCalendar] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingTask, setIsSavingTask] = useState(false);
+  const [isDeletingTask, setIsDeletingTask] = useState(false);
 
   useEffect(() => {
     async function loadTasks() {
@@ -138,6 +142,10 @@ export default function OppgaverTab({
 
         if (!res.ok) {
           console.error("Failed to sync task to calendar.");
+          reportClientError("Failed to sync task to calendar", {
+            level: "warning",
+            context: { action: "synkronisere oppgave til kalender", projectId, taskId: createdTaskId, status: res.status },
+          });
         }
       }
 
@@ -152,6 +160,8 @@ export default function OppgaverTab({
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Error creating task:", error);
+      reportClientError(error, { context: { action: "opprette oppgave", projectId } });
+      toast.error("Kunne ikke opprette oppgaven – prøv igjen");
     } finally {
       setIsSubmitting(false);
     }
@@ -168,7 +178,10 @@ export default function OppgaverTab({
 
     if (source.droppableId !== destination.droppableId) {
       const newStatus = destination.droppableId;
-      
+
+      // Snapshot before the optimistic update so we can roll back if the write fails.
+      const snapshot = tasks;
+
       // Optimistic update
       setTasks(prevTasks => {
         return prevTasks.map(t => {
@@ -179,13 +192,66 @@ export default function OppgaverTab({
         });
       });
 
-      // Persist to database
+      // Persist to database — revert and tell the user if it fails, otherwise the
+      // card stays in the new column on screen while the DB still has the old status.
       try {
         await updateTaskStatusAction(draggableId, newStatus, projectId);
       } catch (err) {
         console.error("Failed to update status in DB:", err);
-        // Optionally revert local state here
+        reportClientError(err, { context: { action: "flytte oppgave (endre status)", projectId } });
+        setTasks(snapshot);
+        toast.error("Kunne ikke flytte oppgaven – prøv igjen");
       }
+    }
+  };
+
+  const handleSaveTask = async () => {
+    if (!selectedTask) return;
+    const snapshot = tasks;
+    setIsSavingTask(true);
+    // Optimistic update
+    setTasks(prev => prev.map(t => (t.id === selectedTask.id ? selectedTask : t)));
+    try {
+      await updateTaskAction({
+        id: selectedTask.id,
+        project_id: projectId,
+        title: selectedTask.title,
+        description: selectedTask.description,
+        status: selectedTask.status,
+        priority: selectedTask.priority,
+        due_date: selectedTask.due_date,
+        // `assigned_to` is intentionally omitted: the column is a user UUID FK, but
+        // the drawer field is free-text — persisting it would violate the constraint.
+      });
+      toast.success("Endringer lagret");
+      setIsDrawerOpen(false);
+    } catch (err) {
+      console.error("Failed to save task:", err);
+      reportClientError(err, { context: { action: "lagre oppgaveendringer", projectId } });
+      setTasks(snapshot);
+      toast.error("Kunne ikke lagre endringene – prøv igjen");
+    } finally {
+      setIsSavingTask(false);
+    }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!selectedTask) return;
+    const snapshot = tasks;
+    setIsDeletingTask(true);
+    // Optimistic delete
+    setTasks(prev => prev.filter(t => t.id !== selectedTask.id));
+    try {
+      await deleteTaskAction(selectedTask.id, projectId);
+      toast.success("Oppgave slettet");
+      setIsDrawerOpen(false);
+    } catch (err) {
+      console.error("Failed to delete task:", err);
+      reportClientError(err, { context: { action: "slette oppgave", projectId } });
+      setTasks(snapshot);
+      toast.error("Kunne ikke slette oppgaven – prøv igjen");
+    } finally {
+      setIsDeletingTask(false);
     }
   };
 
@@ -544,24 +610,19 @@ export default function OppgaverTab({
             </div>
           )}
           <DrawerFooter className="mt-6 px-4 pb-4 flex flex-col gap-3">
-            <Button onClick={() => {
-              // For now we just close the drawer or optimistic update
-              setTasks(prev => prev.map(t => t.id === selectedTask.id ? selectedTask : t));
-              setIsDrawerOpen(false);
-            }}>Lagre endringer</Button>
+            <Button onClick={handleSaveTask} disabled={isSavingTask || isDeletingTask}>
+              {isSavingTask ? "Lagrer..." : "Lagre endringer"}
+            </Button>
             <DrawerClose asChild>
               <Button variant="outline">Lukk</Button>
             </DrawerClose>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               className="mt-4"
-              onClick={() => {
-                // Optimistic delete
-                setTasks(prev => prev.filter(t => t.id !== selectedTask.id));
-                setIsDrawerOpen(false);
-              }}
+              onClick={handleDeleteTask}
+              disabled={isSavingTask || isDeletingTask}
             >
-              Slett oppgave
+              {isDeletingTask ? "Sletter..." : "Slett oppgave"}
             </Button>
           </DrawerFooter>
         </DrawerContent>

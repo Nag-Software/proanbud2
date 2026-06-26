@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building2, User, Phone, Mail, MapPin, Briefcase, TrendingUp, Clock, FileCheck } from "lucide-react"
 import { updateCustomerAction } from "@/app/kunder/actions"
 import { toast } from "sonner"
+import { reportClientError } from "@/lib/errors/client"
 import { CustomerProjectsTab } from "./customer-projects-tab"
 
 interface CustomerDrawerProps {
@@ -83,6 +84,7 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
         setIsEditing(false)
         toast.success("Kunden ble oppdatert")
       } catch (error) {
+        reportClientError(error, { context: { action: "update-customer", customerId: customer.id } })
         const message = error instanceof Error ? error.message : "Kunne ikke lagre kunde"
         toast.error(message)
       }

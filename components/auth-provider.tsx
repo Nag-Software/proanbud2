@@ -3,6 +3,7 @@
 import React, { useEffect, useState, createContext, useContext } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import { reportClientError } from "@/lib/errors/client"
 
 type AuthContextType = {
   user: any | null
@@ -34,6 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(data?.session?.user ?? null)
         }
       } catch (e) {
+        reportClientError(e, { level: "warning", context: { action: "seed-auth-session" } })
         if (mounted) setUser(null)
       } finally {
         if (mounted) setLoading(false)

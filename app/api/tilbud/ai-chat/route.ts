@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { logServerError } from "@/lib/errors/log"
 import { getUsageSummary, recordUsageEvent, requireActiveSubscription } from "@/lib/billing/guards"
 import { createClient } from "@/lib/supabase/server"
 import { openaiFetch } from "@/lib/llm/openai-fetch"
@@ -460,7 +461,14 @@ async function extractAttachmentText(fileData: Blob, type?: string) {
       const parser = new PDFParse({ data: new Uint8Array(await fileData.arrayBuffer()) })
       const result = await parser.getText()
       return result.text.slice(0, 12000)
-    } catch {
+    } catch (error) {
+      void logServerError({
+        message: "PDF text extraction failed for ai-chat attachment",
+        error,
+        source: "api",
+        route: "POST /api/tilbud/ai-chat",
+        level: "warning",
+      })
       return ""
     }
   }
@@ -504,6 +512,14 @@ async function resolveAttachmentContext(
         name: doc.name,
         type: doc.type,
         error: error instanceof Error ? error.message : error,
+      })
+      void logServerError({
+        message: "Failed to process ai-chat attachment",
+        error,
+        source: "api",
+        route: "POST /api/tilbud/ai-chat",
+        level: "warning",
+        context: { documentId: doc.id, name: doc.name, type: doc.type },
       })
     }
 
@@ -863,6 +879,13 @@ export async function POST(request: Request) {
     )
   } catch (error) {
     console.error("[ai-chat POST]", error)
+    await logServerError({
+      message: "ai-chat offer generation failed",
+      error,
+      source: "api",
+      route: "POST /api/tilbud/ai-chat",
+      statusCode: 500,
+    })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Ukjent feil" },
       { status: 500 }

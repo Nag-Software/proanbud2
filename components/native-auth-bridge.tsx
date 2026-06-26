@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { reportClientError } from "@/lib/errors/client"
 
 type NativeAuthPayload = {
   access_token?: string
@@ -34,8 +35,9 @@ export function NativeAuthBridge() {
         if (!error) {
           window.location.replace("/")
         }
-      } catch {
+      } catch (error) {
         /* best-effort; the login screen stays put on failure */
+        reportClientError(error, { level: "warning", context: { action: "native-auth-set-session" } })
       }
     }
 

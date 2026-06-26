@@ -1,3 +1,4 @@
+import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { locateCompany } from "@/lib/sjefen/norway-geo"
 
@@ -146,6 +147,7 @@ export async function fetchSjefenAnalytics(): Promise<SjefenAnalytics> {
     }
   } catch (error) {
     console.error("[sjefen/analytics] session stats failed", error)
+    await logServerError({ message: "Live arbeidsøkt-statistikk feilet (best-effort)", error, source: "server", route: "fetchSjefenAnalytics", level: "warning" })
   }
 
   return {

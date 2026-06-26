@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getCompanyUsersAction, addProjectParticipantAction } from "./deltakere-actions"
+import { reportClientError } from "@/lib/errors/client"
 import { Plus, UserPlus } from "lucide-react"
 
 export function AddParticipantDialog({ projectId, currentParticipants }: { projectId: string; currentParticipants: any[] }) {
@@ -30,6 +31,8 @@ export function AddParticipantDialog({ projectId, currentParticipants }: { proje
         setLoading(false)
       }).catch(err => {
         console.error(err)
+        reportClientError(err, { level: "warning", context: { action: "hente tilgjengelige brukere for deltakerdialog", projectId } })
+        setError("Kunne ikke hente brukere. Prøv igjen.")
         setLoading(false)
       })
     } else {
@@ -52,6 +55,7 @@ export function AddParticipantDialog({ projectId, currentParticipants }: { proje
         await addProjectParticipantAction(projectId, selectedUser, accessLevel)
         setOpen(false)
     } catch (err: any) {
+        reportClientError(err, { context: { action: "legge til deltaker i prosjekt", projectId } })
         setError(err.message || "En feil oppstod")
     } finally {
         setSubmitting(false)

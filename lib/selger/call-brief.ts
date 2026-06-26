@@ -5,6 +5,7 @@
 
 import { openaiFetch } from "@/lib/llm/openai-fetch"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { BRANSJE_LABELS, resolveBransje } from "@/lib/outreach/bransje"
 
 export type CallBrief = {
@@ -139,7 +140,16 @@ export async function generateCallBrief(prospectId: string): Promise<CallBrief |
       angle: parsed.angle?.trim() || fallback.angle,
       opener: parsed.opener?.trim() || fallback.opener,
     }
-  } catch {
+  } catch (error) {
+    // Best-effort: the deterministic fallback brief is still returned to the caller.
+    await logServerError({
+      message: "generateCallBrief: KI-brief feilet, bruker fallback",
+      error,
+      level: "warning",
+      source: "server",
+      route: "generateCallBrief",
+      context: { prospectId },
+    })
     return fallback
   }
 }

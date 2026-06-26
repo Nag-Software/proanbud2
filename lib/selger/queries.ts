@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import type {
   SelgerActivityRow,
   SelgerCompanyFilters,
@@ -126,6 +127,12 @@ export async function fetchSelgerCompaniesFiltered(
 
   if (error) {
     console.error("fetchSelgerCompaniesFiltered", error)
+    await logServerError({
+      message: "fetchSelgerCompaniesFiltered: kunne ikke hente firmaer",
+      error,
+      source: "server",
+      route: "fetchSelgerCompaniesFiltered",
+    })
     return []
   }
 
@@ -284,6 +291,12 @@ export async function fetchSelgerUnifiedActivity(limit = 200): Promise<SelgerAct
 
   if (error) {
     console.error("fetchSelgerUnifiedActivity", error)
+    await logServerError({
+      message: "fetchSelgerUnifiedActivity: kunne ikke hente aktivitetslogg",
+      error,
+      source: "server",
+      route: "fetchSelgerUnifiedActivity",
+    })
     return []
   }
 
@@ -339,6 +352,12 @@ export async function fetchSelgerEmailLog(limit = 200): Promise<SelgerEmailLogRo
 
   if (error) {
     console.error("fetchSelgerEmailLog", error)
+    await logServerError({
+      message: "fetchSelgerEmailLog: kunne ikke hente e-postlogg",
+      error,
+      source: "server",
+      route: "fetchSelgerEmailLog",
+    })
     return []
   }
 

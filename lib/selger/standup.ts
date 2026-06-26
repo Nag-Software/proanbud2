@@ -4,6 +4,7 @@
 // as lib/tilbud/project-summary.ts).
 
 import { openaiFetch } from "@/lib/llm/openai-fetch"
+import { logServerError } from "@/lib/errors/log"
 import type { OutreachMetrics } from "@/lib/outreach/metrics"
 import type { QueueCounts } from "@/lib/selger/queue"
 
@@ -74,7 +75,15 @@ export async function generateStandup(metrics: OutreachMetrics, counts: QueueCou
     const parsed = JSON.parse(normalizeJsonFromModel(raw)) as { standup?: string }
     const out = parsed.standup?.trim()
     return out && out.length > 0 ? out : fallback
-  } catch {
+  } catch (error) {
+    // Best-effort: the deterministic fallback is still returned to the caller.
+    await logServerError({
+      message: "generateStandup: KI-standup feilet, bruker fallback",
+      error,
+      level: "warning",
+      source: "server",
+      route: "generateStandup",
+    })
     return fallback
   }
 }

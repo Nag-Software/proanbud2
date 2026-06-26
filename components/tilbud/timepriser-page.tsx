@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Loader2, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -83,6 +84,7 @@ export function TimepriserPage() {
       setRates(data.rates ?? [])
     } catch (error) {
       console.error(error)
+      reportClientError(error, { context: { action: "load hourly rates" } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke hente timepriser")
     } finally {
       setIsLoading(false)
@@ -168,6 +170,7 @@ export function TimepriserPage() {
       closeDialog()
     } catch (error) {
       console.error(error)
+      reportClientError(error, { context: { action: "save hourly rate", rateId: editingRate?.id } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke lagre timepris")
     } finally {
       setIsSaving(false)
@@ -191,6 +194,7 @@ export function TimepriserPage() {
       setRateToDelete(null)
     } catch (error) {
       console.error(error)
+      reportClientError(error, { context: { action: "delete hourly rate", rateId: rateToDelete?.id } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke slette timepris")
     } finally {
       setIsSaving(false)

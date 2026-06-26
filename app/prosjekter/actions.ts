@@ -9,6 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { enqueueEntityTripletexSync, processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
 import { assertPlanFeature, companyHasFeature } from "@/lib/billing/server-modules"
 import { canManageProjects } from "@/lib/roles"
+import { logServerError } from "@/lib/errors/log"
 
 const taskStatusToDb: Record<string, string> = {
   "Ikke startet": "todo",
@@ -100,6 +101,13 @@ export async function getProjectTasksAction(projectId: string) {
 
   if (error) {
     console.error("Error fetching tasks:", error)
+    await logServerError({
+      message: "Kunne ikke hente oppgaver for prosjekt",
+      error,
+      source: "action",
+      route: "getProjectTasksAction",
+      context: { projectId },
+    })
     return []
   }
 
@@ -152,6 +160,13 @@ export async function createTaskAction(taskData: {
 
   if (error) {
     console.error("Error creating task:", error)
+    await logServerError({
+      message: "Kunne ikke lagre oppgave i databasen",
+      error,
+      source: "action",
+      route: "createTaskAction",
+      context: { projectId: taskData.project_id, companyId: userData.company_id, userId: user.id },
+    })
     throw new Error("Kunne ikke lagre oppgave i databasen")
   }
 
@@ -180,15 +195,135 @@ export async function updateTaskStatusAction(taskId: string, newStatus: string, 
   }
 
   await assertPlanFeature(userData.company_id, "project_tasks", "Oppgaver")
+  // Without this, a read-only project member's drag would be silently no-op'd by RLS
+  // (no error), leaving the optimistic UI out of sync with the database.
+  await assertCanManageProjectTasks(supabase, user.id, projectId)
 
   const { error } = await supabase
     .from("tasks")
     .update({ status: normalizeTaskStatus(newStatus), updated_at: new Date().toISOString() })
     .eq("id", taskId)
+    .eq("company_id", userData.company_id)
 
   if (error) {
     console.error("Error updating task status:", error)
+    await logServerError({
+      message: "Kunne ikke oppdatere oppgavestatus",
+      error,
+      source: "action",
+      route: "updateTaskStatusAction",
+      context: { projectId, taskId, companyId: userData.company_id, userId: user.id },
+    })
     throw new Error("Kunne ikke oppdatere status")
+  }
+
+  revalidatePath(`/prosjekter/${projectId}`)
+}
+
+export async function updateTaskAction(taskData: {
+  id: string
+  project_id: string
+  title?: string
+  description?: string | null
+  status?: string
+  priority?: string
+  due_date?: string | null
+  assigned_to?: string | null
+}) {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+
+  const { data: userData, error: userError } = await supabase
+    .from("users")
+    .select("company_id")
+    .eq("id", user.id)
+    .single()
+
+  if (userError || !userData?.company_id) {
+    throw new Error("Kunne ikke hente bedriftsinformasjon")
+  }
+
+  await assertPlanFeature(userData.company_id, "project_tasks", "Oppgaver")
+  await assertCanManageProjectTasks(supabase, user.id, taskData.project_id)
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (taskData.title !== undefined) updates.title = taskData.title
+  if (taskData.description !== undefined) updates.description = taskData.description || null
+  if (taskData.status !== undefined) updates.status = normalizeTaskStatus(taskData.status)
+  if (taskData.priority !== undefined) updates.priority = normalizeTaskPriority(taskData.priority)
+  if (taskData.due_date !== undefined) {
+    updates.due_date = taskData.due_date ? new Date(taskData.due_date).toISOString() : null
+  }
+  if (taskData.assigned_to !== undefined) updates.assigned_to = taskData.assigned_to || null
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .update(updates)
+    .eq("id", taskData.id)
+    .eq("company_id", userData.company_id)
+    .select()
+    .single()
+
+  if (error) {
+    console.error("Error updating task:", error)
+    await logServerError({
+      message: "Kunne ikke lagre oppgaveendringer",
+      error,
+      source: "action",
+      route: "updateTaskAction",
+      context: { projectId: taskData.project_id, taskId: taskData.id, companyId: userData.company_id, userId: user.id },
+    })
+    throw new Error("Kunne ikke lagre endringene")
+  }
+
+  revalidatePath(`/prosjekter/${taskData.project_id}`)
+  return data
+}
+
+export async function deleteTaskAction(taskId: string, projectId: string) {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+
+  const { data: userData, error: userError } = await supabase
+    .from("users")
+    .select("company_id")
+    .eq("id", user.id)
+    .single()
+
+  if (userError || !userData?.company_id) {
+    throw new Error("Kunne ikke hente bedriftsinformasjon")
+  }
+
+  await assertCanManageProjectTasks(supabase, user.id, projectId)
+
+  const { error } = await supabase
+    .from("tasks")
+    .delete()
+    .eq("id", taskId)
+    .eq("company_id", userData.company_id)
+
+  if (error) {
+    console.error("Error deleting task:", error)
+    await logServerError({
+      message: "Kunne ikke slette oppgaven",
+      error,
+      source: "action",
+      route: "deleteTaskAction",
+      context: { projectId, taskId, companyId: userData.company_id, userId: user.id },
+    })
+    throw new Error("Kunne ikke slette oppgaven")
   }
 
   revalidatePath(`/prosjekter/${projectId}`)
@@ -280,6 +415,13 @@ export async function createProjectAction(input: CreateProjectInput) {
 
   if (error || !project?.id) {
     console.error("Error creating project:", error)
+    await logServerError({
+      message: "Kunne ikke opprette prosjekt",
+      error,
+      source: "action",
+      route: "createProjectAction",
+      context: { companyId, userId: user.id },
+    })
     throw new Error("Kunne ikke opprette prosjekt")
   }
 
@@ -300,6 +442,13 @@ export async function createProjectAction(input: CreateProjectInput) {
 
     if (memberError) {
       console.error("Error creating initial project members:", memberError)
+      await logServerError({
+        message: "Prosjektet ble opprettet, men teamet kunne ikke lagres",
+        error: memberError,
+        source: "action",
+        route: "createProjectAction",
+        context: { companyId, userId: user.id, projectId: project.id },
+      })
       throw new Error("Prosjektet ble opprettet, men teamet kunne ikke lagres")
     }
   }
@@ -324,6 +473,13 @@ export async function createProjectAction(input: CreateProjectInput) {
 
     if (taskInsertError) {
       console.error("Error creating initial tasks:", taskInsertError)
+      await logServerError({
+        message: "Prosjektet ble opprettet, men oppgaver kunne ikke lagres",
+        error: taskInsertError,
+        source: "action",
+        route: "createProjectAction",
+        context: { companyId, userId: user.id, projectId: project.id },
+      })
       throw new Error("Prosjektet ble opprettet, men oppgaver kunne ikke lagres")
     }
   }
@@ -439,6 +595,13 @@ export async function updateProjectAction(projectId: string, values: Record<stri
 
   if (error) {
     console.error("Error updating project:", error)
+    await logServerError({
+      message: "Kunne ikke oppdatere prosjekt",
+      error,
+      source: "action",
+      route: "updateProjectAction",
+      context: { projectId, companyId: userData.company_id, userId: user.id },
+    })
     throw new Error("Kunne ikke oppdatere prosjekt")
   }
 

@@ -1,6 +1,7 @@
 import { Resend } from "resend"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { escapeHtml } from "@/lib/outreach/templates"
+import { logServerError } from "@/lib/errors/log"
 
 const resend = new Resend(process.env.RESEND_API_KEY || "re_defaultkey")
 
@@ -42,5 +43,13 @@ export async function notifyCompanyAdminsAboutAcceptedOffer(input: {
     .catch((err) => ({ error: err }))
   if (error) {
     console.error("Failed to notify admins about accepted offer:", error)
+    await logServerError({
+      message: "Failed to notify admins about accepted offer",
+      error,
+      source: "server",
+      route: "notifyCompanyAdminsAboutAcceptedOffer",
+      level: "warning",
+      context: { companyId: input.companyId, offerId: input.offerId },
+    })
   }
 }

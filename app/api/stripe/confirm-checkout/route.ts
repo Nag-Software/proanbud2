@@ -7,6 +7,7 @@ import {
 } from "@/lib/billing/confirm-checkout"
 import { requireCompanyAdmin } from "@/lib/billing/guards"
 import { isActiveSubscriptionStatus } from "@/lib/billing/plans"
+import { logServerError } from "@/lib/errors/log"
 
 const bodySchema = z.object({
   sessionId: z.string().min(1).optional(),
@@ -43,6 +44,12 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("[stripe/confirm-checkout]", error)
+    await logServerError({
+      message: "Bekreftelse av Stripe checkout feilet",
+      error,
+      source: "api",
+      route: "/api/stripe/confirm-checkout",
+    })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Kunne ikke bekrefte checkout." },
       { status: 500 }

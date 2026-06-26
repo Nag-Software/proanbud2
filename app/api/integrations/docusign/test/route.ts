@@ -2,6 +2,7 @@ import { Buffer } from "buffer"
 import { NextResponse } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
+import { logServerError } from "@/lib/errors/log"
 import { companyHasFeature } from "@/lib/billing/server-modules"
 import { getDocusignAuthContext, getDocusignJwtConsentUrl } from "@/lib/integrations/docusign/client"
 
@@ -199,6 +200,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: "Ugyldig action" }, { status: 400 })
   } catch (error) {
+    await logServerError({
+      message: "DocuSign test endpoint failed",
+      error,
+      source: "api",
+      route: "POST /api/integrations/docusign/test",
+    })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "DocuSign test failed" },
       { status: 500 }

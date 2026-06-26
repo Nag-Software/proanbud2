@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { enrichFromWebsite } from "@/lib/outreach/enrich"
 
 export const maxDuration = 60
@@ -31,6 +32,13 @@ export async function POST(request: Request) {
 
   if (error) {
     console.error("[outreach/enrich] load failed", error)
+    await logServerError({
+      message: "Kunne ikke hente prospekter for berikelse",
+      error,
+      source: "api",
+      route: "POST /api/outreach/enrich",
+      context: { userId: auth.user!.id, limit },
+    })
     return NextResponse.json({ error: "Kunne ikke hente prospekter" }, { status: 500 })
   }
 

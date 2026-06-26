@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { companyHasFeature } from "@/lib/billing/server-modules"
 import { encryptSecret } from "@/lib/integrations/shared/crypto"
 import { getFikenCompanies } from "@/lib/integrations/fiken/connector"
@@ -114,6 +115,12 @@ export async function GET() {
       conflictingProvider: tripletexConnected && !connection ? "tripletex" : null,
     })
   } catch (error) {
+    await logServerError({
+      message: "Failed to load Fiken connection state",
+      error,
+      source: "api",
+      route: "GET /api/integrations/fiken",
+    })
     const message = error instanceof Error ? error.message : "Ukjent feil"
     return NextResponse.json({ error: message }, { status: 500 })
   }
@@ -164,7 +171,14 @@ export async function POST(request: Request) {
     let companies
     try {
       companies = await getFikenCompanies(personalToken)
-    } catch {
+    } catch (error) {
+      await logServerError({
+        message: "Fiken personal-token company listing failed (treated as invalid token)",
+        error,
+        level: "warning",
+        source: "api",
+        route: "POST /api/integrations/fiken",
+      })
       return NextResponse.json(
         { error: "Fiken avviste API-nøkkelen. Sjekk at den er riktig og at API-modulen er aktivert.", code: "token_invalid" },
         { status: 400 }
@@ -230,6 +244,12 @@ export async function POST(request: Request) {
       company: { slug: company.slug, name: company.name || null, testCompany: company.testCompany === true },
     })
   } catch (error) {
+    await logServerError({
+      message: "Fiken personal-token connect (POST) failed",
+      error,
+      source: "api",
+      route: "POST /api/integrations/fiken",
+    })
     const message = error instanceof Error ? error.message : "Ukjent feil"
     return NextResponse.json({ error: message }, { status: 500 })
   }
@@ -308,6 +328,12 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ error: "Ugyldig handling", code: "invalid_action" }, { status: 400 })
   } catch (error) {
+    await logServerError({
+      message: "Fiken PATCH action failed",
+      error,
+      source: "api",
+      route: "PATCH /api/integrations/fiken",
+    })
     const message = error instanceof Error ? error.message : "Ukjent feil"
     return NextResponse.json({ error: message }, { status: 500 })
   }
@@ -331,6 +357,12 @@ export async function DELETE() {
     }
     return NextResponse.json({ ok: true })
   } catch (error) {
+    await logServerError({
+      message: "Fiken DELETE (remove integration) failed",
+      error,
+      source: "api",
+      route: "DELETE /api/integrations/fiken",
+    })
     const message = error instanceof Error ? error.message : "Ukjent feil"
     return NextResponse.json({ error: message }, { status: 500 })
   }

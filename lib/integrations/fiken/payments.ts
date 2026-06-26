@@ -32,8 +32,15 @@ export async function pollFikenPayments(
   let newlyPaid = 0
   let page = 0
   let pageCount = 1
+  let truncated = false
 
-  while (page < pageCount && page < MAX_PAGES) {
+  while (page < pageCount) {
+    if (page >= MAX_PAGES) {
+      // More settled invoices than we read in one run. We must NOT advance the cursor
+      // (see below) or the unscanned pages would be skipped forever.
+      truncated = true
+      break
+    }
     const { items, pageCount: total } = await listFikenSettledInvoices(connection, { sinceDate, page })
     pageCount = total
 
@@ -77,11 +84,22 @@ export async function pollFikenPayments(
     page += 1
   }
 
-  // Advance the cursor to today (date granularity; we re-poll from here next run).
-  await admin
-    .from("fiken_connections")
-    .update({ last_payment_poll_date: new Date().toISOString().slice(0, 10) })
-    .eq("company_id", connection.company_id)
+  // Only advance the cursor when we actually scanned the WHOLE result set. If the run
+  // was truncated at MAX_PAGES, jumping the cursor to today would permanently skip the
+  // settled invoices we never read (they'd never transition to 'paid', and their offers
+  // would never be marked accepted). Leaving the cursor means the next run re-scans the
+  // same window (cheap — the transition guard skips already-paid links).
+  if (truncated) {
+    console.warn(
+      `[fiken payments] truncated at ${MAX_PAGES} pages for company ${connection.company_id}; ` +
+        `cursor left at ${sinceDate ?? "beginning"} to avoid skipping unscanned settled invoices.`
+    )
+  } else {
+    await admin
+      .from("fiken_connections")
+      .update({ last_payment_poll_date: new Date().toISOString().slice(0, 10) })
+      .eq("company_id", connection.company_id)
+  }
 
   return { scanned, newlyPaid }
 }

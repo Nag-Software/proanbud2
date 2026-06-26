@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import {
   claimFikenJobs,
   enqueueFikenJob,
@@ -41,6 +42,27 @@ import { DEFAULT_FIKEN_VAT_TYPE } from "@/lib/integrations/fiken/vat"
 import type { FikenConnectionRow, FikenVatType } from "@/lib/integrations/fiken/types"
 import type { IntegrationJobRow } from "@/lib/integrations/tripletex/types"
 
+/**
+ * Wraps a non-idempotent step's failure so it is NEVER auto-retried. Used around the
+ * Fiken draft→invoice/offer finalize call: once that POST is in flight we cannot tell
+ * whether Fiken created the real document, so retrying risks a DUPLICATE invoice. We
+ * dead-letter the job for manual review (the draft id is persisted to resume safely).
+ */
+class FikenNonRetryableError extends Error {
+  readonly fikenNonRetryable = true
+  readonly code: string
+  constructor(message: string, code = "ambiguous_create") {
+    super(message)
+    this.name = "FikenNonRetryableError"
+    this.code = code
+  }
+}
+
+function nonRetryableFikenError(error: unknown): FikenNonRetryableError {
+  if (error instanceof FikenNonRetryableError) return error
+  return new FikenNonRetryableError(fikenErrorMessage(error))
+}
+
 function fikenErrorMessage(error: unknown): string {
   const body = (error as { body?: unknown })?.body
   if (body && typeof body === "object") {
@@ -58,6 +80,13 @@ function fikenErrorMessage(error: unknown): string {
 
 function classifyError(error: unknown) {
   const message = fikenErrorMessage(error)
+
+  // Explicitly non-retryable (e.g. ambiguous finalize of a non-idempotent create):
+  // dead-letter for manual review rather than retry into a possible duplicate.
+  if (error instanceof FikenNonRetryableError) {
+    return { kind: "failed" as const, code: error.code, message }
+  }
+
   const status = (error as FikenKnownError)?.status
 
   if (status === 429 || (status && status >= 500)) {
@@ -281,16 +310,36 @@ async function processOfferCreate(job: IntegrationJobRow) {
     incomeAccount: connection.default_income_account,
   })
 
-  const draftResponse = await createFikenOfferDraft(connection, draft)
-  const draftId = draftResponse.locationId
+  // Resume from an already-created draft (see invoice handler for rationale).
+  const existingDraft = await getFikenLink({ companyId: job.company_id, entityType: "offer_draft", localId: offerId })
+  let draftId = existingDraft?.external_id ?? null
+
   if (!draftId) {
-    throw new Error("Fiken offer draft id missing in response")
+    const draftResponse = await createFikenOfferDraft(connection, draft)
+    draftId = draftResponse.locationId
+    if (!draftId) {
+      throw new Error("Fiken offer draft id missing in response")
+    }
+    await upsertFikenLink({
+      companyId: job.company_id,
+      entityType: "offer_draft",
+      localId: offerId,
+      externalId: draftId,
+      syncStatus: "pending",
+    })
   }
 
-  const offerResponse = await createFikenOfferFromDraft(connection, draftId)
+  // Non-idempotent finalize — do not auto-retry an ambiguous failure (would create a
+  // duplicate Fiken tilbud). Dead-letter for manual review; draft id is persisted.
+  let offerResponse
+  try {
+    offerResponse = await createFikenOfferFromDraft(connection, draftId)
+  } catch (err) {
+    throw nonRetryableFikenError(err)
+  }
   const externalId = offerResponse.locationId
   if (!externalId || !Number.isFinite(externalId)) {
-    throw new Error("Fiken offer id missing in response")
+    throw nonRetryableFikenError(new Error("Fiken offer id missing in response"))
   }
 
   await upsertFikenLink({
@@ -345,16 +394,41 @@ async function processInvoiceCreate(job: IntegrationJobRow) {
     bankAccountCode: connection.default_bank_account_code,
   })
 
-  const draftResponse = await createFikenInvoiceDraft(connection, draft)
-  const draftId = draftResponse.locationId
+  // Resume from an already-created draft if a prior attempt failed AFTER the draft
+  // POST. Creating drafts is harmless (a draft is not a real invoice), but we persist
+  // the id so a retry never piles up drafts and so the finalize step is resumable.
+  const existingDraft = await getFikenLink({ companyId: job.company_id, entityType: "invoice_draft", localId: offerId })
+  let draftId = existingDraft?.external_id ?? null
+
   if (!draftId) {
-    throw new Error("Fiken invoice draft id missing in response")
+    const draftResponse = await createFikenInvoiceDraft(connection, draft)
+    draftId = draftResponse.locationId
+    if (!draftId) {
+      throw new Error("Fiken invoice draft id missing in response")
+    }
+    await upsertFikenLink({
+      companyId: job.company_id,
+      entityType: "invoice_draft",
+      localId: offerId,
+      externalId: draftId,
+      syncStatus: "pending",
+    })
   }
 
-  const invoiceResponse = await createFikenInvoiceFromDraft(connection, draftId)
+  // Finalizing a draft into a real invoice is NON-IDEMPOTENT and IRREVERSIBLE. If it
+  // fails ambiguously (network/5xx/timeout) we cannot tell whether Fiken created the
+  // invoice, so we must NOT auto-retry (that risks a duplicate real invoice / double
+  // billing). Dead-letter for manual review; the persisted draft id allows safe
+  // recovery (link the orphan or finalize once).
+  let invoiceResponse
+  try {
+    invoiceResponse = await createFikenInvoiceFromDraft(connection, draftId)
+  } catch (err) {
+    throw nonRetryableFikenError(err)
+  }
   const externalId = invoiceResponse.locationId
   if (!externalId || !Number.isFinite(externalId)) {
-    throw new Error("Fiken invoice id missing in response")
+    throw nonRetryableFikenError(new Error("Fiken invoice id missing in response"))
   }
 
   await upsertFikenLink({
@@ -635,6 +709,14 @@ export async function runFikenWorker(input?: { workerId?: string; batchSize?: nu
           } else {
             await markFikenJobFailed(job, classified.code, classified.message)
             failed += 1
+            await logServerError({
+              message: `Fiken job permanently failed: ${job.job_type}`,
+              error,
+              source: "worker",
+              route: "runFikenWorker",
+              companyId: job.company_id,
+              context: { jobId: job.id, jobType: job.job_type, code: classified.code },
+            })
           }
           await updateFikenConnectionHealth({
             companyId: job.company_id,

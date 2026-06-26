@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { logServerError } from '@/lib/errors/log';
 
 export async function GET(
   _request: Request,
@@ -52,6 +53,12 @@ export async function GET(
     }, { status: 200 });
   } catch (error) {
     console.error('Error validating invitation:', error);
+    await logServerError({
+      message: 'Uventet feil ved validering av invitasjon',
+      error,
+      source: 'api',
+      route: 'GET /api/invitations/[token]/validate',
+    });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

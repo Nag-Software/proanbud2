@@ -6,6 +6,7 @@ import { Archive, MoreVertical, Pencil, Users } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -71,6 +72,7 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
       router.refresh()
     } catch (error) {
       console.error("Kunne ikke arkivere prosjekt", error)
+      reportClientError(error, { context: { action: "arkiver prosjekt", projectId: project.id } })
       toast.error("Kunne ikke arkivere prosjekt")
     } finally {
       setIsSaving(false)
@@ -89,6 +91,7 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
       router.refresh()
     } catch (error) {
       console.error("Kunne ikke oppdatere prosjektnavn", error)
+      reportClientError(error, { context: { action: "endre prosjektnavn", projectId: project.id } })
       toast.error("Kunne ikke oppdatere prosjektnavn")
     } finally {
       setIsSaving(false)
@@ -106,6 +109,7 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
       router.refresh()
     } catch (error) {
       console.error("Kunne ikke oppdatere kunde", error)
+      reportClientError(error, { context: { action: "endre kunde på prosjekt", projectId: project.id } })
       toast.error("Kunne ikke oppdatere kunde")
     } finally {
       setIsSaving(false)

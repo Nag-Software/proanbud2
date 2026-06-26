@@ -14,6 +14,7 @@ import {
   type PlanKey,
 } from "@/lib/billing/plans"
 import type { BillingStatus } from "@/lib/billing/types"
+import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getStripe } from "@/lib/stripe/server"
 
@@ -108,6 +109,18 @@ export async function upsertCompanyBillingFromSubscription(input: {
       console.error(
         `[billing-sync] base plan unresolved for sub ${input.subscription.id} (company ${input.companyId}) — preserving existing plan_key=${current.plan_key}/quota=${current.quota_limit}`
       )
+      void logServerError({
+        message: "Billing-sync: grunnplan kunne ikke utledes — beholder eksisterende plan/kvote",
+        level: "warning",
+        source: "server",
+        route: "upsertCompanyBillingFromSubscription",
+        context: {
+          companyId: input.companyId,
+          subscriptionId: input.subscription.id,
+          preservedPlanKey: current.plan_key,
+          preservedQuota: current.quota_limit,
+        },
+      })
       resolvedPlan = current.plan_key as PlanKey
       resolvedInterval = (current.billing_interval as BillingInterval) ?? interval
       quotaLimit = current.quota_limit ?? quotaForPlan(resolvedPlan)
@@ -174,6 +187,14 @@ export async function syncModulesFromSubscription(
         await stripe.subscriptionItems.del(item.id)
       } catch (error) {
         console.error("Kunne ikke fjerne integrasjoner-modulledd på Proff", error)
+        void logServerError({
+          message: "Kunne ikke fjerne integrasjoner-modulledd på Proff-abonnement",
+          error,
+          level: "warning",
+          source: "server",
+          route: "syncModulesFromSubscription",
+          context: { companyId, subscriptionId: subscription.id, itemId: item.id },
+        })
       }
       continue
     }
@@ -294,68 +315,116 @@ export async function syncSeatQuantity(
 
   if (!billing?.stripe_subscription_id) return { ok: false, reason: "no_subscription" }
 
-  const billableSeats = await countBillableSeats(companyId)
-  const included =
-    billing.included_seats ??
-    includedSeatsForPlan(billing.plan_key as PlanKey | null)
-  const seatsToCharge = chargeableSeats(billableSeats, included)
-
-  let subscription: Stripe.Subscription
-  try {
-    subscription = await fetchSubscription(billing.stripe_subscription_id)
-  } catch (error) {
-    if (isStripeResourceMissing(error)) {
-      console.error(
-        `[syncSeatQuantity] subscription ${billing.stripe_subscription_id} missing in Stripe — marking company ${companyId} canceled`
-      )
-      await markCompanyBillingCanceled(companyId)
-      return { ok: false, reason: "subscription_missing" }
-    }
-    throw error
-  }
-
-  const { getSeatPriceId } = await import("@/lib/billing/plans")
-  const seatInterval = (billing.billing_interval as BillingInterval | null) ?? "month"
-
-  // Reconcile ALL seat items (not just the first) so a concurrent-invite race
-  // that created duplicates self-corrects on the next run.
-  const seatItems = subscription.items.data.filter(
-    (item) => item.price.metadata?.kind === "seat"
-  )
-  let seatItemId: string | null = null
-
-  if (seatsToCharge === 0) {
-    for (const item of seatItems) {
-      await stripe.subscriptionItems.del(item.id)
-    }
-    seatItemId = null
-  } else if (seatItems.length === 0) {
-    // No idempotency key: the duplicate-create race is already handled by the
-    // seatItems.length > 0 branch (keeps one, deletes extras) on the next run. A
-    // deterministic key would REPLAY a cached create after the seats-to-0 branch
-    // deleted the item, re-linking a dead item id (seats under-billed).
-    const created = await stripe.subscriptionItems.create({
-      subscription: billing.stripe_subscription_id,
-      price: getSeatPriceId(seatInterval),
-      quantity: seatsToCharge,
-    })
-    seatItemId = created.id
-  } else {
-    const [keep, ...extras] = seatItems
-    await stripe.subscriptionItems.update(keep.id, { quantity: seatsToCharge })
-    for (const dup of extras) {
-      await stripe.subscriptionItems.del(dup.id)
-    }
-    seatItemId = keep.id
-  }
-
-  await admin
+  // Serialize seat-sync per company. Multiple unserialized callers (invite flow,
+  // subscription.updated webhook, reconcile) could otherwise both observe zero seat
+  // items and each create one → temporary DOUBLE seat billing until the next run
+  // collapses them. Acquire a row-level lock (pooler-safe; advisory locks don't
+  // survive PgBouncer transaction pooling), with a 2-min stale takeover.
+  const lockStale = new Date(Date.now() - 120_000).toISOString()
+  const { data: lockRow } = await admin
     .from("company_billing")
-    .update({
-      stripe_seat_subscription_item_id: seatItemId,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ seat_sync_locked_at: new Date().toISOString() })
     .eq("company_id", companyId)
+    .or(`seat_sync_locked_at.is.null,seat_sync_locked_at.lt.${lockStale}`)
+    .select("company_id")
+    .maybeSingle()
 
-  return { ok: true }
+  if (!lockRow) {
+    // Another seat sync is already running for this company; it will apply the latest
+    // seat count. Skipping here avoids the duplicate-create race entirely.
+    return { ok: true }
+  }
+
+  try {
+    const billableSeats = await countBillableSeats(companyId)
+    const included =
+      billing.included_seats ??
+      includedSeatsForPlan(billing.plan_key as PlanKey | null)
+    const seatsToCharge = chargeableSeats(billableSeats, included)
+
+    let subscription: Stripe.Subscription
+    try {
+      subscription = await fetchSubscription(billing.stripe_subscription_id)
+    } catch (error) {
+      if (isStripeResourceMissing(error)) {
+        console.error(
+          `[syncSeatQuantity] subscription ${billing.stripe_subscription_id} missing in Stripe — marking company ${companyId} canceled`
+        )
+        void logServerError({
+          message: "Seat-sync: abonnement mangler i Stripe — markerer bedrift kansellert",
+          error,
+          level: "warning",
+          source: "server",
+          route: "syncSeatQuantity",
+          context: { companyId, subscriptionId: billing.stripe_subscription_id },
+        })
+        await markCompanyBillingCanceled(companyId)
+        return { ok: false, reason: "subscription_missing" }
+      }
+      throw error
+    }
+
+    const { getSeatPriceId } = await import("@/lib/billing/plans")
+    // Derive the interval from the LIVE subscription's base item, not the DB column
+    // (which can be null/stale and would wrongly create a monthly seat item on a
+    // yearly subscription).
+    const baseItem = subscription.items.data.find(
+      (item) => item.price.metadata?.kind !== "seat" && item.price.metadata?.kind !== "module"
+    )
+    const liveInterval = baseItem?.price.recurring?.interval as BillingInterval | undefined
+    const seatInterval: BillingInterval =
+      liveInterval ?? (billing.billing_interval as BillingInterval | null) ?? "month"
+
+    // Reconcile ALL seat items (not just the first) so a concurrent-invite race
+    // that created duplicates self-corrects on the next run.
+    const seatItems = subscription.items.data.filter(
+      (item) => item.price.metadata?.kind === "seat"
+    )
+    let seatItemId: string | null = null
+
+    if (seatsToCharge === 0) {
+      for (const item of seatItems) {
+        await stripe.subscriptionItems.del(item.id)
+      }
+      seatItemId = null
+    } else if (seatItems.length === 0) {
+      // No idempotency key: the duplicate-create race is already handled by the
+      // seatItems.length > 0 branch (keeps one, deletes extras) on the next run. A
+      // deterministic key would REPLAY a cached create after the seats-to-0 branch
+      // deleted the item, re-linking a dead item id (seats under-billed).
+      const created = await stripe.subscriptionItems.create({
+        subscription: billing.stripe_subscription_id,
+        price: getSeatPriceId(seatInterval),
+        quantity: seatsToCharge,
+      })
+      seatItemId = created.id
+    } else {
+      const [keep, ...extras] = seatItems
+      // Skip the PATCH when the quantity is already correct — avoids a redundant
+      // Stripe write on every subscription.updated webhook.
+      if (keep.quantity !== seatsToCharge) {
+        await stripe.subscriptionItems.update(keep.id, { quantity: seatsToCharge })
+      }
+      for (const dup of extras) {
+        await stripe.subscriptionItems.del(dup.id)
+      }
+      seatItemId = keep.id
+    }
+
+    await admin
+      .from("company_billing")
+      .update({
+        stripe_seat_subscription_item_id: seatItemId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("company_id", companyId)
+
+    return { ok: true }
+  } finally {
+    // Release the lock so the next sync can run.
+    await admin
+      .from("company_billing")
+      .update({ seat_sync_locked_at: null })
+      .eq("company_id", companyId)
+  }
 }

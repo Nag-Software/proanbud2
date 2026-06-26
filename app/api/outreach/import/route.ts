@@ -4,6 +4,7 @@ import { z } from "zod"
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerActivity } from "@/lib/selger/activity-log"
+import { logServerError } from "@/lib/errors/log"
 import { importProspects } from "@/lib/outreach/import"
 
 // Importing several Brreg pages can take a while.
@@ -65,6 +66,13 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("[outreach/import] failed", error)
+    await logServerError({
+      message: "Brønnøysund-import feilet",
+      error,
+      source: "api",
+      route: "POST /api/outreach/import",
+      context: { userId: auth.user!.id, naeringskoder, fylker: fylker ?? null, count },
+    })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Brønnøysund-import feilet" },
       { status: 502 }

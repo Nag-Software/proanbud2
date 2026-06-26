@@ -13,6 +13,7 @@
 import { Resend } from "resend"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { BILLING_PATH } from "@/lib/constants"
 import { logSellerEmail } from "@/lib/selger/activity-log"
 import { buildSellerEmailHtml, sellerEmailAppUrl } from "@/lib/selger/seller-email-html"
@@ -213,6 +214,14 @@ export async function runTrialReminders(admin: AdminClient): Promise<TrialRemind
       })
       if (sendError) {
         console.error("[trial-reminders] send failed", row.company_id, sendError)
+        void logServerError({
+          message: "Trial-reminder: Resend-utsending feilet",
+          error: sendError,
+          level: "warning",
+          source: "worker",
+          route: "runTrialReminders",
+          context: { companyId: row.company_id, templateId: template.id },
+        })
         result.failed += 1
         continue
       }
@@ -227,6 +236,14 @@ export async function runTrialReminders(admin: AdminClient): Promise<TrialRemind
       result.sent += 1
     } catch (err) {
       console.error("[trial-reminders] failed for", row.company_id, err)
+      void logServerError({
+        message: "Trial-reminder e-post feilet for bedrift",
+        error: err,
+        level: "warning",
+        source: "worker",
+        route: "runTrialReminders",
+        context: { companyId: row.company_id, templateId: template.id },
+      })
       result.failed += 1
     }
   }

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 
 import { OfferCard, type OfferCardData } from "@/components/tilbud/offer-card"
 import { type Quota } from "@/components/tilbud/columns"
-import { readProjectSummaryFromAnalysis } from "@/lib/tilbud/project-summary"
+import { readProjectSummaryFromAnalysis } from "@/lib/tilbud/project-summary.shared"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 

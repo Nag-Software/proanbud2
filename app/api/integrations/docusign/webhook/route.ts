@@ -2,6 +2,7 @@ import crypto from "crypto"
 import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 
 type DocusignEnvelopeEvent = {
   envelopeId: string | null
@@ -253,6 +254,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, mapped: true, offerId, companyId, status: event.status })
   } catch (error) {
+    await logServerError({
+      message: "DocuSign webhook processing failed",
+      error,
+      source: "api",
+      route: "POST /api/integrations/docusign/webhook",
+    })
     const message = error instanceof Error ? error.message : "Unknown error"
     return NextResponse.json({ error: message }, { status: 500 })
   }

@@ -1,3 +1,4 @@
+import { logServerError } from "@/lib/errors/log"
 import {
   claimJobs,
   enqueueIntegrationJob,
@@ -1056,6 +1057,13 @@ async function processFullReconciliation(job: IntegrationJobRow) {
       : Promise.resolve({ data: [] as Array<{ id: string; customer_id: string; project_id: string | null; status: string }> }),
   ])
 
+  // IMPORTANT: entity CREATE jobs must use STABLE per-entity idempotency keys (the same
+  // ones the accept/send path uses), NOT the run-scoped reconcileRunKey. With run-scoped
+  // keys, two reconcile runs (nightly cron + manual sync_now), or a reconcile overlapping
+  // an accept, each enqueued a separate create job; both saw external_entity_link=null at
+  // runtime and both POSTed to Tripletex (which has no idempotency key) → DUPLICATE orders
+  // and customers in the customer's accounting. Stable keys (+ the UNIQUE(idempotency_key)
+  // index) make each entity's create at-most-once across all runs and the accept path.
   if (customersEnabled) {
     for (const customer of customersResult.data || []) {
       const { error } = await supabase.from("integration_jobs").insert({
@@ -1063,7 +1071,7 @@ async function processFullReconciliation(job: IntegrationJobRow) {
         provider: "tripletex",
         job_type: "customer.upsert",
         payload: { customerId: customer.id },
-        idempotency_key: `${reconcileRunKey}:customer:${customer.id}`,
+        idempotency_key: `tripletex:customer:${customer.id}`,
         status: "pending",
         next_run_at: new Date().toISOString(),
       })
@@ -1080,7 +1088,7 @@ async function processFullReconciliation(job: IntegrationJobRow) {
         provider: "tripletex",
         job_type: "project.upsert",
         payload: { projectId: project.id },
-        idempotency_key: `${reconcileRunKey}:project:${project.id}`,
+        idempotency_key: `tripletex:project:${project.id}`,
         status: "pending",
         next_run_at: new Date().toISOString(),
       })
@@ -1101,7 +1109,8 @@ async function processFullReconciliation(job: IntegrationJobRow) {
         provider: "tripletex",
         job_type: "offer.upsert",
         payload: { offerId, customerId, projectId },
-        idempotency_key: `${reconcileRunKey}:offer-quote:${offerId}`,
+        // Matches the accept/send quote key: `tripletex:offer:<id>:quote` + `:upsert`.
+        idempotency_key: `tripletex:offer:${offerId}:quote:upsert`,
         status: "pending",
         next_run_at: new Date().toISOString(),
       })
@@ -1115,7 +1124,8 @@ async function processFullReconciliation(job: IntegrationJobRow) {
           provider: "tripletex",
           job_type: "order.create_from_offer",
           payload: { offerId, customerId, ...(projectId ? { projectId } : {}) },
-          idempotency_key: `${reconcileRunKey}:offer-order:${offerId}`,
+          // Matches the accept/send order key: `tripletex:offer:<id>:order` + `:order`.
+          idempotency_key: `tripletex:offer:${offerId}:order:order`,
           status: "pending",
           next_run_at: new Date().toISOString(),
         })
@@ -1331,6 +1341,14 @@ export async function runTripletexWorker(input?: { workerId?: string; batchSize?
         } else {
           await markJobFailed(job, classified.code, classified.message)
           failed += 1
+          await logServerError({
+            message: `Tripletex job permanently failed: ${job.job_type}`,
+            error,
+            source: "worker",
+            route: "runTripletexWorker",
+            companyId: job.company_id,
+            context: { jobId: job.id, jobType: job.job_type, code: classified.code },
+          })
         }
         await updateTripletexConnectionHealth({
           companyId: job.company_id,

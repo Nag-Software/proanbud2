@@ -11,6 +11,7 @@ import { ChecklistItemPhotos } from "@/components/ks/checklist-item-photos"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import type { ChecklistResponse } from "@/lib/ks/constants"
+import { reportClientError } from "@/lib/errors/client"
 import type { ProjectChecklistItem } from "@/lib/ks/types"
 import { cn } from "@/lib/utils"
 
@@ -45,6 +46,7 @@ export function ChecklistItemRow({ item, projectId, checklistId, index, onUpdate
       })
       onUpdated()
     } catch (err) {
+      reportClientError(err, { context: { action: "Lagre sjekklistesvar", itemId: item.id } })
       toast.error(err instanceof Error ? err.message : "Kunne ikke lagre")
     } finally {
       setSaving(false)

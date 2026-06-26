@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
+import { reportClientError } from "@/lib/errors/client"
 import { DEVIATION_TYPE_LABELS, type DeviationType } from "@/lib/hms/constants"
 import type { DeviationStats, DeviationWithRelations } from "@/lib/hms/types"
 import { cn } from "@/lib/utils"
@@ -91,6 +92,7 @@ export function HmsPageClient({
       await updateCompanyHmsAction({ handbookContent: content })
       toast.success("HMS-håndbok lagret")
     } catch (err) {
+      reportClientError(err, { context: { action: "Lagre HMS-håndbok" } })
       toast.error(err instanceof Error ? err.message : "Kunne ikke lagre")
     } finally {
       setBusy(false)

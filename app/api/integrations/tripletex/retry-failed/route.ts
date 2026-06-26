@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 
 export async function POST() {
   try {
@@ -56,6 +57,12 @@ export async function POST() {
 
     return NextResponse.json({ ok: true, retried: data?.length || 0 })
   } catch (error) {
+    await logServerError({
+      message: "Tripletex retry-failed jobs request failed",
+      error,
+      source: "api",
+      route: "POST /api/integrations/tripletex/retry-failed",
+    })
     const message = error instanceof Error ? error.message : "Unknown error"
     return NextResponse.json({ error: message }, { status: 500 })
   }

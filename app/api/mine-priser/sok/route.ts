@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { logServerError } from "@/lib/errors/log"
 import {
   type CompanyPriceRow,
   rankCompanyPriceRowsForPicker,
@@ -171,6 +172,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ materials, jobs })
   } catch (err) {
     console.error("[mine-priser/sok GET] catch", err)
+    await logServerError({
+      message: "Søk i mine priser feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/sok GET",
+    })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

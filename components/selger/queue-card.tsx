@@ -19,6 +19,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { reportClientError } from "@/lib/errors/client"
 import type { CallCard, QueueCard } from "@/lib/selger/queue"
 
 const TONE_CHIPS: { key: string; label: string }[] = [
@@ -73,6 +74,7 @@ function ApproveCardView({
       setSubject(data.draft.subject)
       setBody(data.draft.body)
     } catch (error) {
+      reportClientError(error, { context: { action: "redraft-outreach", prospectId: card.prospectId, tone } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke skrive om")
     } finally {
       setRedrafting(null)
@@ -94,6 +96,7 @@ function ApproveCardView({
       )
       onRemove(card.id)
     } catch (error) {
+      reportClientError(error, { context: { action: `outreach-draft-${action}`, draftId: card.id } })
       toast.error(error instanceof Error ? error.message : "Handling feilet")
       setBusy(false)
     }

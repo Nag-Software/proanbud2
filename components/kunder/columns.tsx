@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { deleteCustomerAction } from "@/app/kunder/actions"
 import { toast } from "sonner"
+import { reportClientError } from "@/lib/errors/client"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 
 type CustomerColumnHandlers = {
@@ -49,6 +50,7 @@ function CustomerRowActions({
       toast.success("Kunde slettet")
       router.refresh()
     } catch (error) {
+      reportClientError(error, { context: { action: "delete-customer", customerId: customer.id } })
       toast.error("Kunne ikke slette kunde")
       console.error(error)
     }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 
@@ -61,6 +62,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, companies: companyIds.length })
   } catch (error) {
+    await logServerError({
+      message: "Tripletex reconcile cron failed",
+      error,
+      source: "worker",
+      route: "POST /api/integrations/tripletex/reconcile",
+    })
     const message = error instanceof Error ? error.message : "Unknown error"
     return NextResponse.json({ error: message }, { status: 500 })
   }

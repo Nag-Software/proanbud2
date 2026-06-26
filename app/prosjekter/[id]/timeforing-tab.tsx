@@ -23,6 +23,7 @@ import {
   unwrapRelation,
   type TimeEntryRow,
 } from "@/lib/time-tracking"
+import { reportClientError } from "@/lib/errors/client"
 
 type ActiveSession = {
   id: string
@@ -128,6 +129,7 @@ export default function TimeforingTab({
       const session = await startWorkSessionAction(projectId, description)
       setActiveSession(session as ActiveSession)
     } catch (startError) {
+      reportClientError(startError, { context: { action: "starte arbeidsøkt", projectId } })
       setError(startError instanceof Error ? startError.message : "Kunne ikke starte arbeid")
     } finally {
       setIsSubmitting(false)
@@ -145,6 +147,7 @@ export default function TimeforingTab({
       setLastSavedHours(Number(saved.hours || 0))
       await loadData()
     } catch (stopError) {
+      reportClientError(stopError, { context: { action: "avslutte arbeidsøkt", projectId } })
       setError(stopError instanceof Error ? stopError.message : "Kunne ikke avslutte arbeid")
     } finally {
       setIsSubmitting(false)
@@ -196,6 +199,7 @@ export default function TimeforingTab({
       setShowManual(false)
       await loadData()
     } catch (saveError) {
+      reportClientError(saveError, { context: { action: "lagre manuell timeføring", projectId } })
       setManualError(saveError instanceof Error ? saveError.message : "Kunne ikke lagre timeføring")
     } finally {
       setManualSubmitting(false)

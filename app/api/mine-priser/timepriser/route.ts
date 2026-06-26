@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
 const saveSchema = z.object({
@@ -29,6 +30,12 @@ export async function GET() {
     return NextResponse.json({ rates: data ?? [] })
   } catch (err) {
     console.error("[timepriser GET] catch", err)
+    await logServerError({
+      message: "Henting av timepriser feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/timepriser GET",
+    })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
@@ -70,6 +77,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ rate: data })
   } catch (err) {
     console.error("[timepriser POST] catch", err)
+    await logServerError({
+      message: "Lagring av timepris feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/timepriser POST",
+    })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

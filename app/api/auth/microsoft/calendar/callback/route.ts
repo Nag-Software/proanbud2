@@ -5,6 +5,7 @@ import {
 } from "@/lib/calendar/oauth-flow"
 import { upsertCalendarIntegration } from "@/lib/calendar/store-integration"
 import { getAppBaseUrl } from "@/lib/calendar/oauth-config"
+import { logServerError } from "@/lib/errors/log"
 
 export async function GET(request: Request) {
   try {
@@ -35,6 +36,12 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${getAppBaseUrl(request)}/kalender?calendar_connected=microsoft`)
   } catch (e) {
     console.error("OAuth callback (microsoft calendar) error:", e)
+    await logServerError({
+      message: "Microsoft calendar OAuth callback failed",
+      error: e,
+      source: "api",
+      route: "GET /api/auth/microsoft/calendar/callback",
+    })
     const message = e instanceof Error ? e.message : "internal error"
     return NextResponse.redirect(
       `${getAppBaseUrl(request)}/kalender?calendar_error=${encodeURIComponent(message)}`

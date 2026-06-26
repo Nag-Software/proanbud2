@@ -6,6 +6,7 @@ import {
   DEVIATION_STATUS_LABELS,
   DEVIATION_TYPE_LABELS,
 } from "@/lib/hms/constants"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
 function escapeHtml(value: string) {
@@ -64,7 +65,14 @@ export async function GET(request: Request) {
       sortBy: "created_at",
       sortDir: "desc",
     })
-  } catch {
+  } catch (error) {
+    await logServerError({
+      message: "Kunne ikke hente avvik for eksport",
+      error,
+      source: "api",
+      route: "/api/avvik/export",
+      context: { companyId, format, projectId },
+    })
     return NextResponse.json({ error: "Could not fetch deviations" }, { status: 500 })
   }
 

@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { createClient } from "@/lib/supabase/client"
+import { reportClientError } from "@/lib/errors/client"
 import { useRouter } from "next/navigation"
 import { useUserRole } from "@/hooks/use-user-role"
 import { useAuth } from "@/components/auth-provider"
@@ -218,6 +219,7 @@ export default function DashboardPage() {
         }
       } catch (e) {
         // ignore and continue to real load
+        reportClientError(e, { context: { action: "injisere mock-dashboarddata" }, level: "warning" })
       }
       // Wait for the shared session to resolve; reuse it instead of a fresh
       // network getUser() (middleware + AuthProvider already validated it).

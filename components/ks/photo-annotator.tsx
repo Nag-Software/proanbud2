@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { reportClientError } from "@/lib/errors/client"
 
 type Stroke = {
   type: "path" | "text"
@@ -191,6 +192,7 @@ export function PhotoAnnotatorDialog({ open, onOpenChange, file, onSave }: Props
       await onSave(annotatedFile, JSON.stringify({ strokes, imageSize }))
       onOpenChange(false)
     } catch (err) {
+      reportClientError(err, { context: { action: "Lagre annotert KS-bilde" } })
       toast.error(err instanceof Error ? err.message : "Kunne ikke lagre bilde")
     } finally {
       setSaving(false)

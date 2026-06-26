@@ -13,6 +13,7 @@ import {
   syncSeatQuantity,
   upsertCompanyBillingFromSubscription,
 } from "@/lib/billing/sync"
+import { logServerError } from "@/lib/errors/log"
 import { getStripe } from "@/lib/stripe/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
@@ -247,6 +248,13 @@ export async function POST(request: Request) {
   }
   if (!event) {
     console.error("[stripe/webhook] signature error", lastError)
+    await logServerError({
+      message: "Stripe webhook: ugyldig signatur",
+      error: lastError,
+      level: "warning",
+      source: "api",
+      route: "/api/stripe/webhook",
+    })
     return NextResponse.json({ error: "Ugyldig signatur" }, { status: 400 })
   }
 
@@ -307,6 +315,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true })
   } catch (error) {
     console.error("[stripe/webhook]", event.type, error)
+    await logServerError({
+      message: `Stripe webhook-håndtering feilet (${event.type})`,
+      error,
+      source: "api",
+      route: "/api/stripe/webhook",
+      context: { eventId: event.id, eventType: event.type },
+    })
     // Roll back the idempotency record so Stripe's retry re-processes this event
     // instead of hitting the duplicate guard and silently dropping the work.
     await createAdminClient().from("stripe_webhook_events").delete().eq("event_id", event.id)

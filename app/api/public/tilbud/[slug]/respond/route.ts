@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { handleOfferAccepted } from "@/lib/tilbud/on-offer-accepted"
 import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 import { fetchPublicOfferBySlug } from "@/lib/tilbud/public-offer"
@@ -53,14 +54,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     return NextResponse.json({ ok: true, status: nextStatus, alreadyResponded: true })
   }
 
-  await logOfferActivity({
-    offerId: offer.id,
-    companyId: offer.companyId,
-    eventType: parsed.data.action === "accept" ? OFFER_ACTIVITY.ACCEPTED : OFFER_ACTIVITY.REJECTED,
-    title: parsed.data.action === "accept" ? "Kunde godtok tilbudet" : "Kunde avslo tilbudet",
-    description: offer.recipientEmail || offer.customer.email || undefined,
-    metadata: { publicSlug: slug },
-  })
+  await logOfferActivity(
+    {
+      offerId: offer.id,
+      companyId: offer.companyId,
+      eventType: parsed.data.action === "accept" ? OFFER_ACTIVITY.ACCEPTED : OFFER_ACTIVITY.REJECTED,
+      title: parsed.data.action === "accept" ? "Kunde godtok tilbudet" : "Kunde avslo tilbudet",
+      description: offer.recipientEmail || offer.customer.email || undefined,
+      metadata: { publicSlug: slug },
+    },
+    { admin: true }
+  )
 
   if (parsed.data.action === "accept") {
     void handleOfferAccepted({
@@ -69,6 +73,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
       source: "public_accept",
     }).catch((error) => {
       console.error("Failed to sync Tripletex order after public accept:", error)
+      void logServerError({
+        message: "Tripletex-synk feilet etter offentlig godkjenning av tilbud",
+        error,
+        source: "api",
+        route: "app/api/public/tilbud/[slug]/respond/route.ts",
+        level: "warning",
+        context: { offerId: offer.id, companyId: offer.companyId },
+      })
     })
   }
 

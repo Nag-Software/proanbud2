@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { logServerError } from "@/lib/errors/log"
 import { resolveOfferSendCompany, sendOfferToCustomer } from "@/lib/tilbud/send-offer"
 import { enqueueOfferTripletexSyncAndProcess } from "@/lib/integrations/tripletex/sync"
 import { enqueueOfferFikenSyncAndProcess } from "@/lib/integrations/fiken/sync"
@@ -71,6 +72,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: true, offer })
   } catch (error) {
     console.error("Failed to send offer email:", error)
+    await logServerError({
+      message: "Failed to send offer email",
+      error,
+      source: "api",
+      route: "POST /api/offers/[id]/send",
+      companyId: context.companyId,
+      userId: context.userId,
+      context: { offerId: id },
+    })
     const message = error instanceof Error ? error.message : "Kunne ikke sende tilbud på e-post"
     const status = message.includes("finnes ikke") ? 404 : message.includes("ordrelinje") ? 400 : 502
     return NextResponse.json({ error: message }, { status })

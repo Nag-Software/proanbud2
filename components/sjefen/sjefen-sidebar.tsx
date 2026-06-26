@@ -15,6 +15,7 @@ import {
   ReceiptIcon,
   ScrollTextIcon,
   ShieldCheckIcon,
+  TriangleAlertIcon,
   UsersIcon,
 } from "lucide-react"
 
@@ -83,6 +84,11 @@ const navItems = [
     title: "Meldinger",
     url: "/sjefen/meldinger",
     icon: <InboxIcon className="size-4" />,
+  },
+  {
+    title: "Feillogg",
+    url: "/sjefen/feil",
+    icon: <TriangleAlertIcon className="size-4" />,
   },
   {
     title: "Artikler",

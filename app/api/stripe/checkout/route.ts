@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { changeSubscriptionPlan, createSubscriptionCheckoutSession } from "@/lib/billing/checkout"
 import { reconcileCompanyBillingFromStripe } from "@/lib/billing/confirm-checkout"
+import { logServerError } from "@/lib/errors/log"
 import {
   getMissingCorePriceEnvKeys,
   type BillingInterval,
@@ -110,6 +111,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ url: session.url })
   } catch (error) {
     console.error("[stripe/checkout]", error)
+    await logServerError({
+      message: "Stripe checkout/planbytte feilet",
+      error,
+      source: "api",
+      route: "/api/stripe/checkout",
+    })
     if (error instanceof SubscriptionMissingError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 409 })
     }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { SjefenPageShell } from "@/components/sjefen/sjefen-page-shell"
+import { reportClientError } from "@/lib/errors/client"
 import type { LiveLocation, SjefenAnalytics } from "@/lib/sjefen/analytics"
 import { MAP_VIEWBOX, NORWAY_PATH, project } from "@/lib/sjefen/norway-geo"
 
@@ -52,8 +53,9 @@ export function AnalyseClient({ initial }: { initial: SjefenAnalytics }) {
       setData(next)
       setPulse(true)
       window.setTimeout(() => setPulse(false), 900)
-    } catch {
+    } catch (error) {
       // keep last good frame
+      reportClientError(error, { level: "warning", context: { action: "oppdater analyse-data (poll)" } })
     }
   }, [])
 

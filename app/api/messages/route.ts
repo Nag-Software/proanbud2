@@ -3,6 +3,7 @@ import { Resend } from "resend"
 import { z } from "zod"
 
 import { companyHasFeature } from "@/lib/billing/server-modules"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 import { buildCustomerMessageEmail } from "@/lib/tilbud/customer-emails"
 import { ensureOfferPublicSlug } from "@/lib/tilbud/public-offer"
@@ -94,9 +95,25 @@ export async function POST(request: Request) {
           })
           if (sendError) {
             console.error("[messages email] resend error", sendError)
+            await logServerError({
+              message: "Kunne ikke sende e-postvarsel om ny melding til kunde",
+              error: sendError,
+              level: "warning",
+              source: "api",
+              route: "POST /api/messages",
+              context: { companyId: userRow.company_id, customerId: parsed.data.customerId, offerId: offer.id, userId: user.id },
+            })
           }
         } catch (emailError) {
           console.error("[messages email]", emailError)
+          await logServerError({
+            message: "Feil under utsending av e-postvarsel om ny melding til kunde",
+            error: emailError,
+            level: "warning",
+            source: "api",
+            route: "POST /api/messages",
+            context: { companyId: userRow.company_id, customerId: parsed.data.customerId, offerId: offer.id, userId: user.id },
+          })
         }
       }
     }

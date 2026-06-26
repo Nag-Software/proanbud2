@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import type { IntegrationJobRow } from "@/lib/integrations/tripletex/types"
 
 function jitteredBackoffSeconds(attemptCount: number) {
@@ -46,6 +47,14 @@ export async function reapStuckJobs(staleSeconds = 900) {
   })
   if (error) {
     console.error("[tripletex] reapStuckJobs failed (continuing):", error.message)
+    await logServerError({
+      message: "Tripletex reapStuckJobs RPC failed",
+      error,
+      level: "warning",
+      source: "worker",
+      route: "reapStuckJobs",
+      context: { provider: "tripletex", staleSeconds },
+    })
   }
 }
 

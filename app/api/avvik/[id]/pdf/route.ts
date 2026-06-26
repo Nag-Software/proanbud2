@@ -7,6 +7,7 @@ import {
   DEVIATION_TYPE_LABELS,
 } from "@/lib/hms/constants"
 import type { DeviationAttachment } from "@/lib/hms/types"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
 function escapeHtml(value: string) {
@@ -81,7 +82,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   let deviation
   try {
     deviation = await getDeviationExportDataAction(id)
-  } catch {
+  } catch (error) {
+    await logServerError({
+      message: "Kunne ikke hente avvik for PDF-eksport",
+      error,
+      level: "warning",
+      source: "api",
+      route: "/api/avvik/[id]/pdf",
+      context: { companyId, deviationId: id },
+    })
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 

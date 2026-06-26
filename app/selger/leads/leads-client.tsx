@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
+import { reportClientError } from "@/lib/errors/client"
 import { SelgerPageShell } from "@/components/selger/selger-page-shell"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -325,6 +326,7 @@ export function LeadsClient({ outreachFrom }: { outreachFrom: string }) {
       if (!res.ok) throw new Error(data.error || "Kunne ikke hente prospekter")
       setProspects(data.prospects ?? [])
     } catch (error) {
+      reportClientError(error, { context: { action: "hente prospekter" } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke hente prospekter")
     } finally {
       setLoading(false)
@@ -381,6 +383,7 @@ export function LeadsClient({ outreachFrom }: { outreachFrom: string }) {
       }
       await loadProspects()
     } catch (error) {
+      reportClientError(error, { context: { action: "importere leads fra Brreg" } })
       toast.error(error instanceof Error ? error.message : "Import feilet")
     } finally {
       setImporting(false)
@@ -401,6 +404,7 @@ export function LeadsClient({ outreachFrom }: { outreachFrom: string }) {
       setProspects((prev) => prev.map((p) => (p.id === id ? (data.prospect as ProspectRow) : p)))
       toast.success(patch.logCall ? "Samtale logget" : "Status oppdatert")
     } catch (error) {
+      reportClientError(error, { context: { action: "oppdatere prospekt", prospectId: id } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke oppdatere")
     }
   }, [])
@@ -418,6 +422,7 @@ export function LeadsClient({ outreachFrom }: { outreachFrom: string }) {
       toast.success(`Beriket ${data.processed}: fant kontakt for ${data.enriched}, ${data.noContact} uten`)
       await loadProspects()
     } catch (error) {
+      reportClientError(error, { context: { action: "berike leads" } })
       toast.error(error instanceof Error ? error.message : "Berikning feilet")
     } finally {
       setEnriching(false)
@@ -444,6 +449,7 @@ export function LeadsClient({ outreachFrom }: { outreachFrom: string }) {
       }
       await loadProspects()
     } catch (error) {
+      reportClientError(error, { context: { action: "full auto-sending" } })
       toast.error(error instanceof Error ? error.message : "Full auto feilet")
     } finally {
       setAutoSending(false)
@@ -471,6 +477,7 @@ export function LeadsClient({ outreachFrom }: { outreachFrom: string }) {
       setDeleteOpen(false)
       await loadProspects()
     } catch (error) {
+      reportClientError(error, { context: { action: "slette alle leads" } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke slette")
     } finally {
       setDeleting(false)
@@ -485,6 +492,7 @@ export function LeadsClient({ outreachFrom }: { outreachFrom: string }) {
       if (!res.ok) throw new Error(data.error || "Kunne ikke lage utkast")
       toast.success("KI-utkast laget — se Godkjenning")
     } catch (error) {
+      reportClientError(error, { context: { action: "lage KI-utkast", prospectId: id } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke lage utkast")
     } finally {
       setDraftingId(null)

@@ -85,14 +85,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     return NextResponse.json({ error: "Kunne ikke sende melding" }, { status: 500 })
   }
 
-  await logOfferActivity({
-    offerId: offer.id,
-    companyId: offer.companyId,
-    eventType: OFFER_ACTIVITY.CUSTOMER_MESSAGE,
-    title: "Ny melding fra kunde",
-    description: parsed.data.content.slice(0, 180),
-    metadata: { publicSlug: slug },
-  })
+  await logOfferActivity(
+    {
+      offerId: offer.id,
+      companyId: offer.companyId,
+      eventType: OFFER_ACTIVITY.CUSTOMER_MESSAGE,
+      title: "Ny melding fra kunde",
+      description: parsed.data.content.slice(0, 180),
+      metadata: { publicSlug: slug },
+    },
+    { admin: true }
+  )
 
   return NextResponse.json({
     message: {

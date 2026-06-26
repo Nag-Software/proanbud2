@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { requirePlatformAdminForApi } from "@/lib/auth/require-platform-admin-api"
+import { logServerError } from "@/lib/errors/log"
 import { deleteSanityArticle, listSanityArticles } from "@/lib/sanity/articles"
 
 export async function GET() {
@@ -12,6 +13,7 @@ export async function GET() {
     return NextResponse.json({ articles })
   } catch (error) {
     console.error("GET /api/sjefen/artikler", error)
+    await logServerError({ message: "Kunne ikke hente artikler", error, source: "api", route: "GET /api/sjefen/artikler" })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Kunne ikke hente artikler" },
       { status: 500 }
@@ -35,6 +37,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error("DELETE /api/sjefen/artikler", error)
+    await logServerError({ message: "Kunne ikke slette artikkel", error, source: "api", route: "DELETE /api/sjefen/artikler", context: { id } })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Kunne ikke slette artikkel" },
       { status: 500 }

@@ -4,6 +4,7 @@
 
 import type { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerEmail } from "@/lib/selger/activity-log"
+import { logServerError } from "@/lib/errors/log"
 import { BRANSJE_LABELS, resolveBransje } from "@/lib/outreach/bransje"
 import { buildExampleOfferUrl, EXAMPLE_OFFER_CTA_LABEL } from "@/lib/outreach/example-offers"
 import { generateOutreachDraft } from "@/lib/outreach/draft"
@@ -82,6 +83,13 @@ export async function runInitialOutreach(
         .select("id")
       if (claimErr) {
         console.error("[outreach/initial-send] claim failed for", p.id, claimErr)
+        await logServerError({
+          message: "Kunne ikke reservere første kald-steg for prospekt",
+          error: claimErr,
+          source: "worker",
+          route: "lib/outreach/initial-send runInitialOutreach",
+          context: { prospectId: p.id },
+        })
         result.failed += 1
         return
       }
@@ -147,16 +155,38 @@ export async function runInitialOutreach(
           // claim — the row stays and blocks a re-send, so a hiccup can never re-mail the
           // prospect. It was sent, so count it.
           console.error("[outreach/initial-send] post-send bookkeeping failed for", p.id, sendErr)
+          await logServerError({
+            message: "Etterarbeid feilet etter sendt kald-e-post (e-post gikk ut)",
+            error: sendErr,
+            level: "warning",
+            source: "worker",
+            route: "lib/outreach/initial-send runInitialOutreach",
+            context: { prospectId: p.id, rowId },
+          })
           result.sent += 1
         } else {
           // Nothing was sent — release the claim so the step retries on the next run.
           console.error("[outreach/initial-send] send failed for", p.id, sendErr)
+          await logServerError({
+            message: "Kunne ikke sende første kald-e-post",
+            error: sendErr,
+            source: "worker",
+            route: "lib/outreach/initial-send runInitialOutreach",
+            context: { prospectId: p.id, rowId },
+          })
           await admin.from("prospect_outreach").delete().eq("id", rowId)
           result.failed += 1
         }
       }
     } catch (err) {
       console.error("[outreach/initial-send] failed for", p.id, err)
+      await logServerError({
+        message: "Uventet feil under første kald-utsending for prospekt",
+        error: err,
+        source: "worker",
+        route: "lib/outreach/initial-send runInitialOutreach",
+        context: { prospectId: p.id },
+      })
       result.failed += 1
     }
   }

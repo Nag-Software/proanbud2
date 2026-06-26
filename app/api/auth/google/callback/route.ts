@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from '@supabase/ssr'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { logServerError } from '@/lib/errors/log'
 
 export async function GET(request: Request) {
   try {
@@ -57,6 +58,13 @@ export async function GET(request: Request) {
 
         if (bootstrapError) {
           console.error('OAuth callback (google login): users bootstrap failed', bootstrapError)
+          await logServerError({
+            message: 'Google login users bootstrap upsert failed',
+            error: bootstrapError,
+            source: 'api',
+            route: 'GET /api/auth/google/callback',
+            userId: user.id,
+          })
         }
       }
 
@@ -95,6 +103,12 @@ export async function GET(request: Request) {
     return response
   } catch (e) {
     console.error('OAuth callback (google login) error:', e)
+    await logServerError({
+      message: 'Google login OAuth callback failed',
+      error: e,
+      source: 'api',
+      route: 'GET /api/auth/google/callback',
+    })
     const message = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ error: message ?? "internal error" }, { status: 500 })
   }

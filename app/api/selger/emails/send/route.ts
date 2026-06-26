@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { Resend } from "resend"
 
 import { logSellerActivity, logSellerEmail } from "@/lib/selger/activity-log"
+import { logServerError } from "@/lib/errors/log"
 import { renderSellerEmailTemplate } from "@/lib/selger/email-templates"
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -67,6 +68,16 @@ export async function POST(request: Request) {
     })
     if (sendError) {
       console.error("[selger/emails/send] resend error", sendError)
+      await logServerError({
+        message: "Resend avviste selger-e-post",
+        error: sendError,
+        source: "api",
+        route: "/api/selger/emails/send",
+        method: "POST",
+        statusCode: 502,
+        userId: auth.user?.id ?? null,
+        context: { templateId: template_id, companyId: company_id ?? null },
+      })
       return NextResponse.json({ error: "E-post kunne ikke sendes" }, { status: 502 })
     }
 
@@ -93,6 +104,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("POST /api/selger/emails/send", error)
+    await logServerError({
+      message: "POST /api/selger/emails/send feilet",
+      error,
+      source: "api",
+      route: "/api/selger/emails/send",
+      method: "POST",
+      userId: auth.user?.id ?? null,
+    })
     return NextResponse.json({ error: "Intern serverfeil" }, { status: 500 })
   }
 }

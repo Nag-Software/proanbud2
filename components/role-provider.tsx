@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/components/auth-provider"
 import { normalizeRole, type CanonicalRole } from "@/lib/roles"
 import { readMockRoleFromDocument } from "@/lib/auth/role-mock"
+import { reportClientError } from "@/lib/errors/client"
 import type { PlanKey } from "@/lib/billing/plans"
 
 type RoleContextValue = {
@@ -93,7 +94,13 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       const mockedRole = readMockRoleFromDocument()
       if (mockedRole) {
         const { data: planData, error: planError } = await planPromise
-        if (planError) console.error("get_company_plan_context failed", planError)
+        if (planError) {
+          console.error("get_company_plan_context failed", planError)
+          reportClientError(planError, {
+            level: "warning",
+            context: { action: "load-plan-context", userId: user.id },
+          })
+        }
         if (active)
           setState({
             role: mockedRole,
@@ -112,7 +119,13 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
           planPromise,
         ])
 
-      if (planError) console.error("get_company_plan_context failed", planError)
+      if (planError) {
+        console.error("get_company_plan_context failed", planError)
+        reportClientError(planError, {
+          level: "warning",
+          context: { action: "load-plan-context", userId: user.id },
+        })
+      }
 
       // @ts-expect-error Supabase nested relation typing
       const effectiveRole = userRoleData?.roles?.name || userTableData?.role || null

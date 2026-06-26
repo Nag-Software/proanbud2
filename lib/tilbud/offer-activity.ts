@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 
 import { type OfferActivityEvent } from "@/lib/tilbud/offer-activity.shared"
 
@@ -14,8 +16,18 @@ type LogOfferActivityInput = {
   actorUserId?: string | null
 }
 
-export async function logOfferActivity(input: LogOfferActivityInput) {
-  const supabase = await createClient()
+/**
+ * Logs an offer-activity event. Public (unauthenticated) call sites — customer
+ * VIEWED/ACCEPTED/REJECTED/MESSAGE — MUST pass `{ admin: true }`: the anon cookie
+ * client has no company, so RLS silently rejects the insert and the activity feed
+ * never records the most important customer events. The insert always carries an
+ * explicit company_id, so the admin client stays correctly tenant-scoped.
+ */
+export async function logOfferActivity(
+  input: LogOfferActivityInput,
+  options?: { admin?: boolean }
+) {
+  const supabase = options?.admin ? createAdminClient() : await createClient()
 
   const { data, error } = await supabase
     .from("offer_activity")
@@ -33,6 +45,16 @@ export async function logOfferActivity(input: LogOfferActivityInput) {
 
   if (error) {
     console.error("[offer_activity]", error.message)
+    await logServerError({
+      message: "Failed to log offer activity event",
+      error,
+      source: "server",
+      route: "logOfferActivity",
+      level: "warning",
+      companyId: input.companyId,
+      userId: input.actorUserId ?? undefined,
+      context: { offerId: input.offerId, eventType: input.eventType },
+    })
     return null
   }
 
@@ -60,6 +82,15 @@ export async function fetchOfferActivity(offerId: string, companyId: string, lim
 
   if (error) {
     console.error("[offer_activity fetch]", error.message)
+    await logServerError({
+      message: "Failed to fetch offer activity",
+      error,
+      source: "server",
+      route: "fetchOfferActivity",
+      level: "warning",
+      companyId,
+      context: { offerId },
+    })
     return []
   }
 

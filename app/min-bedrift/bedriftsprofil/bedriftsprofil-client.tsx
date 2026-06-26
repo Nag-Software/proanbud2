@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { createClient } from "@/lib/supabase/client"
+import { reportClientError } from "@/lib/errors/client"
 import {
   COMPANY_INDUSTRY_OPTIONS,
   COMPANY_PRICE_LEVEL_OPTIONS,
@@ -83,6 +84,7 @@ export function BedriftsprofilClient({
       toast.success("Logo lastet opp.")
     } catch (error) {
       console.error("Logo upload error", error)
+      reportClientError(error, { context: { action: "upload company logo" } })
       const message = error instanceof Error ? error.message.toLowerCase() : ""
       if (message.includes("exceeded") || message.includes("too large") || message.includes("maximum size")) {
         toast.error("Filen er for stor.", { description: "Logoen kan maks være 2 MB." })
@@ -169,6 +171,7 @@ export function BedriftsprofilClient({
       )
     } catch (error) {
       console.error("Save company profile error", error)
+      reportClientError(error, { context: { action: "save company profile" } })
       toast.error("Kunne ikke lagre bedriftsprofil.")
     } finally {
       setIsSaving(false)

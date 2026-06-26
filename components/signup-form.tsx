@@ -22,6 +22,7 @@ import {
   FieldSeparator,
 } from "@/components/ui/field"
 import { completeClientLogin } from "@/lib/auth/client-login"
+import { reportClientError } from "@/lib/errors/client"
 import { Input } from "@/components/ui/input"
 
 function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
@@ -100,6 +101,7 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
       setInfo('Registrering vellykket — sjekk e-posten din for å bekrefte kontoen.')
     } catch (e) {
       console.error('SignupForm: unexpected error', e)
+      reportClientError(e, { context: { action: "signup", inviteToken } })
       setError('Unexpected error')
     } finally {
       setLoading(false)

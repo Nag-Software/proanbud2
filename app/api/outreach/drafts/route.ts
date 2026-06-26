@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 
 export async function GET() {
   const auth = await requirePlatformSellerForApi()
@@ -19,6 +20,13 @@ export async function GET() {
 
   if (error) {
     console.error("[outreach/drafts GET]", error)
+    await logServerError({
+      message: "Kunne ikke hente utkast for godkjenning",
+      error,
+      source: "api",
+      route: "GET /api/outreach/drafts",
+      context: { userId: auth.user!.id },
+    })
     return NextResponse.json({ error: "Kunne ikke hente utkast" }, { status: 500 })
   }
 

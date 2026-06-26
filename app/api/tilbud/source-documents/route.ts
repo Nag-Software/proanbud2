@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
 function sanitizeName(name: string) {
@@ -65,6 +66,13 @@ export async function POST(request: Request) {
       },
     })
   } catch (error) {
+    await logServerError({
+      message: "Offer source document upload failed",
+      error,
+      source: "api",
+      route: "POST /api/tilbud/source-documents",
+      statusCode: 500,
+    })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Ukjent feil ved opplasting" },
       { status: 500 }

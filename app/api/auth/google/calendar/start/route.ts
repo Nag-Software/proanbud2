@@ -9,6 +9,7 @@ import {
   beginCalendarOAuth,
   buildGoogleCalendarAuthUrl,
 } from "@/lib/calendar/oauth-flow"
+import { logServerError } from "@/lib/errors/log"
 
 export async function GET(request: Request) {
   try {
@@ -31,6 +32,12 @@ export async function GET(request: Request) {
     return NextResponse.redirect(authUrl)
   } catch (e) {
     console.error("OAuth start (google calendar) error:", e)
+    await logServerError({
+      message: "Google calendar OAuth start failed",
+      error: e,
+      source: "api",
+      route: "GET /api/auth/google/calendar/start",
+    })
     const message = e instanceof Error ? e.message : "internal error"
     return NextResponse.json({ error: message }, { status: 500 })
   }

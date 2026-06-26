@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { generateOutreachDraft } from "@/lib/outreach/draft"
 
 export const maxDuration = 60
@@ -34,6 +35,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     })
   } catch (error) {
     console.error("[outreach/draft]", error)
+    await logServerError({
+      message: "Kunne ikke lage utkast for prospekt",
+      error,
+      source: "api",
+      route: "POST /api/outreach/prospects/[id]/draft",
+      context: { prospectId: id, userId: auth.user!.id },
+    })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Kunne ikke lage utkast" },
       { status: 502 }
@@ -62,6 +70,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   if (insertError || !inserted) {
     console.error("[outreach/draft] insert", insertError)
+    await logServerError({
+      message: "Kunne ikke lagre utkast for prospekt",
+      error: insertError,
+      source: "api",
+      route: "POST /api/outreach/prospects/[id]/draft",
+      context: { prospectId: id, userId: auth.user!.id },
+    })
     return NextResponse.json({ error: "Kunne ikke lagre utkast" }, { status: 500 })
   }
 

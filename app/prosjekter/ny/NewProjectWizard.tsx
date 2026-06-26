@@ -10,6 +10,7 @@ import { toast } from "sonner"
 import { z } from "zod"
 
 import { createProjectAction } from "../actions"
+import { reportClientError } from "@/lib/errors/client"
 import { AddCustomerDrawer } from "@/components/kunder/add-customer-drawer"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -240,6 +241,7 @@ async function uploadProjectDocuments(projectId: string, projectFiles: File[], c
     }
   } catch (error) {
     console.error("Kunne ikke sikre dokumentmapper:", error)
+    reportClientError(error, { level: "warning", context: { action: "opprette dokumentmapper for nytt prosjekt", projectId } })
   }
 
   const uploads = await Promise.all([
@@ -428,6 +430,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
       setCreatedProjectId(result.id)
       setSuccessView(true)
     } catch (error) {
+      reportClientError(error, { context: { action: "opprette nytt prosjekt (wizard)" } })
       setSubmitError(error instanceof Error ? error.message : "Kunne ikke opprette prosjekt")
     }
   }

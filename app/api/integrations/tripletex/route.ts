@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { companyHasFeature } from "@/lib/billing/server-modules"
 import {
   encryptConnectionTokens,
@@ -319,6 +320,12 @@ export async function GET() {
       connected: Boolean(connection && connection.sync_state !== "disconnected"),
     })
   } catch (error) {
+    await logServerError({
+      message: "Failed to load Tripletex connection state",
+      error,
+      source: "api",
+      route: "GET /api/integrations/tripletex",
+    })
     const message = error instanceof Error ? error.message : "Ukjent feil"
     return NextResponse.json({ error: message }, { status: 500 })
   }
@@ -415,6 +422,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (error) {
+    await logServerError({
+      message: "Tripletex connect/save (POST) failed",
+      error,
+      source: "api",
+      route: "POST /api/integrations/tripletex",
+    })
     const mapped = toClientError(error)
     const details = buildTripletexErrorDetails(error as KnownErrorShape)
     return NextResponse.json(
@@ -609,6 +622,12 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ error: "Ugyldig handling", code: "invalid_action" }, { status: 400 })
   } catch (error) {
+    await logServerError({
+      message: "Tripletex PATCH action failed",
+      error,
+      source: "api",
+      route: "PATCH /api/integrations/tripletex",
+    })
     const message = error instanceof Error ? error.message : "Ukjent feil"
     return NextResponse.json({ error: message, code: "disconnect_error" }, { status: 500 })
   }
@@ -638,6 +657,12 @@ export async function DELETE() {
 
     return NextResponse.json({ ok: true })
   } catch (error) {
+    await logServerError({
+      message: "Tripletex DELETE (remove integration) failed",
+      error,
+      source: "api",
+      route: "DELETE /api/integrations/tripletex",
+    })
     const message = error instanceof Error ? error.message : "Ukjent feil"
     return NextResponse.json({ error: message, code: "delete_error" }, { status: 500 })
   }

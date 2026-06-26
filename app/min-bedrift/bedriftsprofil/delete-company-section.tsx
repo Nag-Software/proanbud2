@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { reportClientError } from "@/lib/errors/client"
 import { deleteCompanyAccountAction } from "./account-actions"
 
 type Props = {
@@ -38,6 +39,7 @@ export function DeleteCompanySection({ companyName }: Props) {
       window.location.assign("/login")
     } catch (error) {
       console.error(error)
+      reportClientError(error, { context: { action: "delete company account" } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke slette bedriften")
       setIsDeleting(false)
     }

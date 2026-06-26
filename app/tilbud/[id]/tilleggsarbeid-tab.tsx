@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Copy, Plus, Send, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -36,7 +37,10 @@ export function TilleggsarbeidTab({ offerId }: { offerId: string }) {
     setLoading(true)
     listChangeOrdersAction(offerId)
       .then(setItems)
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Kunne ikke laste tillegg"))
+      .catch((e) => {
+        reportClientError(e, { context: { action: "list change orders", offerId } })
+        toast.error(e instanceof Error ? e.message : "Kunne ikke laste tillegg")
+      })
       .finally(() => setLoading(false))
   }, [offerId])
 
@@ -63,6 +67,7 @@ export function TilleggsarbeidTab({ offerId }: { offerId: string }) {
       load()
       toast.success("Tillegg lagt til")
     } catch (e) {
+      reportClientError(e, { context: { action: "create change order", offerId } })
       toast.error(e instanceof Error ? e.message : "Kunne ikke lagre")
     } finally {
       setSaving(false)
@@ -76,6 +81,7 @@ export function TilleggsarbeidTab({ offerId }: { offerId: string }) {
       load()
       toast.success("Sendt til kunde for godkjenning")
     } catch (e) {
+      reportClientError(e, { context: { action: "send change order", offerId, changeOrderId: id } })
       toast.error(e instanceof Error ? e.message : "Kunne ikke sende")
     } finally {
       setBusyId(null)
@@ -88,6 +94,7 @@ export function TilleggsarbeidTab({ offerId }: { offerId: string }) {
       await deleteChangeOrderAction({ offerId, id })
       load()
     } catch (e) {
+      reportClientError(e, { context: { action: "delete change order", offerId, changeOrderId: id } })
       toast.error(e instanceof Error ? e.message : "Kunne ikke slette")
     } finally {
       setBusyId(null)
@@ -96,7 +103,12 @@ export function TilleggsarbeidTab({ offerId }: { offerId: string }) {
 
   function copyLink(slug: string) {
     const url = `${window.location.origin}/tilleggsarbeid/${slug}`
-    navigator.clipboard?.writeText(url).then(() => toast.success("Lenke kopiert")).catch(() => {})
+    navigator.clipboard
+      ?.writeText(url)
+      .then(() => toast.success("Lenke kopiert"))
+      .catch((error) => {
+        reportClientError(error, { level: "warning", context: { action: "copy change order link" } })
+      })
   }
 
   return (

@@ -34,7 +34,18 @@ export default async function Page({
   }
 
   if (params.search) {
-    queryBuilder = queryBuilder.or(`name.ilike.%${params.search}%,id.ilike.%${params.search}%`)
+    const term = params.search.trim()
+    // `projects.id` is a uuid column — Postgres has no `uuid ~~* text` (ILIKE) operator,
+    // so the old `id.ilike.%term%` made PostgREST reject the whole query and the list
+    // went blank the moment a user typed. Only match id when the term is a full uuid (uses `=`).
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(term)
+    // Escape PostgREST `or()` reserved chars (commas/parens) that would otherwise break the filter.
+    const safeTerm = term.replace(/[,()]/g, " ")
+    if (isUuid) {
+      queryBuilder = queryBuilder.or(`name.ilike.%${safeTerm}%,id.eq.${term}`)
+    } else {
+      queryBuilder = queryBuilder.ilike("name", `%${safeTerm}%`)
+    }
   }
 
   if (params.sort) {

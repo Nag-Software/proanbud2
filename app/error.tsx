@@ -5,6 +5,7 @@ import Link from "next/link"
 import { AlertTriangle, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { reportClientError } from "@/lib/errors/client"
 
 export default function Error({
   error,
@@ -14,8 +15,15 @@ export default function Error({
   reset: () => void
 }) {
   useEffect(() => {
-    // Surface the error for debugging / future error reporting.
     console.error("App route error:", error)
+    // Record to the central error log (visible in /sjefen/feil).
+    reportClientError({
+      message: error.message || "Uventet sidefeil",
+      stack: error.stack,
+      digest: error.digest,
+      level: "error",
+      source: "client",
+    })
   }, [error])
 
   return (

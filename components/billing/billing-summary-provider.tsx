@@ -12,6 +12,7 @@ import {
 
 import { useAuth } from "@/components/auth-provider"
 import { useUserRole } from "@/hooks/use-user-role"
+import { reportClientError } from "@/lib/errors/client"
 import type { PlanKey } from "@/lib/billing/plans"
 
 export type BillingSummary = {
@@ -86,8 +87,12 @@ export function BillingSummaryProvider({ children }: { children: ReactNode }) {
       const data = (await response.json()) as BillingSummary
       writeSessionCache(data)
       setSummary(data)
-    } catch {
+    } catch (error) {
       // keep cached value on failure
+      reportClientError(error, {
+        level: "warning",
+        context: { action: "oppdater abonnement-sammendrag (bakgrunn)" },
+      })
     } finally {
       setLoading(false)
     }

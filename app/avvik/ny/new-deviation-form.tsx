@@ -28,6 +28,7 @@ import {
   DEVIATION_TYPE_LABELS,
   type DeviationType,
 } from "@/lib/hms/constants"
+import { reportClientError } from "@/lib/errors/client"
 
 export function NewDeviationForm() {
   const router = useRouter()
@@ -84,6 +85,7 @@ export function NewDeviationForm() {
       toast.success("Avvik registrert")
       router.push(`/avvik/${created.id}`)
     } catch (err) {
+      reportClientError(err, { context: { action: "Registrere avvik" } })
       toast.error(err instanceof Error ? err.message : "Kunne ikke registrere avvik")
     } finally {
       setSubmitting(false)

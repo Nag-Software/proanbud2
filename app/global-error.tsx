@@ -13,6 +13,25 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error("Global app error:", error)
+    // Self-contained report (global-error must not depend on app modules). Records to
+    // the central error log so even fatal root crashes show up in /sjefen/feil.
+    try {
+      void fetch("/api/errors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: error?.message || "Fatal applikasjonsfeil",
+          stack: error?.stack ?? null,
+          digest: error?.digest ?? null,
+          level: "fatal",
+          source: "client",
+          route: typeof window !== "undefined" ? window.location?.pathname : null,
+        }),
+        keepalive: true,
+      }).catch(() => {})
+    } catch {
+      /* never throw from an error boundary */
+    }
   }, [error])
 
   return (

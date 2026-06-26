@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { assignUserRole } from '@/lib/company-roles';
 import { ROLE_DB_VALUES, normalizeRole, roleNameToDisplay } from '@/lib/roles';
+import { logServerError } from '@/lib/errors/log';
 
 export async function POST(request: Request) {
   try {
@@ -80,6 +81,14 @@ export async function POST(request: Request) {
       });
     } catch (roleError) {
       console.error('Assign role error:', roleError);
+      await logServerError({
+        message: 'Failed to assign role to invited user',
+        error: roleError,
+        source: 'api',
+        route: 'POST /api/auth/register-invited',
+        companyId: invite.company_id,
+        userId: newUserId,
+      });
     }
 
     await supabaseAdmin
@@ -92,6 +101,15 @@ export async function POST(request: Request) {
       await syncSeatQuantity(invite.company_id);
     } catch (seatSyncError) {
       console.error('Seat sync error after invite:', seatSyncError);
+      await logServerError({
+        message: 'Seat sync failed after invite acceptance',
+        error: seatSyncError,
+        source: 'api',
+        route: 'POST /api/auth/register-invited',
+        level: 'warning',
+        companyId: invite.company_id,
+        userId: newUserId,
+      });
     }
 
     return NextResponse.json({
@@ -102,6 +120,12 @@ export async function POST(request: Request) {
 
   } catch (error) {
     console.error('Error during registration:', error);
+    await logServerError({
+      message: 'Invited-user registration failed',
+      error,
+      source: 'api',
+      route: 'POST /api/auth/register-invited',
+    });
     return NextResponse.json({ error: 'Intern serverfeil' }, { status: 500 });
   }
 }

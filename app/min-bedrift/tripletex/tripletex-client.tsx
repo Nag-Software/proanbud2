@@ -5,6 +5,7 @@ import Link from "next/link"
 import { ExternalLink, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -287,6 +288,7 @@ export function TripletexClient({
       setIsReplacingKey(false)
       await refreshState()
     } catch (error) {
+      reportClientError(error, { context: { action: "tripletex_connect" } })
       const message = error instanceof Error ? error.message : "Ukjent feil"
       setConnectionError({ message, code: null })
       toast.error(message)
@@ -314,6 +316,7 @@ export function TripletexClient({
       toast.success("Tripletex er koblet fra")
       await refreshState()
     } catch (error) {
+      reportClientError(error, { context: { action: "tripletex_disconnect" } })
       toast.error(error instanceof Error ? error.message : "Ukjent feil")
     } finally {
       setIsDisconnecting(false)
@@ -345,6 +348,7 @@ export function TripletexClient({
       setIsReplacingKey(false)
       await refreshState()
     } catch (error) {
+      reportClientError(error, { context: { action: "tripletex_remove" } })
       toast.error(error instanceof Error ? error.message : "Ukjent feil")
     } finally {
       setIsRemoving(false)
@@ -385,6 +389,7 @@ export function TripletexClient({
       setIsReplacingKey(false)
       await refreshState()
     } catch (error) {
+      reportClientError(error, { context: { action: "tripletex_update_api_key" } })
       const message = error instanceof Error ? error.message : "Ukjent feil"
       setConnectionError({ message, code: null })
       toast.error(message)
@@ -415,6 +420,7 @@ export function TripletexClient({
       toast.success("Innstillinger lagret")
       await refreshState()
     } catch (error) {
+      reportClientError(error, { context: { action: "tripletex_save_scopes" } })
       toast.error(error instanceof Error ? error.message : "Ukjent feil")
     } finally {
       setIsSavingScopes(false)
@@ -452,6 +458,7 @@ export function TripletexClient({
         void refreshState()
       }, 4000)
     } catch (error) {
+      reportClientError(error, { context: { action: "tripletex_manual_sync" } })
       toast.error(error instanceof Error ? error.message : "Ukjent feil")
     } finally {
       setIsSyncing(false)

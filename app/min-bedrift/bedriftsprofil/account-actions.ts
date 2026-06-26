@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getStripe } from "@/lib/stripe/server"
 import { isAdmin } from "@/lib/roles"
+import { logServerError } from "@/lib/errors/log"
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -31,6 +32,14 @@ async function deleteStorageFolder(admin: AdminClient, bucket: string, prefix: s
     }
   } catch (error) {
     console.error(`[delete-company] storage cleanup failed for ${bucket}/${prefix}`, error)
+    await logServerError({
+      message: "Opprydding av lagring feilet under sletting av bedrift",
+      error,
+      source: "action",
+      route: "deleteStorageFolder",
+      level: "warning",
+      context: { bucket, prefix },
+    })
   }
 }
 
@@ -92,6 +101,14 @@ export async function deleteCompanyAccountAction(input: { confirmName: string })
     }
   } catch (error) {
     console.error("[delete-company] stripe cleanup failed", error)
+    await logServerError({
+      message: "Stripe-opprydding feilet under sletting av bedrift",
+      error,
+      source: "action",
+      route: "deleteCompanyAccountAction",
+      level: "warning",
+      context: { companyId, userId: user.id },
+    })
   }
 
   // 2. Remove uploaded files (best-effort). Most buckets are company-prefixed;
@@ -115,6 +132,14 @@ export async function deleteCompanyAccountAction(input: { confirmName: string })
       await admin.auth.admin.deleteUser(uid)
     } catch (error) {
       console.error("[delete-company] auth user delete failed", uid, error)
+      await logServerError({
+        message: "Sletting av auth-bruker feilet under sletting av bedrift",
+        error,
+        source: "action",
+        route: "deleteCompanyAccountAction",
+        level: "warning",
+        context: { companyId, userId: user.id, deletedUserId: uid },
+      })
     }
   }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from '@supabase/ssr'
+import { logServerError } from '@/lib/errors/log'
 
 function getAppBaseUrl(request: Request) {
   const base = process.env.NEXT_PUBLIC_APP_URL?.trim() || new URL(request.url).origin
@@ -65,6 +66,12 @@ export async function GET(request: Request) {
     return response
   } catch (e) {
     console.error('OAuth start (google login) error:', e)
+    await logServerError({
+      message: 'Google login OAuth start failed',
+      error: e,
+      source: 'api',
+      route: 'GET /api/auth/google/start',
+    })
     const message = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ error: message ?? "internal error" }, { status: 500 })
   }

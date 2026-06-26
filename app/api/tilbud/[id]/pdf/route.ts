@@ -1,6 +1,7 @@
 import chromium from "@sparticuz/chromium"
 import puppeteer from "puppeteer-core"
 
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 import { fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
 import { readProjectSummaryFromAnalysis } from "@/lib/tilbud/project-summary"
@@ -157,6 +158,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     })
   } catch (error) {
     console.error("[tilbud pdf] generering feilet", error)
+    await logServerError({
+      message: "Offer PDF generation failed",
+      error,
+      source: "api",
+      route: "GET /api/tilbud/[id]/pdf",
+      statusCode: 500,
+      companyId: company.id,
+      userId: user.id,
+      context: { offerId: id },
+    })
     return new Response("Kunne ikke generere PDF", { status: 500 })
   } finally {
     if (browser) await browser.close()

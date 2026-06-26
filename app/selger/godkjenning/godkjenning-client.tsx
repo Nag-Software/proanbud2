@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Loader2, Send, X } from "lucide-react"
 import { toast } from "sonner"
 
+import { reportClientError } from "@/lib/errors/client"
 import { SelgerPageShell } from "@/components/selger/selger-page-shell"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -56,6 +57,7 @@ export function GodkjenningClient() {
       if (!res.ok) throw new Error(data.error || "Kunne ikke hente utkast")
       setDrafts((data.drafts as Draft[]).map(normalize))
     } catch (error) {
+      reportClientError(error, { context: { action: "hente utkast for godkjenning" } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke hente utkast")
     } finally {
       setLoading(false)
@@ -88,6 +90,7 @@ export function GodkjenningClient() {
       }
       setDrafts((prev) => prev.filter((d) => d.id !== draft.id))
     } catch (error) {
+      reportClientError(error, { context: { action: "godkjenne/avvise utkast", draftId: draft.id, draftAction: action } })
       toast.error(error instanceof Error ? error.message : "Handling feilet")
       patchLocal(draft.id, { busy: false })
     }

@@ -2,6 +2,8 @@
 
 import { useEffect } from "react"
 
+import { reportClientError } from "@/lib/errors/client"
+
 const HEARTBEAT_MS = 120_000
 // Minimum gap between pings — guards the visibilitychange handler so rapid
 // tab-focus toggles can't fire a burst of requests. Well under the 5-min
@@ -24,7 +26,9 @@ export function PresenceHeartbeat() {
       void fetch("/api/presence/heartbeat", {
         method: "POST",
         keepalive: true,
-      }).catch(() => {})
+      }).catch((error) => {
+        reportClientError(error, { level: "warning", context: { action: "presence-heartbeat" } })
+      })
     }
 
     ping()

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { enqueueFikenJob } from "@/lib/integrations/fiken/jobs"
 import { processFikenQueueInBackground } from "@/lib/integrations/fiken/sync"
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
@@ -62,6 +63,12 @@ async function runReconcile(request: Request) {
 
     return NextResponse.json({ ok: true, companies: companyIds.length })
   } catch (error) {
+    await logServerError({
+      message: "Fiken reconcile cron failed",
+      error,
+      source: "worker",
+      route: "POST /api/integrations/fiken/reconcile",
+    })
     const message = error instanceof Error ? error.message : "Unknown error"
     return NextResponse.json({ error: message }, { status: 500 })
   }
