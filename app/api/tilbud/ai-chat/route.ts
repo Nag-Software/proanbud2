@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { recordUsageEvent, requireActiveSubscription } from "@/lib/billing/guards"
+import { getUsageSummary, recordUsageEvent, requireActiveSubscription } from "@/lib/billing/guards"
 import { createClient } from "@/lib/supabase/server"
 import { openaiFetch } from "@/lib/llm/openai-fetch"
 import type { CompanyPriceLevel } from "@/lib/tilbud/company-profile"
@@ -755,6 +755,23 @@ export async function POST(request: Request) {
 
     const subscription = await requireActiveSubscription()
     if (!subscription.ok) return subscription.response
+
+    // Absolute safety ceiling, independent of plan quota/overage. Overage is a
+    // legitimate paid feature, but a billing desync (e.g. a "zombie active" row
+    // pointing at a dead subscription) must never translate into unbounded AI
+    // spend. This ceiling sits far above any realistic monthly usage.
+    const HARD_AI_CAP = 1000
+    const preUsage = await getUsageSummary(subscription.context.companyId)
+    if ((preUsage.used ?? 0) >= HARD_AI_CAP) {
+      return NextResponse.json(
+        {
+          error:
+            "Du har nådd maksgrensen for AI-tilbud denne perioden. Kontakt support hvis du trenger mer.",
+          code: "ai_hard_cap",
+        },
+        { status: 429 }
+      )
+    }
 
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ error: "OpenAI API-nøkkel er ikke konfigurert" }, { status: 503 })

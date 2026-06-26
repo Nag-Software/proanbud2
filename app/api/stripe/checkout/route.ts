@@ -2,8 +2,14 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { changeSubscriptionPlan, createSubscriptionCheckoutSession } from "@/lib/billing/checkout"
-import { isActiveSubscriptionStatus, type BillingInterval, type PlanKey } from "@/lib/billing/plans"
+import { reconcileCompanyBillingFromStripe } from "@/lib/billing/confirm-checkout"
+import {
+  getMissingCorePriceEnvKeys,
+  type BillingInterval,
+  type PlanKey,
+} from "@/lib/billing/plans"
 import { requireCompanyAdmin } from "@/lib/billing/guards"
+import { SubscriptionMissingError } from "@/lib/billing/stripe-helpers"
 import { isStripeConfigured } from "@/lib/stripe/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
@@ -33,6 +39,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Stripe er ikke konfigurert." }, { status: 500 })
     }
 
+    const missingPriceKeys = getMissingCorePriceEnvKeys()
+    if (missingPriceKeys.length > 0) {
+      console.error("[stripe/checkout] mangler pris-miljøvariabler", missingPriceKeys)
+      return NextResponse.json(
+        { error: "Betaling er ikke ferdig konfigurert. Kontakt support." },
+        { status: 500 }
+      )
+    }
+
     const auth = await requireCompanyAdmin()
     if (!auth.ok) return auth.response
 
@@ -48,8 +63,8 @@ export async function POST(request: Request) {
       .eq("id", auth.context.companyId)
       .maybeSingle()
 
-    // If the company already has an active/trialing subscription, change the
-    // plan in place instead of creating a SECOND subscription (double-charge).
+    // If the company already has a live subscription, change the plan in place
+    // instead of creating a SECOND subscription (double-charge).
     const admin = createAdminClient()
     const { data: existingBilling } = await admin
       .from("company_billing")
@@ -57,10 +72,19 @@ export async function POST(request: Request) {
       .eq("company_id", auth.context.companyId)
       .maybeSingle()
 
-    if (
-      existingBilling?.stripe_subscription_id &&
-      isActiveSubscriptionStatus(existingBilling.status)
-    ) {
+    // Whenever a subscription id is on file, reconcile against Stripe FIRST so the
+    // decision reflects reality, not a possibly-stale DB status: a missed delete
+    // webhook leaves a dead sub (→ heals to canceled → fresh checkout), and a
+    // past_due/dunning sub still counts as live (→ modify in place, never a
+    // second subscription).
+    let liveStatus: string | null = null
+    if (existingBilling?.stripe_subscription_id) {
+      liveStatus = await reconcileCompanyBillingFromStripe(auth.context.companyId)
+    }
+    const hasLiveSub =
+      liveStatus !== null && ["trialing", "active", "past_due"].includes(liveStatus)
+
+    if (hasLiveSub) {
       const result = await changeSubscriptionPlan({
         companyId: auth.context.companyId,
         plan: parsed.data.plan as PlanKey,
@@ -86,8 +110,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ url: session.url })
   } catch (error) {
     console.error("[stripe/checkout]", error)
+    if (error instanceof SubscriptionMissingError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 })
+    }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Kunne ikke starte betaling." },
+      { error: "Kunne ikke starte betaling. Prøv igjen senere." },
       { status: 500 }
     )
   }

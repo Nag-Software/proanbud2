@@ -18,6 +18,10 @@ export const SUBSCRIPTION_EXEMPT_ROUTE_PREFIXES = [
   '/onboarding',
   '/innstillinger/betaling',
   '/create-company',
+  // Read-only page shown to non-admin members when the company subscription has
+  // lapsed (they cannot pay — only the admin can). Must be exempt so it doesn't
+  // redirect-loop on the subscription gate.
+  '/abonnement-utlopt',
 ] as const
 
 export const ADMIN_ONBOARDING_ROUTE_PREFIXES = [

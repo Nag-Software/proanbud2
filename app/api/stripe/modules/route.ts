@@ -4,6 +4,7 @@ import { z } from "zod"
 import { toggleModuleOnSubscription } from "@/lib/billing/checkout"
 import { requireActiveSubscription, requireCompanyAdmin } from "@/lib/billing/guards"
 import type { ModuleKey } from "@/lib/billing/plans"
+import { SubscriptionMissingError } from "@/lib/billing/stripe-helpers"
 
 const bodySchema = z.object({
   moduleKey: z.enum(["timeforing", "dokumenter", "integrasjoner", "meldinger_ki"]),
@@ -46,8 +47,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, module: result })
   } catch (error) {
     console.error("[stripe/modules]", error)
+    if (error instanceof SubscriptionMissingError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 })
+    }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Kunne ikke oppdatere modul." },
+      { error: "Kunne ikke oppdatere modul. Prøv igjen senere." },
       { status: 500 }
     )
   }

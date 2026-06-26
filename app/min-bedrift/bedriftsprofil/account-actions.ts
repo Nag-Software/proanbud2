@@ -74,18 +74,24 @@ export async function deleteCompanyAccountAction(input: { confirmName: string })
   const { data: members } = await admin.from("users").select("id").eq("company_id", companyId)
   const memberIds = (members ?? []).map((m) => m.id as string)
 
-  // 1. Cancel the Stripe subscription so billing stops (best-effort).
+  // 1. Stop billing AND remove personal data from Stripe (GDPR). Deleting the
+  //    customer also cancels any live subscription and removes stored payment
+  //    methods, so it supersedes a standalone subscription cancel. Best-effort —
+  //    never block the account deletion on a Stripe hiccup.
   try {
     const { data: billing } = await admin
       .from("company_billing")
-      .select("stripe_subscription_id")
+      .select("stripe_subscription_id, stripe_customer_id")
       .eq("company_id", companyId)
       .maybeSingle()
-    if (billing?.stripe_subscription_id) {
-      await getStripe().subscriptions.cancel(billing.stripe_subscription_id)
+    const stripe = getStripe()
+    if (billing?.stripe_customer_id) {
+      await stripe.customers.del(billing.stripe_customer_id)
+    } else if (billing?.stripe_subscription_id) {
+      await stripe.subscriptions.cancel(billing.stripe_subscription_id)
     }
   } catch (error) {
-    console.error("[delete-company] stripe cancel failed", error)
+    console.error("[delete-company] stripe cleanup failed", error)
   }
 
   // 2. Remove uploaded files (best-effort). Most buckets are company-prefixed;

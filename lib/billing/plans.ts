@@ -90,17 +90,26 @@ export const MODULE_CATALOG: Array<{
 
 export const SEAT_PRICE_NOK = 39
 
-const PRICE_ENV_KEYS: Record<string, string> = {
+export const PRICE_ENV_KEYS: Record<string, string> = {
   "mini-month": "STRIPE_PRICE_MINI_MONTHLY",
   "mini-year": "STRIPE_PRICE_MINI_YEARLY",
   "proff-month": "STRIPE_PRICE_PROFF_MONTHLY",
   "proff-year": "STRIPE_PRICE_PROFF_YEARLY",
   overage: "STRIPE_PRICE_OVERAGE",
-  "module-timeforing": "STRIPE_PRICE_MODULE_TIMEFORING",
-  "module-dokumenter": "STRIPE_PRICE_MODULE_DOKUMENTER",
-  "module-integrasjoner": "STRIPE_PRICE_MODULE_INTEGRASJONER",
-  "module-meldinger_ki": "STRIPE_PRICE_MODULE_MELDINGER_KI",
-  seat: "STRIPE_PRICE_SEAT_EMPLOYEE",
+  // Add-on prices have month + optional year variants. Seat/module items MUST
+  // match the base subscription's interval or Stripe rejects the line item with
+  // `prices_in_different_intervals`. The *_YEARLY vars are optional: when unset,
+  // resolution falls back to the monthly price (correct for monthly companies).
+  "module-timeforing-month": "STRIPE_PRICE_MODULE_TIMEFORING",
+  "module-timeforing-year": "STRIPE_PRICE_MODULE_TIMEFORING_YEARLY",
+  "module-dokumenter-month": "STRIPE_PRICE_MODULE_DOKUMENTER",
+  "module-dokumenter-year": "STRIPE_PRICE_MODULE_DOKUMENTER_YEARLY",
+  "module-integrasjoner-month": "STRIPE_PRICE_MODULE_INTEGRASJONER",
+  "module-integrasjoner-year": "STRIPE_PRICE_MODULE_INTEGRASJONER_YEARLY",
+  "module-meldinger_ki-month": "STRIPE_PRICE_MODULE_MELDINGER_KI",
+  "module-meldinger_ki-year": "STRIPE_PRICE_MODULE_MELDINGER_KI_YEARLY",
+  "seat-month": "STRIPE_PRICE_SEAT_EMPLOYEE",
+  "seat-year": "STRIPE_PRICE_SEAT_EMPLOYEE_YEARLY",
 }
 
 export function getStripePriceId(plan: PlanKey, interval: BillingInterval): string {
@@ -112,6 +121,24 @@ export function getStripePriceId(plan: PlanKey, interval: BillingInterval): stri
   return priceId
 }
 
+/**
+ * Price env vars required for the core subscription flow (base plans + overage +
+ * seat). Module prices are validated lazily when a module is toggled. Returns the
+ * list of MISSING keys so a misconfigured deploy can be detected up front (at the
+ * checkout gate) instead of surfacing a raw 500 mid-flow.
+ */
+export function getMissingCorePriceEnvKeys(): string[] {
+  const required = [
+    "STRIPE_PRICE_MINI_MONTHLY",
+    "STRIPE_PRICE_MINI_YEARLY",
+    "STRIPE_PRICE_PROFF_MONTHLY",
+    "STRIPE_PRICE_PROFF_YEARLY",
+    "STRIPE_PRICE_OVERAGE",
+    "STRIPE_PRICE_SEAT_EMPLOYEE",
+  ]
+  return required.filter((key) => !process.env[key]?.trim())
+}
+
 export function getOveragePriceId(): string {
   const priceId = process.env.STRIPE_PRICE_OVERAGE?.trim()
   if (!priceId) {
@@ -120,21 +147,33 @@ export function getOveragePriceId(): string {
   return priceId
 }
 
-export function getModulePriceId(module: ModuleKey): string {
-  const envKey = PRICE_ENV_KEYS[`module-${module}`]
-  const priceId = process.env[envKey]?.trim()
-  if (!priceId) {
-    throw new Error(`${envKey} mangler i miljøvariabler`)
-  }
-  return priceId
+/**
+ * Resolve a price env var for the given interval, falling back to the monthly
+ * variant when the yearly one is not configured. Keeps monthly companies working
+ * unchanged while letting yearly companies pick up interval-matched add-on prices
+ * once the *_YEARLY vars are seeded.
+ */
+function resolveIntervalPriceId(base: string, interval: BillingInterval): string {
+  const intervalKey = PRICE_ENV_KEYS[`${base}-${interval}`]
+  const intervalId = intervalKey ? process.env[intervalKey]?.trim() : undefined
+  if (intervalId) return intervalId
+
+  const monthKey = PRICE_ENV_KEYS[`${base}-month`]
+  const monthId = monthKey ? process.env[monthKey]?.trim() : undefined
+  if (monthId) return monthId
+
+  throw new Error(`${monthKey ?? base} mangler i miljøvariabler`)
 }
 
-export function getSeatPriceId(): string {
-  const priceId = process.env.STRIPE_PRICE_SEAT_EMPLOYEE?.trim()
-  if (!priceId) {
-    throw new Error("STRIPE_PRICE_SEAT_EMPLOYEE mangler i miljøvariabler")
-  }
-  return priceId
+export function getModulePriceId(
+  module: ModuleKey,
+  interval: BillingInterval = "month"
+): string {
+  return resolveIntervalPriceId(`module-${module}`, interval)
+}
+
+export function getSeatPriceId(interval: BillingInterval = "month"): string {
+  return resolveIntervalPriceId("seat", interval)
 }
 
 export function quotaForPlan(planKey: PlanKey | null | undefined): number {
@@ -142,8 +181,20 @@ export function quotaForPlan(planKey: PlanKey | null | undefined): number {
   return PLAN_QUOTA_LIMITS[planKey] ?? 0
 }
 
+/** Fully-paid / trialing — used where a strictly-good billing state is required. */
 export function isActiveSubscriptionStatus(status: string | null | undefined): boolean {
   return status === "trialing" || status === "active"
+}
+
+/**
+ * Grants APP ACCESS. Includes `past_due` so a company in card-retry dunning keeps
+ * working during the grace period (Stripe retries the card for ~2-3 weeks) rather
+ * than being locked out on the first failed charge. Use this for access/feature
+ * gates; use isActiveSubscriptionStatus only where a fully-paid state matters.
+ * Matches the "live subscription" set used by reconcile + the checkout guard.
+ */
+export function hasBillableAccess(status: string | null | undefined): boolean {
+  return status === "trialing" || status === "active" || status === "past_due"
 }
 
 type PriceMetadata = Record<string, string> | null | undefined

@@ -13,6 +13,10 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/billing/reconcile",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/integrations/fiken/reconcile",
       "schedule": "0 2 * * *"
     },

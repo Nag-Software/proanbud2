@@ -132,6 +132,7 @@ async function main() {
       { interval: "year" },
       { kind: "base", plan_key: "proff", interval: "year" }
     ),
+    // OVERAGE_UNIT_ORE in lib/billing/plans.ts — keep in sync.
     STRIPE_PRICE_OVERAGE: await ensureOneTimePrice(overageProduct.id, 950, {
       kind: "overage",
     }),
@@ -164,6 +165,39 @@ async function main() {
       3900,
       { interval: "month" },
       { kind: "seat" }
+    ),
+    // Yearly add-on variants (12× monthly, no discount). Required so seat/module
+    // items can match a YEARLY base subscription's interval — Stripe rejects a
+    // subscription mixing monthly and yearly items (prices_in_different_intervals).
+    STRIPE_PRICE_MODULE_TIMEFORING_YEARLY: await ensureRecurringPrice(
+      moduleProduct.id,
+      3900 * 12,
+      { interval: "year" },
+      { kind: "module", module_key: "timeforing", interval: "year" }
+    ),
+    STRIPE_PRICE_MODULE_DOKUMENTER_YEARLY: await ensureRecurringPrice(
+      dokumenterProduct.id,
+      3900 * 12,
+      { interval: "year" },
+      { kind: "module", module_key: "dokumenter", interval: "year" }
+    ),
+    STRIPE_PRICE_MODULE_INTEGRASJONER_YEARLY: await ensureRecurringPrice(
+      integrasjonerProduct.id,
+      2900 * 12,
+      { interval: "year" },
+      { kind: "module", module_key: "integrasjoner", interval: "year" }
+    ),
+    STRIPE_PRICE_MODULE_MELDINGER_KI_YEARLY: await ensureRecurringPrice(
+      meldingerKiProduct.id,
+      2900 * 12,
+      { interval: "year" },
+      { kind: "module", module_key: "meldinger_ki", interval: "year" }
+    ),
+    STRIPE_PRICE_SEAT_EMPLOYEE_YEARLY: await ensureRecurringPrice(
+      seatProduct.id,
+      3900 * 12,
+      { interval: "year" },
+      { kind: "seat", interval: "year" }
     ),
   }
 

@@ -24,6 +24,7 @@ function shouldUsePersistentShell(pathname: string) {
   if (isPublicAuthRoute(pathname)) return false
   if (pathname.startsWith("/onboarding")) return false
   if (pathname === "/ingen-tilgang") return false
+  if (pathname === "/abonnement-utlopt") return false
   if (isSjefenRoute(pathname)) return false
   if (isSelgerRoute(pathname)) return false
   return true

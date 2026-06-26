@@ -13,6 +13,7 @@
 import { Resend } from "resend"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { BILLING_PATH } from "@/lib/constants"
 import { logSellerEmail } from "@/lib/selger/activity-log"
 import { buildSellerEmailHtml, sellerEmailAppUrl } from "@/lib/selger/seller-email-html"
 
@@ -34,7 +35,7 @@ type TrialTemplate = {
   buildHtml: (input: { recipientName: string; companyName: string | null }) => string
 }
 
-const subscriptionUrl = () => `${sellerEmailAppUrl()}/innstillinger/abonnement`
+const subscriptionUrl = () => `${sellerEmailAppUrl()}${BILLING_PATH}`
 
 const TRIAL_TEMPLATES: Record<"soon" | "lastDay" | "expired", TrialTemplate> = {
   soon: {

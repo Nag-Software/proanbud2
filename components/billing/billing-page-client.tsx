@@ -29,6 +29,8 @@ type BillingSummary = {
   period_start: string | null
   period_end: string | null
   trial_ends_at: string | null
+  cancel_at_period_end?: boolean
+  cancel_at?: string | null
   seat_count: number
   billable_seats: number
   included_seats: number
@@ -221,9 +223,18 @@ export function BillingPageClient() {
   const trialEnd = formatDate(summary?.trial_ends_at ?? null)
   const interval = intervalLabel(summary?.billing_interval ?? null)
   const isProff = summary?.plan_key === "proff"
+  const cancelDate = summary?.cancel_at_period_end
+    ? formatDate(summary?.cancel_at ?? summary?.period_end ?? null)
+    : null
 
   return (
     <div className="w-full max-w-lg space-y-8 px-4 py-6 md:px-6">
+      {cancelDate && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+          Abonnementet avsluttes {cancelDate}. Du beholder tilgangen til da. Åpne «Administrer
+          betaling» for å gjenoppta abonnementet.
+        </div>
+      )}
       <section className="rounded-xl border">
         <div className="space-y-1 p-5">
           <div className="flex items-start justify-between gap-3">

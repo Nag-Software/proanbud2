@@ -6,7 +6,7 @@ import {
   isPublicAuthRoute,
   isSubscriptionExemptRoute,
 } from '@/lib/auth/routes'
-import { isActiveSubscriptionStatus } from '@/lib/billing/plans'
+import { hasBillableAccess } from '@/lib/billing/plans'
 import { isInvitedCompanyMember } from '@/lib/roles'
 import { LOGIN_PATH } from '@/lib/constants'
 import { isPlatformAdminEmail, isSjefenApiRoute, isSjefenRoute } from '@/lib/auth/platform-admin'
@@ -17,7 +17,11 @@ import { MOCK_ROLE_COOKIE, isRoleMockEnabled, resolveMockRoleParam } from '@/lib
 // onboarding/subscription RPCs. Only ever skips the already-verified "pass"
 // case — it can never introduce a redirect, and re-verifies after TTL.
 const GATE_COOKIE = 'pa_gate_ok'
-const GATE_TTL_SECONDS = 120
+// Short TTL bounds the window where a just-lapsed subscription could still pass
+// the cached fast-path. The cookie is only ever written after a verified-active
+// status check (see below), and webhook/reconcile flip status promptly, so the
+// residual UI leak is at most this long. RLS + server guards remain the real boundary.
+const GATE_TTL_SECONDS = 60
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -270,8 +274,13 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
-    if (companyId && isCompanyAdmin && !isSubscriptionExemptRoute(pathname)) {
-      let subscriptionStatus: string | null = null
+    // Gate EVERY company member (not just admins) when the subscription lapses —
+    // otherwise a worker/manager keeps full app access after the company stops
+    // paying. Admins go to the billing/onboarding flow they can act on; non-admins
+    // get a read-only "contact your admin" page.
+    let subscriptionVerifiedActive = false
+    if (companyId && !isSubscriptionExemptRoute(pathname)) {
+      let subscriptionStatus: string
 
       const { data: rpcStatus, error: statusError } = await supabase.rpc(
         'get_current_subscription_status'
@@ -284,13 +293,15 @@ export async function updateSession(request: NextRequest) {
           code: statusError.code,
           message: statusError.message,
         })
+        // Fail CLOSED: an unverifiable status must not grant access.
+        subscriptionStatus = 'incomplete'
       } else {
         subscriptionStatus = rpcStatus ?? 'incomplete'
       }
 
-      if (subscriptionStatus && !isActiveSubscriptionStatus(subscriptionStatus)) {
+      if (!hasBillableAccess(subscriptionStatus)) {
         const url = request.nextUrl.clone()
-        url.pathname = '/onboarding/abonnement'
+        url.pathname = isCompanyAdmin ? '/onboarding/abonnement' : '/abonnement-utlopt'
         url.searchParams.set('reason', 'missing-subscription')
         const redirect = NextResponse.redirect(url)
         supabaseResponse.cookies.getAll().forEach(({ name, value }) => {
@@ -298,12 +309,15 @@ export async function updateSession(request: NextRequest) {
         })
         return redirect
       }
+      subscriptionVerifiedActive = true
     }
 
     // Fully verified (onboarded + active) — cache briefly so subsequent
-    // navigations can skip the RPCs above. Only cache users WITH a company, so
-    // a company-less user is never allowed to skip the onboarding redirect.
-    if (cacheableGate && companyId) {
+    // navigations can skip the RPCs above. Only cache when the subscription was
+    // actually verified active on this request (never on a transient RPC error),
+    // and only for users WITH a company, so a company-less or lapsed user is
+    // never allowed to skip the redirect.
+    if (cacheableGate && companyId && subscriptionVerifiedActive) {
       supabaseResponse.cookies.set(GATE_COOKIE, user.id, {
         path: '/',
         maxAge: GATE_TTL_SECONDS,
