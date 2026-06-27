@@ -14,7 +14,6 @@ import {
   Calculator,
   Check,
   CheckCircle2,
-  Edit3,
   LoaderCircle,
   Plus,
   Save,
@@ -727,24 +726,17 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
               </div>
 
               <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:flex-row sm:space-x-3">
-                <div className="order-1 sm:order-2 sm:basis-0 sm:flex-1">
-                  <Button type="button" variant="outline" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleSaveDraft} disabled={isPersisting}>
-                    <Edit3 className="h-4 w-4" />
-                    {isPersisting ? "Lagrer..." : "Lagre som utkast"}
-                  </Button>
-                </div>
-
-                <div className="order-2 sm:order-3 sm:basis-0 sm:flex-1">
-                  <Button type="button" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleOpenOffer} disabled={isPersisting || lineItems.length === 0}>
-                    {isPersisting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    {isPersisting ? "Lagrer..." : "Lagre tilbud"}
-                  </Button>
-                </div>
-
-                <div className="order-3 col-span-2 sm:order-1 sm:col-auto sm:basis-0 sm:flex-1">
+                <div className="order-1 sm:basis-0 sm:flex-1">
                   <Button type="button" variant="outline" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={() => setStep(2)}>
                     <ArrowLeft className="h-4 w-4" />
                     Tilbake
+                  </Button>
+                </div>
+
+                <div className="order-2 sm:basis-0 sm:flex-1">
+                  <Button type="button" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleOpenOffer} disabled={isPersisting || lineItems.length === 0}>
+                    {isPersisting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {isPersisting ? "Lagrer..." : "Lagre tilbud"}
                   </Button>
                 </div>
               </div>
