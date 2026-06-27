@@ -33,7 +33,6 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   DEFAULT_PAYMENT_SCHEDULE,
   inferPricingModelFromLineItems,
-  PRICING_MODEL_LABELS,
 } from "@/lib/contracts/pricing"
 import { getDistinctSuppliers } from "@/lib/tilbud/supplier-prices"
 import {
