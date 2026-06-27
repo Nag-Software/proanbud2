@@ -126,6 +126,10 @@ export default function CreateCompanyClient() {
           full_name: user?.user_metadata?.full_name,
           phone: normalizedPhone,
           website: website.trim() || null,
+          employees: employees.trim() || null,
+          turnover: turnover.trim() || null,
+          main_supplier: supplier.trim() || null,
+          signup_source: source || null,
         })
       })
 

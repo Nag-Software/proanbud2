@@ -198,6 +198,9 @@ export function TripletexClient({
 
   const [apiKey, setApiKey] = React.useState("")
   const [scopes, setScopes] = React.useState<ScopeConfig>(readScopeConfig(initialConnection))
+  // Holder styr på om brukeren har ulagrede bryterendringer, slik at refreshState()
+  // ikke overskriver lokale valg med serververdier mens noe er ulagret.
+  const scopesDirtyRef = React.useRef(false)
   const [connectionError, setConnectionError] = React.useState<ApiErrorPayload | null>(null)
   const [isConnecting, setIsConnecting] = React.useState(false)
   const [isDisconnecting, setIsDisconnecting] = React.useState(false)
@@ -214,7 +217,10 @@ export function TripletexClient({
     }
     const data = (await response.json()) as StateResponse
     setState(data)
-    setScopes(readScopeConfig(data.connection))
+    // Ikke overskriv lokale, ulagrede bryterverdier ved refresh.
+    if (!scopesDirtyRef.current) {
+      setScopes(readScopeConfig(data.connection))
+    }
   }, [])
 
   React.useEffect(() => {
@@ -224,6 +230,19 @@ export function TripletexClient({
   const syncState = String(state.connection?.sync_state || "disconnected")
   const isConnected = state.connected
   const hasStoredConnection = Boolean(state.connection)
+
+  const savedScopes = React.useMemo(
+    () => readScopeConfig(state.connection),
+    [state.connection]
+  )
+  const scopesDirty = React.useMemo(
+    () => SCOPE_ITEMS.some((item) => scopes[item.key] !== savedScopes[item.key]),
+    [scopes, savedScopes]
+  )
+
+  React.useEffect(() => {
+    scopesDirtyRef.current = scopesDirty
+  }, [scopesDirty])
   const activityLog = React.useMemo(
     () => buildActivityLog(state.recentJobs, state.recentEvents),
     [state.recentJobs, state.recentEvents]
@@ -542,7 +561,12 @@ export function TripletexClient({
             </div>
 
             <div className="space-y-3 rounded-lg border p-4">
-              <p className="text-sm font-medium">Synkroniser</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">Synkroniser</p>
+                {hasStoredConnection && isConnected && scopesDirty && (
+                  <span className="text-xs font-medium text-amber-600">Ulagrede endringer</span>
+                )}
+              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {SCOPE_ITEMS.map((item) => (
                   <label key={item.key} className="flex items-center justify-between text-sm">
@@ -574,8 +598,12 @@ export function TripletexClient({
                 </Button>
               )}
               {hasStoredConnection && isConnected && (
-                <Button variant="outline" onClick={saveScopes} disabled={isSavingScopes || !canManage}>
-                  {isSavingScopes ? "Lagrer…" : "Lagre"}
+                <Button
+                  variant={scopesDirty ? "default" : "outline"}
+                  onClick={saveScopes}
+                  disabled={isSavingScopes || !canManage || !scopesDirty}
+                >
+                  {isSavingScopes ? "Lagrer…" : scopesDirty ? "Lagre endringer" : "Lagre"}
                 </Button>
               )}
               {hasStoredConnection && (

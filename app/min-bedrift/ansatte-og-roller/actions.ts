@@ -68,3 +68,101 @@ export async function updateUserRole(userId: string, newRoleName: string) {
   revalidatePath("/min-bedrift/ansatte-og-roller")
   return { success: true }
 }
+
+/**
+ * Felles RBAC + samme-bedrift-sjekk. Returnerer enten { error } eller { companyId }
+ * for den innloggede admin-brukeren.
+ */
+async function requireAdminCompany(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    return { error: "Ikke autorisert" as const }
+  }
+
+  const effectiveRole = await getEffectiveRole(supabase, user.id)
+  if (!canInviteEmployees(effectiveRole)) {
+    return { error: "Kun administratorer kan utføre denne handlingen" as const }
+  }
+
+  const { data: execUser } = await supabase
+    .from("users")
+    .select("company_id")
+    .eq("id", user.id)
+    .single()
+
+  if (!execUser?.company_id) {
+    return { error: "Fant ikke bedriften din" as const }
+  }
+
+  return { userId: user.id, companyId: execUser.company_id as string }
+}
+
+export async function revokeInvitation(invitationId: string) {
+  const supabase = await createClient()
+
+  const ctx = await requireAdminCompany(supabase)
+  if ("error" in ctx) return { error: ctx.error }
+
+  const { data: invitation, error: invError } = await supabase
+    .from("invitations")
+    .select("company_id, status")
+    .eq("id", invitationId)
+    .single()
+
+  if (invError || !invitation) {
+    return { error: "Invitasjonen ble ikke funnet" }
+  }
+
+  if (invitation.company_id !== ctx.companyId) {
+    return { error: "Ikke autorisert til å endre denne invitasjonen" }
+  }
+
+  const { error: updateError } = await supabase
+    .from("invitations")
+    .update({ status: "revoked" })
+    .eq("id", invitationId)
+
+  if (updateError) {
+    return { error: "Klarte ikke å trekke tilbake invitasjonen" }
+  }
+
+  revalidatePath("/min-bedrift/ansatte-og-roller")
+  return { success: true }
+}
+
+export async function deactivateUser(userId: string) {
+  const supabase = await createClient()
+
+  const ctx = await requireAdminCompany(supabase)
+  if ("error" in ctx) return { error: ctx.error }
+
+  if (userId === ctx.userId) {
+    return { error: "Du kan ikke deaktivere din egen bruker" }
+  }
+
+  const { data: targetUser, error: targetError } = await supabase
+    .from("users")
+    .select("company_id")
+    .eq("id", userId)
+    .single()
+
+  if (targetError || !targetUser) {
+    return { error: "Bruker ikke funnet" }
+  }
+
+  if (targetUser.company_id !== ctx.companyId) {
+    return { error: "Ikke autorisert til å endre denne brukeren" }
+  }
+
+  const { error: updateError } = await supabase
+    .from("users")
+    .update({ is_active: false })
+    .eq("id", userId)
+
+  if (updateError) {
+    return { error: "Klarte ikke å deaktivere ansatt" }
+  }
+
+  revalidatePath("/min-bedrift/ansatte-og-roller")
+  return { success: true }
+}

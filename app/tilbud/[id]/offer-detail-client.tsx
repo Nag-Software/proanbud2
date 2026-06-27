@@ -15,6 +15,7 @@ import {
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -114,6 +115,10 @@ type OfferSaveSnapshot = {
 
 function customerField(value: string) {
   return value.trim() || "—"
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
 
 function CustomerInfoDisplay({ customer }: { customer: LinkedCustomer }) {
@@ -222,6 +227,7 @@ export function OfferDetailClient({
   tripletexSync?: TripletexSyncState
 }) {
   const router = useRouter()
+  const confirm = useConfirm()
   const [isPending, startTransition] = useTransition()
   const [offer, setOffer] = useState(initialOffer)
   const [lineItems, setLineItems] = useState<OfferLineItem[]>(initialOffer.lineItems)
@@ -234,6 +240,7 @@ export function OfferDetailClient({
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const [lastAutoSaveAt, setLastAutoSaveAt] = useState<string | null>(initialOffer.updatedAt)
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const suppressAutosaveRef = useRef(false)
   const isFirstAutosaveRunRef = useRef(true)
   const saveSequenceRef = useRef(0)
   const lastSavedFingerprintRef = useRef("")
@@ -285,6 +292,10 @@ export function OfferDetailClient({
   )
 
   const saveFingerprint = useMemo(() => JSON.stringify(saveSnapshot), [saveSnapshot])
+
+  // Effektiv mottaker-e-post: bruk det redigerbare feltet, ev. fall tilbake til kundens e-post.
+  const effectiveRecipientEmail = offer.recipientEmail.trim() || linkedCustomer.email.trim()
+  const hasValidRecipientEmail = isValidEmail(effectiveRecipientEmail)
 
   const [activeSubproject, setActiveSubproject] = useState<string | null>(null)
 
@@ -406,10 +417,28 @@ export function OfferDetailClient({
   }, [offer.id])
 
   const sendOffer = async () => {
-    const recipientEmail = offer.recipientEmail.trim() || linkedCustomer.email.trim()
-    if (!recipientEmail) {
-      toast.error("Kunden mangler e-post. Oppdater kunden før du sender tilbud.")
+    const recipientEmail = effectiveRecipientEmail
+    if (!isValidEmail(recipientEmail)) {
+      toast.error("Legg inn en gyldig e-post i «Send til» før du sender tilbud.")
       return
+    }
+
+    const alreadySent = offer.status === "sent"
+    const confirmed = await confirm({
+      title: alreadySent ? "Send tilbud på nytt?" : "Send tilbud?",
+      description: alreadySent
+        ? `Kunden har allerede mottatt dette tilbudet. Vil du sende en ny e-post til ${recipientEmail}?`
+        : `Tilbudet sendes som e-post til ${recipientEmail}. Denne handlingen kan ikke angres.`,
+      confirmText: alreadySent ? "Send på nytt" : "Send tilbud",
+      cancelText: "Avbryt",
+    })
+    if (!confirmed) return
+
+    // Stopp eventuell ventende autolagring slik at kun send-tidens lagring skriver til DB.
+    suppressAutosaveRef.current = true
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current)
+      autosaveTimeoutRef.current = null
     }
 
     startTransition(async () => {
@@ -446,6 +475,8 @@ export function OfferDetailClient({
         void refreshActivity()
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Kunne ikke sende tilbud")
+      } finally {
+        suppressAutosaveRef.current = false
       }
     })
   }
@@ -465,12 +496,19 @@ export function OfferDetailClient({
       return
     }
 
+    // Ikke planlegg ny autolagring mens et tilbud sendes (unngår at en stale autosave
+    // lander etter send-tidens lagring og overskriver nyere ordrelinjer).
+    if (suppressAutosaveRef.current) {
+      return
+    }
+
     if (autosaveTimeoutRef.current) {
       clearTimeout(autosaveTimeoutRef.current)
     }
 
     const snapshotToSave = saveSnapshot
     autosaveTimeoutRef.current = setTimeout(() => {
+      if (suppressAutosaveRef.current) return
       void saveOfferSnapshot(snapshotToSave, { silent: true })
     }, 800)
 
@@ -642,10 +680,66 @@ export function OfferDetailClient({
               </div>
             ) : null}
 
+            <div className="grid gap-2 rounded-md border bg-muted/20 p-3 sm:grid-cols-3">
+              <div>
+                <Label htmlFor="recipient-email" className="text-[11px] text-muted-foreground">
+                  Send til (e-post)
+                </Label>
+                <Input
+                  id="recipient-email"
+                  type="email"
+                  className="mt-1 h-8 bg-background text-xs"
+                  value={offer.recipientEmail}
+                  placeholder={linkedCustomer.email || "kunde@eksempel.no"}
+                  onChange={(event) =>
+                    setOffer((prev) => ({ ...prev, recipientEmail: event.target.value }))
+                  }
+                  aria-invalid={!hasValidRecipientEmail}
+                />
+                {!hasValidRecipientEmail ? (
+                  <p className="mt-1 text-[11px] text-destructive">
+                    Legg inn en gyldig e-post for å kunne sende tilbudet.
+                  </p>
+                ) : null}
+              </div>
+              <div>
+                <Label htmlFor="recipient-name" className="text-[11px] text-muted-foreground">
+                  Mottakernavn
+                </Label>
+                <Input
+                  id="recipient-name"
+                  className="mt-1 h-8 bg-background text-xs"
+                  value={offer.recipientName}
+                  placeholder={linkedCustomer.name || "Navn"}
+                  onChange={(event) =>
+                    setOffer((prev) => ({ ...prev, recipientName: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="recipient-phone" className="text-[11px] text-muted-foreground">
+                  Telefon
+                </Label>
+                <Input
+                  id="recipient-phone"
+                  className="mt-1 h-8 bg-background text-xs"
+                  value={offer.recipientPhone}
+                  placeholder={linkedCustomer.phone || "Valgfritt"}
+                  onChange={(event) =>
+                    setOffer((prev) => ({ ...prev, recipientPhone: event.target.value }))
+                  }
+                />
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-              <Button onClick={sendOffer} disabled={isPending || isAutoSaving || lineItems.length === 0} className="h-11 sm:h-9">
+              <Button
+                onClick={sendOffer}
+                disabled={isPending || isAutoSaving || lineItems.length === 0 || !hasValidRecipientEmail}
+                className="h-11 sm:h-9"
+              >
                 <Send className="mr-2 h-4 w-4" />
-                Send tilbud
+                {offer.status === "sent" ? "Send på nytt" : "Send tilbud"}
               </Button>
               <Button variant="outline" onClick={() => setIsPreviewOpen(true)} className="h-11 sm:h-9">
                 <Eye className="mr-2 h-4 w-4" />

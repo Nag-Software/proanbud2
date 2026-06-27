@@ -19,7 +19,7 @@ export const integrations = [
     {
         name: "DocuSign",
         description: "Send og signer kontrakter elektronisk via DocuSign.",
-        url: "/min-bedrift/integrasjoner/docusign",
+        url: "/innstillinger/integrasjoner/docusign",
         status: "active",
         logo: "https://brandlogos.net/wp-content/uploads/2024/04/docusign-logo_brandlogos.net_5wujv.png"
     },

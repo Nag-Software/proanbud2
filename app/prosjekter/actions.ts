@@ -111,6 +111,7 @@ export async function createTaskAction(taskData: {
   status: string
   priority: string
   due_date?: string | null
+  assigned_to?: string | null
 }) {
   const supabase = await createClient()
 
@@ -143,6 +144,7 @@ export async function createTaskAction(taskData: {
       status: normalizeTaskStatus(taskData.status),
       priority: normalizeTaskPriority(taskData.priority),
       due_date: taskData.due_date ? new Date(taskData.due_date).toISOString() : null,
+      assigned_to: taskData.assigned_to || null,
     })
     .select()
     .single()
@@ -154,6 +156,99 @@ export async function createTaskAction(taskData: {
 
   revalidatePath(`/prosjekter/${taskData.project_id}`)
   return data
+}
+
+export async function updateTaskAction(
+  taskId: string,
+  values: {
+    title?: string
+    description?: string | null
+    status?: string
+    priority?: string
+    due_date?: string | null
+    assigned_to?: string | null
+  },
+  projectId: string
+) {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+
+  await assertCanManageProjectTasks(supabase, user.id, projectId)
+
+  const updatePayload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  }
+
+  if (values.title !== undefined) {
+    const trimmedTitle = values.title.trim()
+    if (!trimmedTitle) {
+      throw new Error("Oppgavetittel kan ikke være tom")
+    }
+    updatePayload.title = trimmedTitle
+  }
+  if (values.description !== undefined) {
+    updatePayload.description = values.description || null
+  }
+  if (values.status !== undefined) {
+    updatePayload.status = normalizeTaskStatus(values.status)
+  }
+  if (values.priority !== undefined) {
+    updatePayload.priority = normalizeTaskPriority(values.priority)
+  }
+  if (values.due_date !== undefined) {
+    updatePayload.due_date = values.due_date ? new Date(values.due_date).toISOString() : null
+  }
+  if (values.assigned_to !== undefined) {
+    updatePayload.assigned_to = values.assigned_to || null
+  }
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .update(updatePayload)
+    .eq("id", taskId)
+    .eq("project_id", projectId)
+    .select()
+    .single()
+
+  if (error) {
+    console.error("Error updating task:", error)
+    throw new Error("Kunne ikke oppdatere oppgaven")
+  }
+
+  revalidatePath(`/prosjekter/${projectId}`)
+  return data
+}
+
+export async function deleteTaskAction(taskId: string, projectId: string) {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+
+  await assertCanManageProjectTasks(supabase, user.id, projectId)
+
+  const { error } = await supabase
+    .from("tasks")
+    .delete()
+    .eq("id", taskId)
+    .eq("project_id", projectId)
+
+  if (error) {
+    console.error("Error deleting task:", error)
+    throw new Error("Kunne ikke slette oppgaven")
+  }
+
+  revalidatePath(`/prosjekter/${projectId}`)
 }
 
 export async function updateTaskStatusAction(taskId: string, newStatus: string, projectId: string) {

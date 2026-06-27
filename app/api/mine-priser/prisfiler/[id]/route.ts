@@ -31,7 +31,18 @@ export async function GET(
       .order("id")
       .range(page * LIMIT, page * LIMIT + LIMIT - 1)
 
-    if (search) query = query.ilike("product", `%${search}%`)
+    if (search) {
+      const term = search.replace(/[%,]/g, "")
+      if (term) {
+        query = query.or(
+          [
+            `product.ilike.%${term}%`,
+            `nobb.ilike.%${term}%`,
+            `ean.ilike.%${term}%`,
+          ].join(",")
+        )
+      }
+    }
 
     const { data: rows, error: rowsError } = await query
     if (rowsError) return NextResponse.json({ error: rowsError.message }, { status: 500 })

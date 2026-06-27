@@ -146,7 +146,9 @@ export function LagredeJobberPage() {
       const savedJob = data.job as SavedJob
       setJobs((prev) => {
         if (editingJob) {
-          return prev.map((job) => (job.id === savedJob.id ? savedJob : job))
+          return prev
+            .map((job) => (job.id === savedJob.id ? savedJob : job))
+            .sort((a, b) => a.name.localeCompare(b.name, "no"))
         }
         return [...prev, savedJob].sort((a, b) => a.name.localeCompare(b.name, "no"))
       })

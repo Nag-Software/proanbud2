@@ -1,7 +1,7 @@
 "use client"
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { useTransition } from "react"
+import { useEffect, useRef, useState, useTransition } from "react"
 import { Search, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -41,6 +41,39 @@ export function ProsjekterFilters() {
   const currentSort = searchParams.get("sort") || "name"
   const currentQuery = searchParams.get("search") || ""
 
+  // Kontrollert søkefelt synket mot URL slik at «Nullstill» faktisk tømmer feltet.
+  const [searchValue, setSearchValue] = useState(currentQuery)
+  const lastSyncedQuery = useRef(currentQuery)
+
+  // Når URL-paramet endres utenfra (f.eks. «Nullstill»), oppdater feltet.
+  useEffect(() => {
+    if (currentQuery !== lastSyncedQuery.current) {
+      lastSyncedQuery.current = currentQuery
+      setSearchValue(currentQuery)
+    }
+  }, [currentQuery])
+
+  // Debounce: skriv søket til URL ~300 ms etter siste tastetrykk i stedet for per tegn.
+  useEffect(() => {
+    if (searchValue === currentQuery) return
+
+    const handle = setTimeout(() => {
+      lastSyncedQuery.current = searchValue
+      const params = new URLSearchParams(searchParams)
+      if (searchValue) {
+        params.set("search", searchValue)
+      } else {
+        params.delete("search")
+      }
+      startTransition(() => {
+        replace(`${pathname}?${params.toString()}`)
+      })
+    }, 300)
+
+    return () => clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchValue])
+
   const handleStatusChange = (status: string) => {
     const params = new URLSearchParams(searchParams)
     if (status === "all") {
@@ -65,19 +98,9 @@ export function ProsjekterFilters() {
     })
   }
 
-  const handleSearchChange = (term: string) => {
-    const params = new URLSearchParams(searchParams)
-    if (term) {
-      params.set("search", term)
-    } else {
-      params.delete("search")
-    }
-    startTransition(() => {
-      replace(`${pathname}?${params.toString()}`)
-    })
-  }
-
   const resetFilters = () => {
+    lastSyncedQuery.current = ""
+    setSearchValue("")
     startTransition(() => {
       replace(pathname)
     })
@@ -95,9 +118,9 @@ export function ProsjekterFilters() {
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="h-9 pl-9"
-              placeholder="Søk prosjekt, kunde eller ID"
-              defaultValue={currentQuery}
-              onChange={(event) => handleSearchChange(event.target.value)}
+              placeholder="Søk prosjekt eller ID"
+              value={searchValue}
+              onChange={(event) => setSearchValue(event.target.value)}
             />
           </div>
         </div>

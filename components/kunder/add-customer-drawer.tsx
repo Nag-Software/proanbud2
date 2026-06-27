@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select"
 import { createCustomerAction } from "@/app/kunder/actions"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 interface AddCustomerDrawerProps {
   open: boolean
@@ -49,10 +50,13 @@ export function AddCustomerDrawer({ open, onOpenChange, onCreated }: AddCustomer
       const createdName = (formData.get("name") as string) || ""
 
       onCreated?.({ id: createdId, name: createdName })
+      toast.success("Kunden ble opprettet")
       router.refresh()
       onOpenChange(false)
     } catch (error) {
       console.error("Failed to create customer:", error)
+      const message = error instanceof Error ? error.message : "Kunne ikke opprette kunde"
+      toast.error(message)
     } finally {
       setIsPending(false)
     }

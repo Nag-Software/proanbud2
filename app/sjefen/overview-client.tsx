@@ -39,14 +39,20 @@ function KpiCard({
   value,
   hint,
   icon,
+  href,
 }: {
   title: string
   value: number | string
   hint?: string
   icon: ReactNode
+  href?: string
 }) {
-  return (
-    <Card className="theme-surface-hero border-0 shadow-none">
+  const card = (
+    <Card
+      className={`theme-surface-hero border-0 shadow-none${
+        href ? " transition-colors hover:bg-accent/40" : ""
+      }`}
+    >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
           {title}
@@ -59,6 +65,19 @@ function KpiCard({
       </CardContent>
     </Card>
   )
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {card}
+      </Link>
+    )
+  }
+
+  return card
 }
 
 const companyColumns: ColumnDef<SjefenCompanyRow>[] = [
@@ -171,21 +190,43 @@ export function OverviewClient({ stats }: { stats: SjefenOverviewStats }) {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <KpiCard title="Firmaer" value={stats.companies} icon={<Building2Icon className="size-4" />} />
+          <KpiCard
+            title="Firmaer"
+            value={stats.companies}
+            icon={<Building2Icon className="size-4" />}
+            href="/sjefen/firmaer"
+          />
           <KpiCard
             title="Brukere"
             value={stats.users}
             hint={`${stats.activeUsers} aktive`}
             icon={<UsersIcon className="size-4" />}
+            href="/sjefen/brukere"
           />
-          <KpiCard title="Tilbud" value={stats.offers} icon={<FileTextIcon className="size-4" />} />
-          <KpiCard title="Kontrakter" value={stats.contracts} icon={<ScrollTextIcon className="size-4" />} />
-          <KpiCard title="Fakturaer" value={stats.invoices} icon={<ReceiptIcon className="size-4" />} />
+          <KpiCard
+            title="Tilbud"
+            value={stats.offers}
+            icon={<FileTextIcon className="size-4" />}
+            href="/sjefen/tilbud"
+          />
+          <KpiCard
+            title="Kontrakter"
+            value={stats.contracts}
+            icon={<ScrollTextIcon className="size-4" />}
+            href="/sjefen/kontrakter"
+          />
+          <KpiCard
+            title="Fakturaer"
+            value={stats.invoices}
+            icon={<ReceiptIcon className="size-4" />}
+            href="/sjefen/fakturaer"
+          />
           <KpiCard
             title="Meldinger"
             value={stats.messages}
             hint={`${stats.unreadMessages} uleste fra kunder`}
             icon={<InboxIcon className="size-4" />}
+            href="/sjefen/meldinger"
           />
           <KpiCard
             title="Aktive abonnement"

@@ -30,7 +30,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invitasjonen har utløpt' }, { status: 400 });
     }
 
-    const targetEmail = (email || invite.email).trim().toLowerCase();
+    // Sikkerhet: Invitasjonen er bundet til den inviterte adressen. Klientens
+    // innsendte e-post ignoreres helt — vi bruker alltid invite.email. Hvis
+    // klienten likevel sender en e-post som ikke matcher, avvis med 400 slik at
+    // en invitasjon ikke kan brukes til å opprette konto med en annen adresse.
+    const invitedEmail = String(invite.email).trim().toLowerCase();
+    if (email && String(email).trim().toLowerCase() !== invitedEmail) {
+      return NextResponse.json(
+        { error: 'E-posten må være den samme som invitasjonen ble sendt til.' },
+        { status: 400 }
+      );
+    }
+    const targetEmail = invitedEmail;
 
     const { data: authRecord, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: targetEmail,

@@ -115,24 +115,40 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
   const [uploading, setUploading] = React.useState(false)
   const [annotateFile, setAnnotateFile] = React.useState<File | null>(null)
   const [annotateOpen, setAnnotateOpen] = React.useState(false)
+  // Kø av gjenstående valgte bilder som skal annoteres/lastes opp sekvensielt
+  const queueRef = React.useRef<File[]>([])
+  // Settes mens vi med vilje åpner annotatoren for neste bilde i køen, slik at
+  // det automatiske lukke-kallet fra annotatoren (etter lagring) ikke tømmer køen.
+  const advancingRef = React.useRef(false)
   const cameraRef = React.useRef<HTMLInputElement>(null)
   const galleryRef = React.useRef<HTMLInputElement>(null)
 
-  async function handleFiles(files: FileList | null) {
-    if (!files?.length) return
+  // Komprimer neste fil i køen og åpne annotatoren for den
+  async function processNextInQueue() {
+    const raw = queueRef.current.shift()
+    if (!raw) return
     setUploading(true)
     try {
-      for (const raw of Array.from(files)) {
-        const file = await compressImage(raw)
-        setAnnotateFile(file)
-        setAnnotateOpen(true)
-        break
-      }
+      const file = await compressImage(raw)
+      setAnnotateFile(file)
+      setAnnotateOpen(true)
     } catch {
       toast.error("Kunne ikke behandle bilde")
+      // Hopp over denne og fortsett med resten av køen
+      void processNextInQueue()
     } finally {
       setUploading(false)
     }
+  }
+
+  async function handleFiles(files: FileList | null) {
+    if (!files?.length) return
+    // Legg alle valgte filer i køen og start på den første
+    queueRef.current = Array.from(files)
+    if (queueRef.current.length > 1) {
+      toast.info(`${queueRef.current.length} bilder valgt — behandles ett av gangen`)
+    }
+    await processNextInQueue()
   }
 
   async function handleAnnotatedUpload(file: File, annotationJson: string) {
@@ -143,6 +159,12 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
     await uploadChecklistItemPhotoAction(formData)
     toast.success("Bilde lagret")
     onUpdated()
+    // Annotatoren lukker seg selv (onOpenChange(false)) etter at onSave er ferdig.
+    // Hvis det fortsatt er bilder i køen, marker at vi skal videre slik at
+    // lukke-handleren ikke tømmer køen, og åpne neste rett etterpå.
+    if (queueRef.current.length > 0) {
+      advancingRef.current = true
+    }
   }
 
   async function handleDelete(attachmentId: string) {
@@ -187,7 +209,10 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
           accept="image/*"
           capture="environment"
           className="hidden"
-          onChange={(e) => void handleFiles(e.target.files)}
+          onChange={(e) => {
+            void handleFiles(e.target.files)
+            e.target.value = ""
+          }}
         />
         <input
           ref={galleryRef}
@@ -195,7 +220,10 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
           accept="image/*"
           multiple
           className="hidden"
-          onChange={(e) => void handleFiles(e.target.files)}
+          onChange={(e) => {
+            void handleFiles(e.target.files)
+            e.target.value = ""
+          }}
         />
         <Button
           type="button"
@@ -226,7 +254,18 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
 
       <PhotoAnnotatorDialog
         open={annotateOpen}
-        onOpenChange={setAnnotateOpen}
+        onOpenChange={(open) => {
+          if (!open && advancingRef.current) {
+            // Lagring fullført og flere bilder i kø: gå videre til neste i stedet
+            // for å lukke. Hold dialogen åpen og åpne neste bilde.
+            advancingRef.current = false
+            void processNextInQueue()
+            return
+          }
+          setAnnotateOpen(open)
+          // Avbryter brukeren annotatoren, forkast resten av køen
+          if (!open) queueRef.current = []
+        }}
         file={annotateFile}
         onSave={handleAnnotatedUpload}
       />

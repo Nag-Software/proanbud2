@@ -66,6 +66,15 @@ export async function POST(request: Request) {
       html: rendered.html,
     })
 
+    // En sendt e-post er en reell kontakthendelse: oppdater "sist kontaktet".
+    // Status heves aldri her (e-post regnes ikke som status-endring).
+    if (company_id) {
+      await admin
+        .from("companies")
+        .update({ seller_last_contacted_at: new Date().toISOString() })
+        .eq("id", company_id)
+    }
+
     await logSellerEmail({
       sentBy: auth.user!.id,
       templateId: template_id,

@@ -3,13 +3,15 @@
 import * as React from "react"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
-import { useRouter } from "next/navigation"
 
 import { getProjectChecklistByIdAction } from "@/app/ks/actions"
 import { ChecklistItemRow } from "@/components/ks/checklist-item-row"
 import { Progress } from "@/components/ui/progress"
 import { CHECKLIST_STATUS_LABELS } from "@/lib/ks/constants"
+import type { ChecklistStatus } from "@/lib/ks/constants"
 import type { ProjectChecklist } from "@/lib/ks/types"
+
+type ChecklistProgress = NonNullable<ProjectChecklist["progress"]>
 
 type Props = {
   projectId: string
@@ -18,13 +20,19 @@ type Props = {
 }
 
 export function ChecklistFillClient({ projectId, projectName, initialChecklist }: Props) {
-  const router = useRouter()
   const [checklist, setChecklist] = React.useState(initialChecklist)
 
+  // Lett oppdatering ved hvert avkrysning: oppdater kun status + fremdrift fra
+  // svaret, uten å re-hente hele sjekklisten med alle joins.
+  function applyItemSaved(result: { status: ChecklistStatus; progress: ChecklistProgress }) {
+    setChecklist((prev) => ({ ...prev, status: result.status, progress: result.progress }))
+  }
+
+  // Full gjenhenting — kun ved bildeopplasting / avvik-opprettelse, der
+  // attachments/deviation_id på enkeltpunkter må oppdateres.
   async function refresh() {
     const updated = await getProjectChecklistByIdAction(checklist.id)
     setChecklist(updated)
-    router.refresh()
   }
 
   const progress = checklist.progress || { total: 0, answered: 0, ok: 0, notOk: 0, na: 0 }
@@ -67,6 +75,7 @@ export function ChecklistFillClient({ projectId, projectName, initialChecklist }
             projectId={projectId}
             checklistId={checklist.id}
             index={index}
+            onItemSaved={applyItemSaved}
             onUpdated={() => void refresh()}
           />
         ))}

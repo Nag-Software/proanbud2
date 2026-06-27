@@ -31,6 +31,21 @@ function CustomerRowActions({
   const router = useRouter()
 
   const handleDelete = () => {
+    const warning =
+      customer.activeProjects > 0
+        ? `\n\nMerk: Kunden har ${customer.activeProjects} pågående prosjekt${
+            customer.activeProjects === 1 ? "" : "er"
+          } som da mister koblingen til kunden.`
+        : ""
+
+    if (
+      !window.confirm(
+        `Er du sikker på at du vil fjerne ${customer.name} permanent? Handlingen kan ikke angres.${warning}`
+      )
+    ) {
+      return
+    }
+
     deleteCustomerAction(customer.id)
       .then(() => {
         toast.success("Kunde fjernet")

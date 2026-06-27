@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { toast } from "sonner"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 
 import { momentLocalizer, Views } from "react-big-calendar"
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop"
@@ -38,6 +40,13 @@ type CalendarEvent = {
   extendedProps?: any
 }
 
+type ProjectOption = {
+  id: string
+  name: string
+}
+
+const EVENT_COLORS = ['#4285F4', '#EA4335', '#FBBC05', '#34A853', '#8E24AA', '#0078D4', '#7986CB'] as const
+
 function defaultSlotTimes(day: Date) {
   const start = new Date(day)
   start.setHours(9, 0, 0, 0)
@@ -48,7 +57,9 @@ function defaultSlotTimes(day: Date) {
 
 function KalenderPage() {
   const isMobile = useIsMobile()
+  const confirm = useConfirm()
   const [integrations, setIntegrations] = useState<{ provider: string }[]>([])
+  const [projects, setProjects] = useState<ProjectOption[]>([])
   const [loggedIn, setLoggedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -74,7 +85,6 @@ function KalenderPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDisconnecting, setIsDisconnecting] = useState(false)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -128,13 +138,34 @@ function KalenderPage() {
           .eq('user_id', userData.user.id)
 
         setIntegrations(data ?? [])
+
+        // Last brukerens faktiske prosjekter (filtrert på company_id) for prosjektkobling
+        const { data: userRow } = await supabase
+          .from('users')
+          .select('company_id')
+          .eq('id', userData.user.id)
+          .maybeSingle()
+
+        if (userRow?.company_id) {
+          const { data: projectRows } = await supabase
+            .from('projects')
+            .select('id, name')
+            .eq('company_id', userRow.company_id)
+            .order('updated_at', { ascending: false })
+
+          setProjects(projectRows ?? [])
+        } else {
+          setProjects([])
+        }
       } else {
         setLoggedIn(false)
         setIntegrations([])
+        setProjects([])
       }
     } catch {
       setLoggedIn(false)
       setIntegrations([])
+      setProjects([])
     } finally {
       setIsLoading(false)
     }
@@ -149,13 +180,13 @@ function KalenderPage() {
     const error = searchParams.get("calendar_error")
 
     if (connected === "google") {
-      setStatusMessage("Google Calendar er tilkoblet.")
+      toast.success("Google Calendar er tilkoblet.")
       loadIntegrations()
     } else if (connected === "microsoft") {
-      setStatusMessage("Outlook Calendar er tilkoblet.")
+      toast.success("Outlook Calendar er tilkoblet.")
       loadIntegrations()
     } else if (error) {
-      setStatusMessage(`Kunne ikke koble til kalender: ${error}`)
+      toast.error(`Kunne ikke koble til kalender: ${error}`)
     }
   }, [searchParams, loadIntegrations])
 
@@ -200,22 +231,29 @@ function KalenderPage() {
   }
 
   const handleDisconnect = async (provider: "google" | "microsoft") => {
-    if (!confirm(`Koble fra ${provider === "google" ? "Google" : "Outlook"} Calendar?`)) return
+    const providerName = provider === "google" ? "Google" : "Outlook"
+    const ok = await confirm({
+      title: `Koble fra ${providerName} Calendar?`,
+      description: `Hendelsene fra ${providerName} Calendar vil ikke lenger vises i kalenderen.`,
+      confirmText: "Koble fra",
+      variant: "destructive",
+    })
+    if (!ok) return
     setIsDisconnecting(true)
     try {
       const res = await fetch(`/api/integrations/calendar/revoke?provider=${provider}`, {
         method: "DELETE",
       })
       if (res.ok) {
-        setStatusMessage(`${provider === "google" ? "Google" : "Outlook"} Calendar er frakoblet.`)
+        toast.success(`${providerName} Calendar er frakoblet.`)
         await loadIntegrations()
         setEvents([])
       } else {
         const data = await res.json()
-        setStatusMessage(data.error ?? "Kunne ikke koble fra kalender.")
+        toast.error(data.error ?? "Kunne ikke koble fra kalender.")
       }
     } catch {
-      setStatusMessage("Kunne ikke koble fra kalender.")
+      toast.error("Kunne ikke koble fra kalender.")
     } finally {
       setIsDisconnecting(false)
     }
@@ -237,7 +275,7 @@ function KalenderPage() {
     setEventStart(start)
     setEventEnd(end)
     setEventColor("")
-    setLinkedProject("")
+    setLinkedProject("none")
     setIsCreateDialogOpen(true)
   }
 
@@ -262,7 +300,7 @@ function KalenderPage() {
     setEventStart(event.start)
     setEventEnd(event.end || event.start)
     setEventColor(event.backgroundColor || "")
-    setLinkedProject(event.extendedProps?.projectId || "")
+    setLinkedProject(event.extendedProps?.projectId || "none")
 
     const provider = event.id.startsWith("google-") ? "google" :
                     event.id.startsWith("ms-") ? "microsoft" : null
@@ -273,6 +311,10 @@ function KalenderPage() {
 
   const handleCreateEvent = async () => {
     if (!eventTitle.trim() || !eventStart || !eventEnd) return
+    if (eventEnd <= eventStart) {
+      toast.error("Sluttidspunkt må være etter starttidspunkt.")
+      return
+    }
     setIsSubmitting(true)
 
     try {
@@ -284,19 +326,21 @@ function KalenderPage() {
           start: eventStart.toISOString(),
           end: eventEnd.toISOString(),
           description: eventDescription,
-          projectId: linkedProject || undefined,
+          color: eventColor || undefined,
+          projectId: linkedProject && linkedProject !== "none" ? linkedProject : undefined,
         })
       })
 
       if (res.ok) {
         setIsCreateDialogOpen(false)
+        toast.success("Avtalen er lagret.")
         triggerRefetch()
       } else {
         const data = await res.json()
-        alert(`Kunne ikke lagre: ${data.error}`)
+        toast.error(`Kunne ikke lagre: ${data.error}`)
       }
     } catch (e) {
-      alert("En feil oppstod ved lagring.")
+      toast.error("En feil oppstod ved lagring.")
     } finally {
       setIsSubmitting(false)
     }
@@ -304,6 +348,10 @@ function KalenderPage() {
 
   const handleUpdateEventDetails = async () => {
     if (!activeEventId || !eventTitle.trim() || !eventStart || !eventEnd) return
+    if (eventEnd <= eventStart) {
+      toast.error("Sluttidspunkt må være etter starttidspunkt.")
+      return
+    }
     setIsSubmitting(true)
 
     try {
@@ -317,20 +365,21 @@ function KalenderPage() {
           start: eventStart.toISOString(),
           end: eventEnd.toISOString(),
           color: eventColor,
-          projectId: linkedProject
+          projectId: linkedProject && linkedProject !== "none" ? linkedProject : undefined,
         })
       })
 
       if (res.ok) {
         setIsEditDialogOpen(false)
+        toast.success("Endringene er lagret.")
         triggerRefetch()
       } else {
         const data = await res.json()
-        alert(`Kunne ikke lagre: ${data.error}`)
+        toast.error(`Kunne ikke lagre: ${data.error}`)
       }
     } catch (e) {
       console.error(e)
-      alert("Kunne ikke lagre oppdateringen.")
+      toast.error("Kunne ikke lagre oppdateringen.")
     } finally {
       setIsSubmitting(false)
     }
@@ -338,7 +387,13 @@ function KalenderPage() {
 
   const handleDeleteEvent = async () => {
     if (!activeEventId) return
-    if (!confirm("Er du sikker på at du vil slette dette eventet?")) return
+    const ok = await confirm({
+      title: "Slette hendelse?",
+      description: "Er du sikker på at du vil slette denne hendelsen? Handlingen kan ikke angres.",
+      confirmText: "Slett",
+      variant: "destructive",
+    })
+    if (!ok) return
     setIsDeleting(true)
 
     try {
@@ -348,13 +403,14 @@ function KalenderPage() {
 
       if (res.ok) {
         setIsEditDialogOpen(false)
+        toast.success("Hendelsen er slettet.")
         triggerRefetch()
       } else {
         const data = await res.json()
-        alert(`Kunne ikke slette: ${data.error}`)
+        toast.error(`Kunne ikke slette: ${data.error}`)
       }
     } catch (e) {
-      alert("En feil oppstod ved sletting.")
+      toast.error("En feil oppstod ved sletting.")
     } finally {
       setIsDeleting(false)
     }
@@ -377,10 +433,11 @@ function KalenderPage() {
       if (!res.ok) {
          throw new Error("API error")
       }
+      toast.success("Hendelsen er flyttet.")
       triggerRefetch()
     } catch (e) {
       console.error(e)
-      alert("Kunne ikke flytte/endre størrelse på møtet. Tilbakestiller visning.")
+      toast.error("Kunne ikke flytte/endre størrelse på møtet. Tilbakestiller visning.")
       triggerRefetch()
     }
   }
@@ -399,12 +456,6 @@ function KalenderPage() {
   return (
     <AppPageShell segments={["Kalender"]} noPadding>
       <div className="flex h-full min-h-0 flex-1 flex-col">
-        {statusMessage && (
-          <div className="border-b border-border bg-muted/40 px-4 py-2 text-sm text-muted-foreground">
-            {statusMessage}
-          </div>
-        )}
-
         <CalendarToolbar
           date={date}
           view={view}
@@ -514,14 +565,51 @@ function KalenderPage() {
               />
             </div>
 
-            <div className="space-y-2 border border-border p-3 text-sm text-muted-foreground">
-              <p><strong>Starter:</strong> {eventStart?.toLocaleString("no-NB")}</p>
-              <p><strong>Slutter:</strong> {eventEnd?.toLocaleString("no-NB")}</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Starttidspunkt</Label>
+                <Input type="datetime-local" className="rounded-none" value={eventStart ? new Date(eventStart.getTime() - eventStart.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEventStart(e.target.value ? new Date(e.target.value) : null)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Sluttidspunkt</Label>
+                <Input type="datetime-local" className="rounded-none" value={eventEnd ? new Date(eventEnd.getTime() - eventEnd.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEventEnd(e.target.value ? new Date(e.target.value) : null)} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Koble til prosjekt</Label>
+              <Select value={linkedProject} onValueChange={setLinkedProject}>
+                <SelectTrigger className="rounded-none">
+                  <SelectValue placeholder="Velg et prosjekt (valgfritt)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Ingen</SelectItem>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Farge i kalender</Label>
+              <div className="flex gap-2">
+                {EVENT_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setEventColor(color)}
+                    style={{ backgroundColor: color }}
+                    className={`size-8 border-2 ${eventColor === color ? 'border-foreground' : 'border-transparent'}`}
+                    aria-label={`Velg farge ${color}`}
+                  />
+                ))}
+              </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" className="rounded-none" onClick={() => setIsCreateDialogOpen(false)}>Avbryt</Button>
-            <Button className="rounded-none" onClick={handleCreateEvent} disabled={!eventTitle.trim() || isSubmitting}>
+            <Button className="rounded-none" onClick={handleCreateEvent} disabled={!eventTitle.trim() || !eventStart || !eventEnd || isSubmitting}>
               {isSubmitting ? "Lagrer..." : "Lagre avtale"}
             </Button>
           </DialogFooter>
@@ -576,8 +664,9 @@ function KalenderPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Ingen</SelectItem>
-                  <SelectItem value="project-1">Prosjekt Alpha</SelectItem>
-                  <SelectItem value="project-2">Prosjekt Beta</SelectItem>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -585,9 +674,10 @@ function KalenderPage() {
             <div className="space-y-2">
               <Label>Farge i kalender</Label>
               <div className="flex gap-2">
-                {['#4285F4', '#EA4335', '#FBBC05', '#34A853', '#8E24AA', '#0078D4', '#7986CB'].map((color) => (
+                {EVENT_COLORS.map((color) => (
                   <button
                     key={color}
+                    type="button"
                     onClick={() => setEventColor(color)}
                     style={{ backgroundColor: color }}
                     className={`size-8 border-2 ${eventColor === color ? 'border-foreground' : 'border-transparent'}`}

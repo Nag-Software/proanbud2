@@ -301,6 +301,35 @@ export async function closeDeviationAction(input: { id: string; followUpNotes?: 
   revalidatePath(`/prosjekter/${existing.project_id}`)
 }
 
+export async function reopenDeviationAction(id: string) {
+  const { supabase, user, companyId, role } = await getAuthContext()
+
+  const { data: existing } = await supabase
+    .from("deviations")
+    .select("id, project_id")
+    .eq("id", id)
+    .eq("company_id", companyId)
+    .maybeSingle()
+
+  if (!existing) throw new Error("Fant ikke avvik")
+  await assertCanManageDeviation(supabase, user.id, role, existing.project_id)
+
+  const { error } = await supabase
+    .from("deviations")
+    .update({
+      status: "open",
+      closed_at: null,
+      closed_by: null,
+    })
+    .eq("id", id)
+
+  if (error) throw new Error("Kunne ikke gjenåpne avvik")
+
+  revalidatePath("/avvik")
+  revalidatePath(`/avvik/${id}`)
+  revalidatePath(`/prosjekter/${existing.project_id}`)
+}
+
 export async function uploadDeviationPhotoAction(formData: FormData) {
   const { supabase, user, companyId } = await getAuthContext()
 

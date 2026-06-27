@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { MailIcon, PhoneIcon } from "lucide-react"
+import { toast } from "sonner"
 
 import { billingStatusVariant, StatusBadge } from "@/components/sjefen/status-badge"
 import { SelgerPageShell } from "@/components/selger/selger-page-shell"
@@ -56,8 +57,13 @@ export function FirmaDetailClient({
       })
       if (response.ok) {
         setContactStatus(status)
+        toast.success("Kontaktstatus lagret.")
         router.refresh()
+      } else {
+        toast.error("Kunne ikke lagre kontaktstatus. Prøv igjen.")
       }
+    } catch {
+      toast.error("Kunne ikke lagre kontaktstatus. Prøv igjen.")
     } finally {
       setSaving(false)
     }
@@ -65,11 +71,14 @@ export function FirmaDetailClient({
 
   async function handlePhoneClick() {
     if (!company.phone) return
-    void fetch("/api/selger/contact", {
+    await fetch("/api/selger/contact", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ company_id: company.id, phone: company.phone }),
-    })
+    }).catch(() => {})
+    // Oppdater siden slik at aktivitets-tidslinjen og «Sist kontaktet»
+    // reflekterer ringingen uten manuell reload.
+    router.refresh()
     window.location.href = `tel:${company.phone}`
   }
 

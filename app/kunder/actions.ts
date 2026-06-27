@@ -31,6 +31,7 @@ export async function createCustomerAction(formData: FormData) {
   const address = formData.get("address") as string
   const postal_code = formData.get("postalCode") as string
   const city = formData.get("city") as string
+  const notes = formData.get("notes") as string
 
   const { data, error } = await supabase.from("customers").insert({
     company_id: userData.company_id, // Knytt kunden til bedriften din
@@ -40,7 +41,8 @@ export async function createCustomerAction(formData: FormData) {
     org_number: org_number || null,
     address: address || null,
     postal_code: postal_code || null,
-    city: city || null
+    city: city || null,
+    notes: notes || null
   }).select('id').single()
 
   if (error) {
@@ -69,6 +71,7 @@ export async function updateCustomerAction(input: {
   address?: string
   postalCode?: string
   city?: string
+  notes?: string | null
 }) {
   const supabase = await createClient()
 
@@ -97,6 +100,7 @@ export async function updateCustomerAction(input: {
     address: input.address || null,
     postal_code: input.postalCode || null,
     city: input.city || null,
+    notes: input.notes ?? null,
     updated_at: new Date().toISOString(),
   }
 

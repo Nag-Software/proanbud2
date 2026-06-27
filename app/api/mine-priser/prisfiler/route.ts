@@ -20,6 +20,7 @@ const saveSchema = z.object({
   supplierName: z.string().trim().min(1),
   fileName: z.string().trim().default(""),
   rows: z.array(rowSchema).min(1).max(50000),
+  replaceFileId: z.string().uuid().optional(),
 })
 
 export async function GET() {
@@ -65,7 +66,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Ugyldig data", details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const { supplierName, fileName, rows } = parsed.data
+    const { supplierName, fileName, rows, replaceFileId } = parsed.data
+
+    // When replacing, delete the old file (and its rows via ON DELETE CASCADE)
+    // first, so only one active price list per supplier is fed to the AI.
+    if (replaceFileId) {
+      const { error: deleteError } = await supabase
+        .from("supplier_price_files")
+        .delete()
+        .eq("id", replaceFileId)
+        .eq("company_id", companyId)
+      if (deleteError) {
+        console.error("[prisfiler POST] replace delete error", deleteError)
+        return NextResponse.json({ error: deleteError.message }, { status: 500 })
+      }
+    }
 
     // Insert the file record
     const { data: fileRecord, error: fileError } = await supabase

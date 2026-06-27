@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, Suspense } from "react"
+import React, { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
@@ -34,12 +34,44 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  const [inviteCompany, setInviteCompany] = useState<string | null>(null)
+  const [inviteLocked, setInviteLocked] = useState(false)
+
+  // Når man åpner signup med en invite-token, hent invitasjonen og lås
+  // e-postfeltet til den inviterte adressen, og vis bedriftsnavnet.
+  useEffect(() => {
+    if (!inviteToken) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/invitations/${encodeURIComponent(inviteToken)}/validate`)
+        const data = await res.json().catch(() => ({}))
+        if (cancelled) return
+        if (!res.ok || !data?.valid) {
+          setError(data?.error || "Ugyldig eller utløpt invitasjonslenke")
+          return
+        }
+        setEmail(data.email || "")
+        setInviteCompany(data.companyName || null)
+        setInviteLocked(true)
+      } catch {
+        if (!cancelled) setError("Kunne ikke hente invitasjonen. Prøv igjen.")
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [inviteToken])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
     setError(null)
     setInfo(null)
+    if (password.length < 8) {
+      setError("Passordet må være minst 8 tegn.")
+      return
+    }
+    setLoading(true)
     try {
       console.log('SignupForm: signing up', { email, inviteToken })
 
@@ -109,7 +141,11 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
           <CardHeader className="text-center">
             <CardTitle className="text-xl">{inviteToken ? "Aksepter Invitasjon" : "Velkommen til Proanbud"}</CardTitle>
             <CardDescription>
-              {inviteToken ? "Registrer deg for å få tilgang til arbeidsområdet." : "Opprett en ny bruker"}
+              {inviteToken
+                ? inviteCompany
+                  ? `Du er invitert til ${inviteCompany}. Registrer deg for å få tilgang.`
+                  : "Registrer deg for å få tilgang til arbeidsområdet."
+                : "Opprett en ny bruker"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -155,11 +191,18 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    readOnly={inviteLocked}
+                    disabled={inviteLocked}
                   />
+                  {inviteLocked && (
+                    <FieldDescription>
+                      E-posten er låst til invitasjonen.
+                    </FieldDescription>
+                  )}
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="password">Passord</FieldLabel>
-                  <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                  <Input id="password" type="password" required minLength={8} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
                 </Field>
                 <Field>
                   <Button type="submit" disabled={loading}>{loading ? 'Oppretter konto…' : 'Opprett konto'}</Button>

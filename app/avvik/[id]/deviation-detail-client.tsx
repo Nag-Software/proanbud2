@@ -2,12 +2,14 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import {
   closeDeviationAction,
   getDeviationPhotoUrlAction,
+  reopenDeviationAction,
   uploadDeviationPhotoAction,
 } from "@/app/avvik/actions"
 import {
@@ -16,6 +18,7 @@ import {
 } from "@/components/hms/deviation-badges"
 import { PhotoCaptureField } from "@/components/hms/photo-capture-field"
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { DeviationWithRelations } from "@/lib/hms/types"
@@ -28,9 +31,11 @@ type Props = {
 function PhotoGallery({
   attachments,
   onUpload,
+  resetKey,
 }: {
   attachments: DeviationWithRelations["attachments"]
   onUpload: (files: File[]) => Promise<void>
+  resetKey: number
 }) {
   const [urls, setUrls] = React.useState<Record<string, string>>({})
   const [uploading, setUploading] = React.useState(false)
@@ -91,6 +96,7 @@ function PhotoGallery({
         </div>
       )}
       <PhotoCaptureField
+        key={resetKey}
         onPhotosChange={handlePhotos}
         maxPhotos={5}
         disabled={uploading}
@@ -106,17 +112,39 @@ function PhotoGallery({
 }
 
 export function DeviationDetailClient({ deviation, canManage }: Props) {
+  const router = useRouter()
+  const confirm = useConfirm()
   const [followUpNotes, setFollowUpNotes] = React.useState(deviation.follow_up_notes || "")
   const [busy, setBusy] = React.useState(false)
+  const [galleryKey, setGalleryKey] = React.useState(0)
 
   async function handleClose() {
     setBusy(true)
     try {
       await closeDeviationAction({ id: deviation.id, followUpNotes })
       toast.success("Avvik lukket")
-      window.location.reload()
+      router.refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Kunne ikke lukke avvik")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleReopen() {
+    const ok = await confirm({
+      title: "Gjenåpne avvik?",
+      description: "Avviket settes tilbake til åpen og kan følges opp på nytt.",
+      confirmText: "Gjenåpne",
+    })
+    if (!ok) return
+    setBusy(true)
+    try {
+      await reopenDeviationAction(deviation.id)
+      toast.success("Avvik gjenåpnet")
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Kunne ikke gjenåpne avvik")
     } finally {
       setBusy(false)
     }
@@ -132,9 +160,10 @@ export function DeviationDetailClient({ deviation, canManage }: Props) {
         await uploadDeviationPhotoAction(formData)
       }
       toast.success("Bilde lastet opp")
-      window.location.reload()
+      setGalleryKey((k) => k + 1)
+      router.refresh()
     },
-    [deviation.id]
+    [deviation.id, router]
   )
 
   const checklistItem = deviation.checklist_item
@@ -195,7 +224,11 @@ export function DeviationDetailClient({ deviation, canManage }: Props) {
 
       <div className="space-y-2">
         <p className="text-sm font-medium">Bilder</p>
-        <PhotoGallery attachments={deviation.attachments} onUpload={handlePhotoUpload} />
+        <PhotoGallery
+          attachments={deviation.attachments}
+          onUpload={handlePhotoUpload}
+          resetKey={galleryKey}
+        />
       </div>
 
       {deviation.follow_up_notes && (
@@ -221,6 +254,15 @@ export function DeviationDetailClient({ deviation, canManage }: Props) {
           <Button onClick={handleClose} disabled={busy}>
             {busy && <Loader2 className="mr-2 size-4 animate-spin" />}
             Lukk avvik
+          </Button>
+        </div>
+      )}
+
+      {canManage && deviation.status === "closed" && (
+        <div className="rounded-lg border p-4">
+          <Button variant="outline" onClick={handleReopen} disabled={busy}>
+            {busy && <Loader2 className="mr-2 size-4 animate-spin" />}
+            Gjenåpne avvik
           </Button>
         </div>
       )}

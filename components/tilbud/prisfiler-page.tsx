@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Search,
   ChevronRight,
+  AlertTriangle,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -346,6 +347,7 @@ export function PrisfilerPage() {
   const [supplierName, setSupplierName] = useState("")
   const [customSupplierMode, setCustomSupplierMode] = useState(false)
   const [fileName, setFileName] = useState("")
+  const [replaceExisting, setReplaceExisting] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
@@ -380,6 +382,7 @@ export function PrisfilerPage() {
     setSupplierName("")
     setCustomSupplierMode(false)
     setFileName("")
+    setReplaceExisting(true)
     setSaving(false)
   }
 
@@ -448,14 +451,25 @@ export function PrisfilerPage() {
       const res = await fetch("/api/mine-priser/prisfiler", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ supplierName: supplierName.trim(), fileName, rows }),
+        body: JSON.stringify({
+          supplierName: supplierName.trim(),
+          fileName,
+          rows,
+          ...(existingSupplierFile && replaceExisting
+            ? { replaceFileId: existingSupplierFile.id }
+            : {}),
+        }),
       })
       if (!res.ok) {
         const { error } = await res.json()
         toast.error(error ?? "Noe gikk galt")
         return
       }
-      toast.success(`Prisfil fra ${supplierName} er klar til bruk`)
+      toast.success(
+        existingSupplierFile && replaceExisting
+          ? `Prisfil fra ${supplierName} er erstattet og klar til bruk`
+          : `Prisfil fra ${supplierName} er klar til bruk`
+      )
       setOpen(false)
       resetWizard()
       loadFiles()
@@ -524,6 +538,18 @@ export function PrisfilerPage() {
   const mappedRows = parsedData
     ? applyMapping(parsedData.headers, parsedData.rows, columnMapping).length
     : 0
+
+  // Detect an existing price file from the same supplier (normalized name match),
+  // so we can offer to replace it instead of creating a duplicate list for the AI.
+  const trimmedSupplier = supplierName.trim()
+  const existingSupplierFile = trimmedSupplier
+    ? files.find((f) => {
+        if (f.supplier_name === trimmedSupplier) return true
+        const a = findSupplier(f.supplier_name)
+        const b = findSupplier(trimmedSupplier)
+        return a != null && b != null && a.id === b.id
+      }) ?? null
+    : null
 
   return (
     <>
@@ -942,6 +968,31 @@ export function PrisfilerPage() {
                     />
                   )}
                 </div>
+
+                {existingSupplierFile && (
+                  <div className="space-y-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3.5 text-sm">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                      <p className="text-amber-900">
+                        Du har allerede en prisfil fra{" "}
+                        <span className="font-medium">{existingSupplierFile.supplier_name}</span>.
+                        Uten å erstatte den vil denne komme i tillegg, og AI-agenten kan blande gamle
+                        og nye priser.
+                      </p>
+                    </div>
+                    <label className="flex cursor-pointer items-center gap-2 pl-[26px] text-amber-900">
+                      <input
+                        type="checkbox"
+                        checked={replaceExisting}
+                        onChange={(e) => setReplaceExisting(e.target.checked)}
+                        className="h-4 w-4 rounded border-amber-400 accent-amber-600"
+                      />
+                      <span>
+                        Erstatt eksisterende prisfil for {existingSupplierFile.supplier_name}
+                      </span>
+                    </label>
+                  </div>
+                )}
 
                 <div className="divide-y rounded-lg border text-sm">
                   <div className="flex items-center justify-between px-4 py-3">

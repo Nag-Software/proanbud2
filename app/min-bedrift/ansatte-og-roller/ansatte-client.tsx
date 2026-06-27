@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -9,11 +12,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Label } from "@/components/ui/label";
 import { Search, Plus, MoreHorizontal, Shield, Mail, X } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuPortal } from "@/components/ui/dropdown-menu";
-import { updateUserRole } from "./actions";
+import { updateUserRole, revokeInvitation, deactivateUser } from "./actions";
 
 const fallbackEmployees: any[] = [];
 
 export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }) {
+  const router = useRouter();
+  const confirm = useConfirm();
   const [employees, setEmployees] = useState(initialEmployees ?? fallbackEmployees);
   const [search, setSearch] = useState("");
   const [isInviteOpen, setIsInviteOpen] = useState(false);
@@ -45,18 +50,14 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
         throw new Error(data.error || "Feil under utsendelse av invitasjon");
       }
 
-      setEmployees([...employees, {
-        id: Math.random().toString(),
-        name: "Avventer Registrering",
-        email: inviteEmail,
-        role: inviteRole,
-        status: "Invitert"
-      }]);
-      
+      // Hent server-sannheten (faktisk invitasjon-id og rolle) i stedet for
+      // en optimistisk rad med tilfeldig id.
+      router.refresh();
+
       setInviteLink(data.invitationUrl);
     } catch (error) {
       console.error(error);
-      alert(error instanceof Error ? error.message : "Kunne ikke sende invitasjon.");
+      toast.error(error instanceof Error ? error.message : "Kunne ikke sende invitasjon.");
     } finally {
       setIsSubmitting(false);
     }
@@ -66,14 +67,79 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
     try {
       const result = await updateUserRole(userId, newRole);
       if (result.error) {
-        alert(result.error);
+        toast.error(result.error);
         return;
       }
       setEmployees(employees.map(e => e.id === userId ? { ...e, role: newRole } : e));
+      toast.success("Rolle oppdatert");
     } catch (error) {
       console.error(error);
-      alert("Kunne ikke endre rolle.");
+      toast.error("Kunne ikke endre rolle.");
     }
+  };
+
+  const handleResendInvitation = async (employee: any) => {
+    try {
+      // Trekk tilbake den eksisterende ventende invitasjonen først, slik at
+      // API-et ikke avviser ny invitasjon for samme e-post.
+      const revoked = await revokeInvitation(employee.id);
+      if (revoked.error) {
+        toast.error(revoked.error);
+        return;
+      }
+
+      const resp = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: employee.email, role_ids: [employee.role] }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(data.error || "Feil under utsendelse av invitasjon");
+      }
+
+      toast.success(`Invitasjon sendt på nytt til ${employee.email}`);
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "Kunne ikke gjensende invitasjon.");
+    }
+  };
+
+  const handleRevokeInvitation = async (employee: any) => {
+    const ok = await confirm({
+      title: "Trekke tilbake invitasjon?",
+      description: `Invitasjonen til ${employee.email} vil bli ugyldig. Personen kan ikke lenger bruke lenken til å registrere seg.`,
+      confirmText: "Trekk tilbake",
+      variant: "destructive",
+    });
+    if (!ok) return;
+
+    const result = await revokeInvitation(employee.id);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    setEmployees(employees.filter(e => e.id !== employee.id));
+    toast.success("Invitasjon trukket tilbake");
+  };
+
+  const handleDeactivateUser = async (employee: any) => {
+    const ok = await confirm({
+      title: "Deaktivere ansatt?",
+      description: `${employee.name} mister tilgang til bedriftens workspace. Du kan aktivere brukeren igjen senere.`,
+      confirmText: "Deaktiver",
+      variant: "destructive",
+    });
+    if (!ok) return;
+
+    const result = await deactivateUser(employee.id);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    setEmployees(employees.map(e => e.id === employee.id ? { ...e, status: "Deaktivert" } : e));
+    toast.success("Ansatt deaktivert");
   };
 
   const closeDialog = () => {
@@ -127,9 +193,10 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
                     <td className="px-3 py-2">
                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
                           e.status === "Aktiv" ? "bg-green-100 text-green-800" :
+                          e.status === "Deaktivert" ? "bg-gray-100 text-gray-700" :
                           "bg-amber-100 text-amber-800"
                         }`}>
-                          {e.status === "Aktiv" ? "🟢 " : "🟡 "}{e.status}
+                          {e.status === "Aktiv" ? "🟢 " : e.status === "Deaktivert" ? "⚪ " : "🟡 "}{e.status}
                         </span>
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -142,9 +209,9 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
                         <DropdownMenuContent align="end">
                           {e.status === "Invitert" ? (
                              <>
-                               <DropdownMenuItem><Mail className="mr-2 h-4 w-4" /> Gjensend invitasjon</DropdownMenuItem>
+                               <DropdownMenuItem onClick={() => handleResendInvitation(e)}><Mail className="mr-2 h-4 w-4" /> Gjensend invitasjon</DropdownMenuItem>
                                <DropdownMenuSeparator />
-                               <DropdownMenuItem className="text-destructive"><X className="mr-2 h-4 w-4" /> Trekk tilbake</DropdownMenuItem>
+                               <DropdownMenuItem className="text-destructive" onClick={() => handleRevokeInvitation(e)}><X className="mr-2 h-4 w-4" /> Trekk tilbake</DropdownMenuItem>
                              </>
                           ) : (
                              <>
@@ -167,8 +234,12 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
                                   </DropdownMenuSubContent>
                                 </DropdownMenuPortal>
                               </DropdownMenuSub>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-destructive"><X className="mr-2 h-4 w-4" /> Deaktiver ansatt</DropdownMenuItem>
+                              {e.status !== "Deaktivert" && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem className="text-destructive" onClick={() => handleDeactivateUser(e)}><X className="mr-2 h-4 w-4" /> Deaktiver ansatt</DropdownMenuItem>
+                                </>
+                              )}
                              </>
                           )}
                         </DropdownMenuContent>
@@ -203,9 +274,9 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
                 <DropdownMenuContent align="end">
                   {e.status === "Invitert" ? (
                     <>
-                      <DropdownMenuItem><Mail className="mr-2 h-4 w-4" /> Gjensend invitasjon</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleResendInvitation(e)}><Mail className="mr-2 h-4 w-4" /> Gjensend invitasjon</DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive"><X className="mr-2 h-4 w-4" /> Trekk tilbake</DropdownMenuItem>
+                      <DropdownMenuItem className="text-destructive" onClick={() => handleRevokeInvitation(e)}><X className="mr-2 h-4 w-4" /> Trekk tilbake</DropdownMenuItem>
                     </>
                   ) : (
                     <>
@@ -228,8 +299,12 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
                           </DropdownMenuSubContent>
                         </DropdownMenuPortal>
                       </DropdownMenuSub>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive"><X className="mr-2 h-4 w-4" /> Deaktiver ansatt</DropdownMenuItem>
+                      {e.status !== "Deaktivert" && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-destructive" onClick={() => handleDeactivateUser(e)}><X className="mr-2 h-4 w-4" /> Deaktiver ansatt</DropdownMenuItem>
+                        </>
+                      )}
                     </>
                   )}
                 </DropdownMenuContent>

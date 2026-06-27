@@ -47,6 +47,7 @@ describe("normalizeQuoteLineItems", () => {
           unit: "m²",
           net_price: 123.45,
           list_price: 150,
+          category: null,
           supplier_name: "Optimera",
           supplier_sku: "SKU-1",
           nobb: null,

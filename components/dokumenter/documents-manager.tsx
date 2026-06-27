@@ -37,6 +37,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import Image from "next/image"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 
 type Provider = "supabase" | "google_drive" | "onedrive"
 
@@ -109,6 +110,20 @@ function itemAccentClass(item: DocumentItem) {
   return "theme-doc-accent-file"
 }
 
+const errorMessages: Record<string, string> = {
+  folder_not_empty: "Mappen må være tom før du kan slette den.",
+  folder_exists: "Det finnes allerede en mappe med dette navnet her.",
+  file_exists: "Det finnes allerede en fil med dette navnet her.",
+  invalid_name: "Ugyldig navn.",
+}
+
+function translateError(code: unknown, fallback: string) {
+  if (typeof code === "string" && errorMessages[code]) {
+    return errorMessages[code]
+  }
+  return fallback
+}
+
 export default function DocumentsManager() {
   const [provider, setProvider] = useState<Provider>("supabase")
   const [items, setItems] = useState<DocumentItem[]>([])
@@ -137,6 +152,8 @@ export default function DocumentsManager() {
     google_drive: [{ id: null, name: "Google Drive" }],
     onedrive: [{ id: null, name: "OneDrive" }],
   })
+
+  const confirm = useConfirm()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
@@ -248,40 +265,108 @@ export default function DocumentsManager() {
     }
   }, [contextMenu])
 
+  function uploadSingleFile(
+    file: File,
+    options: { replace?: boolean; onProgress?: (percent: number) => void } = {}
+  ): Promise<{ ok: boolean; status: number; errorCode?: string }> {
+    return new Promise((resolve) => {
+      const payload = new FormData()
+      payload.set("file", file)
+      payload.set("provider", provider)
+      if (currentFolderId) {
+        payload.set("parentId", currentFolderId)
+      }
+      if (options.replace) {
+        payload.set("replace", "true")
+      }
+
+      const xhr = new XMLHttpRequest()
+      xhr.open("POST", "/api/documents")
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && options.onProgress) {
+          options.onProgress(Math.round((event.loaded / event.total) * 100))
+        }
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ ok: true, status: xhr.status })
+          return
+        }
+        let errorCode: string | undefined
+        try {
+          errorCode = JSON.parse(xhr.responseText)?.error
+        } catch {
+          errorCode = undefined
+        }
+        resolve({ ok: false, status: xhr.status, errorCode })
+      }
+
+      xhr.onerror = () => resolve({ ok: false, status: 0 })
+
+      xhr.send(payload)
+    })
+  }
+
   async function onUpload(files: FileList | null) {
     if (!files || files.length === 0) return
 
     setBusyId("__upload__")
-    let hasError = false
+    const fileList = Array.from(files)
+    let successCount = 0
+    let lastSuccessName = ""
 
     try {
-      // Loop via Array.from to support multiple file uploads
-      const uploadPromises = Array.from(files).map(async (file) => {
-        const payload = new FormData()
-        payload.set("file", file)
-        payload.set("provider", provider)
-        if (currentFolderId) {
-          payload.set("parentId", currentFolderId)
-        }
+      for (const file of fileList) {
+        const toastId = toast.loading(`Laster opp ${file.name}... 0%`)
 
-        const res = await fetch("/api/documents", {
-          method: "POST",
-          body: payload,
+        let result = await uploadSingleFile(file, {
+          onProgress: (percent) => {
+            toast.loading(`Laster opp ${file.name}... ${percent}%`, { id: toastId })
+          },
         })
 
-        if (!res.ok) {
-          const data = await res.json()
-          toast.error(`Kunne ikke laste opp ${file.name}: ${data.error ?? "Feil"}`)
-          hasError = true
+        // Duplicate file: ask whether to replace, then retry with replace flag.
+        if (!result.ok && result.status === 409 && result.errorCode === "file_exists") {
+          toast.dismiss(toastId)
+          const shouldReplace = await confirm({
+            title: "Filen finnes allerede",
+            description: `Det finnes allerede en fil som heter "${file.name}" her. Vil du erstatte den?`,
+            confirmText: "Erstatt",
+            variant: "destructive",
+          })
+
+          if (!shouldReplace) {
+            continue
+          }
+
+          const replaceToastId = toast.loading(`Laster opp ${file.name}... 0%`)
+          result = await uploadSingleFile(file, {
+            replace: true,
+            onProgress: (percent) => {
+              toast.loading(`Laster opp ${file.name}... ${percent}%`, { id: replaceToastId })
+            },
+          })
+          toast.dismiss(replaceToastId)
+        } else {
+          toast.dismiss(toastId)
         }
-      })
 
-      await Promise.all(uploadPromises)
-
-      if (!hasError && files.length > 1) {
-        toast.success(`${files.length} filer lastet opp.`)
+        if (result.ok) {
+          successCount += 1
+          lastSuccessName = file.name
+        } else {
+          toast.error(`Kunne ikke laste opp ${file.name}: ${translateError(result.errorCode, "Feil")}`)
+        }
       }
-      
+
+      if (successCount === 1) {
+        toast.success(`${lastSuccessName} lastet opp.`)
+      } else if (successCount > 1) {
+        toast.success(`${successCount} filer lastet opp.`)
+      }
+
       await loadItems(provider, currentFolderId)
     } finally {
       setBusyId(null)
@@ -307,7 +392,7 @@ export default function DocumentsManager() {
 
       if (!res.ok) {
         const data = await res.json()
-        toast.error(data.error ?? "Kunne ikke endre navn.")
+        toast.error(translateError(data.error, "Kunne ikke endre navn."))
         return
       }
 
@@ -328,7 +413,7 @@ export default function DocumentsManager() {
 
       if (!res.ok) {
         const data = await res.json()
-        toast.error(data.error ?? "Kunne ikke slette elementet.")
+        toast.error(translateError(data.error, "Kunne ikke slette elementet."))
         return
       }
 
@@ -378,7 +463,7 @@ export default function DocumentsManager() {
 
       if (!res.ok) {
         const data = await res.json()
-        toast.error(data.error ?? "Kunne ikke opprette mappe.")
+        toast.error(translateError(data.error, "Kunne ikke opprette mappe."))
         return
       }
 
@@ -409,7 +494,7 @@ export default function DocumentsManager() {
 
       if (!res.ok) {
         const data = await res.json()
-        toast.error(data.error ?? "Kunne ikke opprette område.")
+        toast.error(translateError(data.error, "Kunne ikke opprette område."))
         return
       }
 
@@ -446,7 +531,7 @@ export default function DocumentsManager() {
 
       if (!res.ok) {
         const data = await res.json()
-        toast.error(data.error ?? "Kunne ikke flytte filen.")
+        toast.error(translateError(data.error, "Kunne ikke flytte filen."))
         return
       }
 
@@ -596,7 +681,7 @@ export default function DocumentsManager() {
               <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => void onUpload(e.target.files)} />
               <Button onClick={() => fileInputRef.current?.click()} disabled={busyId === "__upload__"} size="sm" className="h-8 gap-2">
                 <Upload className="h-4 w-4" />
-                Last opp
+                {busyId === "__upload__" ? "Laster opp..." : "Last opp"}
               </Button>
             </>
             {provider !== "supabase" && activeProviderConnected() && (

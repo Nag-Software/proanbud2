@@ -9,19 +9,31 @@ import { CreateDeviationFromItemDialog } from "@/components/ks/create-deviation-
 import { ChecklistItemPhotos } from "@/components/ks/checklist-item-photos"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import type { ChecklistResponse } from "@/lib/ks/constants"
-import type { ProjectChecklistItem } from "@/lib/ks/types"
+import type { ChecklistResponse, ChecklistStatus } from "@/lib/ks/constants"
+import type { ProjectChecklist, ProjectChecklistItem } from "@/lib/ks/types"
 import { cn } from "@/lib/utils"
+
+type ChecklistProgress = NonNullable<ProjectChecklist["progress"]>
 
 type Props = {
   item: ProjectChecklistItem
   projectId: string
   checklistId: string
   index: number
+  /** Lett oppdatering kun av status/fremdrift fra svaret — ingen full gjenhenting */
+  onItemSaved: (result: { status: ChecklistStatus; progress: ChecklistProgress }) => void
+  /** Full gjenhenting — kun ved bildeopplasting / avvik-opprettelse */
   onUpdated: () => void
 }
 
-export function ChecklistItemRow({ item, projectId, checklistId, index, onUpdated }: Props) {
+export function ChecklistItemRow({
+  item,
+  projectId,
+  checklistId,
+  index,
+  onItemSaved,
+  onUpdated,
+}: Props) {
   const [response, setResponse] = React.useState<ChecklistResponse | null>(item.response)
   const [comment, setComment] = React.useState(item.comment || "")
   const [showComment, setShowComment] = React.useState(Boolean(item.comment))
@@ -37,12 +49,13 @@ export function ChecklistItemRow({ item, projectId, checklistId, index, onUpdate
   async function save(nextResponse: ChecklistResponse | null, nextComment?: string) {
     setSaving(true)
     try {
-      await updateChecklistItemAction({
+      const result = await updateChecklistItemAction({
         itemId: item.id,
         response: nextResponse,
         comment: nextComment ?? comment,
       })
-      onUpdated()
+      // Oppdater kun status/fremdrift lokalt — ingen full gjenhenting per avkrysning
+      onItemSaved(result)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Kunne ikke lagre")
     } finally {
@@ -116,7 +129,7 @@ export function ChecklistItemRow({ item, projectId, checklistId, index, onUpdate
               )}
               onClick={() => handleResponse(val)}
             >
-              {val === "ok" ? "OK" : val === "not_ok" ? "Ikke OK" : "Ubesvart"}
+              {val === "ok" ? "OK" : val === "not_ok" ? "Ikke OK" : "Ikke aktuelt"}
             </Button>
           ))}
         </div>

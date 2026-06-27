@@ -95,6 +95,7 @@ export function AiChatPanel({
   const [answers, setAnswers] = useState<Record<string, AnswerState>>({})
   const [questionIndex, setQuestionIndex] = useState(0)
   const [customAnswer, setCustomAnswer] = useState("")
+  const [customAnswerFocused, setCustomAnswerFocused] = useState(false)
   const [errorText, setErrorText] = useState<string | null>(null)
   const generationIdRef = useRef(
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -126,16 +127,23 @@ export function AiChatPanel({
   }, [currentAnswer?.customAnswer, currentQuestion?.id])
 
   useEffect(() => {
+    setCustomAnswerFocused(false)
+  }, [currentQuestion?.id])
+
+  useEffect(() => {
     if (!currentQuestion || !currentAnswer) return
     if (currentAnswer.questionId !== currentQuestion.id) return
     if (currentAnswer.answerValue === "custom") return
+    // Ikke auto-hopp dersom brukeren holder på å presisere svaret i fritekstfeltet,
+    // slik at et valgt alternativ faktisk kan kombineres med fritekst (jf. hjelpeteksten).
+    if (customAnswerFocused || customAnswer.trim()) return
 
     const timer = window.setTimeout(() => {
       handleAutoAdvance()
     }, 120)
 
     return () => window.clearTimeout(timer)
-  }, [currentAnswer, currentQuestion])
+  }, [currentAnswer, currentQuestion, customAnswerFocused, customAnswer])
 
   async function startAnalysis() {
     setPhase("loading")
@@ -419,6 +427,8 @@ export function AiChatPanel({
                       type="text"
                       value={customAnswer}
                       onChange={(event) => updateCustomAnswer(event.target.value)}
+                      onFocus={() => setCustomAnswerFocused(true)}
+                      onBlur={() => setCustomAnswerFocused(false)}
                       placeholder={currentQuestion.placeholder || "Tilleggsinfo eller eget svar"}
                       className="h-9 w-full rounded-xl border border-slate-100 bg-white px-3 text-[11px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-300"
                     />

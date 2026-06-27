@@ -1,9 +1,9 @@
 import { AppPageShell } from "@/components/app-page-shell"
-import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { ProsjekterFilters } from "./prosjekter-filters"
 import { CreateProjectDrawer } from "./create-project-dialog"
+import { ExportProjectsButton } from "./export-projects-button"
 import { ArchiveProjectsTable } from "./archive-projects-table"
 import { ProjectCard } from "./project-card"
 import {
@@ -32,7 +32,11 @@ export default async function Page({
   }
 
   if (params.search) {
-    queryBuilder = queryBuilder.or(`name.ilike.%${params.search}%,id.ilike.%${params.search}%`)
+    // id er en uuid-kolonne; ILIKE virker ikke direkte på uuid, så vi caster til text.
+    // PRJ-XXXXXX-koden genereres klient-side fra uuid og kan ikke søkes server-side,
+    // men et innlimt uuid (eller uuid-prefiks) matcher fortsatt via id::text.
+    const term = params.search.trim()
+    queryBuilder = queryBuilder.or(`name.ilike.%${term}%,id::text.ilike.%${term}%`)
   }
 
   if (params.sort) {
@@ -45,12 +49,18 @@ export default async function Page({
     queryBuilder = queryBuilder.order("updated_at", { ascending: false })
   }
 
-  const [{ data: projects }, { data: customers }] = await Promise.all([
+  const [{ data: projects, error: projectsError }, { data: customers }] = await Promise.all([
     queryBuilder,
     supabase.from("customers").select("id, name, city").order("name"),
   ])
+
+  if (projectsError) {
+    console.error("Error fetching projects:", projectsError)
+  }
+
   const allProjects = (projects || []) as ProjectRow[]
   const customerOptions = customers || []
+  const hasProjectsError = Boolean(projectsError)
 
   const activeProjects = allProjects.filter((project) => isActiveProject(project.status))
   const archiveProjects = allProjects.filter((project) => isArchiveProject(project.status))
@@ -76,12 +86,18 @@ export default async function Page({
             </p>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-            <Button variant="outline">Eksporter</Button>
+            <ExportProjectsButton projects={allProjects} />
             <CreateProjectDrawer variant="outline" />
           </div>
         </div>
 
         <ProsjekterFilters />
+
+        {hasProjectsError && (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            Kunne ikke hente prosjektlisten akkurat nå. Prøv igjen, eller juster søket.
+          </div>
+        )}
 
         {showActiveSection && (
           <div className="space-y-4">

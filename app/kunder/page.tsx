@@ -28,7 +28,7 @@ export default async function Page() {
 
     const { data, error } = await supabase
       .from("customers")
-      .select("*, projects(id, name, status, budget_nok, start_date, end_date, updated_at), offers(id, status, amount_nok)")
+      .select("*, projects(id, name, status, budget_nok, start_date, end_date, updated_at), offers(id, status, amount_nok, updated_at)")
       .order("name")
     
     if (error) {
@@ -91,13 +91,23 @@ export default async function Page() {
     const activeProjects = projects.filter((p) => isActiveProject(p.status)).length
     const totalProjects = projects.length
 
-    const offers = (c.offers || []) as Array<{ status: string | null; amount_nok: number | null }>
+    const offers = (c.offers || []) as Array<{ status: string | null; amount_nok: number | null; updated_at: string | null }>
     const relevantOffers = offers.filter((offer) => offer.status && offer.status !== "draft")
     const acceptedOffers = relevantOffers.filter((offer) => offer.status === "accepted")
     const totalRevenue = acceptedOffers.reduce((sum, offer) => sum + (offer.amount_nok || 0), 0)
     const acceptanceRate =
       relevantOffers.length > 0 ? Math.round((acceptedOffers.length / relevantOffers.length) * 100) : 0
     
+    // Utled "Sist kontaktet" fra faktisk aktivitet (nyeste prosjekt-/tilbud-oppdatering)
+    const activityTimestamps = [
+      ...projects.map((p) => (p.updatedAt ? new Date(p.updatedAt).getTime() : 0)),
+      ...offers.map((o) => (o.updated_at ? new Date(o.updated_at).getTime() : 0)),
+    ].filter((t) => t > 0)
+    const lastContact =
+      activityTimestamps.length > 0
+        ? new Date(Math.max(...activityTimestamps)).toISOString()
+        : null
+
     const link = linkByCustomerId.get(c.id)
     const jobState = jobStatusByCustomerId.get(c.id) || { syncing: 0, failed: 0 }
 
@@ -122,7 +132,8 @@ export default async function Page() {
       activeProjects,
       totalProjects,
       totalRevenue,
-      lastContact: new Date().toISOString(),
+      lastContact,
+      notes: c.notes || null,
       acceptanceRate,
       syncStatus,
       syncLastSyncedAt: link?.last_synced_at || null,

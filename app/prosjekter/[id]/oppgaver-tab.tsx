@@ -2,7 +2,15 @@
 
 import React, { useState, useEffect } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import { getProjectTasksAction, createTaskAction, updateTaskStatusAction } from "../actions";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import {
+  getProjectTasksAction,
+  createTaskAction,
+  updateTaskStatusAction,
+  updateTaskAction,
+  deleteTaskAction,
+} from "../actions";
 import { 
   Plus, 
   List, 
@@ -49,23 +57,39 @@ const priorityToLabel: Record<string, string> = {
   urgent: "Kritisk",
 };
 
+type ProjectMember = {
+  id: string
+  name: string
+}
+
+const UNASSIGNED_VALUE = "__unassigned__";
+
 export default function OppgaverTab({
   projectId,
   canManageTasks = true,
+  members = [],
 }: {
   projectId: string
   canManageTasks?: boolean
+  members?: ProjectMember[]
 }) {
+  const confirm = useConfirm();
+  const memberNameById = new Map(members.map((m) => [m.id, m.name]));
+  const assigneeLabel = (assignedTo: string | null | undefined) =>
+    assignedTo ? memberNameById.get(assignedTo) || "Ukjent" : "Ufordelt";
+
   const [view, setView] = useState<"liste" | "kanban" | "gantt">("liste");
   const [search, setSearch] = useState("");
   const [tasks, setTasks] = useState<any[]>([]);
 
   // New Task State
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  
+
   // Edit Task State
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskStatus, setNewTaskStatus] = useState("todo");
@@ -99,6 +123,7 @@ export default function OppgaverTab({
         status: newTaskStatus,
         priority: newTaskPriority,
         due_date: newTaskDue ? newTaskDue.toISOString() : null,
+        assigned_to: newTaskAssignee || null,
       });
 
       if (newTaskData) {
@@ -141,8 +166,10 @@ export default function OppgaverTab({
       setNewTaskDesc("");
       setSyncToCalendar(false);
       setIsDialogOpen(false);
+      toast.success("Oppgave opprettet");
     } catch (error) {
       console.error("Error creating task:", error);
+      toast.error(error instanceof Error ? error.message : "Kunne ikke lagre oppgave");
     } finally {
       setIsSubmitting(false);
     }
@@ -151,6 +178,61 @@ export default function OppgaverTab({
   const handleOpenTask = (task: any) => {
     setSelectedTask(task);
     setIsDrawerOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedTask) return;
+    if (!selectedTask.title?.trim()) {
+      toast.error("Oppgavetittel kan ikke være tom");
+      return;
+    }
+    setIsSavingEdit(true);
+    try {
+      const updated = await updateTaskAction(
+        selectedTask.id,
+        {
+          title: selectedTask.title,
+          description: selectedTask.description ?? null,
+          status: selectedTask.status,
+          priority: selectedTask.priority,
+          due_date: selectedTask.due_date ?? null,
+          assigned_to: selectedTask.assigned_to ?? null,
+        },
+        projectId
+      );
+      setTasks((prev) => prev.map((t) => (t.id === selectedTask.id ? updated : t)));
+      setIsDrawerOpen(false);
+      toast.success("Endringer lagret");
+    } catch (error) {
+      console.error("Error updating task:", error);
+      toast.error(error instanceof Error ? error.message : "Kunne ikke lagre endringer");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!selectedTask) return;
+    const ok = await confirm({
+      title: "Slette oppgave?",
+      description: `Er du sikker på at du vil slette «${selectedTask.title}»? Dette kan ikke angres.`,
+      confirmText: "Slett",
+      variant: "destructive",
+    });
+    if (!ok) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteTaskAction(selectedTask.id, projectId);
+      setTasks((prev) => prev.filter((t) => t.id !== selectedTask.id));
+      setIsDrawerOpen(false);
+      toast.success("Oppgave slettet");
+    } catch (error) {
+      console.error("Error deleting task:", error);
+      toast.error(error instanceof Error ? error.message : "Kunne ikke slette oppgaven");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleDragEnd = async (result: any) => {
@@ -237,7 +319,7 @@ export default function OppgaverTab({
               <tbody>
                 {filteredTasks.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center p-8 text-muted-foreground">Ingen oppgaver funnet. Klikk på "Ny oppgave" for å legge til.</td>
+                    <td colSpan={5} className="text-center p-8 text-muted-foreground">Ingen oppgaver funnet. Klikk på «Ny oppgave» for å legge til.</td>
                   </tr>
                 ) : (
                   filteredTasks.map((task) => (
@@ -258,7 +340,7 @@ export default function OppgaverTab({
                       </td>
                       <td className="px-3 py-2">{priorityToLabel[task.priority] || task.priority}</td>
                       <td className="px-3 py-3">{task.due_date ? new Date(task.due_date).toLocaleDateString("no-NO") : "-"}</td>
-                      <td className="px-3 py-3">{task.assigned_to || "Ufordelt"}</td>
+                      <td className="px-3 py-3">{assigneeLabel(task.assigned_to)}</td>
                     </tr>
                   ))
                 )}
@@ -284,7 +366,7 @@ export default function OppgaverTab({
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Frist: {task.due_date ? new Date(task.due_date).toLocaleDateString("no-NO") : "-"}
-                    {task.assigned_to ? ` · ${task.assigned_to}` : ""}
+                    {task.assigned_to ? ` · ${assigneeLabel(task.assigned_to)}` : ""}
                   </p>
                 </button>
               ))
@@ -438,11 +520,22 @@ export default function OppgaverTab({
               </div>
               <div className="space-y-2 pt-2.5">
                 <Label>Tildelt</Label>
-                <Input 
-                  placeholder="Navn..." 
-                  value={newTaskAssignee}
-                  onChange={e => setNewTaskAssignee(e.target.value)}
-                />
+                <Select
+                  value={newTaskAssignee || UNASSIGNED_VALUE}
+                  onValueChange={(val) => setNewTaskAssignee(val === UNASSIGNED_VALUE ? "" : val)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Velg deltaker" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UNASSIGNED_VALUE}>Ufordelt</SelectItem>
+                    {members.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        {member.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -564,34 +657,45 @@ export default function OppgaverTab({
                 </div>
                 <div className="space-y-2 pt-2.5">
                   <Label>Tildelt</Label>
-                  <Input 
-                    placeholder="Navn..." 
-                    value={selectedTask.assigned_to || ""}
-                    onChange={e => setSelectedTask({ ...selectedTask, assigned_to: e.target.value })}
-                  />
+                  <Select
+                    value={selectedTask.assigned_to || UNASSIGNED_VALUE}
+                    onValueChange={(val) =>
+                      setSelectedTask({
+                        ...selectedTask,
+                        assigned_to: val === UNASSIGNED_VALUE ? null : val,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Velg deltaker" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UNASSIGNED_VALUE}>Ufordelt</SelectItem>
+                      {members.map((member) => (
+                        <SelectItem key={member.id} value={member.id}>
+                          {member.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
           )}
           <DrawerFooter className="mt-6 px-4 pb-4 flex flex-col gap-3">
-            <Button onClick={() => {
-              // For now we just close the drawer or optimistic update
-              setTasks(prev => prev.map(t => t.id === selectedTask.id ? selectedTask : t));
-              setIsDrawerOpen(false);
-            }}>Lagre endringer</Button>
+            <Button onClick={handleSaveEdit} disabled={isSavingEdit || isDeleting}>
+              {isSavingEdit ? "Lagrer..." : "Lagre endringer"}
+            </Button>
             <DrawerClose asChild>
-              <Button variant="outline">Lukk</Button>
+              <Button variant="outline" disabled={isSavingEdit || isDeleting}>Lukk</Button>
             </DrawerClose>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               className="mt-4"
-              onClick={() => {
-                // Optimistic delete
-                setTasks(prev => prev.filter(t => t.id !== selectedTask.id));
-                setIsDrawerOpen(false);
-              }}
+              onClick={handleDeleteTask}
+              disabled={isSavingEdit || isDeleting}
             >
-              Slett oppgave
+              {isDeleting ? "Sletter..." : "Slett oppgave"}
             </Button>
           </DrawerFooter>
         </DrawerContent>

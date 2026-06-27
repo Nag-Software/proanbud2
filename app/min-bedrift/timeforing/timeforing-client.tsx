@@ -1,11 +1,13 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { format } from "date-fns"
 import { nb } from "date-fns/locale"
-import { Clock, FolderKanban, Users } from "lucide-react"
+import { Clock, Download, FolderKanban, Users } from "lucide-react"
 import type { DateRange } from "react-day-picker"
 
+import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -21,23 +23,35 @@ import {
   type ProjectHoursSummary,
   type TimeEntryRow,
 } from "@/lib/time-tracking"
+import { TimeEntryEditDialog } from "@/app/timeforing/time-entry-edit-dialog"
+import { TimeEntryDeleteButton } from "@/app/timeforing/time-entry-delete-button"
 import { DayFilterPicker } from "./day-filter-picker"
 
 type OverviewProps = {
   canViewAll: boolean
+  currentUserId?: string | null
   totalHours: number
   entries: TimeEntryRow[]
   byProject: ProjectHoursSummary[]
   byEmployee: EmployeeHoursSummary[]
 }
 
+function csvEscape(value: string): string {
+  if (/[";\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`
+  }
+  return value
+}
+
 export function TimeforingClient({
   canViewAll,
+  currentUserId = null,
   totalHours,
   entries,
   byProject,
   byEmployee,
 }: OverviewProps) {
+  const router = useRouter()
   const [selectedRange, setSelectedRange] = useState<DateRange | undefined>()
 
   const daysWithEntries = useMemo(() => buildDaysWithEntriesMap(entries), [entries])
@@ -61,13 +75,64 @@ export function TimeforingClient({
   const hasDayFilter = Boolean(selectedRange?.from)
   const selectedDayCount = countDaysInRange(selectedRange ?? {})
 
+  const handleRefresh = useCallback(() => router.refresh(), [router])
+
+  const canEditEntry = useCallback(
+    (entry: TimeEntryRow) => canViewAll || entry.user_id === currentUserId,
+    [canViewAll, currentUserId]
+  )
+
+  const handleExportCsv = useCallback(() => {
+    const headers = ["Dato", ...(canViewAll ? ["Ansatt"] : []), "Prosjekt", "Start", "Slutt", "Timer", "Notat"]
+    const rows = filteredEntries.map((entry) => {
+      const user = unwrapRelation(entry.users)
+      const project = unwrapRelation(entry.projects)
+      const started = entry.started_at ? format(new Date(entry.started_at), "HH:mm") : ""
+      const ended = entry.ended_at ? format(new Date(entry.ended_at), "HH:mm") : ""
+      const cells = [
+        format(new Date(entry.entry_date), "yyyy-MM-dd"),
+        ...(canViewAll ? [user?.full_name || user?.email || "Ukjent"] : []),
+        project?.name || "Ukjent prosjekt",
+        started,
+        ended,
+        Number(entry.hours || 0).toFixed(2),
+        entry.description || "",
+      ]
+      return cells.map((cell) => csvEscape(String(cell))).join(";")
+    })
+
+    const csv = "﻿" + [headers.map((h) => csvEscape(h)).join(";"), ...rows].join("\r\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `timeforing-${format(new Date(), "yyyy-MM-dd")}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }, [canViewAll, filteredEntries])
+
   return (
     <div className="space-y-4">
-      <DayFilterPicker
-        selectedRange={selectedRange}
-        onSelectedRangeChange={setSelectedRange}
-        daysWithEntries={daysWithEntries}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <DayFilterPicker
+          selectedRange={selectedRange}
+          onSelectedRangeChange={setSelectedRange}
+          daysWithEntries={daysWithEntries}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={handleExportCsv}
+          disabled={filteredEntries.length === 0}
+        >
+          <Download className="h-4 w-4" />
+          Eksporter CSV
+        </Button>
+      </div>
 
       <Tabs defaultValue="samlet" className="w-full">
       <TabsList className="mb-4">
@@ -114,12 +179,13 @@ export function TimeforingClient({
                 <th className="px-4 py-2 text-left font-medium">Periode</th>
                 <th className="px-4 py-2 text-left font-medium">Timer</th>
                 <th className="px-4 py-2 text-left font-medium">Notat</th>
+                <th className="px-4 py-2 text-right font-medium" />
               </tr>
             </thead>
             <tbody>
               {filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={canViewAll ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={canViewAll ? 7 : 6} className="px-4 py-8 text-center text-muted-foreground">
                     {hasDayFilter ? "Ingen timer for valgte dager." : "Ingen timer registrert ennå."}
                   </td>
                 </tr>
@@ -146,6 +212,14 @@ export function TimeforingClient({
                       </td>
                       <td className="px-4 py-2 font-medium">{formatHours(entry.hours)}</td>
                       <td className="px-4 py-2 text-muted-foreground">{entry.description || "-"}</td>
+                      <td className="px-4 py-2">
+                        {canEditEntry(entry) ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <TimeEntryEditDialog entry={entry} onUpdated={handleRefresh} />
+                            <TimeEntryDeleteButton entryId={entry.id} onDeleted={handleRefresh} />
+                          </div>
+                        ) : null}
+                      </td>
                     </tr>
                   )
                 })
@@ -177,6 +251,12 @@ export function TimeforingClient({
                   </p>
                   {entry.description ? (
                     <p className="mt-1 text-xs text-muted-foreground">{entry.description}</p>
+                  ) : null}
+                  {canEditEntry(entry) ? (
+                    <div className="mt-2 flex items-center gap-1">
+                      <TimeEntryEditDialog entry={entry} onUpdated={handleRefresh} />
+                      <TimeEntryDeleteButton entryId={entry.id} onDeleted={handleRefresh} />
+                    </div>
                   ) : null}
                 </div>
               )

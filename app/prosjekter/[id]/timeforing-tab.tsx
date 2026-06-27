@@ -21,6 +21,9 @@ import {
   unwrapRelation,
   type TimeEntryRow,
 } from "@/lib/time-tracking"
+import { TimeEntryEditDialog } from "@/app/timeforing/time-entry-edit-dialog"
+import { TimeEntryDeleteButton } from "@/app/timeforing/time-entry-delete-button"
+import { ManualTimeEntryDialog } from "@/app/timeforing/manual-time-entry-dialog"
 
 type ActiveSession = {
   id: string
@@ -35,9 +38,13 @@ type ActiveSession = {
 export default function TimeforingTab({
   projectId,
   canViewAllEntries = false,
+  currentUserId = null,
+  projectMembers = [],
 }: {
   projectId: string
   canViewAllEntries?: boolean
+  currentUserId?: string | null
+  projectMembers?: { id: string; name: string }[]
 }) {
   const [entries, setEntries] = useState<TimeEntryRow[]>([])
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null)
@@ -81,6 +88,11 @@ export default function TimeforingTab({
 
   const totalHours = sumHours(entries)
   const isWorking = Boolean(activeSession)
+
+  const canEditEntry = useCallback(
+    (entry: TimeEntryRow) => canViewAllEntries || entry.user_id === currentUserId,
+    [canViewAllEntries, currentUserId]
+  )
 
   async function handleStart() {
     setError(null)
@@ -179,13 +191,19 @@ export default function TimeforingTab({
       </div>
 
       <div className="rounded-lg border">
-        <div className="flex items-center justify-between border-b px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
           <div>
             <h3 className="font-semibold">
               {canViewAllEntries ? "Timeføring per prosjekt (automatisk)" : "Mine registrerte timer"}
             </h3>
             <p className="text-sm text-muted-foreground">Totalt {formatHours(totalHours)}</p>
           </div>
+          <ManualTimeEntryDialog
+            projectId={projectId}
+            currentUserId={currentUserId}
+            members={canViewAllEntries ? projectMembers : undefined}
+            onCreated={loadData}
+          />
         </div>
 
         <div className="hidden overflow-x-auto md:block">
@@ -197,13 +215,14 @@ export default function TimeforingTab({
                 {canViewAllEntries && <th className="px-4 py-2 text-left font-medium">Ansatt</th>}
                 <th className="px-4 py-2 text-left font-medium">Timer</th>
                 <th className="px-4 py-2 text-left font-medium">Notat</th>
+                <th className="px-4 py-2 text-right font-medium" />
               </tr>
             </thead>
             <tbody>
               {entries.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={canViewAllEntries ? 5 : 4}
+                    colSpan={canViewAllEntries ? 6 : 5}
                     className="px-4 py-8 text-center text-muted-foreground"
                   >
                     Ingen fullførte arbeidsøkter ennå. Trykk «Start arbeid» for å begynne.
@@ -230,6 +249,14 @@ export default function TimeforingTab({
                       )}
                       <td className="px-4 py-2 font-medium">{formatHours(entry.hours)}</td>
                       <td className="px-4 py-2 text-muted-foreground">{entry.description || "-"}</td>
+                      <td className="px-4 py-2">
+                        {canEditEntry(entry) ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <TimeEntryEditDialog entry={entry} onUpdated={loadData} />
+                            <TimeEntryDeleteButton entryId={entry.id} onDeleted={loadData} />
+                          </div>
+                        ) : null}
+                      </td>
                     </tr>
                   )
                 })
@@ -261,6 +288,12 @@ export default function TimeforingTab({
                   ) : null}
                   {entry.description ? (
                     <p className="mt-1 text-xs text-muted-foreground">{entry.description}</p>
+                  ) : null}
+                  {canEditEntry(entry) ? (
+                    <div className="mt-2 flex items-center gap-1">
+                      <TimeEntryEditDialog entry={entry} onUpdated={loadData} />
+                      <TimeEntryDeleteButton entryId={entry.id} onDeleted={loadData} />
+                    </div>
                   ) : null}
                 </div>
               )

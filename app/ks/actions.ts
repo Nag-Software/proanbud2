@@ -424,6 +424,7 @@ export async function updateChecklistItemAction(
     .eq("checklist_id", item.checklist_id)
 
   const status = deriveChecklistStatus(allItems || [])
+  const progress = computeProgress(allItems || [])
   const updatePayload: Record<string, string | null> = { status }
 
   if (status === "in_progress") {
@@ -438,7 +439,7 @@ export async function updateChecklistItemAction(
   revalidateProjectKs(projectId)
   revalidatePath(`/prosjekter/${projectId}/ks/${item.checklist_id}`)
 
-  return { status }
+  return { status, progress }
 }
 
 export async function createDeviationFromChecklistItemAction(

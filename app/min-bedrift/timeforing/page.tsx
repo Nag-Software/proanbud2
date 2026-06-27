@@ -48,6 +48,7 @@ export default async function Page() {
 
         <TimeforingClient
           canViewAll={overview.canViewAll}
+          currentUserId={overview.currentUserId}
           totalHours={overview.totalHours}
           entries={overview.entries}
           byProject={overview.byProject}

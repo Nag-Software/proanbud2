@@ -71,6 +71,8 @@ export function MeldingerClient({ messages }: { messages: SjefenMessageRow[] }) 
     (message) => message.sender_type === "customer" && !message.read_at
   ).length
 
+  const companyName = filteredMessages[0]?.company_name
+
   return (
     <SjefenPageShell segments={["Sjefen", "Meldinger"]}>
       <div className="space-y-6">
@@ -80,7 +82,17 @@ export function MeldingerClient({ messages }: { messages: SjefenMessageRow[] }) 
           </p>
           <h1 className="text-2xl font-semibold tracking-tight">Meldinger</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {filteredMessages.length} meldinger · {unreadCount} uleste fra kunder.
+            {companyFilter ? (
+              <>
+                {filteredMessages.length} meldinger for {companyName ?? "valgt firma"} ·{" "}
+                {unreadCount} uleste fra kunder.{" "}
+                <Link href="/sjefen/meldinger" className="font-medium underline underline-offset-2">
+                  Vis alle
+                </Link>
+              </>
+            ) : (
+              `${filteredMessages.length} meldinger · ${unreadCount} uleste fra kunder.`
+            )}
           </p>
         </div>
 

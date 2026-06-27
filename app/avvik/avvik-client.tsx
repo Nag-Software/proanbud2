@@ -21,18 +21,31 @@ import {
   DEVIATION_STATUS_LABELS,
   DEVIATION_TYPES,
   DEVIATION_TYPE_LABELS,
+  OPEN_DEVIATION_STATUSES,
 } from "@/lib/hms/constants"
 import type { DeviationStats, DeviationWithRelations } from "@/lib/hms/types"
 
 type Props = {
   deviations: DeviationWithRelations[]
-  stats: DeviationStats
   projects: Array<{ id: string; name: string }>
 }
 
 type SortBy = "created_at" | "title" | "status" | "type"
 
-export function AvvikClient({ deviations, stats, projects }: Props) {
+export function AvvikClient({ deviations, projects }: Props) {
+  const stats: DeviationStats = React.useMemo(() => {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    return {
+      openCount: deviations.filter((d) =>
+        OPEN_DEVIATION_STATUSES.includes(d.status as "open")
+      ).length,
+      closedCount: deviations.filter((d) => d.status === "closed").length,
+      ruhLast30Days: deviations.filter(
+        (d) => d.type === "ruh" && d.created_at >= thirtyDaysAgo
+      ).length,
+    }
+  }, [deviations])
+
   const [statusFilter, setStatusFilter] = React.useState<string>("open")
   const [typeFilter, setTypeFilter] = React.useState<string>("all")
   const [projectFilter, setProjectFilter] = React.useState<string>("all")

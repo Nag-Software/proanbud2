@@ -63,6 +63,7 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
       address: formData.get("address") as string,
       postalCode: formData.get("postalCode") as string,
       city: formData.get("city") as string,
+      notes: (formData.get("notes") as string) || null,
     }
 
     startTransition(async () => {
@@ -77,6 +78,7 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
           address: nextCustomer.address,
           postalCode: nextCustomer.postalCode,
           city: nextCustomer.city,
+          notes: nextCustomer.notes,
         })
 
         onUpdate?.(nextCustomer)
@@ -176,6 +178,16 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
                 </div>
               </div>
 
+              <div className="grid gap-2 pt-2 border-t">
+                <Label htmlFor="edit-notes">Notater</Label>
+                <Textarea
+                  id="edit-notes"
+                  name="notes"
+                  defaultValue={customer.notes ?? ""}
+                  placeholder="Tilleggsinformasjon om kunden..."
+                />
+              </div>
+
             </form>
           ) : (
             <Tabs defaultValue="overview" className="w-full">
@@ -223,12 +235,22 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
                     </CardHeader>
                     <CardContent className="p-4 pt-2">
                       <div className="text-xs text-muted-foreground mb-3 flex items-center justify-between">
-                        <span>Sist kontaktet:</span>
-                        <span className="font-medium text-foreground">{new Date(customer.lastContact).toLocaleDateString("nb-NO")}</span>
+                        <span>Sist aktivitet:</span>
+                        <span className="font-medium text-foreground">
+                          {customer.lastContact
+                            ? new Date(customer.lastContact).toLocaleDateString("nb-NO")
+                            : "Ingen aktivitet ennå"}
+                        </span>
                       </div>
-                      <div className="bg-muted/50 rounded-md p-3 text-sm border-l-2 border-primary/50 text-muted-foreground italic">
-                        "Kunde foretrekker å bli kontaktet via e-post etter kl 14."
-                      </div>
+                      {customer.notes ? (
+                        <div className="bg-muted/50 rounded-md p-3 text-sm border-l-2 border-primary/50 text-muted-foreground whitespace-pre-wrap">
+                          {customer.notes}
+                        </div>
+                      ) : (
+                        <div className="rounded-md p-3 text-sm text-muted-foreground italic">
+                          Ingen notater registrert.
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </div>

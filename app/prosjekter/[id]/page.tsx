@@ -240,7 +240,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             )}
 
             <TabsContent value="oppgaver">
-              <OppgaverTab projectId={project.id} canManageTasks={isProjectAdmin} />
+              <OppgaverTab
+                projectId={project.id}
+                canManageTasks={isProjectAdmin}
+                members={normalizedMembers
+                  .filter((member) => member.users?.id)
+                  .map((member) => ({
+                    id: member.users!.id,
+                    name: member.users!.full_name || member.users!.email || "Ukjent",
+                  }))}
+              />
             </TabsContent>
 
             <TabsContent value="filer">
@@ -249,7 +258,17 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
             <TabsContent value="timeforing">
               {hasTimeforing ? (
-                <TimeforingTab projectId={project.id} canViewAllEntries={isProjectAdmin} />
+                <TimeforingTab
+                  projectId={project.id}
+                  canViewAllEntries={isProjectAdmin}
+                  currentUserId={user.id}
+                  projectMembers={normalizedMembers
+                    .filter((member) => member.users?.id)
+                    .map((member) => ({
+                      id: member.users!.id,
+                      name: member.users!.full_name || member.users!.email || "Ukjent",
+                    }))}
+                />
               ) : (
                 <ModuleGate
                   moduleName="Timeføring"

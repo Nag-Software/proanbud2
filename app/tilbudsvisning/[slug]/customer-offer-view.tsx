@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { format } from "date-fns"
 import { nb } from "date-fns/locale"
-import { Check, Loader2, MessageSquare, Send, X } from "lucide-react"
+import { Check, Loader2, MessageSquare, Paperclip, Send, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
@@ -55,6 +55,9 @@ type PublicMessage = {
   senderType: "company" | "customer"
   content: string
   createdAt: string
+  attachmentUrl: string | null
+  attachmentName: string | null
+  attachmentType: string | null
 }
 
 function statusLabel(status: PublicOfferPayload["status"], isExpired: boolean) {
@@ -112,7 +115,35 @@ function OfferChatPanel({
                     isCompany ? "bg-neutral-100 text-neutral-900" : "bg-neutral-900 text-white"
                   }`}
                 >
-                  <p>{message.content}</p>
+                  {message.content ? <p>{message.content}</p> : null}
+                  {message.attachmentUrl ? (
+                    <div className={message.content ? "mt-2" : ""}>
+                      {message.attachmentType?.startsWith("image/") ? (
+                        <a href={message.attachmentUrl} target="_blank" rel="noopener noreferrer">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={message.attachmentUrl}
+                            alt={message.attachmentName || "Vedlegg"}
+                            className="max-h-48 w-auto rounded-lg border border-neutral-200 object-contain"
+                          />
+                        </a>
+                      ) : (
+                        <a
+                          href={message.attachmentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
+                            isCompany
+                              ? "border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+                              : "border-white/30 bg-white/10 text-white hover:bg-white/20"
+                          }`}
+                        >
+                          <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{message.attachmentName || "Last ned vedlegg"}</span>
+                        </a>
+                      )}
+                    </div>
+                  ) : null}
                   <p className={`mt-1 text-[10px] ${isCompany ? "text-neutral-500" : "text-neutral-300"}`}>
                     {format(new Date(message.createdAt), "d. MMM HH:mm", { locale: nb })}
                   </p>
@@ -251,7 +282,9 @@ export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?:
   const [messages, setMessages] = useState<PublicMessage[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isResponding, setIsResponding] = useState(false)
+  const [pendingAction, setPendingAction] = useState<"accept" | "reject" | null>(null)
   const [chatOpen, setChatOpen] = useState(Boolean(openChat))
+  const [isDesktop, setIsDesktop] = useState(false)
   const [messageDraft, setMessageDraft] = useState("")
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const chatScrollRef = useRef<HTMLDivElement>(null)
@@ -293,12 +326,15 @@ export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?:
   }, [loadOffer, loadMessages])
 
   useEffect(() => {
-    if (!chatOpen) return
+    // Poll når mobil-sheet er åpent ELLER vi er på desktop (sidepanelet alltid synlig).
+    if (!chatOpen && !isDesktop) return
     const interval = window.setInterval(() => {
+      // Unngå unødvendige kall i bakgrunnsfaner.
+      if (document.hidden) return
       void loadMessages()
     }, 4000)
     return () => window.clearInterval(interval)
-  }, [chatOpen, loadMessages])
+  }, [chatOpen, isDesktop, loadMessages])
 
   useEffect(() => {
     if (chatScrollRef.current) {
@@ -308,14 +344,15 @@ export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?:
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 1024px)")
-    const closeOnDesktop = () => {
+    const syncDesktop = () => {
+      setIsDesktop(mediaQuery.matches)
       if (mediaQuery.matches) {
         setChatOpen(false)
       }
     }
-    mediaQuery.addEventListener("change", closeOnDesktop)
-    closeOnDesktop()
-    return () => mediaQuery.removeEventListener("change", closeOnDesktop)
+    mediaQuery.addEventListener("change", syncDesktop)
+    syncDesktop()
+    return () => mediaQuery.removeEventListener("change", syncDesktop)
   }, [])
 
   const respond = async (action: "accept" | "reject") => {
@@ -331,6 +368,7 @@ export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?:
         throw new Error(payload.error || "Kunne ikke sende svaret")
       }
       setOffer((prev) => (prev ? { ...prev, status: payload.status, canRespond: false } : prev))
+      setPendingAction(null)
       toast.success(action === "accept" ? "Tilbudet er godkjent" : "Tilbudet er avslått")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Noe gikk galt")
@@ -352,7 +390,15 @@ export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?:
       if (!response.ok) {
         throw new Error(payload.error || "Kunne ikke sende melding")
       }
-      setMessages((prev) => [...prev, payload.message])
+      setMessages((prev) => [
+        ...prev,
+        {
+          attachmentUrl: null,
+          attachmentName: null,
+          attachmentType: null,
+          ...payload.message,
+        },
+      ])
       setMessageDraft("")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Kunne ikke sende melding")
@@ -468,23 +514,90 @@ export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?:
 
             {offer.canRespond ? (
               <div className="mt-5 hidden space-y-3 lg:block">
-                <div className="flex flex-wrap gap-3">
-                  <Button onClick={() => respond("accept")} disabled={isResponding} className="min-w-[140px]">
-                    <Check className="mr-2 h-4 w-4" />
-                    Godta tilbud
-                  </Button>
-                  <Button variant="outline" onClick={() => respond("reject")} disabled={isResponding} className="min-w-[140px]">
-                    <X className="mr-2 h-4 w-4" />
-                    Avslå
-                  </Button>
-                </div>
-                <p className="text-xs text-neutral-500">
-                  Ved å godta bekrefter du at tilbudet er bindende og gjelder som avtale mellom deg og{" "}
-                  {offer.company.name || "bedriften"}.{" "}
-                  <a href="#bindende-tilbud" className="underline underline-offset-2">
-                    Les mer
-                  </a>
-                </p>
+                {pendingAction === "accept" ? (
+                  <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+                    <p className="text-sm font-medium text-neutral-900">Bekreft bindende avtale</p>
+                    <p className="mt-1 text-sm leading-relaxed text-neutral-600">
+                      Du er i ferd med å godta tilbudet på {formatNok(totalInclVat)} inkl. mva. Dette inngår en
+                      bindende avtale mellom deg og {offer.company.name || "bedriften"}.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <Button onClick={() => respond("accept")} disabled={isResponding} className="min-w-[180px]">
+                        {isResponding ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Check className="mr-2 h-4 w-4" />
+                        )}
+                        Bekreft – {formatNok(totalInclVat)}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => setPendingAction(null)}
+                        disabled={isResponding}
+                      >
+                        Avbryt
+                      </Button>
+                    </div>
+                  </div>
+                ) : pendingAction === "reject" ? (
+                  <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+                    <p className="text-sm font-medium text-neutral-900">Avslå tilbudet?</p>
+                    <p className="mt-1 text-sm leading-relaxed text-neutral-600">
+                      Vil du avslå dette tilbudet fra {offer.company.name || "bedriften"}?
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={() => respond("reject")}
+                        disabled={isResponding}
+                        className="min-w-[140px]"
+                      >
+                        {isResponding ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <X className="mr-2 h-4 w-4" />
+                        )}
+                        Bekreft avslag
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => setPendingAction(null)}
+                        disabled={isResponding}
+                      >
+                        Avbryt
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        onClick={() => setPendingAction("accept")}
+                        disabled={isResponding}
+                        className="min-w-[140px]"
+                      >
+                        <Check className="mr-2 h-4 w-4" />
+                        Godta tilbud
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setPendingAction("reject")}
+                        disabled={isResponding}
+                        className="min-w-[140px]"
+                      >
+                        <X className="mr-2 h-4 w-4" />
+                        Avslå
+                      </Button>
+                    </div>
+                    <p className="text-xs text-neutral-500">
+                      Ved å godta bekrefter du at tilbudet er bindende og gjelder som avtale mellom deg og{" "}
+                      {offer.company.name || "bedriften"}.{" "}
+                      <a href="#bindende-tilbud" className="underline underline-offset-2">
+                        Les mer
+                      </a>
+                    </p>
+                  </>
+                )}
               </div>
             ) : null}
 
@@ -544,26 +657,84 @@ export function CustomerOfferView({ slug, openChat }: { slug: string; openChat?:
 
       {offer.canRespond ? (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_24px_rgba(0,0,0,0.06)] backdrop-blur supports-[backdrop-filter]:bg-white/90 lg:hidden">
-          <div className="mx-auto flex max-w-lg gap-2">
-            <Button className="h-11 flex-1" onClick={() => respond("accept")} disabled={isResponding}>
-              {isResponding ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Check className="mr-2 h-4 w-4" />
-              )}
-              Godta
-            </Button>
-            <Button variant="outline" className="h-11 flex-1" onClick={() => respond("reject")} disabled={isResponding}>
-              <X className="mr-2 h-4 w-4" />
-              Avslå
-            </Button>
-          </div>
-          <p className="mx-auto mt-2 max-w-lg text-center text-[10px] leading-relaxed text-neutral-500">
-            Bindende avtale ved godkjenning.{" "}
-            <a href="#bindende-tilbud" className="underline underline-offset-2">
-              Les mer
-            </a>
-          </p>
+          {pendingAction === "accept" ? (
+            <div className="mx-auto max-w-lg">
+              <p className="text-center text-xs leading-relaxed text-neutral-600">
+                Bindende avtale på {formatNok(totalInclVat)} inkl. mva med {offer.company.name || "bedriften"}.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <Button className="h-11 flex-1" onClick={() => respond("accept")} disabled={isResponding}>
+                  {isResponding ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="mr-2 h-4 w-4" />
+                  )}
+                  Bekreft – {formatNok(totalInclVat)}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-11"
+                  onClick={() => setPendingAction(null)}
+                  disabled={isResponding}
+                >
+                  Avbryt
+                </Button>
+              </div>
+            </div>
+          ) : pendingAction === "reject" ? (
+            <div className="mx-auto max-w-lg">
+              <p className="text-center text-xs leading-relaxed text-neutral-600">
+                Vil du avslå tilbudet fra {offer.company.name || "bedriften"}?
+              </p>
+              <div className="mt-2 flex gap-2">
+                <Button
+                  variant="outline"
+                  className="h-11 flex-1"
+                  onClick={() => respond("reject")}
+                  disabled={isResponding}
+                >
+                  {isResponding ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <X className="mr-2 h-4 w-4" />
+                  )}
+                  Bekreft avslag
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="h-11"
+                  onClick={() => setPendingAction(null)}
+                  disabled={isResponding}
+                >
+                  Avbryt
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="mx-auto flex max-w-lg gap-2">
+                <Button className="h-11 flex-1" onClick={() => setPendingAction("accept")} disabled={isResponding}>
+                  <Check className="mr-2 h-4 w-4" />
+                  Godta
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-11 flex-1"
+                  onClick={() => setPendingAction("reject")}
+                  disabled={isResponding}
+                >
+                  <X className="mr-2 h-4 w-4" />
+                  Avslå
+                </Button>
+              </div>
+              <p className="mx-auto mt-2 max-w-lg text-center text-[10px] leading-relaxed text-neutral-500">
+                Bindende avtale ved godkjenning.{" "}
+                <a href="#bindende-tilbud" className="underline underline-offset-2">
+                  Les mer
+                </a>
+              </p>
+            </>
+          )}
         </div>
       ) : null}
 

@@ -67,6 +67,8 @@ export function TilbudClient({ offers }: { offers: SjefenOfferRow[] }) {
     return offers.filter((offer) => offer.company_id === companyFilter)
   }, [offers, companyFilter])
 
+  const companyName = filteredOffers[0]?.company_name
+
   return (
     <SjefenPageShell segments={["Sjefen", "Tilbud"]}>
       <div className="space-y-6">
@@ -76,8 +78,17 @@ export function TilbudClient({ offers }: { offers: SjefenOfferRow[] }) {
           </p>
           <h1 className="text-2xl font-semibold tracking-tight">Tilbud</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {filteredOffers.length} tilbud
-            {companyFilter ? " for valgt firma" : " på plattformen"}.
+            {companyFilter ? (
+              <>
+                {filteredOffers.length} tilbud for{" "}
+                {companyName ?? "valgt firma"}.{" "}
+                <Link href="/sjefen/tilbud" className="font-medium underline underline-offset-2">
+                  Vis alle
+                </Link>
+              </>
+            ) : (
+              `${filteredOffers.length} tilbud på plattformen.`
+            )}
           </p>
         </div>
 

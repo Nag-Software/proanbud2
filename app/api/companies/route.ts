@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     const user = userData?.user
     if (!user) return NextResponse.json({ error: 'Du er ikke logget inn.' }, { status: 401 })
 
-    const { name, org_number, full_name, phone, website } = await request.json()
+    const { name, org_number, full_name, phone, website, employees, turnover, main_supplier, signup_source } = await request.json()
 
     if (!name) return NextResponse.json({ error: 'Navn på bedrift mangler.' }, { status: 400 })
 
@@ -40,6 +40,10 @@ export async function POST(request: Request) {
         phone: normalizedPhone,
         website: website?.trim() || null,
         email: user.email || null,
+        employees: typeof employees === 'string' ? (employees.trim() || null) : (employees ?? null),
+        turnover: typeof turnover === 'string' ? (turnover.trim() || null) : (turnover ?? null),
+        main_supplier: typeof main_supplier === 'string' ? (main_supplier.trim() || null) : (main_supplier ?? null),
+        signup_source: signup_source || null,
         created_at: new Date().toISOString()
       })
       .select()

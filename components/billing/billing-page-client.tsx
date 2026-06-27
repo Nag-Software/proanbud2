@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { Suspense, useCallback, useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import { Loader2Icon } from "lucide-react"
 
@@ -55,9 +56,12 @@ function intervalLabel(interval: BillingInterval | null) {
   return null
 }
 
-export function BillingPageClient() {
+function BillingPageInner() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [summary, setSummary] = useState<BillingSummary | null>(null)
   const [loading, setLoading] = useState(true)
+  const [activating, setActivating] = useState(searchParams.get("checkout") === "success")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [timeforingEnabled, setTimeforingEnabled] = useState(false)
 
@@ -77,8 +81,56 @@ export function BillingPageClient() {
   }, [])
 
   useEffect(() => {
-    loadSummary()
+    let cancelled = false
+
+    async function run() {
+      // Etter retur fra Stripe-checkout: bekreft abonnementet før vi leser
+      // status, slik at siden viser korrekt tilstand selv om webhooken er treg.
+      if (searchParams.get("checkout") === "success") {
+        const sessionId = searchParams.get("session_id")
+        try {
+          const res = await fetch("/api/stripe/confirm-checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(sessionId ? { sessionId } : { reconcile: true }),
+          })
+          const data = await res.json()
+          if (!res.ok) {
+            throw new Error(data.error || "Kunne ikke aktivere abonnement")
+          }
+        } catch (error) {
+          if (!cancelled) {
+            toast.error(error instanceof Error ? error.message : "Aktivering feilet")
+          }
+        } finally {
+          if (!cancelled) {
+            // Rydd query-parameterne fra URL etter aktivering.
+            router.replace("/innstillinger/betaling")
+            setActivating(false)
+          }
+        }
+      }
+
+      if (!cancelled) {
+        await loadSummary()
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadSummary])
+
+  if (activating) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-24">
+        <Loader2Icon className="size-6 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Aktiverer abonnement …</p>
+      </div>
+    )
+  }
 
   async function startCheckout() {
     setActionLoading("checkout")
@@ -271,7 +323,38 @@ export function BillingPageClient() {
             onCheckedChange={toggleTimeforing}
           />
         </div>
+
+        <div className="rounded-xl border px-5 py-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">Ansatte</p>
+            <p className="text-sm text-muted-foreground">
+              {summary?.billable_seats ?? 0} ({summary?.included_seats ?? 0} inkludert)
+            </p>
+          </div>
+          {(summary?.chargeable_seats ?? 0) > 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {summary?.chargeable_seats} ekstra{" "}
+              {summary?.chargeable_seats === 1 ? "sete" : "seter"} à{" "}
+              {summary?.seat_price_nok} kr/mnd ={" "}
+              {(summary?.chargeable_seats ?? 0) * (summary?.seat_price_nok ?? 0)} kr/mnd
+            </p>
+          )}
+        </div>
       </section>
     </div>
+  )
+}
+
+export function BillingPageClient() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-24">
+          <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <BillingPageInner />
+    </Suspense>
   )
 }

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { AiChatPanel } from "@/components/tilbud/ai-chat-panel"
 import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import {
   ArrowLeft,
   ArrowRight,
@@ -354,6 +355,14 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
       previous.map((item) => ({
         ...item,
         markupPercent: globalMarkupPercent,
+      }))
+    )
+  }
+
+  const resetAllDiscounts = () => {
+    setLineItems((previous) =>
+      previous.map((item) => ({
+        ...item,
         discountPercent: 0,
       }))
     )
@@ -375,10 +384,12 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
       try {
         const result = await saveOfferDraftAction(buildPayload())
         setOfferId(result.id)
-        setFeedback("Utkast lagret")
-        onCompleted?.()
+        setFeedback(null)
+        toast.success("Utkast lagret")
       } catch (error) {
-        setFeedback(error instanceof Error ? error.message : "Kunne ikke lagre utkast")
+        const message = error instanceof Error ? error.message : "Kunne ikke lagre utkast"
+        setFeedback(message)
+        toast.error(message)
       }
     })
   }
@@ -637,6 +648,9 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 <span className="text-sm text-muted-foreground">%</span>
                 <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={applyGlobalAdjustments}>
                   Bruk på alle
+                </Button>
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={resetAllDiscounts}>
+                  Nullstill rabatter
                 </Button>
                 <div className="ml-auto flex items-center gap-2">
                   <Button

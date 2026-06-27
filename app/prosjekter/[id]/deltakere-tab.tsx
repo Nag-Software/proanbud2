@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -49,8 +52,30 @@ export default function DeltakereTab({
   const [search, setSearch] = useState("");
   const { isAdmin, isManager } = useUserRole();
   const isAdminUser = isAdmin || isManager || isProjectAdmin;
+  const router = useRouter();
+  const confirm = useConfirm();
 
   const participants = initialParticipants || [];
+
+  const handleRemoveParticipant = async (participant: { id: string; name: string }) => {
+    const ok = await confirm({
+      title: "Fjern deltaker?",
+      description: `Er du sikker på at du vil fjerne ${participant.name} fra prosjektet?`,
+      confirmText: "Fjern",
+      variant: "destructive",
+    });
+    if (!ok) return;
+
+    try {
+      await removeProjectParticipantAction(projectId, participant.id);
+      toast.success(`${participant.name} ble fjernet fra prosjektet`);
+      router.refresh();
+    } catch (err) {
+      toast.error(
+        "Kunne ikke fjerne deltaker: " + (err instanceof Error ? err.message : "Ukjent feil")
+      );
+    }
+  };
 
   const hoursByUserId = new Map(participantHours.map((entry) => [entry.userId, entry]));
 
@@ -144,17 +169,14 @@ export default function DeltakereTab({
                           {isAdminUser && (
                             <>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem 
+                                <DropdownMenuItem
                                   className="text-destructive"
-                                  onClick={() => {
-                                    if (window.confirm("Er du sikker på at du vil fjerne denne deltakeren?")) {
-                                      removeProjectParticipantAction(projectId, p.id).catch(err => {
-                                        alert("Kunne ikke fjerne deltaker: " + err.message);
-                                      });
-                                    }
+                                  onSelect={(e) => {
+                                    e.preventDefault();
+                                    void handleRemoveParticipant(p);
                                   }}
                                 >
-                                  <ExternalLink className="mr-2 h-4 w-4" /> 
+                                  <ExternalLink className="mr-2 h-4 w-4" />
                                   Fjern fra prosjekt
                                 </DropdownMenuItem>
                             </>
@@ -198,12 +220,9 @@ export default function DeltakereTab({
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         className="text-destructive"
-                        onClick={() => {
-                          if (window.confirm("Er du sikker på at du vil fjerne denne deltakeren?")) {
-                            removeProjectParticipantAction(projectId, p.id).catch((err) => {
-                              alert("Kunne ikke fjerne deltaker: " + err.message)
-                            })
-                          }
+                        onSelect={(e) => {
+                          e.preventDefault();
+                          void handleRemoveParticipant(p);
                         }}
                       >
                         <ExternalLink className="mr-2 h-4 w-4" />

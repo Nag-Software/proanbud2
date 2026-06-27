@@ -4,6 +4,8 @@ import "./globals.css"
 import { AppShellLayout } from "@/components/app-shell-layout"
 import { BillingSummaryProvider } from "@/components/billing/billing-summary-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { ConfirmProvider } from "@/components/ui/confirm-dialog"
+import { Toaster } from "@/components/ui/sonner"
 import AuthProvider from "@/components/auth-provider"
 import { Analytics } from "@vercel/analytics/next"
 
@@ -41,10 +43,13 @@ export default function RootLayout({
         <TooltipProvider>
           <AuthProvider>
             <BillingSummaryProvider>
-              <AppShellLayout>{children}</AppShellLayout>
+              <ConfirmProvider>
+                <AppShellLayout>{children}</AppShellLayout>
+              </ConfirmProvider>
             </BillingSummaryProvider>
           </AuthProvider>
         </TooltipProvider>
+        <Toaster />
         <Analytics />
       </body>
     </html>

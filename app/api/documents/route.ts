@@ -390,6 +390,35 @@ export async function POST(request: Request) {
   const storagePath = `${user.id}/${pathPrefix}${Date.now()}-${cleanName}`
   const fileContentType = file.type || "application/octet-stream"
 
+  const replaceExisting = formData.get("replace") === "true"
+
+  let duplicateFileQuery = supabase
+    .from("document_items")
+    .select("id,storage_bucket,storage_path")
+    .eq("user_id", user.id)
+    .eq("provider", "supabase")
+    .eq("item_type", "file")
+    .eq("name", cleanName)
+    .limit(1)
+
+  duplicateFileQuery = parentPath
+    ? duplicateFileQuery.eq("external_parent_id", parentPath)
+    : duplicateFileQuery.is("external_parent_id", null)
+
+  const { data: existingFiles } = await duplicateFileQuery
+  const existingFile = existingFiles?.[0]
+
+  if (existingFile) {
+    if (!replaceExisting) {
+      return NextResponse.json({ error: "file_exists" }, { status: 409 })
+    }
+
+    if (existingFile.storage_bucket && existingFile.storage_path) {
+      await supabase.storage.from(existingFile.storage_bucket).remove([existingFile.storage_path])
+    }
+    await supabase.from("document_items").delete().eq("id", existingFile.id).eq("user_id", user.id)
+  }
+
   const bytes = new Uint8Array(await file.arrayBuffer())
   const upload = await supabase.storage.from("documents").upload(storagePath, bytes, {
     contentType: fileContentType,

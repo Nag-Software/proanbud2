@@ -23,7 +23,8 @@ export type Customer = {
   activeProjects: number
   totalProjects: number
   totalRevenue: number
-  lastContact: string;
+  lastContact: string | null;
+  notes?: string | null;
   acceptanceRate?: number;
   syncStatus?: "synced" | "syncing" | "attention" | "none"
   syncLastSyncedAt?: string | null

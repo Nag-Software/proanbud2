@@ -41,6 +41,30 @@ async function hasTimeforingModule(companyId: string | null): Promise<boolean> {
   return companyHasModule(companyId, TIMEFORING_MODULE)
 }
 
+function canManageAllEntries(role: string | null): boolean {
+  return canManageProjects(role) || normalizeRole(role) === "admin"
+}
+
+// Validerer at hours-input er et fornuftig tall (> 0 og <= 24)
+function parseHoursInput(value: number): number {
+  if (!Number.isFinite(value)) {
+    throw new Error("Ugyldig antall timer")
+  }
+  const rounded = Math.round(value * 100) / 100
+  if (rounded <= 0 || rounded > 24) {
+    throw new Error("Timer må være mellom 0,01 og 24")
+  }
+  return rounded
+}
+
+function parseEntryDate(value: string): string {
+  const trimmed = (value || "").slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    throw new Error("Ugyldig dato")
+  }
+  return trimmed
+}
+
 function completedEntriesQuery(supabase: Awaited<ReturnType<typeof createClient>>) {
   return supabase
     .from("time_entries")
@@ -262,6 +286,7 @@ export async function getCompanyTimeOverviewAction() {
   if (!user) {
     return {
       canViewAll: false,
+      currentUserId: null as string | null,
       totalHours: 0,
       entries: [] as TimeEntryRow[],
       byProject: [],
@@ -273,6 +298,7 @@ export async function getCompanyTimeOverviewAction() {
   if (!companyId || !(await hasTimeforingModule(companyId))) {
     return {
       canViewAll: false,
+      currentUserId: user.id,
       totalHours: 0,
       entries: [] as TimeEntryRow[],
       byProject: [],
@@ -297,6 +323,7 @@ export async function getCompanyTimeOverviewAction() {
     console.error("Error fetching company time overview:", error)
     return {
       canViewAll,
+      currentUserId: user.id,
       totalHours: 0,
       entries: [] as TimeEntryRow[],
       byProject: [],
@@ -309,9 +336,221 @@ export async function getCompanyTimeOverviewAction() {
 
   return {
     canViewAll,
+    currentUserId: user.id,
     totalHours,
     entries,
     byProject: buildProjectSummaries(entries),
     byEmployee: buildEmployeeSummaries(entries),
   }
+}
+
+type UpdateTimeEntryInput = {
+  entryId: string
+  entryDate?: string
+  startedAt?: string | null
+  endedAt?: string | null
+  hours?: number | null
+  description?: string | null
+}
+
+export async function updateTimeEntryAction(input: UpdateTimeEntryInput) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+
+  const { role, companyId } = await getEffectiveRole(supabase, user.id)
+  await assertCompanyHasModule(companyId, TIMEFORING_MODULE, "Timeføring")
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("time_entries")
+    .select("id, project_id, user_id, company_id, started_at, ended_at, entry_date")
+    .eq("id", input.entryId)
+    .maybeSingle()
+
+  if (fetchError || !existing) {
+    throw new Error("Fant ikke registreringen")
+  }
+
+  if (existing.company_id !== companyId) {
+    throw new Error("Du har ikke tilgang til denne registreringen")
+  }
+
+  // Worker kan kun endre egne registreringer; manager/admin kan endre alle i bedriften
+  if (!canManageAllEntries(role) && existing.user_id !== user.id) {
+    throw new Error("Du kan kun endre dine egne registreringer")
+  }
+
+  if (!existing.ended_at) {
+    throw new Error("En aktiv arbeidsøkt kan ikke redigeres. Avslutt den først.")
+  }
+
+  const updatePayload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  }
+
+  // To redigeringsmoduser: enten start/slutt (timer beregnes), eller timer direkte
+  if (input.startedAt && input.endedAt) {
+    const start = new Date(input.startedAt)
+    const end = new Date(input.endedAt)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new Error("Ugyldig start- eller sluttidspunkt")
+    }
+    if (end.getTime() <= start.getTime()) {
+      throw new Error("Sluttidspunkt må være etter starttidspunkt")
+    }
+    const hours = calculateSessionHours(start, end)
+    updatePayload.started_at = start.toISOString()
+    updatePayload.ended_at = end.toISOString()
+    updatePayload.hours = hours
+    updatePayload.entry_date = end.toISOString().slice(0, 10)
+  } else if (input.hours !== undefined && input.hours !== null) {
+    updatePayload.hours = parseHoursInput(input.hours)
+    if (input.entryDate) {
+      updatePayload.entry_date = parseEntryDate(input.entryDate)
+    }
+  } else if (input.entryDate) {
+    updatePayload.entry_date = parseEntryDate(input.entryDate)
+  }
+
+  if (input.description !== undefined) {
+    updatePayload.description = input.description?.trim() || null
+  }
+
+  const { data, error } = await supabase
+    .from("time_entries")
+    .update(updatePayload)
+    .eq("id", input.entryId)
+    .select("id, project_id, user_id, started_at, ended_at, hours, description, entry_date")
+    .single()
+
+  if (error) {
+    console.error("Error updating time entry:", error)
+    throw new Error("Kunne ikke lagre endringen")
+  }
+
+  revalidatePath(`/prosjekter/${existing.project_id}`)
+  revalidatePath("/min-bedrift/timeforing")
+  return data
+}
+
+export async function deleteTimeEntryAction(entryId: string) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+
+  const { role, companyId } = await getEffectiveRole(supabase, user.id)
+  await assertCompanyHasModule(companyId, TIMEFORING_MODULE, "Timeføring")
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("time_entries")
+    .select("id, project_id, user_id, company_id")
+    .eq("id", entryId)
+    .maybeSingle()
+
+  if (fetchError || !existing) {
+    throw new Error("Fant ikke registreringen")
+  }
+
+  if (existing.company_id !== companyId) {
+    throw new Error("Du har ikke tilgang til denne registreringen")
+  }
+
+  if (!canManageAllEntries(role) && existing.user_id !== user.id) {
+    throw new Error("Du kan kun slette dine egne registreringer")
+  }
+
+  const { error } = await supabase.from("time_entries").delete().eq("id", entryId)
+
+  if (error) {
+    console.error("Error deleting time entry:", error)
+    throw new Error("Kunne ikke slette registreringen")
+  }
+
+  revalidatePath(`/prosjekter/${existing.project_id}`)
+  revalidatePath("/min-bedrift/timeforing")
+  return { success: true }
+}
+
+type ManualTimeEntryInput = {
+  projectId: string
+  entryDate: string
+  hours: number
+  description?: string | null
+  userId?: string
+}
+
+export async function createManualTimeEntryAction(input: ManualTimeEntryInput) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+
+  const { role, companyId } = await getEffectiveRole(supabase, user.id)
+  if (!companyId) {
+    throw new Error("Kunne ikke hente bedriftsinformasjon")
+  }
+
+  await assertCompanyHasModule(companyId, TIMEFORING_MODULE, "Timeføring")
+
+  const entryDate = parseEntryDate(input.entryDate)
+  const hours = parseHoursInput(input.hours)
+
+  // Worker kan kun føre timer på seg selv; manager/admin kan føre på andre ansatte
+  let targetUserId = user.id
+  if (input.userId && input.userId !== user.id) {
+    if (!canManageAllEntries(role)) {
+      throw new Error("Du kan kun registrere timer på deg selv")
+    }
+    const { data: targetUser } = await supabase
+      .from("users")
+      .select("id, company_id")
+      .eq("id", input.userId)
+      .maybeSingle()
+    if (!targetUser || targetUser.company_id !== companyId) {
+      throw new Error("Ugyldig ansatt")
+    }
+    targetUserId = input.userId
+  }
+
+  // entry_date kl 12:00 lokalt -> brukes som syntetisk start/slutt for visning av periode
+  const startedAt = new Date(`${entryDate}T12:00:00`)
+  const endedAt = new Date(startedAt.getTime() + hours * 60 * 60 * 1000)
+
+  const { data, error } = await supabase
+    .from("time_entries")
+    .insert({
+      project_id: input.projectId,
+      user_id: targetUserId,
+      company_id: companyId,
+      entry_date: entryDate,
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString(),
+      hours,
+      description: input.description?.trim() || null,
+    })
+    .select("id, project_id, user_id, started_at, ended_at, hours, description, entry_date")
+    .single()
+
+  if (error) {
+    console.error("Error creating manual time entry:", error)
+    throw new Error("Kunne ikke registrere timer")
+  }
+
+  revalidatePath(`/prosjekter/${input.projectId}`)
+  revalidatePath("/min-bedrift/timeforing")
+  return data
 }

@@ -8,6 +8,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { format, isToday, formatDistanceToNow } from "date-fns";
 import { nb } from "date-fns/locale";
 import {
@@ -21,6 +28,7 @@ import {
   Download,
   Search,
   ArrowLeft,
+  PenSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -73,6 +81,8 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterTab, setFilterTab] = useState<FilterTab>("all");
+  const [isNewMessageOpen, setIsNewMessageOpen] = useState(false);
+  const [newMessageSearch, setNewMessageSearch] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -123,6 +133,15 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
     [markThreadAsRead]
   );
 
+  const handleStartConversation = useCallback(
+    (customerId: string) => {
+      setIsNewMessageOpen(false);
+      setNewMessageSearch("");
+      handleSelectCustomer(customerId);
+    },
+    [handleSelectCustomer]
+  );
+
   useEffect(() => {
     async function loadData() {
       const { data: customersData, error: customersError } = await supabase
@@ -168,6 +187,27 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
           const newMsg = payload.new as Message;
           setMessages((prev) => {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
+
+            // En optimistisk melding (med midlertidig tempId) kan allerede ligge i
+            // state for samme rad. Erstatt den i stedet for å legge til en dublett.
+            const optimisticIndex = prev.findIndex(
+              (m) =>
+                m.id !== newMsg.id &&
+                m.sender_type === newMsg.sender_type &&
+                m.customer_id === newMsg.customer_id &&
+                m.content === newMsg.content &&
+                (m.attachment_url ?? null) === (newMsg.attachment_url ?? null) &&
+                Math.abs(
+                  new Date(m.created_at).getTime() - new Date(newMsg.created_at).getTime()
+                ) < 60000
+            );
+
+            if (optimisticIndex !== -1) {
+              const next = [...prev];
+              next[optimisticIndex] = newMsg;
+              return next;
+            }
+
             return [...prev, newMsg];
           });
 
@@ -321,7 +361,13 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
       });
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
     } else if (result.message) {
-      setMessages((prev) => prev.map((m) => (m.id === tempId ? result.message : m)));
+      setMessages((prev) => {
+        const withoutTemp = prev.filter((m) => m.id !== tempId);
+        // Hvis realtime allerede har lagt inn den ekte raden, ikke legg til en dublett.
+        return withoutTemp.some((m) => m.id === result.message.id)
+          ? withoutTemp
+          : [...withoutTemp, result.message];
+      });
     }
   };
 
@@ -363,6 +409,18 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
     return result;
   }, [conversations, filterTab, searchQuery]);
 
+  const newMessageCustomers = useMemo(() => {
+    const q = newMessageSearch.trim().toLowerCase();
+    const sorted = [...customers].sort((a, b) => a.name.localeCompare(b.name, "nb"));
+    if (!q) return sorted;
+    return sorted.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.email?.toLowerCase().includes(q) ||
+        c.phone?.toLowerCase().includes(q)
+    );
+  }, [customers, newMessageSearch]);
+
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
   const currentMessages = messages.filter((m) => m.customer_id === selectedCustomerId);
   const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
@@ -386,13 +444,27 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
         )}
       >
             <div className="shrink-0 border-b border-border px-4 py-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <h1 className="text-lg font-semibold tracking-tight">Meldinger</h1>
-                {totalUnread > 0 && (
-                  <Badge variant="secondary" className="bg-accent text-accent-foreground">
-                    {totalUnread} ulest{totalUnread !== 1 ? "e" : ""}
-                  </Badge>
-                )}
+                <div className="flex items-center gap-2">
+                  {totalUnread > 0 && (
+                    <Badge variant="secondary" className="bg-accent text-accent-foreground">
+                      {totalUnread} ulest{totalUnread !== 1 ? "e" : ""}
+                    </Badge>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => {
+                      setNewMessageSearch("");
+                      setIsNewMessageOpen(true);
+                    }}
+                  >
+                    <PenSquare className="mr-1.5 h-4 w-4" />
+                    Ny melding
+                  </Button>
+                </div>
               </div>
               <div className="mt-3 flex gap-1">
                 <Button
@@ -763,6 +835,61 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
               </div>
             )}
       </div>
+
+      <Dialog open={isNewMessageOpen} onOpenChange={setIsNewMessageOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ny melding</DialogTitle>
+            <DialogDescription>
+              Velg en kunde for å starte en ny samtale.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              autoFocus
+              placeholder="Søk etter kunde..."
+              value={newMessageSearch}
+              onChange={(e) => setNewMessageSearch(e.target.value)}
+              className="h-9 pl-8"
+            />
+          </div>
+          <ScrollArea className="max-h-72">
+            <div className="flex flex-col gap-1">
+              {newMessageCustomers.length === 0 ? (
+                <p className="px-2 py-8 text-center text-sm text-muted-foreground">
+                  {customers.length === 0
+                    ? "Du har ingen kunder ennå."
+                    : "Ingen kunder matcher søket."}
+                </p>
+              ) : (
+                newMessageCustomers.map((customer) => (
+                  <button
+                    key={customer.id}
+                    type="button"
+                    onClick={() => handleStartConversation(customer.id)}
+                    className="flex w-full items-center gap-3 border border-transparent p-2.5 text-left transition-colors hover:cursor-pointer hover:bg-muted/60"
+                  >
+                    <Avatar className="h-9 w-9 shrink-0">
+                      <AvatarFallback className="bg-primary/5 text-xs text-primary">
+                        {customer.name.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{customer.name}</p>
+                      {(customer.email || customer.phone) && (
+                        <p className="truncate text-xs text-muted-foreground">
+                          {customer.email || customer.phone}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

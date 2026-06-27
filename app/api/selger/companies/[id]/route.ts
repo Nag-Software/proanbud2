@@ -30,14 +30,15 @@ export async function PATCH(
     }
 
     const admin = createAdminClient()
-    const now = new Date().toISOString()
-    const touchContact = contact_status !== "ukontaktet"
 
+    // Status-feltet og "sist kontaktet"-tidsstemplet holdes adskilt:
+    // seller_last_contacted_at settes KUN ved faktiske kontakthendelser
+    // (ring i /contact, e-post i /emails/send), aldri ved status-redigering.
+    // Vi rører derfor ikke feltet her – verken setter now() eller null.
     const { data, error } = await admin
       .from("companies")
       .update({
         seller_contact_status: contact_status,
-        seller_last_contacted_at: touchContact ? now : null,
       })
       .eq("id", id)
       .select("id, name")

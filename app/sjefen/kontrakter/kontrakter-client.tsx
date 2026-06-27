@@ -62,6 +62,8 @@ export function KontrakterClient({ contracts }: { contracts: SjefenContractRow[]
     return contracts.filter((contract) => contract.company_id === companyFilter)
   }, [contracts, companyFilter])
 
+  const companyName = filteredContracts[0]?.company_name
+
   return (
     <SjefenPageShell segments={["Sjefen", "Kontrakter"]}>
       <div className="space-y-6">
@@ -71,8 +73,17 @@ export function KontrakterClient({ contracts }: { contracts: SjefenContractRow[]
           </p>
           <h1 className="text-2xl font-semibold tracking-tight">Kontrakter</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {filteredContracts.length} kontrakter
-            {companyFilter ? " for valgt firma" : " på plattformen"}.
+            {companyFilter ? (
+              <>
+                {filteredContracts.length} kontrakter for{" "}
+                {companyName ?? "valgt firma"}.{" "}
+                <Link href="/sjefen/kontrakter" className="font-medium underline underline-offset-2">
+                  Vis alle
+                </Link>
+              </>
+            ) : (
+              `${filteredContracts.length} kontrakter på plattformen.`
+            )}
           </p>
         </div>
 
