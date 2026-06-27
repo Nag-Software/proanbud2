@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs"
+
 import chromium from "@sparticuz/chromium"
 import puppeteer from "puppeteer-core"
 
@@ -69,19 +71,46 @@ function normalizeLineItems(input: unknown): OfferLineItem[] {
     .filter((item) => item.title.trim().length > 0)
 }
 
+// Common local Chrome/Chromium install locations, used as a fallback during dev
+// so the bundled (Linux-only) @sparticuz/chromium binary isn't spawned on macOS/
+// Windows — which fails with ENOEXEC.
+const LOCAL_CHROME_PATHS = [
+  // macOS
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+  // Linux
+  "/usr/bin/google-chrome",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  // Windows
+  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+]
+
+function findLocalChrome() {
+  const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH?.trim()
+  if (fromEnv) return fromEnv
+  return LOCAL_CHROME_PATHS.find((candidate) => existsSync(candidate)) ?? null
+}
+
 /**
  * Launch Chromium. On serverless (Vercel) the bundled @sparticuz/chromium binary
- * is used. Locally, set PUPPETEER_EXECUTABLE_PATH to a real Chrome/Chromium so
- * dev works without the serverless binary.
+ * is used. Locally we use a real Chrome/Chromium install — either from
+ * PUPPETEER_EXECUTABLE_PATH or auto-detected — so dev works without the
+ * serverless binary (which is Linux-only and fails with ENOEXEC elsewhere).
  */
 async function launchBrowser() {
-  const localExecutable = process.env.PUPPETEER_EXECUTABLE_PATH?.trim()
-  if (localExecutable) {
-    return puppeteer.launch({
-      executablePath: localExecutable,
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    })
+  const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+  if (!isServerless) {
+    const localExecutable = findLocalChrome()
+    if (localExecutable) {
+      return puppeteer.launch({
+        executablePath: localExecutable,
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      })
+    }
   }
   return puppeteer.launch({
     args: chromium.args,
