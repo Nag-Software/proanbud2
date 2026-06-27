@@ -2,6 +2,7 @@ import crypto from "crypto"
 import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 
 type DocusignEnvelopeEvent = {
   envelopeId: string | null
@@ -137,10 +138,14 @@ export async function POST(request: Request) {
     const contentType = request.headers.get("content-type") || ""
     const signatureHeader = request.headers.get("x-docusign-signature-1")
     const secret = process.env.DOCUSIGN_CONNECT_HMAC_KEY || ""
+    // Fail closed: a missing HMAC key is misconfiguration, not a reason to skip
+    // verification (otherwise an unauthenticated POST could flip offer status).
+    if (!secret) {
+      return NextResponse.json({ ok: false, error: "DocuSign webhook not configured" }, { status: 500 })
+    }
 
-    const signatureValid = secret ? verifyDocusignSignature(rawBody, secret, signatureHeader) : false
-
-    if (secret && !signatureValid) {
+    const signatureValid = verifyDocusignSignature(rawBody, secret, signatureHeader)
+    if (!signatureValid) {
       return NextResponse.json({ ok: false, error: "Invalid DocuSign signature" }, { status: 401 })
     }
 
@@ -249,6 +254,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, mapped: true, offerId, companyId, status: event.status })
   } catch (error) {
+    await logServerError({
+      message: "DocuSign webhook processing failed",
+      error,
+      source: "api",
+      route: "POST /api/integrations/docusign/webhook",
+    })
     const message = error instanceof Error ? error.message : "Unknown error"
     return NextResponse.json({ error: message }, { status: 500 })
   }

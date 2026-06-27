@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 
+import { logServerError } from "@/lib/errors/log"
 import { AppPageShell } from "@/components/app-page-shell"
 import { fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
 import { readProjectSummaryFromAnalysis } from "@/lib/tilbud/project-summary"
@@ -268,7 +269,18 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
     offer.id,
     offer.customer_id,
     offer.project_id
-  ).catch(() => null)
+  ).catch((error) => {
+    void logServerError({
+      message: "Failed to fetch Tripletex sync status for offer detail",
+      error,
+      source: "server",
+      route: "app/tilbud/[id]/page.tsx",
+      level: "warning",
+      companyId,
+      context: { offerId: offer.id },
+    })
+    return null
+  })
   const lineItems = toLineItems(offer.line_items)
   const project = normalizeRelatedRow(offer.projects)
   const customer = normalizeRelatedRow(offer.customers) || normalizeRelatedRow(project?.customers)

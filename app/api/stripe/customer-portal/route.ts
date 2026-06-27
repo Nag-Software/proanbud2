@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server"
 
+import type Stripe from "stripe"
+
 import { requireCompanyAdmin } from "@/lib/billing/guards"
+import { isStripeResourceMissing } from "@/lib/billing/stripe-helpers"
 import { isStripeConfigured } from "@/lib/stripe/server"
 import { getStripe } from "@/lib/stripe/server"
+import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
@@ -37,7 +41,19 @@ async function findOrCreateStripeCustomer(input: {
     .maybeSingle()
 
   if (billing?.stripe_customer_id) {
-    return billing.stripe_customer_id
+    // Verify the stored customer still exists before opening a portal session.
+    try {
+      const customer = await stripe.customers.retrieve(billing.stripe_customer_id)
+      if (!(customer as Stripe.DeletedCustomer).deleted) {
+        return billing.stripe_customer_id
+      }
+    } catch (error) {
+      if (!isStripeResourceMissing(error)) throw error
+    }
+    await admin
+      .from("company_billing")
+      .update({ stripe_customer_id: null, updated_at: new Date().toISOString() })
+      .eq("company_id", input.companyId)
   }
 
   const search = await stripe.customers.search({
@@ -118,6 +134,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ url: portalSession.url })
   } catch (error) {
     console.error("Stripe customer portal error", error)
+    await logServerError({
+      message: "Kunne ikke opprette Stripe-kundeportal",
+      error,
+      source: "api",
+      route: "/api/stripe/customer-portal",
+    })
     return NextResponse.json(
       {
         error:

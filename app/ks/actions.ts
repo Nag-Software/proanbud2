@@ -11,6 +11,8 @@ import {
   type CreateTemplateInput,
   type UpdateTemplateInput,
 } from "@/app/ks/schemas"
+import { assertPlanFeature } from "@/lib/billing/server-modules"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 import type { ChecklistSummary, ChecklistTemplate, ProjectChecklist } from "@/lib/ks/types"
 import { canManageProjects } from "@/lib/roles"
@@ -157,6 +159,7 @@ export async function createTemplateAction(input: CreateTemplateInput) {
   const { supabase, user, companyId, role } = await getAuthContext()
 
   if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til å opprette maler")
+  await assertPlanFeature(companyId, "ks", "KS")
 
   const { data: template, error } = await supabase
     .from("checklist_templates")
@@ -194,6 +197,7 @@ export async function updateTemplateAction(input: UpdateTemplateInput) {
   const { supabase, companyId, role } = await getAuthContext()
 
   if (!canManageProjects(role)) throw new Error("Du har ikke tilgang")
+  await assertPlanFeature(companyId, "ks", "KS")
 
   const { data: existing } = await supabase
     .from("checklist_templates")
@@ -237,6 +241,7 @@ export async function deleteTemplateAction(id: string) {
   const { supabase, companyId, role } = await getAuthContext()
 
   if (!canManageProjects(role)) throw new Error("Du har ikke tilgang")
+  await assertPlanFeature(companyId, "ks", "KS")
 
   const { error } = await supabase
     .from("checklist_templates")
@@ -316,7 +321,9 @@ export async function addChecklistToProjectAction(
   input: Parameters<typeof addChecklistToProjectSchema.parse>[0]
 ) {
   const parsed = addChecklistToProjectSchema.parse(input)
-  const { supabase, user, companyId } = await getAuthContext()
+  const { supabase, user, companyId, role } = await getAuthContext()
+  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
+  await assertPlanFeature(companyId, "ks", "KS")
 
   const { data: project } = await supabase
     .from("projects")
@@ -390,7 +397,9 @@ export async function updateChecklistItemAction(
   input: Parameters<typeof updateChecklistItemSchema.parse>[0]
 ) {
   const parsed = updateChecklistItemSchema.parse(input)
-  const { supabase, user, companyId } = await getAuthContext()
+  const { supabase, user, companyId, role } = await getAuthContext()
+  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
+  await assertPlanFeature(companyId, "ks", "KS")
 
   const { data: item } = await supabase
     .from("project_checklist_items")
@@ -445,7 +454,9 @@ export async function createDeviationFromChecklistItemAction(
   input: Parameters<typeof createDeviationFromItemSchema.parse>[0]
 ) {
   const parsed = createDeviationFromItemSchema.parse(input)
-  const { supabase, user, companyId } = await getAuthContext()
+  const { supabase, user, companyId, role } = await getAuthContext()
+  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
+  await assertPlanFeature(companyId, "ks", "KS")
 
   const { data: item } = await supabase
     .from("project_checklist_items")
@@ -502,7 +513,9 @@ export async function createDeviationFromChecklistItemAction(
 // ==========================================
 
 export async function uploadChecklistItemPhotoAction(formData: FormData) {
-  const { supabase, user, companyId } = await getAuthContext()
+  const { supabase, user, companyId, role } = await getAuthContext()
+  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
+  await assertPlanFeature(companyId, "ks", "KS")
 
   const itemId = String(formData.get("itemId") || "")
   const file = formData.get("file") as File | null
@@ -552,13 +565,18 @@ export async function uploadChecklistItemPhotoAction(formData: FormData) {
 }
 
 export async function getChecklistPhotoUrlAction(storagePath: string) {
-  const { supabase } = await getAuthContext()
+  const { supabase, companyId } = await getAuthContext()
+  // Defense-in-depth on top of the storage RLS policy: only sign paths inside the
+  // caller's own company folder ({companyId}/...).
+  if (!storagePath.startsWith(`${companyId}/`)) return null
   const { data } = await supabase.storage.from("ks_checklists").createSignedUrl(storagePath, 3600)
   return data?.signedUrl || null
 }
 
 export async function deleteChecklistItemPhotoAction(attachmentId: string) {
-  const { supabase, companyId } = await getAuthContext()
+  const { supabase, companyId, role } = await getAuthContext()
+  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
+  await assertPlanFeature(companyId, "ks", "KS")
 
   const { data: attachment } = await supabase
     .from("checklist_item_attachments")
@@ -604,6 +622,16 @@ export async function getProjectChecklistPhotosAction(projectId: string) {
     .order("created_at", { ascending: false })
 
   if (error && isMissingRelationError(error)) return []
+  if (error) {
+    await logServerError({
+      message: "Kunne ikke hente sjekklistebilder",
+      error,
+      source: "action",
+      route: "getProjectChecklistPhotosAction",
+      context: { companyId, projectId },
+    })
+    return []
+  }
 
   return (data || []).filter((att) => {
     const item = att.item as {

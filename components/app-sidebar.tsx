@@ -15,9 +15,8 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, Bell, CalendarDays, FolderIcon, FilesIcon, SearchIcon, ShieldCheckIcon } from "lucide-react"
+import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, Bell, CalendarDays, FolderIcon, FilesIcon, ShieldCheckIcon } from "lucide-react"
 import { Button } from "./ui/button"
-import { Input } from "./ui/input"
 import { useUserRole } from "@/hooks/use-user-role"
 import { canManageSubscription } from "@/lib/roles"
 import { useAuth } from "@/components/auth-provider"
@@ -122,6 +121,10 @@ const data: {
           title: "Lagrede jobber",
           url: "/mine-priser/lagrede-jobber",
         },
+        {
+          title: "Timepriser",
+          url: "/mine-priser/timepriser",
+        },
       ]
     },
     {
@@ -140,6 +143,10 @@ const data: {
         {
           title: "Timeføring",
           url: "/min-bedrift/timeforing",
+        },
+        {
+          title: "Kjørebok",
+          url: "/min-bedrift/kjorebok",
         },
         {
           title: "KS-maler",
@@ -210,14 +217,22 @@ function AppSidebarHeader({ unreadCount }: { unreadCount: number }) {
   return (
     <SidebarHeader className="pb-0">
       <div className="flex items-center justify-between p-2 pb-0">
-        <Image
-          src={isCollapsed ? "/logo/light/icon-primary.svg" : "/logo/light/logo-primary.svg"}
-          alt="Proanbud"
-          width={isCollapsed ? 24 : 120}
-          height={isCollapsed ? 24 : 40}
-          className="cursor-pointer"
-          onClick={() => router.push("/")}
-        />
+        <div className="relative">
+          <Image
+            src={isCollapsed ? "/logo/light/icon-primary.svg" : "/logo/light/logo-primary.svg"}
+            alt="Proanbud"
+            width={isCollapsed ? 24 : 120}
+            height={isCollapsed ? 24 : 40}
+            className="cursor-pointer"
+            onClick={() => router.push("/")}
+          />
+          {isCollapsed && unreadCount > 0 && (
+            <span
+              className="pointer-events-none absolute -right-1 -top-1 size-2 rounded-full bg-primary ring-2 ring-sidebar"
+              aria-label={`${unreadCount} uleste meldinger`}
+            />
+          )}
+        </div>
         {!isCollapsed && (
           <div className="relative shrink-0">
             <Button
@@ -241,28 +256,25 @@ function AppSidebarHeader({ unreadCount }: { unreadCount: number }) {
         label={isCollapsed ? "" : "Nytt prosjekt"}
         showIcon
       />
-      {!isCollapsed && (
-        <div hidden className="px-2 mt-2">
-          <div className="relative">
-            <SearchIcon className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Søk i prosjekter..."
-              className="w-full pl-8 h-8 hover:shadow-sm outline-none"
-             />
-          </div>
-        </div>
-      )}
     </SidebarHeader>
   )
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { role, canonicalRole } = useUserRole();
+  const { role, canonicalRole, hasFeature, loadingRole } = useUserRole();
   const { user } = useAuth();
   const unreadCount = useUnreadMessages();
   const openDeviationCount = useOpenDeviationCount();
   const [activeProjects, setActiveProjects] = React.useState<SidebarProject[]>([]);
   const isWorker = canonicalRole === "worker";
   const canManageBilling = canManageSubscription(role);
+  // While the plan context is still loading, treat features as available so
+  // Proff items do not flicker out and then back in (matches how the rest of
+  // the file defers plan-dependent UI until the context resolves).
+  const featureEnabled = (feature: Parameters<typeof hasFeature>[0]) =>
+    loadingRole || hasFeature(feature);
+  // Suppress the messages badge entirely when the plan lacks Meldinger.
+  const visibleUnreadCount = featureEnabled("meldinger") ? unreadCount : 0;
 
   React.useEffect(() => {
     async function fetchProjects() {
@@ -293,21 +305,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const filteredNavMain = data.navMain
     .map((item) => {
-      if (item.title === "Meldinger" && unreadCount > 0) {
-        return { ...item, badge: unreadCount };
+      if (item.title === "Meldinger" && visibleUnreadCount > 0) {
+        return { ...item, badge: visibleUnreadCount };
       }
-      if (item.title === "HMS" && item.items && openDeviationCount > 0) {
+      if (item.title === "HMS" && item.items) {
         return {
           ...item,
-          items: item.items.map((subItem) =>
-            subItem.title === "Avvik" ? { ...subItem, badge: openDeviationCount } : subItem
-          ),
+          // Hide the Avvik subitem when the plan lacks the Avvik feature.
+          items: item.items
+            .filter((subItem) => subItem.title !== "Avvik" || featureEnabled("avvik"))
+            .map((subItem) =>
+              subItem.title === "Avvik" && openDeviationCount > 0
+                ? { ...subItem, badge: openDeviationCount }
+                : subItem
+            ),
         }
       }
-      if (item.title === "Min bedrift" && isWorker && item.items) {
+      if (item.title === "Min bedrift" && item.items) {
         return {
           ...item,
-          items: item.items.filter((subItem) => subItem.title === "Timeføring"),
+          // Hide the KS-maler subitem when the plan lacks the KS feature.
+          items: item.items.filter(
+            (subItem) => subItem.title !== "KS-maler" || featureEnabled("ks")
+          ),
         };
       }
       if (item.title === "Innstillinger" && item.items) {
@@ -322,25 +342,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     })
     .filter((item) => {
     if (item.hidden) return false;
-    if (!isWorker) {
-      if (item.title === "Innstillinger" && !canManageBilling) {
-        return false;
-      }
-      return true;
+    // Proff-only features are hidden when the plan lacks them (in addition to
+    // the role filtering below — a feature hide is additive).
+    if (item.title === "Kalender" && !featureEnabled("kalender")) return false;
+    if (item.title === "Meldinger" && !featureEnabled("meldinger")) return false;
+    if (item.title === "HMS" && !featureEnabled("hms")) return false;
+    // Workers have a deliberately small surface: only Projects and Calendar.
+    if (isWorker) {
+      return ["Prosjekter", "Kalender"].includes(item.title);
     }
-
-    const hiddenForWorker = [
-      "Salg & Økonomi",
-      "Kunder",
-      "Mine priser",
-      "Innstillinger",
-    ];
-    return !hiddenForWorker.includes(item.title);
+    if (item.title === "Innstillinger" && !canManageBilling) {
+      return false;
+    }
+    return true;
   });
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <AppSidebarHeader unreadCount={unreadCount} />
+      <AppSidebarHeader unreadCount={visibleUnreadCount} />
       <SidebarContent>
         <NavMain items={filteredNavMain} />
         <NavProjects projects={activeProjects} />

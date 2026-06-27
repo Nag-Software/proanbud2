@@ -1,9 +1,12 @@
 import { AppPageShell } from "@/components/app-page-shell"
+import { PlanGate } from "@/components/billing/plan-gate"
+import { companyHasFeature } from "@/lib/billing/server-modules"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { getTripletexApiBaseUrl, TRIPLETEX_HELP_URL } from "@/lib/integrations/tripletex/config"
 
 import { TripletexClient } from "./tripletex-client"
+import { TripletexEmployeeMapping } from "@/components/integrations/tripletex-employee-mapping"
 
 export default async function TripletexPage() {
   await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
@@ -24,6 +27,18 @@ export default async function TripletexPage() {
 
     companyId = userRow?.company_id || null
     canManageIntegration = userRow?.role === "admin"
+  }
+
+  if (!companyId || !(await companyHasFeature(companyId, "integrasjoner"))) {
+    return (
+      <AppPageShell segments={["Min Bedrift", "Tripletex"]}>
+        <PlanGate
+          featureName="Integrasjoner"
+          title="Integrasjoner er inkludert i Proff — eller som modul"
+          description="Koble Proanbud til Tripletex. Integrasjoner er inkludert i Proff, eller kan aktiveres som modul (29 kr/mnd) på Mini under abonnement."
+        />
+      </AppPageShell>
+    )
   }
 
   const [connectionResult, jobsResult, eventsResult] = companyId
@@ -73,6 +88,8 @@ export default async function TripletexPage() {
           canManage={canManageIntegration}
           helpUrl={TRIPLETEX_HELP_URL}
         />
+
+        {canManageIntegration && connectionResult.data && <TripletexEmployeeMapping />}
       </div>
     </AppPageShell>
   )

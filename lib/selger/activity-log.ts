@@ -1,7 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 
 type LogSellerActivityInput = {
-  sellerUserId: string
+  // Nullable: automated jobs (e.g. the outreach cron) have no logged-in seller.
+  sellerUserId: string | null
   action: string
   targetType?: string | null
   targetId?: string | null
@@ -21,14 +23,25 @@ export async function logSellerActivity(input: LogSellerActivityInput) {
 
   if (error) {
     console.error("logSellerActivity", error)
+    await logServerError({
+      message: "Kunne ikke skrive seller_activity_log",
+      error,
+      level: "warning",
+      source: "server",
+      route: "logSellerActivity",
+      context: { sellerUserId: input.sellerUserId, action: input.action, targetId: input.targetId },
+    })
   }
 }
 
 type LogSellerEmailInput = {
-  sentBy: string
+  // Nullable: the outreach cron sends with no logged-in seller.
+  sentBy: string | null
   templateId: string
   recipientEmail: string
   companyId?: string | null
+  // Resend message id — lets the webhook stamp delivery/open/click engagement.
+  providerMessageId?: string | null
 }
 
 export async function logSellerEmail(input: LogSellerEmailInput) {
@@ -39,9 +52,18 @@ export async function logSellerEmail(input: LogSellerEmailInput) {
     template_id: input.templateId,
     recipient_email: input.recipientEmail.trim().toLowerCase(),
     company_id: input.companyId ?? null,
+    provider_message_id: input.providerMessageId ?? null,
   })
 
   if (error) {
     console.error("logSellerEmail", error)
+    await logServerError({
+      message: "Kunne ikke skrive seller_email_log",
+      error,
+      level: "warning",
+      source: "server",
+      route: "logSellerEmail",
+      context: { sentBy: input.sentBy, templateId: input.templateId, companyId: input.companyId },
+    })
   }
 }

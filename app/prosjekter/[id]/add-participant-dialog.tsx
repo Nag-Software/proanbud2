@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog"
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription, ResponsiveDialogFooter, ResponsiveDialogTrigger } from "@/components/ui/responsive-dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getCompanyUsersAction, addProjectParticipantAction } from "./deltakere-actions"
+import { reportClientError } from "@/lib/errors/client"
 import { Plus, UserPlus } from "lucide-react"
 
 export function AddParticipantDialog({ projectId, currentParticipants }: { projectId: string; currentParticipants: any[] }) {
@@ -30,6 +31,8 @@ export function AddParticipantDialog({ projectId, currentParticipants }: { proje
         setLoading(false)
       }).catch(err => {
         console.error(err)
+        reportClientError(err, { level: "warning", context: { action: "hente tilgjengelige brukere for deltakerdialog", projectId } })
+        setError("Kunne ikke hente brukere. Prøv igjen.")
         setLoading(false)
       })
     } else {
@@ -52,6 +55,7 @@ export function AddParticipantDialog({ projectId, currentParticipants }: { proje
         await addProjectParticipantAction(projectId, selectedUser, accessLevel)
         setOpen(false)
     } catch (err: any) {
+        reportClientError(err, { context: { action: "legge til deltaker i prosjekt", projectId } })
         setError(err.message || "En feil oppstod")
     } finally {
         setSubmitting(false)
@@ -59,22 +63,22 @@ export function AddParticipantDialog({ projectId, currentParticipants }: { proje
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ResponsiveDialog open={open} onOpenChange={setOpen}>
+      <ResponsiveDialogTrigger asChild>
         <Button className="w-full sm:w-auto gap-2">
           <Plus className="h-4 w-4" /> Legg til deltaker
         </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserPlus className="h-5 w-5" /> 
+      </ResponsiveDialogTrigger>
+      <ResponsiveDialogContent className="sm:max-w-[425px]">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle className="flex items-center gap-2">
+            <UserPlus className="h-5 w-5" />
             Legg til deltaker
-          </DialogTitle>
-          <DialogDescription>
+          </ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
             Velg en ansatt fra bedriften din og tildel et tilgangsnivå for dette prosjektet.
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
         
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
@@ -123,13 +127,13 @@ export function AddParticipantDialog({ projectId, currentParticipants }: { proje
           {error && <p className="text-sm text-destructive font-medium">{error}</p>}
         </div>
         
-        <DialogFooter>
+        <ResponsiveDialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={submitting}>Avbryt</Button>
           <Button onClick={handleAdd} disabled={!selectedUser || submitting}>
             {submitting ? "Legger til..." : "Legg til"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }

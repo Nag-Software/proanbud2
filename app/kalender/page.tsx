@@ -3,9 +3,14 @@
 import { AppPageShell } from "@/components/app-page-shell"
 import { Button } from "@/components/ui/button"
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react"
+import dynamic from "next/dynamic"
 import { useSearchParams } from "next/navigation"
+import { addMonths, endOfMonth, startOfMonth, subMonths } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
 import { LOGIN_PATH } from '@/lib/constants'
+import { toast } from "sonner"
+import { reportClientError } from "@/lib/errors/client"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -13,30 +18,24 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-import { momentLocalizer, Views } from "react-big-calendar"
-import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop"
-import ShadcnBigCalendar from "@/components/ui/shadcn-big-calendar"
-import moment from "moment"
-import "moment/locale/nb"
-
 import { CalendarToolbar, type CalendarView } from "./calendar-toolbar"
 import { MonthCalendar } from "./month-calendar"
+import type { CalendarEvent } from "./types"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useUserRole } from "@/hooks/use-user-role"
+import { PlanGate } from "@/components/billing/plan-gate"
 
-moment.locale("nb");
-const localizer = momentLocalizer(moment);
-const DnDCalendar = withDragAndDrop<CalendarEvent>(ShadcnBigCalendar as any);
-
-type CalendarEvent = {
-  id: string
-  title: string
-  start: Date
-  end: Date
-  description?: string
-  backgroundColor?: string
-  textColor?: string
-  extendedProps?: any
-}
+// react-big-calendar + drag-and-drop addon + its localizer are the app's
+// heaviest chunk and are only needed in week/day view (default is month, which
+// renders via the lightweight date-fns MonthCalendar). Load them on demand.
+const DnDCalendar = dynamic(() => import("./dnd-calendar"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+      Laster kalender…
+    </div>
+  ),
+})
 
 function defaultSlotTimes(day: Date) {
   const start = new Date(day)
@@ -48,11 +47,13 @@ function defaultSlotTimes(day: Date) {
 
 function KalenderPage() {
   const isMobile = useIsMobile()
+  const confirm = useConfirm()
+  const { loadingRole, hasFeature } = useUserRole()
   const [integrations, setIntegrations] = useState<{ provider: string }[]>([])
   const [loggedIn, setLoggedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
-  const [view, setView] = useState<CalendarView>(Views.MONTH)
+  const [view, setView] = useState<CalendarView>("month")
   const [date, setDate] = useState(new Date())
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [fetchRange, setFetchRange] = useState<{start: string, end: string} | null>(null)
@@ -78,8 +79,8 @@ function KalenderPage() {
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    if (isMobile && view !== Views.MONTH) {
-      setView(Views.MONTH)
+    if (isMobile && view !== "month") {
+      setView("month")
     }
   }, [isMobile, view])
 
@@ -113,6 +114,7 @@ function KalenderPage() {
       }
     } catch (e) {
       console.error("Failed to fetch events", e)
+      reportClientError(e, { level: "warning", context: { action: "Hente kalenderhendelser" } })
     }
   }, [])
 
@@ -132,7 +134,8 @@ function KalenderPage() {
         setLoggedIn(false)
         setIntegrations([])
       }
-    } catch {
+    } catch (e) {
+      reportClientError(e, { level: "warning", context: { action: "Laste kalenderintegrasjoner" } })
       setLoggedIn(false)
       setIntegrations([])
     } finally {
@@ -162,8 +165,8 @@ function KalenderPage() {
   useEffect(() => {
     if (!loggedIn || integrations.length === 0) return
 
-    const startD = moment(date).startOf('month').subtract(1, 'month').toDate()
-    const endD = moment(date).endOf('month').add(1, 'month').toDate()
+    const startD = subMonths(startOfMonth(date), 1)
+    const endD = addMonths(endOfMonth(date), 1)
 
     setFetchRange({
        start: startD.toISOString(),
@@ -200,7 +203,15 @@ function KalenderPage() {
   }
 
   const handleDisconnect = async (provider: "google" | "microsoft") => {
-    if (!confirm(`Koble fra ${provider === "google" ? "Google" : "Outlook"} Calendar?`)) return
+    const providerName = provider === "google" ? "Google" : "Outlook"
+    const ok = await confirm({
+      title: `Koble fra ${providerName} Calendar?`,
+      description: `Hendelsene fra ${providerName} Calendar fjernes fra Proanbud-kalenderen, og synkroniseringen stopper. Du kan koble til igjen senere.`,
+      confirmText: "Koble fra",
+      cancelText: "Avbryt",
+      variant: "destructive",
+    })
+    if (!ok) return
     setIsDisconnecting(true)
     try {
       const res = await fetch(`/api/integrations/calendar/revoke?provider=${provider}`, {
@@ -214,7 +225,8 @@ function KalenderPage() {
         const data = await res.json()
         setStatusMessage(data.error ?? "Kunne ikke koble fra kalender.")
       }
-    } catch {
+    } catch (e) {
+      reportClientError(e, { context: { action: "Koble fra kalender", provider } })
       setStatusMessage("Kunne ikke koble fra kalender.")
     } finally {
       setIsDisconnecting(false)
@@ -293,10 +305,11 @@ function KalenderPage() {
         triggerRefetch()
       } else {
         const data = await res.json()
-        alert(`Kunne ikke lagre: ${data.error}`)
+        toast.error(`Kunne ikke lagre: ${data.error}`)
       }
     } catch (e) {
-      alert("En feil oppstod ved lagring.")
+      reportClientError(e, { context: { action: "Opprette kalenderhendelse" } })
+      toast.error("En feil oppstod ved lagring.")
     } finally {
       setIsSubmitting(false)
     }
@@ -326,11 +339,12 @@ function KalenderPage() {
         triggerRefetch()
       } else {
         const data = await res.json()
-        alert(`Kunne ikke lagre: ${data.error}`)
+        toast.error(`Kunne ikke lagre: ${data.error}`)
       }
     } catch (e) {
       console.error(e)
-      alert("Kunne ikke lagre oppdateringen.")
+      reportClientError(e, { context: { action: "Oppdatere kalenderhendelse" } })
+      toast.error("Kunne ikke lagre oppdateringen.")
     } finally {
       setIsSubmitting(false)
     }
@@ -338,7 +352,14 @@ function KalenderPage() {
 
   const handleDeleteEvent = async () => {
     if (!activeEventId) return
-    if (!confirm("Er du sikker på at du vil slette dette eventet?")) return
+    const ok = await confirm({
+      title: "Slette hendelse?",
+      description: "Hendelsen slettes permanent fra kalenderen og kan ikke gjenopprettes.",
+      confirmText: "Slett hendelse",
+      cancelText: "Avbryt",
+      variant: "destructive",
+    })
+    if (!ok) return
     setIsDeleting(true)
 
     try {
@@ -351,10 +372,11 @@ function KalenderPage() {
         triggerRefetch()
       } else {
         const data = await res.json()
-        alert(`Kunne ikke slette: ${data.error}`)
+        toast.error(`Kunne ikke slette: ${data.error}`)
       }
     } catch (e) {
-      alert("En feil oppstod ved sletting.")
+      reportClientError(e, { context: { action: "Slette kalenderhendelse" } })
+      toast.error("En feil oppstod ved sletting.")
     } finally {
       setIsDeleting(false)
     }
@@ -380,7 +402,8 @@ function KalenderPage() {
       triggerRefetch()
     } catch (e) {
       console.error(e)
-      alert("Kunne ikke flytte/endre størrelse på møtet. Tilbakestiller visning.")
+      reportClientError(e, { context: { action: "Flytte/endre kalenderhendelse" } })
+      toast.error("Kunne ikke flytte/endre størrelse på møtet. Tilbakestiller visning.")
       triggerRefetch()
     }
   }
@@ -394,6 +417,27 @@ function KalenderPage() {
         borderRadius: 0,
       }
     }
+  }
+
+  if (loadingRole) {
+    return (
+      <AppPageShell segments={["Kalender"]} noPadding>
+        <div className="flex h-full min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
+          Laster inn...
+        </div>
+      </AppPageShell>
+    )
+  }
+
+  if (!hasFeature("kalender")) {
+    return (
+      <AppPageShell segments={["Kalender"]}>
+        <PlanGate
+          featureName="Kalender"
+          description="Koble til Google og Outlook for å se og administrere avtalene dine direkte i Proanbud."
+        />
+      </AppPageShell>
+    )
   }
 
   return (
@@ -442,7 +486,7 @@ function KalenderPage() {
                 </Button>
               </div>
             </div>
-          ) : view === Views.MONTH ? (
+          ) : view === "month" ? (
             <MonthCalendar
               date={date}
               events={filteredEvents}
@@ -450,41 +494,20 @@ function KalenderPage() {
               onEventClick={handleEventClick}
             />
           ) : (
-            <div className="h-full min-h-0">
-              <DnDCalendar
-                localizer={localizer}
-                events={filteredEvents}
-                style={{ height: "100%" }}
-                date={date}
-                view={view}
-                onNavigate={(newDate: Date) => setDate(newDate)}
-                onView={(newView) => setView(newView as CalendarView)}
-                min={minTime}
-                max={maxTime}
-                selectable
-                resizable
-                onSelectSlot={handleSlotSelect}
-                onSelectEvent={handleEventClick}
-                onEventDrop={handleEventDropOrResize}
-                onEventResize={handleEventDropOrResize}
-                eventPropGetter={eventPropGetter}
-                messages={{
-                  today: "I dag",
-                  previous: "Forrige",
-                  next: "Neste",
-                  month: "Måned",
-                  week: "Uke",
-                  day: "Dag",
-                  agenda: "Agenda",
-                  date: "Dato",
-                  time: "Tid",
-                  event: "Hendelse",
-                  allDay: "Hele dagen",
-                  noEventsInRange: "Ingen hendelser i denne perioden.",
-                  showMore: (total) => `+${total} flere`
-                }}
-              />
-            </div>
+            <DnDCalendar
+              events={filteredEvents}
+              date={date}
+              view={view}
+              onNavigate={setDate}
+              onView={setView}
+              min={minTime}
+              max={maxTime}
+              onSelectSlot={handleSlotSelect}
+              onSelectEvent={handleEventClick}
+              onEventDrop={handleEventDropOrResize}
+              onEventResize={handleEventDropOrResize}
+              eventPropGetter={eventPropGetter}
+            />
           )}
         </div>
       </div>

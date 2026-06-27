@@ -34,7 +34,17 @@ export function ModuleGate({ moduleName, monthlyPriceNok, description }: ModuleG
               Aktiver modulen for <strong>+{monthlyPriceNok} kr/mnd</strong> under abonnement.
             </>
           ) : (
-            <>Kontakt bedriftens administrator for å aktivere modulen på abonnementet.</>
+            <>
+              Be en administrator i bedriften om å aktivere modulen på abonnementet. Du finner hvem
+              som er administrator under{" "}
+              <Link
+                href="/min-bedrift/ansatte-og-roller"
+                className="font-medium text-foreground underline underline-offset-2"
+              >
+                Ansatte og roller
+              </Link>
+              .
+            </>
           )}
         </p>
         {canManageBilling && !loadingRole && (

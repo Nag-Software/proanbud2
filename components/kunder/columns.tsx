@@ -1,6 +1,6 @@
 "use client"
 
-import { ColumnDef } from "@tanstack/react-table"
+import { ColumnDef, Row } from "@tanstack/react-table"
 import { useRouter } from "next/navigation"
 import { Customer } from "./schema"
 import { Badge } from "@/components/ui/badge"
@@ -16,9 +16,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { deleteCustomerAction } from "@/app/kunder/actions"
 import { toast } from "sonner"
+import { reportClientError } from "@/lib/errors/client"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 
 type CustomerColumnHandlers = {
   onViewDetails: (customer: Customer) => void
+  /** Show the Tripletex sync-status column. Only when Tripletex is connected. */
+  showTripletex?: boolean
 }
 
 function CustomerRowActions({
@@ -29,17 +33,27 @@ function CustomerRowActions({
   onViewDetails: (customer: Customer) => void
 }) {
   const router = useRouter()
+  const confirm = useConfirm()
 
-  const handleDelete = () => {
-    deleteCustomerAction(customer.id)
-      .then(() => {
-        toast.success("Kunde fjernet")
-        router.refresh()
-      })
-      .catch((error: Error) => {
-        toast.error("Kunne ikke fjerne kunde")
-        console.error(error)
-      })
+  const handleDelete = async () => {
+    const ok = await confirm({
+      title: `Slette ${customer.name}?`,
+      description: "Kunden og tilknyttet historikk fjernes. Dette kan ikke angres.",
+      confirmText: "Slett kunde",
+      cancelText: "Avbryt",
+      variant: "destructive",
+    })
+    if (!ok) return
+
+    try {
+      await deleteCustomerAction(customer.id)
+      toast.success("Kunde slettet")
+      router.refresh()
+    } catch (error) {
+      reportClientError(error, { context: { action: "delete-customer", customerId: customer.id } })
+      toast.error("Kunne ikke slette kunde")
+      console.error(error)
+    }
   }
 
   return (
@@ -85,7 +99,7 @@ function CustomerRowActions({
             className="text-destructive"
             onSelect={(event) => {
               event.preventDefault()
-              handleDelete()
+              void handleDelete()
             }}
           >
             Fjern kunde
@@ -98,6 +112,7 @@ function CustomerRowActions({
 
 export function createCustomerColumns({
   onViewDetails,
+  showTripletex = false,
 }: CustomerColumnHandlers): ColumnDef<Customer>[] {
   return [
   {
@@ -145,27 +160,31 @@ export function createCustomerColumns({
       return <div className="text-right font-medium">{amount}</div>
     },
   },
-  {
-    accessorKey: "syncStatus",
-    header: "Tripletex",
-    cell: ({ row }) => {
-      const value = row.original.syncStatus || "none"
+  ...(showTripletex
+    ? [
+        {
+          accessorKey: "syncStatus",
+          header: "Tripletex",
+          cell: ({ row }: { row: Row<Customer> }) => {
+            const value = row.original.syncStatus || "none"
 
-      if (value === "synced") {
-        return <Badge variant="outline">Synced</Badge>
-      }
+            if (value === "synced") {
+              return <Badge variant="outline">Synced</Badge>
+            }
 
-      if (value === "syncing") {
-        return <Badge variant="secondary">Syncer...</Badge>
-      }
+            if (value === "syncing") {
+              return <Badge variant="secondary">Syncer...</Badge>
+            }
 
-      if (value === "attention") {
-        return <Badge variant="destructive">Krever handling</Badge>
-      }
+            if (value === "attention") {
+              return <Badge variant="destructive">Krever handling</Badge>
+            }
 
-      return <Badge variant="secondary">Ikke synkronisert</Badge>
-    },
-  },
+            return <Badge variant="secondary">Ikke synkronisert</Badge>
+          },
+        } satisfies ColumnDef<Customer>,
+      ]
+    : []),
   {
     id: "actions",
     cell: ({ row }) => (

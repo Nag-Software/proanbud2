@@ -1,0 +1,200 @@
+// Core of the first cold-email step (step_index 0) for the outbound lead engine.
+// Extracted from app/api/outreach/auto-send so it can be driven both by the manual
+// "Full auto"-button (with a logged-in seller) and by the daily cron (no user).
+
+import type { createAdminClient } from "@/lib/supabase/admin"
+import { logSellerEmail } from "@/lib/selger/activity-log"
+import { logServerError } from "@/lib/errors/log"
+import { BRANSJE_LABELS, resolveBransje } from "@/lib/outreach/bransje"
+import { buildExampleOfferUrl, EXAMPLE_OFFER_CTA_LABEL } from "@/lib/outreach/example-offers"
+import { generateOutreachDraft } from "@/lib/outreach/draft"
+import { isOptedOut, sendOutreachEmail } from "@/lib/outreach/send"
+
+type AdminClient = ReturnType<typeof createAdminClient>
+
+export type OutreachRunResult = { sent: number; skipped: number; failed: number }
+
+type EligibleProspect = {
+  id: string
+  org_number: string
+  name: string
+  email: string | null
+  city: string | null
+  nace_code: string | null
+  nace_description: string | null
+  employee_count: number | null
+  status: string
+}
+
+/**
+ * Send the first cold email to up to `maxBatch` fresh prospects (status ny/kvalifisert,
+ * has email, not an existing customer). Caller is responsible for the daily cap —
+ * `maxBatch` should already be the remaining budget for today.
+ */
+export async function runInitialOutreach(
+  admin: AdminClient,
+  opts: { origin: string; sentByUserId: string | null; maxBatch: number },
+): Promise<OutreachRunResult> {
+  const result: OutreachRunResult = { sent: 0, skipped: 0, failed: 0 }
+  if (opts.maxBatch <= 0) return result
+
+  const { data: prospects, error } = await admin
+    .from("prospects")
+    .select("id, org_number, name, email, city, nace_code, nace_description, employee_count, status")
+    .not("email", "is", null)
+    .eq("is_existing_customer", false)
+    .in("status", ["ny", "kvalifisert"])
+    .order("created_at", { ascending: true })
+    .limit(opts.maxBatch)
+
+  if (error) {
+    console.error("[outreach/initial-send] load failed", error)
+    throw new Error("Kunne ikke hente prospekter")
+  }
+
+  const rows = (prospects ?? []) as EligibleProspect[]
+
+  async function processOne(p: EligibleProspect) {
+    if (!p.email) {
+      result.skipped += 1
+      return
+    }
+    try {
+      if (await isOptedOut(admin, { email: p.email, orgNumber: p.org_number })) {
+        result.skipped += 1
+        await admin
+          .from("prospects")
+          .update({ status: "avvist", updated_at: new Date().toISOString() })
+          .eq("id", p.id)
+        return
+      }
+
+      // Atomically claim the first step (step_index 0) BEFORE sending, so two
+      // overlapping runs (the daily cron + the manual "Full auto" button, or a retry
+      // after a hiccup) can never double-send the cold email. ON CONFLICT DO NOTHING →
+      // empty array means the step is already claimed/sent; skip. Mirrors the followup
+      // claim in followup.ts.
+      const { data: claimed, error: claimErr } = await admin
+        .from("prospect_outreach")
+        .upsert(
+          { prospect_id: p.id, channel: "email", step_index: 0, status: "queued" },
+          { onConflict: "prospect_id,step_index", ignoreDuplicates: true },
+        )
+        .select("id")
+      if (claimErr) {
+        console.error("[outreach/initial-send] claim failed for", p.id, claimErr)
+        await logServerError({
+          message: "Kunne ikke reservere første kald-steg for prospekt",
+          error: claimErr,
+          source: "worker",
+          route: "lib/outreach/initial-send runInitialOutreach",
+          context: { prospectId: p.id },
+        })
+        result.failed += 1
+        return
+      }
+      if (!claimed || claimed.length === 0) {
+        result.skipped += 1
+        return
+      }
+      const rowId = claimed[0].id as string
+
+      // Pick a real, trade-specific example offer to show off ("vis, ikke fortell").
+      const bransje = resolveBransje({ naceCode: p.nace_code, naceDescription: p.nace_description })
+      const exampleLabel = BRANSJE_LABELS[bransje]
+
+      let emailSent = false
+      try {
+        const draft = await generateOutreachDraft({
+          name: p.name,
+          city: p.city,
+          naceDescription: p.nace_description,
+          employeeCount: p.employee_count,
+          exampleLabel,
+        })
+
+        const unsubscribeUrl = `${opts.origin}/api/outreach/unsubscribe?p=${p.id}`
+        const { providerMessageId } = await sendOutreachEmail({
+          to: p.email,
+          subject: draft.subject,
+          body: draft.body,
+          unsubscribeUrl,
+          ctaUrl: buildExampleOfferUrl(bransje),
+          ctaLabel: EXAMPLE_OFFER_CTA_LABEL,
+        })
+        emailSent = true
+
+        const now = new Date().toISOString()
+        await admin
+          .from("prospect_outreach")
+          .update({
+            status: "sent",
+            ai_subject: draft.subject,
+            ai_body: draft.body,
+            sent_at: now,
+            approved_by: opts.sentByUserId,
+            updated_at: now,
+          })
+          .eq("id", rowId)
+        await admin
+          .from("prospects")
+          .update({ status: "kontaktet", last_contacted_at: now, updated_at: now })
+          .eq("id", p.id)
+
+        await logSellerEmail({
+          sentBy: opts.sentByUserId,
+          templateId: "outreach-cold",
+          recipientEmail: p.email,
+          companyId: null,
+          providerMessageId,
+        })
+        result.sent += 1
+      } catch (sendErr) {
+        if (emailSent) {
+          // The email went out but the follow-up bookkeeping failed. Do NOT release the
+          // claim — the row stays and blocks a re-send, so a hiccup can never re-mail the
+          // prospect. It was sent, so count it.
+          console.error("[outreach/initial-send] post-send bookkeeping failed for", p.id, sendErr)
+          await logServerError({
+            message: "Etterarbeid feilet etter sendt kald-e-post (e-post gikk ut)",
+            error: sendErr,
+            level: "warning",
+            source: "worker",
+            route: "lib/outreach/initial-send runInitialOutreach",
+            context: { prospectId: p.id, rowId },
+          })
+          result.sent += 1
+        } else {
+          // Nothing was sent — release the claim so the step retries on the next run.
+          console.error("[outreach/initial-send] send failed for", p.id, sendErr)
+          await logServerError({
+            message: "Kunne ikke sende første kald-e-post",
+            error: sendErr,
+            source: "worker",
+            route: "lib/outreach/initial-send runInitialOutreach",
+            context: { prospectId: p.id, rowId },
+          })
+          await admin.from("prospect_outreach").delete().eq("id", rowId)
+          result.failed += 1
+        }
+      }
+    } catch (err) {
+      console.error("[outreach/initial-send] failed for", p.id, err)
+      await logServerError({
+        message: "Uventet feil under første kald-utsending for prospekt",
+        error: err,
+        source: "worker",
+        route: "lib/outreach/initial-send runInitialOutreach",
+        context: { prospectId: p.id },
+      })
+      result.failed += 1
+    }
+  }
+
+  // Bounded concurrency to be gentle on OpenAI/Resend.
+  for (let i = 0; i < rows.length; i += 5) {
+    await Promise.all(rows.slice(i, i + 5).map(processOne))
+  }
+
+  return result
+}

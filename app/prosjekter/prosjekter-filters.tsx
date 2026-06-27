@@ -88,8 +88,8 @@ export function ProsjekterFilters() {
 
   return (
     <div className="rounded-xl border-0 border-border/60 bg-card/60">
-      <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
-        <div className="space-y-1">
+      <div className="grid gap-2 md:grid-cols-[1fr_auto] md:items-end">
+        <div className="sm:space-y-1">
           <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Søk</p>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -102,10 +102,10 @@ export function ProsjekterFilters() {
           </div>
         </div>
 
-        <div className="space-y-1">
+        <div className="sm:space-y-1">
           <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Sorter</p>
           <Select value={currentSort} onValueChange={handleSortChange} disabled={isPending}>
-            <SelectTrigger className="h-9 w-full md:w-[180px]">
+            <SelectTrigger className="h-9! w-full md:w-[180px]">
               <SelectValue placeholder="Sorter etter" />
             </SelectTrigger>
             <SelectContent>
@@ -122,7 +122,7 @@ export function ProsjekterFilters() {
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="hidden! mt-3 flex flex-wrap items-center gap-2">
         {statusFilters.map((status) => {
           const isActive = currentStatus === status.value
 

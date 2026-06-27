@@ -5,8 +5,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { AppPageShell } from "@/components/app-page-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Area, AreaChart, CartesianGrid, XAxis, RadialBarChart, RadialBar, PolarAngleAxis } from "recharts"
-import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import dynamic from "next/dynamic"
 import { TrendingUp, FileText, FolderKanban, Users, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +17,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { createClient } from "@/lib/supabase/client"
+import { reportClientError } from "@/lib/errors/client"
+import { useRouter } from "next/navigation"
+import { useUserRole } from "@/hooks/use-user-role"
+import { useAuth } from "@/components/auth-provider"
 
 const formatNok = (val: number) =>
   new Intl.NumberFormat("no-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(val)
@@ -99,10 +102,17 @@ function OfferRowActions({ offerId }: { offerId: string }) {
   )
 }
 
-const areaChartConfig = {
-  omsetning: { label: "Omsetning", color: "var(--color-primary)" },
-  tilbud: { label: "Tilbud sendt", color: "var(--color-accent)" },
-} satisfies ChartConfig
+// Charts live in a separate chunk so recharts is not in the dashboard's
+// first-load JS — loaded on demand once the page mounts (ssr:false: data is
+// fetched client-side anyway). Fixed-height placeholders avoid layout shift.
+const RevenueAreaChart = dynamic(
+  () => import("./dashboard-charts").then((m) => m.RevenueAreaChart),
+  { ssr: false, loading: () => <div className="h-[240px] w-full animate-pulse bg-muted/40" /> }
+)
+const PerformanceGauge = dynamic(
+  () => import("./dashboard-charts").then((m) => m.PerformanceGauge),
+  { ssr: false, loading: () => <div className="h-[130px] w-[180px] animate-pulse bg-muted/40" /> }
+)
 
 interface DashboardData {
   omsetning: number
@@ -126,10 +136,26 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
+  const router = useRouter()
+  const { canonicalRole, loadingRole } = useUserRole()
+  // Reuse the session AuthProvider already resolved instead of a 3rd getUser()
+  // round-trip on the dashboard's hot path.
+  const { user: authUser, loading: authLoading } = useAuth()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  // Feeds (recent/active offers, top projects) need extra name-lookup queries
+  // after the KPIs are ready — tracked separately so the KPIs can paint first.
+  const [feedsLoading, setFeedsLoading] = useState(true)
+
+  // Workers do not have access to the company dashboard — send them to projects.
+  useEffect(() => {
+    if (!loadingRole && canonicalRole === "worker") {
+      router.replace("/prosjekter")
+    }
+  }, [loadingRole, canonicalRole, router])
 
   useEffect(() => {
+    let cancelled = false
     async function load() {
       // Temporary: support ?mock=1 to inject static mock data for screenshots.
       // Remove this block once screenshots are captured.
@@ -188,25 +214,29 @@ export default function DashboardPage() {
           }
           setData(mock)
           setLoading(false)
+          setFeedsLoading(false)
           return
         }
       } catch (e) {
         // ignore and continue to real load
+        reportClientError(e, { context: { action: "injisere mock-dashboarddata" }, level: "warning" })
       }
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { setLoading(false); return }
+      // Wait for the shared session to resolve; reuse it instead of a fresh
+      // network getUser() (middleware + AuthProvider already validated it).
+      if (authLoading) return
+      if (!authUser) { setLoading(false); return }
 
+      const supabase = createClient()
       const { data: userData } = await supabase
         .from("users")
         .select("company_id, full_name")
-        .eq("id", user.id)
+        .eq("id", authUser.id)
         .single()
       const companyId = userData?.company_id
       const rawName = userData?.full_name
-        || (user.user_metadata?.full_name as string | undefined)
-        || (user.user_metadata?.name as string | undefined)
-        || (user.email?.split("@")[0] ?? "")
+        || (authUser.user_metadata?.full_name as string | undefined)
+        || (authUser.user_metadata?.name as string | undefined)
+        || (authUser.email?.split("@")[0] ?? "")
       const firstName = rawName.split(" ")[0]
       if (!companyId) { setLoading(false); return }
 
@@ -289,6 +319,23 @@ export default function DashboardPage() {
       const companyLogo = companyRes.data?.logo_url?.trim() || null
       const companyStatus = "aktiv" as const
 
+      // PHASE 1 — paint KPIs / chart / gauge / company the moment the aggregates
+      // resolve, with empty feeds. The feed name-lookups below add 1-2 more
+      // serial round-trips; gating the whole dashboard on them kept every number
+      // skeletoned far longer than necessary.
+      if (cancelled) return
+      setData({
+        omsetning, omsetningPrev,
+        activeProjects, activeProjectsPrev,
+        tilbudSendt, tilbudSentPrev,
+        kunders, kundersPrev,
+        todayOmsetning, yesterdayOmsetning,
+        chartData,
+        recentOffers: [], tableOffers: [], topProjects: [],
+        userName, companyName, companyLogo, companyStatus,
+      })
+      setLoading(false)
+
       if (uniqueProjectIds.length) {
         const { data: projRows } = await supabase.from("projects").select("id, name, customer_id").in("id", uniqueProjectIds)
         ;(projRows || []).forEach(p => {
@@ -325,15 +372,25 @@ export default function DashboardPage() {
         status: o.status || "draft",
       }))
 
-      // Top projects by offer count
+      // Top projects by offer count — one .in() query + tally in JS instead of
+      // an offers count query per project (N+1). Uses idx_offers_project_id.
       const topProjects: DashboardData["topProjects"] = []
       if (topProjectsRes.data?.length) {
-        const counts = await Promise.all(
-          topProjectsRes.data.map(async p => {
-            const { count } = await supabase.from("offers").select("id", { count: "exact", head: true }).eq("project_id", p.id)
-            return { id: p.id, navn: p.name, offers: count || 0 }
-          })
-        )
+        const projectIds = topProjectsRes.data.map(p => p.id)
+        const { data: offerRows } = await supabase
+          .from("offers")
+          .select("project_id")
+          .in("project_id", projectIds)
+        const offerCountById = new Map<string, number>()
+        for (const row of offerRows || []) {
+          if (!row.project_id) continue
+          offerCountById.set(row.project_id, (offerCountById.get(row.project_id) || 0) + 1)
+        }
+        const counts = topProjectsRes.data.map(p => ({
+          id: p.id,
+          navn: p.name,
+          offers: offerCountById.get(p.id) || 0,
+        }))
         const max = Math.max(1, ...counts.map(c => c.offers))
         topProjects.push(
           ...counts
@@ -343,19 +400,22 @@ export default function DashboardPage() {
         )
       }
 
-      setData({
-        omsetning, omsetningPrev,
-        activeProjects, activeProjectsPrev,
-        tilbudSendt, tilbudSentPrev,
-        kunders, kundersPrev,
-        todayOmsetning, yesterdayOmsetning,
-        chartData, recentOffers, tableOffers, topProjects,
-        userName, companyName, companyLogo, companyStatus,
-      })
-      setLoading(false)
+      // PHASE 2 — patch the resolved feeds into the already-painted dashboard.
+      if (cancelled) return
+      setData((prev) =>
+        prev ? { ...prev, recentOffers, tableOffers, topProjects } : prev
+      )
+      setFeedsLoading(false)
     }
     load()
-  }, [])
+    return () => {
+      cancelled = true
+    }
+    // Key on the user id (not the authUser object) so a token refresh — which
+    // hands us a new user object with the same id — does not reload the whole
+    // dashboard.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser?.id, authLoading])
 
   const gaugeValue = !data ? 0
     : data.omsetningPrev > 0
@@ -399,11 +459,16 @@ export default function DashboardPage() {
     },
   ] : []
 
+  // Avoid flashing company-wide dashboard data to workers while redirecting.
+  if (canonicalRole === "worker") {
+    return null
+  }
+
   return (
     <AppPageShell segments={["Dashbord"]}>
       <div className="flex flex-col max-w-[2000px] w-full mx-auto gap-5 pb-10">
 
-        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
           <div className="flex flex-col gap-4">
             {/* Welcome banner */}
             <Card className="hidden! border-border theme-surface-hero">
@@ -498,25 +563,7 @@ export default function DashboardPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="px-2 pb-0 pt-2">
-                  <ChartContainer config={areaChartConfig} className="h-[240px] w-full">
-                    <AreaChart data={data?.chartData || []} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="fillOmsetning" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.08} />
-                          <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="fillTilbud" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.32} />
-                          <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.2} />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--chart-axis-muted)" }} dy={8} />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Area type="monotone" dataKey="omsetning" stroke="var(--color-primary)" strokeWidth={2.5} fill="url(#fillOmsetning)" dot={false} />
-                      <Area type="monotone" dataKey="tilbud" stroke="var(--color-accent)" strokeWidth={2.5} fill="url(#fillTilbud)" dot={false} />
-                    </AreaChart>
-                  </ChartContainer>
+                  <RevenueAreaChart chartData={data?.chartData || []} />
                 </CardContent>
               </Card>
             </div>
@@ -537,12 +584,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="flex flex-col items-center px-5 gap-0 flex-1">
               <div className="relative w-full flex justify-center my-1">
-                <ChartContainer config={{ ytelse: { label: "Ytelse", color: "var(--color-primary)" } }} className="h-[130px] w-[180px]">
-                  <RadialBarChart data={[{ name: "Ytelse", value: loading ? 0 : gaugeValue }]} startAngle={180} endAngle={0} innerRadius={55} outerRadius={80}>
-                    <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                    <RadialBar dataKey="value" background={{ fill: "var(--color-secondary)" }} fill="var(--color-primary)" cornerRadius={6} />
-                  </RadialBarChart>
-                </ChartContainer>
+                <PerformanceGauge value={loading ? 0 : gaugeValue} />
                 <div className="absolute bottom-4 flex flex-col items-center">
                   <span className="text-2xl font-medium">{loading ? "—" : formatNok(data?.omsetning ?? 0)}</span>
                   <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Måneds omsetning</span>
@@ -574,8 +616,8 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-          
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
+
           <Card className="bg-card/85">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Siste tilbud</CardTitle>
@@ -600,7 +642,7 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {loading
+                    {feedsLoading
                       ? Array.from({ length: 4 }).map((_, i) => (
                         <tr key={i}>
                           {Array.from({ length: 6 }).map((_, j) => (
@@ -633,12 +675,12 @@ export default function DashboardPage() {
                     }
                   </tbody>
                 </table>
-                {!loading && data?.tableOffers.length === 0 && (
+                {!feedsLoading && data?.tableOffers.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-6">Ingen tilbud ennå</p>
                 )}
               </div>
               <div className="divide-y md:hidden">
-                {loading
+                {feedsLoading
                   ? Array.from({ length: 4 }).map((_, i) => (
                       <div key={i} className="py-3">
                         <div className="h-4 w-2/3 animate-pulse bg-muted" />
@@ -669,7 +711,7 @@ export default function DashboardPage() {
                         </div>
                       </Link>
                     ))}
-                {!loading && data?.tableOffers.length === 0 && (
+                {!feedsLoading && data?.tableOffers.length === 0 && (
                   <p className="py-6 text-center text-xs text-muted-foreground">Ingen tilbud ennå</p>
                 )}
               </div>
@@ -681,7 +723,7 @@ export default function DashboardPage() {
               <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Aktive tilbud</CardTitle>
             </CardHeader>
             <CardContent className="p-0 flex-1 overflow-auto">
-              {loading ? (
+              {feedsLoading ? (
                 <div className="divide-y">
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div key={i} className="px-4 py-3 space-y-1.5 animate-pulse">
@@ -717,7 +759,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Table + Top projects */}
-        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
           <Card className="bg-card/85">
             <CardHeader className="border-b mt-0 py-0">
               <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Topp prosjekter</CardTitle>
@@ -727,7 +769,7 @@ export default function DashboardPage() {
                 <span>Prosjektnavn</span>
                 <span>Tilbud sendt</span>
               </div>
-              {loading
+              {feedsLoading
                 ? Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="space-y-1.5 animate-pulse">
                     <div className="flex justify-between">

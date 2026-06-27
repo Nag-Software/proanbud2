@@ -5,6 +5,7 @@ import {
   getSanityWriteToken,
 } from "@/lib/sanity/config"
 import { sanityFetch } from "@/lib/sanity/api"
+import { logServerError } from "@/lib/errors/log"
 
 type StockImageCandidate = {
   url: string
@@ -253,7 +254,14 @@ Rules:
       .filter((query) => query.length > 0)
 
     return queries.length > 0 ? queries : buildBroadenedSearchQueries(input.searchQuery, input.imageAlt)
-  } catch {
+  } catch (error) {
+    await logServerError({
+      message: "Klarte ikke parse AI-genererte bildesøk – bruker fallback-spørringer",
+      error,
+      source: "server",
+      route: "lib/sanity/images.ts:generateEnglishImageSearchQueries",
+      level: "warning",
+    })
     return buildBroadenedSearchQueries(input.searchQuery, input.imageAlt)
   }
 }
@@ -714,7 +722,15 @@ export async function resolveUniqueArticleImage(input: {
         sourceName: candidate.sourceName,
         sourceId: candidate.sourceId,
       }
-    } catch {
+    } catch (error) {
+      await logServerError({
+        message: "Opplasting av bildekandidat til Sanity feilet – prøver neste kandidat",
+        error,
+        source: "server",
+        route: "lib/sanity/images.ts:resolveUniqueArticleImage",
+        level: "warning",
+        context: { sourceName: candidate.sourceName, sourceId: candidate.sourceId },
+      })
       continue
     }
   }

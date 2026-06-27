@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { runTripletexWorker } from "@/lib/integrations/tripletex/worker"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 
 async function isAuthorizedWorker(request: Request) {
@@ -50,6 +51,12 @@ export async function POST(request: Request) {
     const result = await runTripletexWorker({ workerId, batchSize, maxBatches })
     return NextResponse.json({ ok: true, ...result })
   } catch (error) {
+    await logServerError({
+      message: "Tripletex worker run failed",
+      error,
+      source: "worker",
+      route: "POST /api/integrations/tripletex/worker",
+    })
     const message = error instanceof Error ? error.message : "Unknown error"
     return NextResponse.json({ error: message }, { status: 500 })
   }

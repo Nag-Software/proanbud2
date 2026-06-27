@@ -1,21 +1,32 @@
 import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 
 async function isAuthorized(request: Request) {
   const configured = process.env.INTEGRATION_WORKER_SECRET
-  if (configured) {
-    return request.headers.get("x-integration-worker-secret") === configured
+  if (configured && request.headers.get("x-integration-worker-secret") === configured) {
+    return true
+  }
+
+  const cronSecret = process.env.CRON_SECRET
+  if (cronSecret && request.headers.get("authorization") === `Bearer ${cronSecret}`) {
+    return true
   }
 
   const supabase = await createServerSupabase()
   const {
     data: { user },
   } = await supabase.auth.getUser()
+  if (!user) return false
 
-  return Boolean(user)
+  // No fail-open: when no worker secret is configured, a session user must be a
+  // platform admin to trigger cross-tenant reconcile (mirrors the worker route).
+  const admin = createAdminClient()
+  const { data: userRow } = await admin.from("users").select("role").eq("id", user.id).maybeSingle()
+  return userRow?.role === "admin"
 }
 
 export async function POST(request: Request) {
@@ -51,6 +62,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, companies: companyIds.length })
   } catch (error) {
+    await logServerError({
+      message: "Tripletex reconcile cron failed",
+      error,
+      source: "worker",
+      route: "POST /api/integrations/tripletex/reconcile",
+    })
     const message = error instanceof Error ? error.message : "Unknown error"
     return NextResponse.json({ error: message }, { status: 500 })
   }

@@ -6,6 +6,7 @@ import { ensureOfferPublicSlug } from "@/lib/tilbud/public-offer"
 import { calculateOfferTotals, type OfferCompanyContext, type OfferLineItem } from "@/lib/tilbud/types"
 import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 import { createClient } from "@/lib/supabase/server"
+import { canSendOffers } from "@/lib/roles"
 import { formatOfferReference } from "@/lib/tilbud/offer-document"
 
 const resend = new Resend(process.env.RESEND_API_KEY || "re_defaultkey")
@@ -133,12 +134,17 @@ export async function sendOfferToCustomer(input: SendOfferInput) {
     publicSlug,
   })
 
-  await resend.emails.send({
+  const { error: sendError } = await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <post@proanbud.no>",
     to: recipientEmail,
     subject: `Tilbud ${offerReference} fra ${companyName}`,
     html: emailHtml,
   })
+  // Må kaste FØR offers.status settes til "sent" nedenfor — ellers markeres
+  // tilbudet som sendt selv om e-posten aldri nådde kunden.
+  if (sendError) {
+    throw new Error(`Kunne ikke sende tilbud på e-post: ${sendError.message ?? JSON.stringify(sendError)}`)
+  }
 
   const totals = calculateOfferTotals(lineItems)
   const { error: updateError } = await supabase
@@ -195,6 +201,13 @@ export async function resolveOfferSendCompany() {
   } = await supabase.auth.getUser()
 
   if (!user) {
+    return null
+  }
+
+  // Sending an offer (e-mail + ERP sync) is a manager/admin action. The send API
+  // previously did no role check, so a worker could trigger a send directly.
+  const { data: roleRow } = await supabase.from("users").select("role").eq("id", user.id).maybeSingle()
+  if (!canSendOffers(roleRow?.role)) {
     return null
   }
 

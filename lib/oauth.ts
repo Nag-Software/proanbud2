@@ -1,4 +1,5 @@
 import { createClient as createServerSupabase } from "./supabase/server"
+import { logServerError } from "./errors/log"
 import {
   MICROSOFT_CALENDAR_SCOPES,
   requireGoogleOAuthEnv,
@@ -79,6 +80,13 @@ async function refreshGoogleToken(userId: string, integration: Integration) {
   const data = await res.json()
   if (!res.ok || !data.access_token) {
     console.error("Google calendar token refresh failed:", data.error ?? res.statusText)
+    await logServerError({
+      message: "Google calendar token refresh failed",
+      error: data.error ?? res.statusText,
+      source: "server",
+      route: "refreshGoogleToken",
+      context: { userId, provider: "google" },
+    })
     return integration
   }
 
@@ -117,6 +125,13 @@ async function refreshMicrosoftToken(userId: string, integration: Integration) {
   const data = await res.json()
   if (!res.ok || !data.access_token) {
     console.error("Microsoft calendar token refresh failed:", data.error ?? res.statusText)
+    await logServerError({
+      message: "Microsoft calendar token refresh failed",
+      error: data.error ?? res.statusText,
+      source: "server",
+      route: "refreshMicrosoftToken",
+      context: { userId, provider: "microsoft" },
+    })
     return integration
   }
 
@@ -271,6 +286,13 @@ export async function createGoogleWatch(accessToken: string) {
     return await res.json()
   } catch (e) {
     console.warn("createGoogleWatch error", e)
+    await logServerError({
+      message: "createGoogleWatch failed",
+      error: e,
+      source: "server",
+      route: "createGoogleWatch",
+      level: "warning",
+    })
     return null
   }
 }
@@ -303,6 +325,13 @@ export async function createMicrosoftSubscription(accessToken: string) {
     return await res.json()
   } catch (e) {
     console.warn("createMicrosoftSubscription error", e)
+    await logServerError({
+      message: "createMicrosoftSubscription failed",
+      error: e,
+      source: "server",
+      route: "createMicrosoftSubscription",
+      level: "warning",
+    })
     return null
   }
 }

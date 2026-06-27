@@ -138,6 +138,17 @@ export function calculateLineItemUnitPriceWithMarkup(item: OfferLineItem) {
   return roundCurrency(withDiscount)
 }
 
+/**
+ * Unit price with markup applied but BEFORE the line discount, ex VAT. Use this
+ * when the discount is represented separately (e.g. a Tripletex order-line
+ * `discount` percentage) so the discount is not subtracted twice.
+ */
+export function calculateLineItemUnitPriceWithMarkupBeforeDiscount(item: OfferLineItem) {
+  const baseUnitPrice = Number.isFinite(item.unitPriceNok) ? item.unitPriceNok : 0
+  const markupPercent = Number.isFinite(item.markupPercent) ? item.markupPercent : 0
+  return roundCurrency(baseUnitPrice * (1 + markupPercent / 100))
+}
+
 export function calculateLineItemTotal(item: OfferLineItem) {
   const quantity = Number.isFinite(item.quantity) ? item.quantity : 0
   return roundCurrency(quantity * calculateLineItemUnitPriceWithMarkup(item))

@@ -1,10 +1,13 @@
 "use client"
 
-import React, { useState, Suspense } from "react"
+import React, { useState, useRef, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { completeClientLogin } from "@/lib/auth/client-login"
+import { reportClientError } from "@/lib/errors/client"
+import { startGoogleLogin } from "@/lib/native-bridge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -32,8 +35,10 @@ function LoginFormInner({
   const supabase = createClient()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const emailRef = useRef<HTMLInputElement>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -43,17 +48,21 @@ function LoginFormInner({
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
       if (signInError) {
         setError(signInError.message)
+        emailRef.current?.focus()
         return
       }
 
       if (!data.session) {
         setError('Innlogging lyktes, men sesjonen ble ikke opprettet. Prøv igjen.')
+        emailRef.current?.focus()
         return
       }
 
       completeClientLogin(router)
-    } catch {
+    } catch (error) {
+      reportClientError(error, { context: { action: "login" } })
       setError('Uventet feil ved innlogging')
+      emailRef.current?.focus()
     } finally {
       setLoading(false)
     }
@@ -75,11 +84,13 @@ function LoginFormInner({
                 <Button
                   variant="outline"
                   type="button"
+                  disabled={loading}
                   onClick={() => {
-                    window.location.href = '/api/auth/google/start'
+                    startGoogleLogin()
                   }}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <title>Google</title>
                     <path
                       d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
                       fill="currentColor"
@@ -94,6 +105,7 @@ function LoginFormInner({
               <Field>
                 <FieldLabel htmlFor="email">Epost</FieldLabel>
                 <Input
+                  ref={emailRef}
                   id="email"
                   type="email"
                   placeholder="m@example.com"
@@ -112,7 +124,24 @@ function LoginFormInner({
                     Glemt passordet?
                   </a>
                 </div>
-                <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? "Skjul passord" : "Vis passord"}
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
               </Field>
               <Field>
                 <Button type="submit" disabled={loading}>{loading ? 'Logger inn…' : 'Logg inn'}</Button>

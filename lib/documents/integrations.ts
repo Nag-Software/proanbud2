@@ -1,4 +1,5 @@
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
+import { logServerError } from "@/lib/errors/log"
 
 export type DocumentProvider = "google_drive" | "onedrive"
 
@@ -124,7 +125,18 @@ async function refreshGoogleDriveToken(userId: string, integration: DocumentInte
     body: params.toString(),
   })
 
-  if (!res.ok) return integration
+  if (!res.ok) {
+    await logServerError({
+      message: "Google Drive: token-fornyelse feilet",
+      error: new Error(await res.text()),
+      level: "warning",
+      source: "server",
+      route: "refreshGoogleDriveToken",
+      statusCode: res.status,
+      context: { userId },
+    })
+    return integration
+  }
 
   const data = await res.json()
   if (!data.access_token) return integration
@@ -166,7 +178,18 @@ async function refreshOneDriveToken(userId: string, integration: DocumentIntegra
     body: params.toString(),
   })
 
-  if (!res.ok) return integration
+  if (!res.ok) {
+    await logServerError({
+      message: "OneDrive: token-fornyelse feilet",
+      error: new Error(await res.text()),
+      level: "warning",
+      source: "server",
+      route: "refreshOneDriveToken",
+      statusCode: res.status,
+      context: { userId },
+    })
+    return integration
+  }
 
   const data = await res.json()
   if (!data.access_token) return integration
@@ -269,6 +292,14 @@ export async function listGoogleDriveItems(userId: string, parentId?: string) {
   if (!res.ok) {
     const errorText = await res.text()
     console.error("Google Drive List Error:", errorText)
+    await logServerError({
+      message: "Google Drive: kunne ikke hente filer",
+      error: new Error(errorText),
+      source: "server",
+      route: "listGoogleDriveItems",
+      statusCode: res.status,
+      context: { userId, parentId },
+    })
     return { items: [] as ExternalDocumentItem[], notConnected: false }
   }
 
@@ -294,6 +325,16 @@ export async function listOneDriveItems(userId: string, parentId?: string) {
   })
 
   if (!res.ok) {
+    const errorText = await res.text()
+    console.error("OneDrive List Error:", errorText)
+    await logServerError({
+      message: "OneDrive: kunne ikke hente filer",
+      error: new Error(errorText),
+      source: "server",
+      route: "listOneDriveItems",
+      statusCode: res.status,
+      context: { userId, parentId },
+    })
     return { items: [] as ExternalDocumentItem[], notConnected: false }
   }
 
@@ -315,6 +356,17 @@ export async function renameGoogleDriveItem(userId: string, itemId: string, name
     body: JSON.stringify({ name }),
   })
 
+  if (!res.ok) {
+    await logServerError({
+      message: "Google Drive: kunne ikke endre navn",
+      error: new Error(await res.text()),
+      source: "server",
+      route: "renameGoogleDriveItem",
+      statusCode: res.status,
+      context: { userId, itemId },
+    })
+  }
+
   return res.ok
 }
 
@@ -331,6 +383,17 @@ export async function renameOneDriveItem(userId: string, itemId: string, name: s
     body: JSON.stringify({ name }),
   })
 
+  if (!res.ok) {
+    await logServerError({
+      message: "OneDrive: kunne ikke endre navn",
+      error: new Error(await res.text()),
+      source: "server",
+      route: "renameOneDriveItem",
+      statusCode: res.status,
+      context: { userId, itemId },
+    })
+  }
+
   return res.ok
 }
 
@@ -345,6 +408,17 @@ export async function deleteGoogleDriveItem(userId: string, itemId: string) {
     },
   })
 
+  if (!res.ok) {
+    await logServerError({
+      message: "Google Drive: kunne ikke slette element",
+      error: new Error(await res.text()),
+      source: "server",
+      route: "deleteGoogleDriveItem",
+      statusCode: res.status,
+      context: { userId, itemId },
+    })
+  }
+
   return res.ok
 }
 
@@ -358,6 +432,17 @@ export async function deleteOneDriveItem(userId: string, itemId: string) {
       Authorization: `Bearer ${integration.access_token}`,
     },
   })
+
+  if (!res.ok) {
+    await logServerError({
+      message: "OneDrive: kunne ikke slette element",
+      error: new Error(await res.text()),
+      source: "server",
+      route: "deleteOneDriveItem",
+      statusCode: res.status,
+      context: { userId, itemId },
+    })
+  }
 
   return res.ok
 }
@@ -383,6 +468,14 @@ export async function createGoogleDriveFolder(userId: string, name: string, pare
   if (!res.ok) {
     const errorText = await res.text()
     console.error("Google Drive Create Folder Error:", errorText)
+    await logServerError({
+      message: "Google Drive: kunne ikke opprette mappe",
+      error: new Error(errorText),
+      source: "server",
+      route: "createGoogleDriveFolder",
+      statusCode: res.status,
+      context: { userId, parentId },
+    })
     return null
   }
   const data = await res.json()
@@ -410,7 +503,17 @@ export async function createOneDriveFolder(userId: string, name: string, parentI
     }),
   })
 
-  if (!res.ok) return null
+  if (!res.ok) {
+    await logServerError({
+      message: "OneDrive: kunne ikke opprette mappe",
+      error: new Error(await res.text()),
+      source: "server",
+      route: "createOneDriveFolder",
+      statusCode: res.status,
+      context: { userId, parentId },
+    })
+    return null
+  }
   const data = await res.json()
   return data.id as string
 }
@@ -435,6 +538,14 @@ export async function uploadGoogleDriveFile(userId: string, file: File, parentId
   if (!metadataRes.ok) {
     const errorText = await metadataRes.text()
     console.error("Google Drive Upload: Metadata Error", errorText)
+    await logServerError({
+      message: "Google Drive: opplasting feilet (metadata)",
+      error: new Error(errorText),
+      source: "server",
+      route: "uploadGoogleDriveFile",
+      statusCode: metadataRes.status,
+      context: { userId, parentId },
+    })
     return null
   }
   const metadata = await metadataRes.json()
@@ -453,6 +564,14 @@ export async function uploadGoogleDriveFile(userId: string, file: File, parentId
   if (!uploadRes.ok) {
     const uploadErrorText = await uploadRes.text()
     console.error("Google Drive Upload: Media Error", uploadErrorText)
+    await logServerError({
+      message: "Google Drive: opplasting feilet (media)",
+      error: new Error(uploadErrorText),
+      source: "server",
+      route: "uploadGoogleDriveFile",
+      statusCode: uploadRes.status,
+      context: { userId, parentId, fileId },
+    })
     return null
   }
   return fileId as string
@@ -476,7 +595,17 @@ export async function uploadOneDriveFile(userId: string, file: File, parentId?: 
     body: bytes,
   })
 
-  if (!res.ok) return null
+  if (!res.ok) {
+    await logServerError({
+      message: "OneDrive: opplasting feilet",
+      error: new Error(await res.text()),
+      source: "server",
+      route: "uploadOneDriveFile",
+      statusCode: res.status,
+      context: { userId, parentId },
+    })
+    return null
+  }
   const data = await res.json()
   return data.id as string
 }
@@ -489,7 +618,17 @@ export async function moveGoogleDriveItem(userId: string, itemId: string, newPar
   const getRes = await fetch(`https://www.googleapis.com/drive/v3/files/${itemId}?fields=parents`, {
     headers: { Authorization: `Bearer ${integration.access_token}` },
   })
-  if (!getRes.ok) return false
+  if (!getRes.ok) {
+    await logServerError({
+      message: "Google Drive: kunne ikke hente forelder ved flytting",
+      error: new Error(await getRes.text()),
+      source: "server",
+      route: "moveGoogleDriveItem",
+      statusCode: getRes.status,
+      context: { userId, itemId, newParentId },
+    })
+    return false
+  }
   const getJson = await getRes.json()
   const oldParents = (getJson.parents ?? []).join(",")
 
@@ -500,6 +639,17 @@ export async function moveGoogleDriveItem(userId: string, itemId: string, newPar
     method: "PATCH",
     headers: { Authorization: `Bearer ${integration.access_token}` },
   })
+
+  if (!res.ok) {
+    await logServerError({
+      message: "Google Drive: kunne ikke flytte element",
+      error: new Error(await res.text()),
+      source: "server",
+      route: "moveGoogleDriveItem",
+      statusCode: res.status,
+      context: { userId, itemId, newParentId },
+    })
+  }
 
   return res.ok
 }
@@ -523,6 +673,17 @@ export async function moveOneDriveItem(userId: string, itemId: string, newParent
     },
     body: JSON.stringify(bodyRef),
   })
+
+  if (!res.ok) {
+    await logServerError({
+      message: "OneDrive: kunne ikke flytte element",
+      error: new Error(await res.text()),
+      source: "server",
+      route: "moveOneDriveItem",
+      statusCode: res.status,
+      context: { userId, itemId, newParentId },
+    })
+  }
 
   return res.ok
 }

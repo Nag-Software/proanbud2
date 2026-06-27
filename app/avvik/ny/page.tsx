@@ -1,13 +1,27 @@
 import { Suspense } from "react"
 
 import { AppPageShell } from "@/components/app-page-shell"
+import { PlanGate } from "@/components/billing/plan-gate"
 import { NewDeviationForm } from "@/app/avvik/ny/new-deviation-form"
 import { checkRoleAccess } from "@/lib/auth-utils"
+import { companyHasFeature, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 
 export const dynamic = "force-dynamic"
 
 export default async function NewAvvikPage() {
-  await checkRoleAccess(["admin", "manager", "worker"])
+  const { user } = await checkRoleAccess(["admin", "manager", "worker"])
+
+  const companyId = await getCurrentCompanyIdForUser(user.id)
+  if (!(await companyHasFeature(companyId, "avvik"))) {
+    return (
+      <AppPageShell segments={["Avvik", "Meld avvik"]}>
+        <PlanGate
+          featureName="Avvik"
+          description="Registrer, følg opp og lukk avvik (RUH, HMS og KS) for hele bedriften."
+        />
+      </AppPageShell>
+    )
+  }
 
   return (
     <AppPageShell segments={["Avvik", "Meld avvik"]}>

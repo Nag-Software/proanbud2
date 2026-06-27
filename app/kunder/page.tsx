@@ -2,6 +2,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 import { KunderClient } from "@/components/kunder/kunder-client"
 import { Customer, CustomerProject } from "@/components/kunder/schema"
 import { isActiveProject } from "@/app/prosjekter/project-utils"
+import { getTripletexConnectionState } from "@/lib/integrations/tripletex/sync"
 import { createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic";
@@ -17,27 +18,36 @@ export default async function Page() {
   let customerLinks: Array<{ local_id: string; last_synced_at: string | null; external_url: string | null }> = []
   let customerJobs: Array<{ status: string; payload: any }> = []
   let companyId: string | null = null
+  let tripletexEnabled = false
   if (user) {
-    const { data: userRow } = await supabase
-      .from("users")
-      .select("company_id")
-      .eq("id", user.id)
-      .maybeSingle()
+    // The company-id lookup and the (RLS-scoped) customers read are independent,
+    // so run them concurrently instead of as a serial chain.
+    const [{ data: userRow }, { data, error }] = await Promise.all([
+      supabase
+        .from("users")
+        .select("company_id")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("customers")
+        .select("*, projects(id, name, status, budget_nok, start_date, end_date, updated_at), offers(id, status, amount_nok)")
+        .order("name"),
+    ])
 
     companyId = userRow?.company_id || null
 
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*, projects(id, name, status, budget_nok, start_date, end_date, updated_at), offers(id, status, amount_nok)")
-      .order("name")
-    
     if (error) {
       console.error("Supabase Error fetching customers:", error)
     }
-    
+
     dbCustomers = data || []
 
     if (companyId) {
+      tripletexEnabled = Boolean(await getTripletexConnectionState(companyId))
+    }
+
+    // Tripletex sync-data er kun relevant når Tripletex faktisk er tilkoblet.
+    if (companyId && tripletexEnabled) {
       const [{ data: links }, { data: jobs }] = await Promise.all([
         supabase
           .from("external_entity_links")
@@ -122,7 +132,9 @@ export default async function Page() {
       activeProjects,
       totalProjects,
       totalRevenue,
-      lastContact: new Date().toISOString(),
+      // Ingen reell kilde for sist-kontaktet enda. Sett tom verdi i stedet for
+      // dagens dato, så vi ikke viser villedende data i kunde-skuffen.
+      lastContact: "",
       acceptanceRate,
       syncStatus,
       syncLastSyncedAt: link?.last_synced_at || null,
@@ -134,7 +146,7 @@ export default async function Page() {
   return (
     <AppPageShell segments={["Kunder"]}>
       <div className="flex flex-col gap-6 w-full min-w-0 max-w-full pb-8">
-        <KunderClient initialData={customers} />
+        <KunderClient initialData={customers} tripletexEnabled={tripletexEnabled} />
       </div>
     </AppPageShell>
   )

@@ -22,6 +22,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useConfirm } from "@/components/ui/confirm-dialog"
+import { reportClientError } from "@/lib/errors/client"
 import { TEMPLATE_LANGUAGE_LABELS } from "@/lib/ks/constants"
 import type { ChecklistTemplate, ChecklistTemplateCategory } from "@/lib/ks/types"
 
@@ -42,6 +44,7 @@ export function KsTemplatesClient() {
   const [saving, setSaving] = React.useState(false)
 
   const form = useForm<TemplateFormValues>({ defaultValues: emptyForm })
+  const confirm = useConfirm()
 
   async function load() {
     setLoading(true)
@@ -120,6 +123,7 @@ export function KsTemplatesClient() {
       setDialogOpen(false)
       await load()
     } catch (err) {
+      reportClientError(err, { context: { action: editingId ? "update KS template" : "create KS template" } })
       toast.error(err instanceof Error ? err.message : "Kunne ikke lagre mal")
     } finally {
       setSaving(false)
@@ -127,12 +131,19 @@ export function KsTemplatesClient() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Slette denne malen?")) return
+    const ok = await confirm({
+      title: "Slette denne malen?",
+      description: "Malen fjernes permanent. Eksisterende sjekklister påvirkes ikke.",
+      confirmText: "Slett mal",
+      variant: "destructive",
+    })
+    if (!ok) return
     try {
       await deleteTemplateAction(id)
       toast.success("Mal slettet")
       await load()
     } catch (err) {
+      reportClientError(err, { context: { action: "delete KS template" } })
       toast.error(err instanceof Error ? err.message : "Kunne ikke slette mal")
     }
   }

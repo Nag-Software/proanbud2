@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 
+import { toast } from "sonner"
+
+import { reportClientError } from "@/lib/errors/client"
 import { AiChatPanel } from "@/components/tilbud/ai-chat-panel"
-import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
+import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
@@ -11,8 +14,6 @@ import {
   Calculator,
   Check,
   CheckCircle2,
-  Download,
-  Edit3,
   LoaderCircle,
   Plus,
   Save,
@@ -24,15 +25,13 @@ import {
 
 import { saveOfferDraftAction } from "@/app/nytt-tilbud/actions"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
-import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
+import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table-lazy"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  CONTRACT_BASIS_LABELS,
   DEFAULT_PAYMENT_SCHEDULE,
   inferPricingModelFromLineItems,
-  PRICING_MODEL_LABELS,
 } from "@/lib/contracts/pricing"
 import { getDistinctSuppliers } from "@/lib/tilbud/supplier-prices"
 import {
@@ -67,12 +66,12 @@ const steps = [
   {
     id: 2,
     title: "Rediger prisforslag",
-    description: "Juster pris basert på KI-analyse",
+    description: "Juster pris med automatisk prisforslag",
     icon: Zap,
   },
   {
     id: 3,
-    title: "Prissammendrag",
+    title: "Forhåndsvisning",
     description: "Gjennomgå og bekreft prising",
     icon: Calculator,
   },
@@ -336,6 +335,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
         await uploadPendingSourceDocuments()
         setShowAiChat(true)
       } catch (error) {
+        reportClientError(error, { context: { action: "upload source documents before analysis", projectId } })
         setAnalysisError(error instanceof Error ? error.message : "Kunne ikke forberede vedlegg")
       }
     })()
@@ -363,11 +363,14 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     const validationError = validateStepOne()
     if (validationError) {
       setFeedback(validationError)
+      toast.error(validationError)
       return
     }
 
     if (lineItems.length === 0) {
-      setFeedback("Kjør analyse eller legg til minst én rad før lagring")
+      const message = "Kjør analyse eller legg til minst én rad før lagring"
+      setFeedback(message)
+      toast.error(message)
       return
     }
 
@@ -375,10 +378,14 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
       try {
         const result = await saveOfferDraftAction(buildPayload())
         setOfferId(result.id)
-        setFeedback("Utkast lagret")
+        setFeedback(null)
+        toast.success("Utkast lagret")
         onCompleted?.()
       } catch (error) {
-        setFeedback(error instanceof Error ? error.message : "Kunne ikke lagre utkast")
+        reportClientError(error, { context: { action: "save offer draft", projectId } })
+        const message = error instanceof Error ? error.message : "Kunne ikke lagre utkast"
+        setFeedback(message)
+        toast.error(message)
       }
     })
   }
@@ -387,42 +394,29 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     const validationError = validateBeforeSave()
     if (validationError) {
       setFeedback(validationError)
+      toast.error(validationError)
       return
     }
 
     startPersisting(async () => {
+      const toastId = toast.loading("Lagrer tilbud...")
       try {
         const result = await saveOfferDraftAction(buildPayload())
         setOfferId(result.id)
         setFeedback("Tilbud lagret. Åpner tilbudssiden...")
+        toast.success("Tilbud lagret. Åpner tilbudssiden...", { id: toastId })
         onCompleted?.()
         router.push(`/tilbud/${result.id}`)
       } catch (error) {
-        setFeedback(error instanceof Error ? error.message : "Kunne ikke lagre tilbud")
+        reportClientError(error, { context: { action: "save and open offer", projectId } })
+        const message = error instanceof Error ? error.message : "Kunne ikke lagre tilbud"
+        setFeedback(message)
+        toast.error(message, { id: toastId })
       }
     })
   }
 
-  const pdfDocRef = useRef<HTMLDivElement>(null)
   const itemsTableRef = useRef<NewOfferItemsTableHandle>(null)
-  const handlePrintPdf = () => {
-    const node = pdfDocRef.current
-    if (!node) return
-    const cssLinks = Array.from(document.styleSheets)
-      .filter((s) => s.href)
-      .map((s) => `<link rel="stylesheet" href="${s.href}">`)
-      .join("\n")
-    const printWin = window.open("", "_blank", "width=900,height=1100")
-    if (!printWin) return
-    printWin.document.write(
-      `<!DOCTYPE html><html><head><meta charset="utf-8">${cssLinks}</head><body style="margin:0;background:#fff">${node.outerHTML}</body></html>`
-    )
-    printWin.document.close()
-    printWin.addEventListener("load", () => {
-      printWin.focus()
-      printWin.print()
-    })
-  }
 
   return (
     <div className="mx-auto h-full min-h-0 w-full max-w-[1600px]">
@@ -443,8 +437,8 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
 
       <div className="flex h-full min-h-0 flex-col rounded-md bg-white">
         <div className="border-none px-4 pb-6">
-          <div className="mb-5 grid grid-cols-[1fr_auto_1fr] items-start gap-4">
-            <div aria-hidden="true" />
+          <div className="mb-5 flex flex-col items-center gap-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-start sm:gap-4">
+            <div aria-hidden="true" className="hidden sm:block" />
             <div className="flex items-center pt-0.5 mt-0.5">
               {steps.map((item, index) => {
                 const isActive = item.id === step
@@ -490,7 +484,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 )
               })}
             </div>
-            <div className="flex justify-end">
+            <div className="flex w-full justify-center sm:justify-end">
               <Button type="button" variant="outline" size="sm" onClick={handleSaveDraft} disabled={isPersisting}>
                 {isPersisting ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
                 Lagre som utkast
@@ -599,7 +593,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   Fortsett manuelt
                 </Button>
                 <Button type="button" className="h-9 flex-1 text-sm" onClick={handleAnalyze} disabled={isPersisting || isUploadingDocuments}>
-                  Kjør KI-analyse
+                  Foreslå pris automatisk
                 </Button>
               </div>
             </div>
@@ -624,7 +618,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
               </div>
 
               {/* Compact markup + add row toolbar */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="theme-text-label text-sm font-medium">Påslag</span>
                 <Input
                   type="number"
@@ -702,76 +696,19 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
 
           {step === 3 ? (
             <div className="space-y-5">
-              <div className="mx-auto max-w-2xl rounded-lg border px-5 py-4">
-                <div className="flex items-baseline justify-between gap-4 border-b pb-4">
-                  <h3 className="text-sm font-medium text-muted-foreground">Prissammendrag</h3>
-                  <div className="text-right">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total tilbudssum</p>
-                    <p className="whitespace-nowrap text-2xl font-semibold tabular-nums tracking-tight text-foreground">
-                      {formatNok(totals.totalNok)}
-                    </p>
-                  </div>
-                </div>
-                <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-                  <div>
-                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Vederlagsform</dt>
-                    <dd className="mt-0.5 font-medium text-foreground">{PRICING_MODEL_LABELS[pricingModel]}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Kontraktsgrunnlag</dt>
-                    <dd className="mt-0.5 font-medium text-foreground">{CONTRACT_BASIS_LABELS[contractBasis]}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Gyldighet</dt>
-                    <dd className="mt-0.5 font-medium text-foreground">{validityDays} dager</dd>
-                  </div>
-                  <div className="sm:col-span-3">
-                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Mottaker</dt>
-                    <dd className="mt-0.5 truncate font-medium text-foreground">
-                      {selectedCustomer?.name || recipientName.trim() || "—"}
-                      {(selectedCustomer?.email || recipientEmail.trim()) ? (
-                        <span className="font-normal text-muted-foreground">
-                          {" · "}
-                          {selectedCustomer?.email || recipientEmail.trim()}
-                        </span>
-                      ) : null}
-                    </dd>
-                  </div>
-                  {quoteMessage.trim() ? (
-                    <div className="sm:col-span-3">
-                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Melding til kunde</dt>
-                      <dd className="mt-0.5 leading-relaxed text-foreground">{quoteMessage.trim()}</dd>
-                    </div>
-                  ) : null}
-                  {pricingModel === "fixed" || pricingModel === "mixed" ? (
-                    <div className="sm:col-span-3">
-                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Avdragsplan</dt>
-                      <dd className="mt-0.5 text-foreground">
-                        {paymentSchedule.map((entry) => `${entry.label} ${entry.percent}%`).join(" · ")}
-                      </dd>
-                    </div>
-                  ) : null}
-                </dl>
-              </div>
-
               <div className="rounded-lg border p-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="mb-3 flex items-center gap-2">
                   <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
                     <CheckCircle2 className="h-5 w-5 text-primary" />
                     Forhåndsvisning
                   </h3>
-                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={handlePrintPdf}>
-                    <Download className="h-3.5 w-3.5" />
-                    Last ned PDF
-                  </Button>
                 </div>
-                {/* ---- PDF-like document ---- */}
-                <div ref={pdfDocRef}>
-                  <OfferDocumentPreview
-                    title={title}
-                    description={description}
-                    projectSummary={analysisResult?.summary}
-                    quoteMessage={quoteMessage}
+                {/* ---- A4 document viewer (identical on mobile + desktop) ---- */}
+                <OfferDocumentViewer
+                  title={title}
+                  description={description}
+                  projectSummary={analysisResult?.summary}
+                  quoteMessage={quoteMessage}
                   projectName={selectedProject?.name || undefined}
                   customer={{
                     name: selectedCustomer?.name || recipientName.trim() || "—",
@@ -785,30 +722,21 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   company={company}
                   issuedDate={new Date()}
                   validityDays={validityDays}
-                  documentClassName="mx-auto w-full max-w-[794px] min-w-0 bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)] sm:min-w-[794px]"
-                  />
-                </div>
+                />
               </div>
 
               <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:flex-row sm:space-x-3">
-                <div className="order-1 sm:order-2 sm:basis-0 sm:flex-1">
-                  <Button type="button" variant="outline" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleSaveDraft} disabled={isPersisting}>
-                    <Edit3 className="h-4 w-4" />
-                    {isPersisting ? "Lagrer..." : "Lagre som utkast"}
-                  </Button>
-                </div>
-
-                <div className="order-2 sm:order-3 sm:basis-0 sm:flex-1">
-                  <Button type="button" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleOpenOffer} disabled={isPersisting || lineItems.length === 0}>
-                    {isPersisting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    {isPersisting ? "Åpner..." : "Gå til tilbud"}
-                  </Button>
-                </div>
-
-                <div className="order-3 col-span-2 sm:order-1 sm:col-auto sm:basis-0 sm:flex-1">
+                <div className="order-1 sm:basis-0 sm:flex-1">
                   <Button type="button" variant="outline" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={() => setStep(2)}>
                     <ArrowLeft className="h-4 w-4" />
                     Tilbake
+                  </Button>
+                </div>
+
+                <div className="order-2 sm:basis-0 sm:flex-1">
+                  <Button type="button" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleOpenOffer} disabled={isPersisting || lineItems.length === 0}>
+                    {isPersisting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {isPersisting ? "Lagrer..." : "Lagre tilbud"}
                   </Button>
                 </div>
               </div>

@@ -5,6 +5,7 @@ import { Camera, ImagePlus, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { reportClientError } from "@/lib/errors/client"
 import { DEVIATION_PHOTO_MAX_WIDTH } from "@/lib/hms/constants"
 
 type PhotoPreview = {
@@ -110,11 +111,18 @@ export function PhotoCaptureField({
     onPhotosChangeRef.current(photos.map((p) => p.file))
   }, [photos])
 
+  // Hold en ref til gjeldende bilder så cleanup kun rydder opp ved avmontering
+  // (ikke ved hver endring). Da overlever previewUrl-en en "Angre"-gjenoppretting.
+  const photosRef = React.useRef(photos)
+  React.useEffect(() => {
+    photosRef.current = photos
+  }, [photos])
+
   React.useEffect(() => {
     return () => {
-      photos.forEach((p) => URL.revokeObjectURL(p.previewUrl))
+      photosRef.current.forEach((p) => URL.revokeObjectURL(p.previewUrl))
     }
-  }, [photos])
+  }, [])
 
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || disabled) return
@@ -142,7 +150,8 @@ export function PhotoCaptureField({
       }
 
       setPhotos((prev) => [...prev, ...newPhotos])
-    } catch {
+    } catch (err) {
+      reportClientError(err, { context: { action: "Behandle bilde (avvik)" } })
       toast.error("Kunne ikke behandle bilde")
     } finally {
       setCompressing(false)
@@ -151,8 +160,26 @@ export function PhotoCaptureField({
 
   function removePhoto(id: string) {
     setPhotos((prev) => {
-      const target = prev.find((p) => p.id === id)
-      if (target) URL.revokeObjectURL(target.previewUrl)
+      const index = prev.findIndex((p) => p.id === id)
+      if (index === -1) return prev
+      const target = prev[index]
+
+      // Behold previewUrl-en så bildet kan gjenopprettes ved "Angre".
+      // Den ryddes opp av cleanup-effekten når komponenten avmonteres.
+      toast("Bilde fjernet", {
+        action: {
+          label: "Angre",
+          onClick: () => {
+            setPhotos((current) => {
+              if (current.some((p) => p.id === target.id)) return current
+              const restored = [...current]
+              restored.splice(Math.min(index, restored.length), 0, target)
+              return restored
+            })
+          },
+        },
+      })
+
       return prev.filter((p) => p.id !== id)
     })
   }
@@ -164,6 +191,7 @@ export function PhotoCaptureField({
           type="button"
           variant="outline"
           size="sm"
+          className="h-11"
           disabled={disabled || compressing || photos.length >= maxPhotos}
           onClick={() => cameraInputRef.current?.click()}
         >
@@ -178,6 +206,7 @@ export function PhotoCaptureField({
           type="button"
           variant="outline"
           size="sm"
+          className="h-11"
           disabled={disabled || compressing || photos.length >= maxPhotos}
           onClick={() => galleryInputRef.current?.click()}
         >
@@ -217,7 +246,7 @@ export function PhotoCaptureField({
               <img src={photo.previewUrl} alt="Forhåndsvisning" className="size-full object-cover" />
               <button
                 type="button"
-                className="absolute right-1 top-1 flex min-h-11 min-w-11 items-center justify-center rounded-full bg-black/60 text-white"
+                className="absolute right-2 top-2 flex min-h-11 min-w-11 items-center justify-center rounded-full bg-black/60 text-white"
                 onClick={() => removePhoto(photo.id)}
               >
                 <X className="size-4" />

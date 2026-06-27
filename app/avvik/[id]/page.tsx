@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation"
 
 import { AppPageShell } from "@/components/app-page-shell"
+import { PlanGate } from "@/components/billing/plan-gate"
 import { DeviationDetailClient } from "@/app/avvik/[id]/deviation-detail-client"
 import { getDeviationByIdAction } from "@/app/avvik/actions"
 import { checkRoleAccess } from "@/lib/auth-utils"
+import { companyHasFeature, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import { canManageProjects } from "@/lib/roles"
 import { createClient } from "@/lib/supabase/server"
 
@@ -16,6 +18,18 @@ export default async function DeviationDetailPage({
 }) {
   const { id } = await params
   const { user, canonicalRole } = await checkRoleAccess(["admin", "manager", "worker"])
+
+  const companyId = await getCurrentCompanyIdForUser(user.id)
+  if (!(await companyHasFeature(companyId, "avvik"))) {
+    return (
+      <AppPageShell segments={["Avvik"]}>
+        <PlanGate
+          featureName="Avvik"
+          description="Registrer, følg opp og lukk avvik (RUH, HMS og KS) for hele bedriften."
+        />
+      </AppPageShell>
+    )
+  }
 
   let deviation
   try {

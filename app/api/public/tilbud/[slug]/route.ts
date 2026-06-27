@@ -21,14 +21,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
       .update({ customer_viewed_at: new Date().toISOString() })
       .eq("id", offer.id)
 
-    await logOfferActivity({
-      offerId: offer.id,
-      companyId: offer.companyId,
-      eventType: OFFER_ACTIVITY.VIEWED,
-      title: "Kunde åpnet tilbudet",
-      description: offer.recipientEmail || offer.customer.email || undefined,
-      metadata: { publicSlug: slug },
-    })
+    await logOfferActivity(
+      {
+        offerId: offer.id,
+        companyId: offer.companyId,
+        eventType: OFFER_ACTIVITY.VIEWED,
+        title: "Kunde åpnet tilbudet",
+        description: offer.recipientEmail || offer.customer.email || undefined,
+        metadata: { publicSlug: slug },
+      },
+      { admin: true }
+    )
   }
 
   return NextResponse.json({

@@ -5,12 +5,14 @@ import Link from "next/link"
 import { ExternalLink, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 type JobRow = {
   id: number
   status: string
@@ -41,6 +43,7 @@ type ScopeConfig = {
   invoices: boolean
   calendar: boolean
   documents: boolean
+  travelExpenses: boolean
 }
 
 type StateResponse = {
@@ -79,6 +82,11 @@ const SCOPE_ITEMS: Array<{ key: keyof ScopeConfig; label: string; hint?: string 
   { key: "invoices", label: "Fakturaer" },
   { key: "calendar", label: "Kalender" },
   { key: "documents", label: "Dokumenter" },
+  {
+    key: "travelExpenses",
+    label: "Kjørebok / reiseregning",
+    hint: "Overfører kjøreturer som kjøregodtgjørelse per ansatt",
+  },
 ]
 
 async function readApiError(response: Response) {
@@ -103,6 +111,7 @@ function readScopeConfig(connection: Record<string, unknown> | null | undefined)
     invoices: scope.invoices !== false,
     calendar: scope.calendar === true,
     documents: scope.documents === true,
+    travelExpenses: scope.travelExpenses === true,
   }
 }
 
@@ -114,6 +123,7 @@ function scopePayload(scopes: ScopeConfig) {
     scopeInvoices: scopes.invoices,
     scopeCalendar: scopes.calendar,
     scopeDocuments: scopes.documents,
+    scopeTravelExpenses: scopes.travelExpenses,
   }
 }
 
@@ -129,6 +139,9 @@ function formatJobType(jobType: string) {
     "calendar.activity.upsert": "Synkroniserte kalenderhendelse",
     "webhook.invoice_paid": "Faktura betalt",
     "reconcile.full": "Avstemming",
+    "travel_expense.upsert": "Overførte kjøretur (reiseregning)",
+    "travel_expense.delete": "Fjernet kjøretur fra Tripletex",
+    "employee.sync_all": "Koblet ansatte",
   }
   return labels[jobType] || jobType
 }
@@ -180,6 +193,7 @@ export function TripletexClient({
   canManage,
   helpUrl,
 }: TripletexClientProps) {
+  const confirm = useConfirm()
   const [state, setState] = React.useState<StateResponse>({
     connected: Boolean(initialConnection && initialConnection.sync_state !== "disconnected"),
     connection: initialConnection,
@@ -285,6 +299,7 @@ export function TripletexClient({
       setIsReplacingKey(false)
       await refreshState()
     } catch (error) {
+      reportClientError(error, { context: { action: "tripletex_connect" } })
       const message = error instanceof Error ? error.message : "Ukjent feil"
       setConnectionError({ message, code: null })
       toast.error(message)
@@ -312,6 +327,7 @@ export function TripletexClient({
       toast.success("Tripletex er koblet fra")
       await refreshState()
     } catch (error) {
+      reportClientError(error, { context: { action: "tripletex_disconnect" } })
       toast.error(error instanceof Error ? error.message : "Ukjent feil")
     } finally {
       setIsDisconnecting(false)
@@ -321,7 +337,13 @@ export function TripletexClient({
   async function removeIntegration() {
     if (!canManage) return
 
-    const confirmed = window.confirm("Fjerne Tripletex-integrasjonen?")
+    const confirmed = await confirm({
+      title: "Fjerne Tripletex-integrasjonen?",
+      description: "API-nøkkelen slettes og all synkronisering med Tripletex stopper. Du må koble til på nytt med en ny nøkkel for å bruke integrasjonen igjen.",
+      confirmText: "Fjern",
+      cancelText: "Avbryt",
+      variant: "destructive",
+    })
     if (!confirmed) return
 
     setIsRemoving(true)
@@ -337,6 +359,7 @@ export function TripletexClient({
       setIsReplacingKey(false)
       await refreshState()
     } catch (error) {
+      reportClientError(error, { context: { action: "tripletex_remove" } })
       toast.error(error instanceof Error ? error.message : "Ukjent feil")
     } finally {
       setIsRemoving(false)
@@ -377,6 +400,7 @@ export function TripletexClient({
       setIsReplacingKey(false)
       await refreshState()
     } catch (error) {
+      reportClientError(error, { context: { action: "tripletex_update_api_key" } })
       const message = error instanceof Error ? error.message : "Ukjent feil"
       setConnectionError({ message, code: null })
       toast.error(message)
@@ -407,6 +431,7 @@ export function TripletexClient({
       toast.success("Innstillinger lagret")
       await refreshState()
     } catch (error) {
+      reportClientError(error, { context: { action: "tripletex_save_scopes" } })
       toast.error(error instanceof Error ? error.message : "Ukjent feil")
     } finally {
       setIsSavingScopes(false)
@@ -444,6 +469,7 @@ export function TripletexClient({
         void refreshState()
       }, 4000)
     } catch (error) {
+      reportClientError(error, { context: { action: "tripletex_manual_sync" } })
       toast.error(error instanceof Error ? error.message : "Ukjent feil")
     } finally {
       setIsSyncing(false)

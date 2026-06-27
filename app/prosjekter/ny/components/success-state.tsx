@@ -1,6 +1,5 @@
 "use client"
 
-import { motion } from "motion/react"
 import { CheckCircle2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -20,14 +19,18 @@ const particles = Array.from({ length: 18 }).map((_, index) => ({
 export function SuccessState({ projectName, onGoToProject, onCreateAnother }: SuccessStateProps) {
   return (
     <div className="relative overflow-hidden rounded-lg border border-accent/60 bg-accent/10 p-6 text-center sm:p-10">
+      {/* Confetti via CSS keyframes instead of motion/react — same falling +
+          fade effect with staggered delays, without bundling framer-motion. */}
+      <style>{`@keyframes pa-confetti-fall{0%{transform:translateY(-12px);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateY(180px);opacity:0}}`}</style>
       {particles.map((particle) => (
-        <motion.span
+        <span
           key={particle.id}
-          initial={{ y: -12, opacity: 0 }}
-          animate={{ y: 180, opacity: [0, 1, 1, 0] }}
-          transition={{ duration: 2.6, repeat: Number.POSITIVE_INFINITY, delay: particle.delay }}
           className="absolute top-0 h-2 w-2 rounded-full bg-accent"
-          style={{ left: particle.left }}
+          style={{
+            left: particle.left,
+            animation: "pa-confetti-fall 2.6s linear infinite",
+            animationDelay: `${particle.delay}s`,
+          }}
         />
       ))}
 

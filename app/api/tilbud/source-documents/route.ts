@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server"
 
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
 function sanitizeName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "-")
 }
+
+// Document parsing (PDF/DOCX) can be slow — allow up to 60s on Vercel.
+export const maxDuration = 60
 
 export async function POST(request: Request) {
   try {
@@ -62,6 +66,13 @@ export async function POST(request: Request) {
       },
     })
   } catch (error) {
+    await logServerError({
+      message: "Offer source document upload failed",
+      error,
+      source: "api",
+      route: "POST /api/tilbud/source-documents",
+      statusCode: 500,
+    })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Ukjent feil ved opplasting" },
       { status: 500 }

@@ -3,10 +3,12 @@
 import { Suspense, useEffect, useState } from "react"
 import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Loader2Icon } from "lucide-react"
+import { CheckIcon, Loader2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { PROFF_INCLUDED_FEATURES } from "@/lib/billing/plans"
+import { reportClientError } from "@/lib/errors/client"
 
 function OnboardingAbonnementContent() {
   const router = useRouter()
@@ -44,8 +46,9 @@ function OnboardingAbonnementContent() {
             return
           }
         }
-      } catch {
-        // ignore — show onboarding
+      } catch (error) {
+        // best-effort — fall through and show onboarding
+        reportClientError(error, { level: "warning", context: { action: "check existing subscription on onboarding" } })
       } finally {
         if (!cancelled) setChecking(false)
       }
@@ -79,6 +82,7 @@ function OnboardingAbonnementContent() {
       }
       throw new Error("Manglende checkout-lenke")
     } catch (error) {
+      reportClientError(error, { context: { action: "start trial checkout" } })
       toast.error(error instanceof Error ? error.message : "Noe gikk galt")
       setLoading(false)
     }
@@ -87,7 +91,10 @@ function OnboardingAbonnementContent() {
   if (checking) {
     return (
       <div className="flex min-h-svh items-center justify-center bg-background px-6">
-        <Loader2Icon className="size-6 animate-spin text-muted-foreground" />
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Loader2Icon className="size-6 animate-spin" />
+          <span className="text-sm">Henter abonnementet ditt…</span>
+        </div>
       </div>
     )
   }
@@ -119,6 +126,18 @@ function OnboardingAbonnementContent() {
               Fullfør aktivering for å bruke Proanbud.
             </p>
           )}
+        </div>
+
+        <div className="rounded-xl border p-5">
+          <p className="text-sm font-medium">Dette får du i Proff</p>
+          <ul className="mt-3 space-y-2">
+            {PROFF_INCLUDED_FEATURES.map((feature) => (
+              <li key={feature.key} className="flex items-start gap-2 text-sm">
+                <CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+                <span>{feature.label}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
         <Button

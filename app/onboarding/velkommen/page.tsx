@@ -9,6 +9,7 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { completeClientLogin } from "@/lib/auth/client-login"
+import { reportClientError } from "@/lib/errors/client"
 
 function VelkommenContent() {
   const router = useRouter()
@@ -40,6 +41,7 @@ function VelkommenContent() {
           })
         }
       } catch (error) {
+        reportClientError(error, { context: { action: "activate subscription after checkout", sessionId } })
         if (!cancelled) {
           toast.error(
             error instanceof Error ? error.message : "Aktivering feilet"

@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { Resend } from 'resend';
 import { canInviteEmployees, normalizeRole } from '@/lib/roles';
 import { ensureCompanyRoles, resolveRoleNamesForCompany } from '@/lib/company-roles';
+import { logServerError } from '@/lib/errors/log';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 're_defaultkey');
 
@@ -102,6 +103,13 @@ export async function POST(request: Request) {
 
     if (inviteError || !invitation) {
       console.error('Invite error:', inviteError);
+      await logServerError({
+        message: 'Kunne ikke opprette invitasjon',
+        error: inviteError,
+        source: 'api',
+        route: 'POST /api/invitations',
+        context: { companyId, userId: user.id, email: normalizedEmail },
+      });
       return NextResponse.json({ error: 'Kunne ikke opprette invitasjon' }, { status: 500 });
     }
 
@@ -117,6 +125,13 @@ export async function POST(request: Request) {
       const { error: roleInsertError } = await admin.from('invitation_roles').insert(roleInserts);
       if (roleInsertError) {
         console.error('Invitation role error:', roleInsertError);
+        await logServerError({
+          message: 'Kunne ikke knytte roller til invitasjon',
+          error: roleInsertError,
+          source: 'api',
+          route: 'POST /api/invitations',
+          context: { companyId, userId: user.id, invitationId: invitation.id },
+        });
       }
     }
 
@@ -129,7 +144,7 @@ export async function POST(request: Request) {
     const invitationUrl = `${baseUrl}/signup?invite=${rawToken}`;
 
     try {
-      await resend.emails.send({
+      const { error: sendError } = await resend.emails.send({
         from: 'Proanbud <post@proanbud.no>',
         to: normalizedEmail,
         subject: 'Du er invitert til Proanbud',
@@ -147,8 +162,27 @@ export async function POST(request: Request) {
           </div>
         `,
       });
+      if (sendError) {
+        console.error('Invitation email rejected by Resend:', sendError);
+        await logServerError({
+          message: 'Invitasjons-e-post avvist av Resend',
+          error: sendError,
+          source: 'api',
+          route: 'POST /api/invitations',
+          level: 'warning',
+          context: { companyId, userId: user.id, email: normalizedEmail },
+        });
+      }
     } catch (emailError) {
       console.error('Failed to send email:', emailError);
+      await logServerError({
+        message: 'Kunne ikke sende invitasjons-e-post',
+        error: emailError,
+        source: 'api',
+        route: 'POST /api/invitations',
+        level: 'warning',
+        context: { companyId, userId: user.id, email: normalizedEmail },
+      });
     }
 
     return NextResponse.json({
@@ -160,6 +194,12 @@ export async function POST(request: Request) {
     }, { status: 201 });
   } catch (error) {
     console.error('Error generating invitation:', error);
+    await logServerError({
+      message: 'Uventet feil ved generering av invitasjon',
+      error,
+      source: 'api',
+      route: 'POST /api/invitations',
+    });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

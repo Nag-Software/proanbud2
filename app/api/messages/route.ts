@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { Resend } from "resend"
 import { z } from "zod"
 
+import { companyHasFeature } from "@/lib/billing/server-modules"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 import { buildCustomerMessageEmail } from "@/lib/tilbud/customer-emails"
 import { ensureOfferPublicSlug } from "@/lib/tilbud/public-offer"
@@ -30,6 +32,13 @@ export async function POST(request: Request) {
   const { data: userRow } = await supabase.from("users").select("company_id").eq("id", user.id).maybeSingle()
   if (!userRow?.company_id) {
     return NextResponse.json({ error: "Company context missing" }, { status: 400 })
+  }
+
+  if (!(await companyHasFeature(userRow.company_id, "meldinger"))) {
+    return NextResponse.json(
+      { error: "Meldinger krever Proff-abonnement.", code: "plan_required", feature: "meldinger" },
+      { status: 403 }
+    )
   }
 
   const body = await request.json().catch(() => null)
@@ -78,14 +87,33 @@ export async function POST(request: Request) {
             publicSlug,
           })
 
-          await resend.emails.send({
+          const { error: sendError } = await resend.emails.send({
             from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <post@proanbud.no>",
             to: recipientEmail,
             subject: `Ny melding fra ${company?.name || "Proanbud"}`,
             html,
           })
+          if (sendError) {
+            console.error("[messages email] resend error", sendError)
+            await logServerError({
+              message: "Kunne ikke sende e-postvarsel om ny melding til kunde",
+              error: sendError,
+              level: "warning",
+              source: "api",
+              route: "POST /api/messages",
+              context: { companyId: userRow.company_id, customerId: parsed.data.customerId, offerId: offer.id, userId: user.id },
+            })
+          }
         } catch (emailError) {
           console.error("[messages email]", emailError)
+          await logServerError({
+            message: "Feil under utsending av e-postvarsel om ny melding til kunde",
+            error: emailError,
+            level: "warning",
+            source: "api",
+            route: "POST /api/messages",
+            context: { companyId: userRow.company_id, customerId: parsed.data.customerId, offerId: offer.id, userId: user.id },
+          })
         }
       }
     }

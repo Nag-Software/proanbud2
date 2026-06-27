@@ -38,13 +38,13 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
 }
 
 :root {
@@ -71,7 +71,7 @@
   --chart-3: oklch(0.546 0.245 262.881);
   --chart-4: oklch(0.488 0.243 264.376);
   --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0rem;
+  --radius: 5px;
   --sidebar: #fbfbfb;
   --sidebar-foreground: #151515;
   --sidebar-primary: #151515;
@@ -154,12 +154,30 @@
 
   html {
     background: var(--background);
+    /* Don't let iOS/Android resize text unexpectedly in landscape. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* Stop the whole page from rubber-banding/scroll-chaining like a webpage. */
+    overscroll-behavior-y: none;
   }
 
   body {
     @apply bg-background text-foreground font-sans;
     background-image: linear-gradient(180deg, #ffffff 0%, #fcfcfc 55%, #f7f7f7 100%);
     letter-spacing: -0.015em;
+    /* Kill the grey tap-flash so touches feel app-native, not web. */
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+
+  /* Allow text selection where it matters, but default to app-like behaviour
+     on interactive controls (no long-press text selection on buttons/tabs). */
+  button,
+  [role="button"],
+  a,
+  [role="tab"] {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
   }
 
   ::selection {
@@ -498,5 +516,53 @@
     min-height: 0;
     overflow: hidden;
   }
+}
+
+/* Kjørebok — live-location puck on the MapLibre map */
+.kjorebok-puck {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #38bdf8;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 6px rgba(56, 189, 248, 0.25);
+  animation: kjorebok-pulse 1.6s ease-out infinite;
+}
+@keyframes kjorebok-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 0 14px rgba(56, 189, 248, 0);
+  }
+}
+
+/* Kjørebok — clickable "time" pill for alternative routes (Google-Maps style) */
+.kjorebok-route-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  border-radius: 9999px;
+  background: #ffffff;
+  color: #334155;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.kjorebok-route-label:hover {
+  transform: translateY(-1px);
+}
+.kjorebok-route-label.is-selected {
+  background: #38bdf8;
+  color: #06283d;
+  border-color: #38bdf8;
+  box-shadow: 0 2px 12px rgba(56, 189, 248, 0.55);
 }
 

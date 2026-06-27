@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
 export async function GET(
@@ -18,7 +19,7 @@ export async function GET(
 
     const { data: file, error: fileError } = await supabase
       .from("supplier_price_files")
-      .select("id, supplier_name, original_filename, row_count, created_at")
+      .select("id, supplier_name, original_filename, row_count, source, created_at")
       .eq("id", id)
       .maybeSingle()
 
@@ -37,7 +38,13 @@ export async function GET(
     if (rowsError) return NextResponse.json({ error: rowsError.message }, { status: 500 })
 
     return NextResponse.json({ file, rows: rows ?? [], page, limit: LIMIT })
-  } catch {
+  } catch (err) {
+    await logServerError({
+      message: "Henting av prisfil-rader feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/prisfiler/[id] GET",
+    })
     return NextResponse.json({ error: "Serverfeil" }, { status: 500 })
   }
 }
@@ -61,7 +68,13 @@ export async function DELETE(
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true })
-  } catch {
+  } catch (err) {
+    await logServerError({
+      message: "Sletting av prisfil feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/prisfiler/[id] DELETE",
+    })
     return NextResponse.json({ error: "Serverfeil" }, { status: 500 })
   }
 }

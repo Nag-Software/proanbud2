@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from '@supabase/ssr'
+import { logServerError } from '@/lib/errors/log'
 
 function getAppBaseUrl(request: Request) {
-  return process.env.NEXT_PUBLIC_APP_URL?.trim() || new URL(request.url).origin
+  const base = process.env.NEXT_PUBLIC_APP_URL?.trim() || new URL(request.url).origin
+  // Strip any trailing slash so we never build `.../api/...` with a double slash
+  // (a doubled path breaks Supabase's redirect_to allowlist match).
+  return base.replace(/\/+$/, "")
 }
 
 export async function GET(request: Request) {
@@ -44,9 +48,30 @@ export async function GET(request: Request) {
 
     const response = NextResponse.redirect(data.url)
     pendingCookies.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+
+    // Native app (Expo WebView) handoff: Google blocks OAuth inside embedded
+    // WebViews, so the app opens this flow in the system browser with ?native=1.
+    // Remember it here so the callback returns the session via the proanbud://
+    // deep link instead of the normal web redirect.
+    const isNative = new URL(request.url).searchParams.get("native") === "1"
+    if (isNative) {
+      response.cookies.set("pa_oauth_native", "1", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: true,
+        path: "/",
+        maxAge: 600,
+      })
+    }
     return response
   } catch (e) {
     console.error('OAuth start (google login) error:', e)
+    await logServerError({
+      message: 'Google login OAuth start failed',
+      error: e,
+      source: 'api',
+      route: 'GET /api/auth/google/start',
+    })
     const message = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ error: message ?? "internal error" }, { status: 500 })
   }

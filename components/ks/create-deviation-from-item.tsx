@@ -8,16 +8,17 @@ import { toast } from "sonner"
 import { createDeviationFromChecklistItemAction } from "@/app/ks/actions"
 import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { reportClientError } from "@/lib/errors/client"
 import type { ProjectChecklistItem } from "@/lib/ks/types"
 
 type Props = {
@@ -57,6 +58,9 @@ export function CreateDeviationFromItemDialog({ open, onOpenChange, item, onCrea
       onCreated?.()
       router.push(`/avvik/${created.id}`)
     } catch (err) {
+      reportClientError(err, {
+        context: { action: "Opprette avvik fra sjekklistepunkt", itemId: item.id },
+      })
       toast.error(err instanceof Error ? err.message : "Kunne ikke opprette avvik")
     } finally {
       setSubmitting(false)
@@ -64,15 +68,15 @@ export function CreateDeviationFromItemDialog({ open, onOpenChange, item, onCrea
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>Opprett avvik</DialogTitle>
-            <DialogDescription>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Opprett avvik</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
               Avviket kobles til sjekklistepunktet og registreres som KS.
-            </DialogDescription>
-          </DialogHeader>
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -105,7 +109,7 @@ export function CreateDeviationFromItemDialog({ open, onOpenChange, item, onCrea
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <ResponsiveDialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Avbryt
             </Button>
@@ -113,9 +117,9 @@ export function CreateDeviationFromItemDialog({ open, onOpenChange, item, onCrea
               {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
               Opprett avvik
             </Button>
-          </DialogFooter>
+          </ResponsiveDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }

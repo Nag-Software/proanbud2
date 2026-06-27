@@ -17,6 +17,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { MoreHorizontalIcon, FolderIcon, ArrowRightIcon, Trash2Icon, PinIcon, PinOffIcon } from "lucide-react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 export function NavProjects({
@@ -38,10 +39,10 @@ export function NavProjects({
         {projects.map((item) => (
           <SidebarMenuItem key={item.name}>
             <SidebarMenuButton asChild className="text-sm">
-              <a href={item.url}>
+              <Link href={item.url}>
                 {item.icon}
                 <span>{item.name}</span>
-              </a>
+              </Link>
             </SidebarMenuButton>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

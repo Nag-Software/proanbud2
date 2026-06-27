@@ -34,6 +34,14 @@ export const EDITABLE_PROJECT_STATUSES = [
   { value: "completed", label: "Fullført", description: "Levert og avsluttet" },
 ] as const
 
+export const PROJECT_TYPE_OPTIONS = [
+  { value: "nybygg", label: "Nybygg" },
+  { value: "rehabilitering", label: "Rehabilitering" },
+  { value: "tilbygg", label: "Tilbygg" },
+  { value: "vedlikehold", label: "Vedlikehold" },
+  { value: "annet", label: "Annet" },
+] as const
+
 export type EditableProjectStatus = (typeof EDITABLE_PROJECT_STATUSES)[number]["value"]
 
 export const statusConfigByValue: Record<string, StatusConfig> = {

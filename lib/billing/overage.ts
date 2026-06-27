@@ -1,4 +1,4 @@
-import { getOveragePriceId, OVERAGE_UNIT_ORE } from "@/lib/billing/plans"
+import { getOveragePriceId, OVERAGE_UNIT_NOK, OVERAGE_UNIT_ORE } from "@/lib/billing/plans"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getStripe } from "@/lib/stripe/server"
 
@@ -31,7 +31,17 @@ export async function applyOverageToUpcomingInvoice(input: {
     .eq("company_id", input.companyId)
     .maybeSingle()
 
-  const quotaLimit = billing?.quota_limit ?? 0
+  const quotaLimit = billing?.quota_limit ?? null
+
+  // No real plan has quota 0 (mini=20, proff=100). A null/zero quota means the
+  // base plan could not be resolved (drift / missing price metadata) — bill
+  // NOTHING rather than charging every AI tilbud as overage.
+  if (quotaLimit === null || quotaLimit <= 0) {
+    console.error(
+      `[overage] refusing to bill: unresolved/zero quota for company ${input.companyId}`
+    )
+    return { applied: false, reason: "quota_unresolved" as const }
+  }
 
   const { count: usedCount, error: countError } = await admin
     .from("company_usage_events")
@@ -52,15 +62,25 @@ export async function applyOverageToUpcomingInvoice(input: {
     return { applied: false, reason: "no_overage" as const, used, quotaLimit }
   }
 
-  await stripe.invoiceItems.create({
-    customer: input.stripeCustomerId,
-    subscription: input.stripeSubscriptionId,
-    quantity: overage,
-    pricing: {
-      price: getOveragePriceId(),
+  await stripe.invoiceItems.create(
+    {
+      customer: input.stripeCustomerId,
+      subscription: input.stripeSubscriptionId,
+      quantity: overage,
+      pricing: {
+        price: getOveragePriceId(),
+      },
+      description: `Overforbruk AI-tilbud (${overage} stk à ${OVERAGE_UNIT_NOK.toLocaleString(
+        "nb-NO",
+        { minimumFractionDigits: 2 }
+      )} kr)`,
     },
-    description: `Overforbruk AI-tilbud (${overage} stk à 9,50 kr)`,
-  })
+    {
+      // Deterministic per company+period so a webhook retry never double-charges,
+      // even if the snapshot insert below failed on a previous attempt.
+      idempotencyKey: `overage_${input.companyId}_${input.periodStart}_${input.periodEnd}`,
+    }
+  )
 
   await admin.from("billing_overage_snapshots").insert({
     company_id: input.companyId,

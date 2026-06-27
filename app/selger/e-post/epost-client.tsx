@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 
+import { reportClientError } from "@/lib/errors/client"
 import { SelgerPageShell } from "@/components/selger/selger-page-shell"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -86,6 +87,7 @@ export function EpostClient() {
       setMessage(`Sendt til ${recipientEmail}`)
       setCustomMessage("")
     } catch (submitError) {
+      reportClientError(submitError, { context: { action: "sende selger-e-post", templateId } })
       setError(submitError instanceof Error ? submitError.message : "Noe gikk galt")
     } finally {
       setLoading(false)
@@ -210,7 +212,9 @@ export function EpostClient() {
                   title="E-post forhåndsvisning"
                   srcDoc={preview.html}
                   className="min-h-[800px] w-full border-0 bg-[#f7f7f7]"
-                  sandbox=""
+                  // Scripts forblir blokkert (e-post skal aldri kjøre JS), men la
+                  // CTA-lenker åpne ny fane i stedet for å laste seg selv inni sandkassen.
+                  sandbox="allow-popups allow-popups-to-escape-sandbox"
                 />
               ) : (
                 <p className="px-6 pb-6 text-sm text-muted-foreground">Ingen forhåndsvisning tilgjengelig.</p>

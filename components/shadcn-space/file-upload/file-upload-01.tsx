@@ -2,6 +2,7 @@
 
 import React, { useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { reportClientError } from '@/lib/errors/client';
 import { useDropzone } from 'react-dropzone';
 import { motion } from 'motion/react';
 import { Upload } from 'lucide-react';
@@ -37,7 +38,13 @@ export const FileUploadStruc: React.FC<FileUploadProps> = ({ onChange }) => {
     multiple: false,
     noClick: true,
     onDrop: handleFileChange,
-    onDropRejected: console.error,
+    onDropRejected: (rejections) => {
+      console.error(rejections);
+      reportClientError(
+        rejections?.[0]?.errors?.[0]?.message ?? 'Filopplasting avvist',
+        { level: 'warning', context: { action: 'file-drop-rejected' } }
+      );
+    },
   });
 
   const formatFileSize = (size: number) => (size / (1024 * 1024)).toFixed(2);

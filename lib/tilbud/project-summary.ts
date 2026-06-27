@@ -1,4 +1,9 @@
 import { type OfferLineItem } from "@/lib/tilbud/types"
+import { openaiFetch } from "@/lib/llm/openai-fetch"
+import { logServerError } from "@/lib/errors/log"
+
+// Re-export the client-safe pure helpers so existing server-side importers keep working.
+export { readProjectSummaryFromAnalysis, mergeAnalysisSummary } from "@/lib/tilbud/project-summary.shared"
 
 type GenerateProjectSummaryInput = {
   title: string
@@ -42,13 +47,6 @@ function normalizeJsonFromModel(raw: string) {
   return trimmed
 }
 
-export function readProjectSummaryFromAnalysis(analysisResult: unknown) {
-  if (!analysisResult || typeof analysisResult !== "object") return ""
-
-  const summary = (analysisResult as Record<string, unknown>).summary
-  return typeof summary === "string" ? summary.trim() : ""
-}
-
 export async function generateProjectSummary(input: GenerateProjectSummaryInput) {
   const fallback = buildFallbackProjectSummary(input)
 
@@ -62,40 +60,29 @@ export async function generateProjectSummary(input: GenerateProjectSummaryInput)
     .join("\n")
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              "Du skriver korte, profesjonelle prosjektbeskrivelser for norske håndverkertilbud. Svar alltid med JSON: {\"summary\":\"...\"}. Maks 2 korte setninger, maks 220 tegn.",
-          },
-          {
-            role: "user",
-            content: [
-              `Prosjekt: ${input.projectName || input.title || "Ukjent"}`,
-              `Tittel: ${input.title}`,
-              `Jobbeskrivelse: ${input.description || "Ingen detaljert beskrivelse"}`,
-              lineItemHints ? `Hovedposter:\n${lineItemHints}` : "",
-            ]
-              .filter(Boolean)
-              .join("\n\n"),
-          },
-        ],
-      }),
+    const response = await openaiFetch("chat/completions", {
+      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "Du skriver korte, profesjonelle prosjektbeskrivelser for norske håndverkertilbud. Svar alltid med JSON: {\"summary\":\"...\"}. Maks 2 korte setninger, maks 220 tegn.",
+        },
+        {
+          role: "user",
+          content: [
+            `Prosjekt: ${input.projectName || input.title || "Ukjent"}`,
+            `Tittel: ${input.title}`,
+            `Jobbeskrivelse: ${input.description || "Ingen detaljert beskrivelse"}`,
+            lineItemHints ? `Hovedposter:\n${lineItemHints}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+        },
+      ],
     })
-
-    if (!response.ok) {
-      return fallback
-    }
 
     const payload = (await response.json()) as {
       choices?: Array<{ message?: { content?: string | null } }>
@@ -112,16 +99,14 @@ export async function generateProjectSummary(input: GenerateProjectSummaryInput)
     }
 
     return summary.length > 220 ? `${summary.slice(0, 217).trim()}…` : summary
-  } catch {
+  } catch (error) {
+    await logServerError({
+      message: "AI project summary generation failed; using fallback",
+      error,
+      source: "server",
+      route: "generateProjectSummary",
+      level: "warning",
+    })
     return fallback
-  }
-}
-
-export function mergeAnalysisSummary(analysisResult: unknown, summary: string) {
-  const base = analysisResult && typeof analysisResult === "object" ? { ...(analysisResult as Record<string, unknown>) } : {}
-  return {
-    ...base,
-    summary,
-    generatedAt: new Date().toISOString(),
   }
 }

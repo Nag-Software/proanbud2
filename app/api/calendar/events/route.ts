@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { ensureValidToken } from "@/lib/oauth"
 import { enqueueCalendarTripletexSync } from "@/lib/integrations/tripletex/sync"
+import { requirePlanFeature } from "@/lib/billing/guards"
+import { logServerError } from "@/lib/errors/log"
 
 interface CalendarEvent {
   id: string
@@ -53,6 +55,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const plan = await requirePlanFeature("kalender")
+    if (!plan.ok) return plan.response
+
     // Fetch user's calendar integrations
     const { data: integrations, error } = await supabase
       .from("calendar_integrations")
@@ -83,6 +88,14 @@ export async function GET(request: Request) {
           events.push(...googleEvents)
         } catch (err) {
           console.error("Error fetching Google Calendar events:", err)
+          await logServerError({
+            message: "Failed to fetch Google Calendar events",
+            error: err,
+            source: "api",
+            route: "GET /api/calendar/events",
+            level: "warning",
+            context: { userId: user.id, provider: "google" },
+          })
         }
       } else if (validIntegration.provider === "microsoft") {
         try {
@@ -94,6 +107,14 @@ export async function GET(request: Request) {
           events.push(...microsoftEvents)
         } catch (err) {
           console.error("Error fetching Microsoft Calendar events:", err)
+          await logServerError({
+            message: "Failed to fetch Microsoft Calendar events",
+            error: err,
+            source: "api",
+            route: "GET /api/calendar/events",
+            level: "warning",
+            context: { userId: user.id, provider: "microsoft" },
+          })
         }
       }
     }
@@ -102,6 +123,12 @@ export async function GET(request: Request) {
     return NextResponse.json(events)
   } catch (error) {
     console.error("Calendar events error:", error)
+    await logServerError({
+      message: "Calendar events GET failed",
+      error,
+      source: "api",
+      route: "GET /api/calendar/events",
+    })
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -145,6 +172,16 @@ async function enqueueTripletexCalendarEvent(input: {
     end: input.end,
   }).catch((error) => {
     console.error("Tripletex calendar sync enqueue failed:", error)
+    void logServerError({
+      message: "Tripletex calendar sync enqueue failed",
+      error,
+      source: "api",
+      route: "enqueueTripletexCalendarEvent",
+      level: "warning",
+      companyId: userRow.company_id,
+      userId: input.userId,
+      context: { eventId: input.eventId, projectId },
+    })
   })
 }
 
@@ -241,6 +278,9 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    const plan = await requirePlanFeature("kalender")
+    if (!plan.ok) return plan.response
 
     const body = await request.json()
     const { title, start, end, description, targetProvider, projectId } = body
@@ -346,6 +386,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unsupported provider" }, { status: 400 })
   } catch (error: any) {
     console.error("Error creating event:", error)
+    await logServerError({
+      message: "Calendar event create (POST) failed",
+      error,
+      source: "api",
+      route: "POST /api/calendar/events",
+    })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -355,6 +401,9 @@ export async function PATCH(request: Request) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const plan = await requirePlanFeature("kalender")
+    if (!plan.ok) return plan.response
 
     const body = await request.json()
     const { eventId, start, end, title, description, color, projectId } = body
@@ -443,6 +492,12 @@ export async function PATCH(request: Request) {
     
     return NextResponse.json({ success: true })
   } catch (error: any) {
+    await logServerError({
+      message: "Calendar event update (PATCH) failed",
+      error,
+      source: "api",
+      route: "PATCH /api/calendar/events",
+    })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -452,6 +507,9 @@ export async function DELETE(request: Request) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const plan = await requirePlanFeature("kalender")
+    if (!plan.ok) return plan.response
 
     const { searchParams } = new URL(request.url)
     const eventId = searchParams.get("eventId")
@@ -495,6 +553,12 @@ export async function DELETE(request: Request) {
     
     return NextResponse.json({ success: true })
   } catch (error: any) {
+    await logServerError({
+      message: "Calendar event delete (DELETE) failed",
+      error,
+      source: "api",
+      route: "DELETE /api/calendar/events",
+    })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

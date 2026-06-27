@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { reportClientError } from "@/lib/errors/client"
 import { TEMPLATE_LANGUAGE_LABELS } from "@/lib/ks/constants"
 import type { ChecklistTemplate, ChecklistTemplateCategory } from "@/lib/ks/types"
 import { cn } from "@/lib/utils"
@@ -53,7 +54,10 @@ export function TemplateLibraryDialog({ open, onOpenChange, projectId, onAdded }
         setCategories(cats as ChecklistTemplateCategory[])
         setTemplates(tpls)
       })
-      .catch(() => toast.error("Kunne ikke laste malbibliotek"))
+      .catch((err) => {
+        reportClientError(err, { context: { action: "Laste malbibliotek" } })
+        toast.error("Kunne ikke laste malbibliotek")
+      })
       .finally(() => setLoading(false))
   }, [open])
 
@@ -62,7 +66,11 @@ export function TemplateLibraryDialog({ open, onOpenChange, projectId, onAdded }
     void getTemplatesAction({
       categoryId: categoryId === "all" ? undefined : categoryId,
       search: search || undefined,
-    }).then(setTemplates)
+    })
+      .then(setTemplates)
+      .catch((err) => {
+        reportClientError(err, { level: "warning", context: { action: "Filtrere maler" } })
+      })
   }, [open, categoryId, search])
 
   async function handleSelect(templateId: string) {
@@ -73,6 +81,7 @@ export function TemplateLibraryDialog({ open, onOpenChange, projectId, onAdded }
       onOpenChange(false)
       onAdded?.(result.id)
     } catch (err) {
+      reportClientError(err, { context: { action: "Legge til sjekkliste fra mal", projectId } })
       toast.error(err instanceof Error ? err.message : "Kunne ikke legge til sjekkliste")
     } finally {
       setAdding(null)

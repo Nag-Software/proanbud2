@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { AppPageShell } from "@/components/app-page-shell"
 import { NyttTilbudClient } from "@/components/tilbud/nytt-tilbud-client"
 import { createClient } from "@/lib/supabase/server"
+import { checkRoleAccess } from "@/lib/auth-utils"
 import { fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
 import { type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
 
@@ -41,6 +42,8 @@ type Props = {
 }
 
 export default async function NyttTilbudPage({ searchParams }: Props) {
+  await checkRoleAccess(["admin", "manager"])
+
   const resolved = (await searchParams) || {}
   const projectIdParam = Array.isArray(resolved.projectId) ? resolved.projectId[0] : resolved.projectId
 

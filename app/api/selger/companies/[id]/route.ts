@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { logSellerActivity } from "@/lib/selger/activity-log"
+import { logServerError } from "@/lib/errors/log"
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { SellerContactStatus } from "@/lib/selger/types"
@@ -62,6 +63,14 @@ export async function PATCH(
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("PATCH /api/selger/companies/[id]", error)
+    await logServerError({
+      message: "PATCH /api/selger/companies/[id] feilet",
+      error,
+      source: "api",
+      route: "/api/selger/companies/[id]",
+      method: "PATCH",
+      userId: auth.user?.id ?? null,
+    })
     return NextResponse.json({ error: "Intern serverfeil" }, { status: 500 })
   }
 }

@@ -1,4 +1,5 @@
 import { matchNorwegianSupplierPrices } from "@/lib/tilbud/supplier-prices"
+import { logServerError } from "@/lib/errors/log"
 
 export type MaterialWebSearchHit = {
   product: string
@@ -135,8 +136,24 @@ export async function searchMaterialPricesForOffer(input: {
     })
   }
 
-  for (const term of terms) {
-    const webHits = await searchBraveWeb(term)
+  // Run the per-term web searches in parallel — sequential awaits (up to 8 terms ×
+  // 8s timeout = 64s) could exceed the route maxDuration before the LLM call runs.
+  const webResults = await Promise.all(
+    terms.map((term) =>
+      searchBraveWeb(term).catch((error) => {
+        void logServerError({
+          message: "Brave material web search failed for term",
+          error,
+          source: "server",
+          route: "searchMaterialPricesForOffer",
+          level: "warning",
+          context: { term },
+        })
+        return []
+      }),
+    ),
+  )
+  for (const webHits of webResults) {
     for (const hit of webHits) {
       const key = `${hit.product}:${hit.sourceUrl}`
       if (!hits.has(key)) hits.set(key, hit)

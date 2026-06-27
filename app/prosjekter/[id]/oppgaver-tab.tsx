@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
-import { getProjectTasksAction, createTaskAction, updateTaskStatusAction } from "../actions";
+import dynamic from "next/dynamic";
+import { toast } from "sonner";
+import { getProjectTasksAction, createTaskAction, updateTaskStatusAction, updateTaskAction, deleteTaskAction } from "../actions";
+import { reportClientError } from "@/lib/errors/client";
 import { 
   Plus, 
   List, 
@@ -34,6 +36,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+
+// @hello-pangea/dnd lives only in the Kanban view — load it on demand so the
+// default "liste" view doesn't ship the dnd engine in the route bundle.
+const OppgaverKanban = dynamic(() => import("./oppgaver-kanban"), {
+  ssr: false,
+  loading: () => (
+    <div className="p-8 text-center text-sm text-muted-foreground">Laster tavle…</div>
+  ),
+});
 
 const statusToLabel: Record<string, string> = {
   todo: "Ikke startet",
@@ -75,6 +86,8 @@ export default function OppgaverTab({
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [syncToCalendar, setSyncToCalendar] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingTask, setIsSavingTask] = useState(false);
+  const [isDeletingTask, setIsDeletingTask] = useState(false);
 
   useEffect(() => {
     async function loadTasks() {
@@ -129,6 +142,10 @@ export default function OppgaverTab({
 
         if (!res.ok) {
           console.error("Failed to sync task to calendar.");
+          reportClientError("Failed to sync task to calendar", {
+            level: "warning",
+            context: { action: "synkronisere oppgave til kalender", projectId, taskId: createdTaskId, status: res.status },
+          });
         }
       }
 
@@ -143,6 +160,8 @@ export default function OppgaverTab({
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Error creating task:", error);
+      reportClientError(error, { context: { action: "opprette oppgave", projectId } });
+      toast.error("Kunne ikke opprette oppgaven – prøv igjen");
     } finally {
       setIsSubmitting(false);
     }
@@ -159,7 +178,10 @@ export default function OppgaverTab({
 
     if (source.droppableId !== destination.droppableId) {
       const newStatus = destination.droppableId;
-      
+
+      // Snapshot before the optimistic update so we can roll back if the write fails.
+      const snapshot = tasks;
+
       // Optimistic update
       setTasks(prevTasks => {
         return prevTasks.map(t => {
@@ -170,13 +192,66 @@ export default function OppgaverTab({
         });
       });
 
-      // Persist to database
+      // Persist to database — revert and tell the user if it fails, otherwise the
+      // card stays in the new column on screen while the DB still has the old status.
       try {
         await updateTaskStatusAction(draggableId, newStatus, projectId);
       } catch (err) {
         console.error("Failed to update status in DB:", err);
-        // Optionally revert local state here
+        reportClientError(err, { context: { action: "flytte oppgave (endre status)", projectId } });
+        setTasks(snapshot);
+        toast.error("Kunne ikke flytte oppgaven – prøv igjen");
       }
+    }
+  };
+
+  const handleSaveTask = async () => {
+    if (!selectedTask) return;
+    const snapshot = tasks;
+    setIsSavingTask(true);
+    // Optimistic update
+    setTasks(prev => prev.map(t => (t.id === selectedTask.id ? selectedTask : t)));
+    try {
+      await updateTaskAction({
+        id: selectedTask.id,
+        project_id: projectId,
+        title: selectedTask.title,
+        description: selectedTask.description,
+        status: selectedTask.status,
+        priority: selectedTask.priority,
+        due_date: selectedTask.due_date,
+        // `assigned_to` is intentionally omitted: the column is a user UUID FK, but
+        // the drawer field is free-text — persisting it would violate the constraint.
+      });
+      toast.success("Endringer lagret");
+      setIsDrawerOpen(false);
+    } catch (err) {
+      console.error("Failed to save task:", err);
+      reportClientError(err, { context: { action: "lagre oppgaveendringer", projectId } });
+      setTasks(snapshot);
+      toast.error("Kunne ikke lagre endringene – prøv igjen");
+    } finally {
+      setIsSavingTask(false);
+    }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!selectedTask) return;
+    const snapshot = tasks;
+    setIsDeletingTask(true);
+    // Optimistic delete
+    setTasks(prev => prev.filter(t => t.id !== selectedTask.id));
+    try {
+      await deleteTaskAction(selectedTask.id, projectId);
+      toast.success("Oppgave slettet");
+      setIsDrawerOpen(false);
+    } catch (err) {
+      console.error("Failed to delete task:", err);
+      reportClientError(err, { context: { action: "slette oppgave", projectId } });
+      setTasks(snapshot);
+      toast.error("Kunne ikke slette oppgaven – prøv igjen");
+    } finally {
+      setIsDeletingTask(false);
     }
   };
 
@@ -294,55 +369,16 @@ export default function OppgaverTab({
         )}
 
         {view === "kanban" && (
-          <DragDropContext onDragEnd={handleDragEnd}>
-            <div className="flex h-full snap-x snap-mandatory gap-4 overflow-x-auto pb-4">
-              {["todo", "in_progress", "review", "done"].map((col) => {
-                const colTasks = filteredTasks.filter((t: any) => t.status === col);
-                return (
-                  <Droppable key={col} droppableId={col}>
-                    {(provided) => (
-                      <div
-                        {...provided.droppableProps}
-                        ref={provided.innerRef}
-                        className="flex w-[min(100%,20rem)] shrink-0 snap-start flex-col gap-3 rounded-lg border bg-muted/30 p-4"
-                      >
-                        <div className="flex justify-between items-center font-medium mb-2">
-                          {statusToLabel[col] || col} <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">{colTasks.length}</span>
-                        </div>
-                        {colTasks.map((t: any, index: number) => (
-                          <Draggable key={t.id.toString()} draggableId={t.id.toString()} index={index}>
-                            {(provided) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                onClick={() => handleOpenTask(t)}
-                                className="p-3 bg-card border rounded shadow-sm cursor-pointer hover:border-primary transition-colors mb-2"
-                              >
-                                <h4 className="font-semibold text-sm mb-2">{t.title}</h4>
-                                <div className="flex justify-between items-center text-xs text-muted-foreground mt-4">
-                                  <span>{t.due_date ? new Date(t.due_date).toLocaleDateString("no-NO") : "-"}</span> {priorityToLabel[t.priority] || t.priority}
-                                </div>
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                        {canManageTasks && (
-                          <Button variant="ghost" className="w-full justify-start text-muted-foreground mt-2" size="sm" onClick={() => {
-                              setNewTaskStatus(col);
-                              setIsDialogOpen(true);
-                          }}>
-                            <Plus className="mr-2 h-4 w-4"/> Legg til kort
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </Droppable>
-                )
-              })}
-            </div>
-          </DragDropContext>
+          <OppgaverKanban
+            filteredTasks={filteredTasks}
+            onDragEnd={handleDragEnd}
+            onOpenTask={handleOpenTask}
+            canManageTasks={canManageTasks}
+            onAddCard={(col) => {
+              setNewTaskStatus(col);
+              setIsDialogOpen(true);
+            }}
+          />
         )}
 
         {view === "gantt" && (
@@ -574,24 +610,19 @@ export default function OppgaverTab({
             </div>
           )}
           <DrawerFooter className="mt-6 px-4 pb-4 flex flex-col gap-3">
-            <Button onClick={() => {
-              // For now we just close the drawer or optimistic update
-              setTasks(prev => prev.map(t => t.id === selectedTask.id ? selectedTask : t));
-              setIsDrawerOpen(false);
-            }}>Lagre endringer</Button>
+            <Button onClick={handleSaveTask} disabled={isSavingTask || isDeletingTask}>
+              {isSavingTask ? "Lagrer..." : "Lagre endringer"}
+            </Button>
             <DrawerClose asChild>
               <Button variant="outline">Lukk</Button>
             </DrawerClose>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               className="mt-4"
-              onClick={() => {
-                // Optimistic delete
-                setTasks(prev => prev.filter(t => t.id !== selectedTask.id));
-                setIsDrawerOpen(false);
-              }}
+              onClick={handleDeleteTask}
+              disabled={isSavingTask || isDeletingTask}
             >
-              Slett oppgave
+              {isDeletingTask ? "Sletter..." : "Slett oppgave"}
             </Button>
           </DrawerFooter>
         </DrawerContent>

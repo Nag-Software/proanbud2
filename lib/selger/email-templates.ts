@@ -1,3 +1,4 @@
+import { BILLING_PATH } from "@/lib/constants"
 import { buildSellerEmailHtml, sellerEmailAppUrl } from "@/lib/selger/seller-email-html"
 
 export type SellerEmailTemplate = {
@@ -119,7 +120,7 @@ export const SELLER_EMAIL_TEMPLATES: SellerEmailTemplate[] = [
         ],
         customMessage: input.customMessage,
         ctaLabel: "Se abonnement",
-        ctaUrl: `${appUrl()}/innstillinger/abonnement`,
+        ctaUrl: `${appUrl()}${BILLING_PATH}`,
         secondaryText: "Lurer du på plan, pris eller prøveperiode? Ta kontakt på post@proanbud.no — vi svarer raskt.",
       }),
   },

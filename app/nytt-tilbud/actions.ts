@@ -5,6 +5,7 @@ import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
 import { calculateOfferTotals } from "@/lib/tilbud/types"
+import { canSendOffers } from "@/lib/roles"
 import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 import { resolveOfferSendCompany, sendOfferToCustomer } from "@/lib/tilbud/send-offer"
 
@@ -147,12 +148,16 @@ async function resolveCompanyId() {
 
   const { data: userRow, error: userError } = await supabase
     .from("users")
-    .select("company_id")
+    .select("company_id, role")
     .eq("id", user.id)
     .single()
 
   if (userError || !userRow?.company_id) {
     throw new Error("Kunne ikke hente bedriftsinformasjon")
+  }
+
+  if (!canSendOffers(userRow.role)) {
+    throw new Error("Du har ikke tilgang til å opprette eller sende tilbud")
   }
 
   return { supabase, companyId: userRow.company_id, userId: user.id }

@@ -11,6 +11,7 @@ import { SjefenPageShell } from "@/components/sjefen/sjefen-page-shell"
 import { StatusBadge } from "@/components/sjefen/status-badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { reportClientError } from "@/lib/errors/client"
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { formatDateTime } from "@/lib/sjefen/format"
 import type { SanityArticleListItem } from "@/lib/sanity/articles"
 import { getPublicArticleUrl } from "@/lib/sanity/config"
@@ -103,6 +105,7 @@ const columns = (
 ]
 
 export function ArtiklerClient({ initialArticles }: { initialArticles: SanityArticleListItem[] }) {
+  const confirm = useConfirm()
   const [articles, setArticles] = useState(initialArticles)
   const [isGenerating, setIsGenerating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -166,6 +169,7 @@ export function ArtiklerClient({ initialArticles }: { initialArticles: SanityArt
       setGenerateDialogOpen(false)
       await refreshArticles()
     } catch (error) {
+      reportClientError(error, { context: { action: "generer artikkel" } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke generere artikkel")
     } finally {
       setIsGenerating(false)
@@ -174,9 +178,13 @@ export function ArtiklerClient({ initialArticles }: { initialArticles: SanityArt
 
   async function handleDelete(id: string) {
     const article = articles.find((item) => item._id === id)
-    const confirmed = window.confirm(
-      `Slette «${article?.title ?? "artikkelen"}» permanent fra Sanity?`
-    )
+    const confirmed = await confirm({
+      title: "Slette artikkel?",
+      description: `«${article?.title ?? "Artikkelen"}» slettes permanent fra Sanity og fjernes fra proanbud.no. Handlingen kan ikke angres.`,
+      confirmText: "Slett artikkel",
+      cancelText: "Avbryt",
+      variant: "destructive",
+    })
     if (!confirmed) return
 
     setDeletingId(id)
@@ -194,6 +202,7 @@ export function ArtiklerClient({ initialArticles }: { initialArticles: SanityArt
       toast.success("Artikkelen er slettet")
       setArticles((current) => current.filter((item) => item._id !== id))
     } catch (error) {
+      reportClientError(error, { context: { action: "slett artikkel", id } })
       toast.error(error instanceof Error ? error.message : "Kunne ikke slette artikkel")
     } finally {
       setDeletingId(null)

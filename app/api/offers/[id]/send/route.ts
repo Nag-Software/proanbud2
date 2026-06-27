@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { logServerError } from "@/lib/errors/log"
 import { resolveOfferSendCompany, sendOfferToCustomer } from "@/lib/tilbud/send-offer"
 import { enqueueOfferTripletexSyncAndProcess } from "@/lib/integrations/tripletex/sync"
+import { enqueueOfferFikenSyncAndProcess } from "@/lib/integrations/fiken/sync"
 import { createClient } from "@/lib/supabase/server"
 
 const sendPayloadSchema = z.object({
@@ -47,7 +49,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .maybeSingle()
 
     if (offerRow?.customer_id) {
+      // Only one accounting provider is connected at a time; each enqueue no-ops if
+      // its provider isn't the connected one.
       await enqueueOfferTripletexSyncAndProcess({
+        companyId: context.companyId,
+        offerId: id,
+        customerId: offerRow.customer_id,
+        projectId: offerRow.project_id || null,
+        source: "offer-send",
+        phase: "quote",
+      })
+      await enqueueOfferFikenSyncAndProcess({
         companyId: context.companyId,
         offerId: id,
         customerId: offerRow.customer_id,
@@ -60,6 +72,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: true, offer })
   } catch (error) {
     console.error("Failed to send offer email:", error)
+    await logServerError({
+      message: "Failed to send offer email",
+      error,
+      source: "api",
+      route: "POST /api/offers/[id]/send",
+      companyId: context.companyId,
+      userId: context.userId,
+      context: { offerId: id },
+    })
     const message = error instanceof Error ? error.message : "Kunne ikke sende tilbud på e-post"
     const status = message.includes("finnes ikke") ? 404 : message.includes("ordrelinje") ? 400 : 502
     return NextResponse.json({ error: message }, { status })

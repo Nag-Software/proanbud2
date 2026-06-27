@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import {
   Collapsible,
   CollapsibleContent,
@@ -48,10 +49,10 @@ export function NavMain({
             return (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton asChild tooltip={item.title} className="text-[14px] font-medium">
-                  <a href={item.url}>
+                  <Link href={item.url}>
                     {item.icon}
                     <span>{item.title}</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
                 {item.badge != null && item.badge > 0 && (
                   <SidebarMenuBadge className="rounded-full bg-primary text-[10px] text-primary-foreground">
@@ -82,14 +83,14 @@ export function NavMain({
                     {visibleSubItems?.map((subItem) => (
                       <SidebarMenuSubItem key={subItem.title}>
                         <SidebarMenuSubButton asChild className="text-[15px]">
-                          <a href={subItem.url}>
+                          <Link href={subItem.url}>
                             <span>{subItem.title}</span>
                             {subItem.badge != null && subItem.badge > 0 && (
                               <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground tabular-nums">
                                 {subItem.badge > 99 ? "99+" : subItem.badge}
                               </span>
                             )}
-                          </a>
+                          </Link>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
                     ))}

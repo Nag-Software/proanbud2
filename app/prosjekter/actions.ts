@@ -5,8 +5,11 @@ import { ZodError } from "zod"
 
 import { createProjectSchema, type CreateProjectInput } from "./ny/removed-project-form-schema"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { enqueueEntityTripletexSync, processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
+import { assertPlanFeature, companyHasFeature } from "@/lib/billing/server-modules"
 import { canManageProjects } from "@/lib/roles"
+import { logServerError } from "@/lib/errors/log"
 
 const taskStatusToDb: Record<string, string> = {
   "Ikke startet": "todo",
@@ -98,6 +101,13 @@ export async function getProjectTasksAction(projectId: string) {
 
   if (error) {
     console.error("Error fetching tasks:", error)
+    await logServerError({
+      message: "Kunne ikke hente oppgaver for prosjekt",
+      error,
+      source: "action",
+      route: "getProjectTasksAction",
+      context: { projectId },
+    })
     return []
   }
 
@@ -131,6 +141,7 @@ export async function createTaskAction(taskData: {
     throw new Error("Kunne ikke hente bedriftsinformasjon")
   }
 
+  await assertPlanFeature(userData.company_id, "project_tasks", "Oppgaver")
   await assertCanManageProjectTasks(supabase, user.id, taskData.project_id)
 
   const { data, error } = await supabase
@@ -149,6 +160,13 @@ export async function createTaskAction(taskData: {
 
   if (error) {
     console.error("Error creating task:", error)
+    await logServerError({
+      message: "Kunne ikke lagre oppgave i databasen",
+      error,
+      source: "action",
+      route: "createTaskAction",
+      context: { projectId: taskData.project_id, companyId: userData.company_id, userId: user.id },
+    })
     throw new Error("Kunne ikke lagre oppgave i databasen")
   }
 
@@ -159,14 +177,153 @@ export async function createTaskAction(taskData: {
 export async function updateTaskStatusAction(taskId: string, newStatus: string, projectId: string) {
   const supabase = await createClient()
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+
+  const { data: userData, error: userError } = await supabase
+    .from("users")
+    .select("company_id")
+    .eq("id", user.id)
+    .single()
+
+  if (userError || !userData?.company_id) {
+    throw new Error("Kunne ikke hente bedriftsinformasjon")
+  }
+
+  await assertPlanFeature(userData.company_id, "project_tasks", "Oppgaver")
+  // Without this, a read-only project member's drag would be silently no-op'd by RLS
+  // (no error), leaving the optimistic UI out of sync with the database.
+  await assertCanManageProjectTasks(supabase, user.id, projectId)
+
   const { error } = await supabase
     .from("tasks")
     .update({ status: normalizeTaskStatus(newStatus), updated_at: new Date().toISOString() })
     .eq("id", taskId)
+    .eq("company_id", userData.company_id)
 
   if (error) {
     console.error("Error updating task status:", error)
+    await logServerError({
+      message: "Kunne ikke oppdatere oppgavestatus",
+      error,
+      source: "action",
+      route: "updateTaskStatusAction",
+      context: { projectId, taskId, companyId: userData.company_id, userId: user.id },
+    })
     throw new Error("Kunne ikke oppdatere status")
+  }
+
+  revalidatePath(`/prosjekter/${projectId}`)
+}
+
+export async function updateTaskAction(taskData: {
+  id: string
+  project_id: string
+  title?: string
+  description?: string | null
+  status?: string
+  priority?: string
+  due_date?: string | null
+  assigned_to?: string | null
+}) {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+
+  const { data: userData, error: userError } = await supabase
+    .from("users")
+    .select("company_id")
+    .eq("id", user.id)
+    .single()
+
+  if (userError || !userData?.company_id) {
+    throw new Error("Kunne ikke hente bedriftsinformasjon")
+  }
+
+  await assertPlanFeature(userData.company_id, "project_tasks", "Oppgaver")
+  await assertCanManageProjectTasks(supabase, user.id, taskData.project_id)
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (taskData.title !== undefined) updates.title = taskData.title
+  if (taskData.description !== undefined) updates.description = taskData.description || null
+  if (taskData.status !== undefined) updates.status = normalizeTaskStatus(taskData.status)
+  if (taskData.priority !== undefined) updates.priority = normalizeTaskPriority(taskData.priority)
+  if (taskData.due_date !== undefined) {
+    updates.due_date = taskData.due_date ? new Date(taskData.due_date).toISOString() : null
+  }
+  if (taskData.assigned_to !== undefined) updates.assigned_to = taskData.assigned_to || null
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .update(updates)
+    .eq("id", taskData.id)
+    .eq("company_id", userData.company_id)
+    .select()
+    .single()
+
+  if (error) {
+    console.error("Error updating task:", error)
+    await logServerError({
+      message: "Kunne ikke lagre oppgaveendringer",
+      error,
+      source: "action",
+      route: "updateTaskAction",
+      context: { projectId: taskData.project_id, taskId: taskData.id, companyId: userData.company_id, userId: user.id },
+    })
+    throw new Error("Kunne ikke lagre endringene")
+  }
+
+  revalidatePath(`/prosjekter/${taskData.project_id}`)
+  return data
+}
+
+export async function deleteTaskAction(taskId: string, projectId: string) {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+
+  const { data: userData, error: userError } = await supabase
+    .from("users")
+    .select("company_id")
+    .eq("id", user.id)
+    .single()
+
+  if (userError || !userData?.company_id) {
+    throw new Error("Kunne ikke hente bedriftsinformasjon")
+  }
+
+  await assertCanManageProjectTasks(supabase, user.id, projectId)
+
+  const { error } = await supabase
+    .from("tasks")
+    .delete()
+    .eq("id", taskId)
+    .eq("company_id", userData.company_id)
+
+  if (error) {
+    console.error("Error deleting task:", error)
+    await logServerError({
+      message: "Kunne ikke slette oppgaven",
+      error,
+      source: "action",
+      route: "deleteTaskAction",
+      context: { projectId, taskId, companyId: userData.company_id, userId: user.id },
+    })
+    throw new Error("Kunne ikke slette oppgaven")
   }
 
   revalidatePath(`/prosjekter/${projectId}`)
@@ -193,12 +350,16 @@ export async function createProjectAction(input: CreateProjectInput) {
 
   const { data: userData, error: userError } = await supabase
     .from("users")
-    .select("company_id")
+    .select("company_id, role")
     .eq("id", user.id)
     .single()
 
   if (userError || !userData?.company_id) {
     throw new Error("Kunne ikke hente bedriftsinformasjon")
+  }
+
+  if (!canManageProjects(userData.role)) {
+    throw new Error("Du har ikke tilgang til å opprette prosjekter")
   }
 
   const companyId = userData.company_id
@@ -254,6 +415,13 @@ export async function createProjectAction(input: CreateProjectInput) {
 
   if (error || !project?.id) {
     console.error("Error creating project:", error)
+    await logServerError({
+      message: "Kunne ikke opprette prosjekt",
+      error,
+      source: "action",
+      route: "createProjectAction",
+      context: { companyId, userId: user.id },
+    })
     throw new Error("Kunne ikke opprette prosjekt")
   }
 
@@ -267,12 +435,20 @@ export async function createProjectAction(input: CreateProjectInput) {
   }))
 
   if (projectMembers.length > 0) {
-    const { error: memberError } = await supabase.from("project_members").upsert(projectMembers, {
+    const adminClient = createAdminClient()
+    const { error: memberError } = await adminClient.from("project_members").upsert(projectMembers, {
       onConflict: "project_id,user_id",
     })
 
     if (memberError) {
       console.error("Error creating initial project members:", memberError)
+      await logServerError({
+        message: "Prosjektet ble opprettet, men teamet kunne ikke lagres",
+        error: memberError,
+        source: "action",
+        route: "createProjectAction",
+        context: { companyId, userId: user.id, projectId: project.id },
+      })
       throw new Error("Prosjektet ble opprettet, men teamet kunne ikke lagres")
     }
   }
@@ -281,7 +457,7 @@ export async function createProjectAction(input: CreateProjectInput) {
     new Set((values.task_titles || []).map((title) => title.trim()).filter((title) => title.length >= 2))
   )
 
-  if (taskTitles.length > 0) {
+  if (taskTitles.length > 0 && (await companyHasFeature(companyId, "project_tasks"))) {
     const initialTasks = taskTitles.map((title) => ({
       project_id: project.id,
       company_id: companyId,
@@ -297,6 +473,13 @@ export async function createProjectAction(input: CreateProjectInput) {
 
     if (taskInsertError) {
       console.error("Error creating initial tasks:", taskInsertError)
+      await logServerError({
+        message: "Prosjektet ble opprettet, men oppgaver kunne ikke lagres",
+        error: taskInsertError,
+        source: "action",
+        route: "createProjectAction",
+        context: { companyId, userId: user.id, projectId: project.id },
+      })
       throw new Error("Prosjektet ble opprettet, men oppgaver kunne ikke lagres")
     }
   }
@@ -316,6 +499,18 @@ export async function createProjectAction(input: CreateProjectInput) {
   return { id: project.id }
 }
 
+/** Columns that may be edited via updateProjectAction. Anything else is ignored. */
+const EDITABLE_PROJECT_FIELDS = [
+  "name",
+  "description",
+  "project_type",
+  "status",
+  "start_date",
+  "end_date",
+  "budget_nok",
+  "customer_id",
+] as const
+
 export async function updateProjectAction(projectId: string, values: Record<string, unknown>) {
   const supabase = await createClient()
 
@@ -328,7 +523,7 @@ export async function updateProjectAction(projectId: string, values: Record<stri
 
   const { data: userData, error: userError } = await supabase
     .from("users")
-    .select("company_id")
+    .select("company_id, role")
     .eq("id", user.id)
     .single()
 
@@ -336,16 +531,77 @@ export async function updateProjectAction(projectId: string, values: Record<stri
     throw new Error("Kunne ikke hente bedriftsinformasjon")
   }
 
+  // The project must belong to the caller's company, and the caller must be a
+  // company manager/admin or a project member with manager access.
+  const { data: existingProject } = await supabase
+    .from("projects")
+    .select("id, company_id")
+    .eq("id", projectId)
+    .maybeSingle()
+  if (!existingProject || existingProject.company_id !== userData.company_id) {
+    throw new Error("Ugyldig prosjekt")
+  }
+
+  let canManage = canManageProjects(userData.role)
+  if (!canManage) {
+    const { data: membership } = await supabase
+      .from("project_members")
+      .select("access_level")
+      .eq("project_id", projectId)
+      .eq("user_id", user.id)
+      .maybeSingle()
+    canManage = membership?.access_level === "manager"
+  }
+  if (!canManage) {
+    throw new Error("Du har ikke tilgang til å endre dette prosjektet")
+  }
+
+  // Whitelist editable columns so callers can never set sensitive fields
+  // (company_id, created_by, ...) through this action.
+  const updates: Record<string, unknown> = {}
+  for (const key of EDITABLE_PROJECT_FIELDS) {
+    if (key in values) updates[key] = values[key]
+  }
+
+  if ("name" in updates) {
+    const name = String(updates.name ?? "").trim()
+    if (!name) throw new Error("Prosjektnavn kan ikke være tomt")
+    updates.name = name
+  }
+  if ("budget_nok" in updates) {
+    const budget = Number(updates.budget_nok)
+    updates.budget_nok = Number.isFinite(budget) && budget >= 0 ? Math.round(budget) : 0
+  }
+  if ("description" in updates) {
+    const description = String(updates.description ?? "").trim()
+    updates.description = description || null
+  }
+  if ("start_date" in updates && !updates.start_date) updates.start_date = null
+  if ("end_date" in updates && !updates.end_date) updates.end_date = null
+  if ("customer_id" in updates && !updates.customer_id) updates.customer_id = null
+
+  if (Object.keys(updates).length === 0) {
+    throw new Error("Ingen gyldige felter å oppdatere")
+  }
+
   const { error } = await supabase
     .from("projects")
     .update({
-      ...values,
+      ...updates,
       updated_at: new Date().toISOString(),
     })
     .eq("id", projectId)
+    .eq("company_id", userData.company_id)
 
   if (error) {
     console.error("Error updating project:", error)
+    await logServerError({
+      message: "Kunne ikke oppdatere prosjekt",
+      error,
+      source: "action",
+      route: "updateProjectAction",
+      context: { projectId, companyId: userData.company_id, userId: user.id },
+    })
     throw new Error("Kunne ikke oppdatere prosjekt")
   }
 

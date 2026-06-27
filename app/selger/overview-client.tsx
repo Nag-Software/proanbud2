@@ -96,10 +96,10 @@ export function OverviewClient({ stats, initialCompanies }: OverviewClientProps)
   }
 
   return (
-    <SelgerPageShell segments={["Selger", "Oversikt"]}>
+    <SelgerPageShell segments={["Selger", "Pipeline"]}>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Oversikt</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Pipeline</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Alle firmaer på plattformen — søk, filtrer og ta kontakt.
           </p>
@@ -125,7 +125,7 @@ export function OverviewClient({ stats, initialCompanies }: OverviewClientProps)
 
         <Card>
           <CardContent className="space-y-4 pt-6">
-            <div className="grid gap-3 lg:grid-cols-6">
+            <div className="grid gap-3 lg:grid-cols-7 max-w-4xl">
               <Input
                 placeholder="Søk navn, e-post, org.nr..."
                 value={search}

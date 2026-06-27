@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
 
 import { getDeviationsAction } from "@/app/avvik/actions"
+import { companyHasFeature, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import {
   DEVIATION_STATUS_LABELS,
   DEVIATION_TYPE_LABELS,
 } from "@/lib/hms/constants"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
 function escapeHtml(value: string) {
@@ -32,6 +34,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const companyId = await getCurrentCompanyIdForUser(user.id)
+  if (!(await companyHasFeature(companyId, "avvik"))) {
+    return NextResponse.json(
+      { error: "Avvik krever Proff-abonnement", code: "plan_required" },
+      { status: 403 }
+    )
+  }
+
   const url = new URL(request.url)
   const format = url.searchParams.get("format") || "csv"
   const projectId = url.searchParams.get("projectId") || undefined
@@ -55,7 +65,14 @@ export async function GET(request: Request) {
       sortBy: "created_at",
       sortDir: "desc",
     })
-  } catch {
+  } catch (error) {
+    await logServerError({
+      message: "Kunne ikke hente avvik for eksport",
+      error,
+      source: "api",
+      route: "/api/avvik/export",
+      context: { companyId, format, projectId },
+    })
     return NextResponse.json({ error: "Could not fetch deviations" }, { status: 500 })
   }
 

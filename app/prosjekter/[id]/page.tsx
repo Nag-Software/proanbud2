@@ -6,13 +6,15 @@ import { PlusCircle } from "lucide-react"
 
 import { AppPageShell } from "@/components/app-page-shell"
 import { ModuleGate } from "@/components/billing/module-gate"
+import { PlanGate } from "@/components/billing/plan-gate"
 import { Button } from "@/components/ui/button"
-import { TabsContent } from "@/components/responsive-tabs"
+import { ProjectTabPanel } from "./project-tab-panel"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
-import { companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
-import { MODULE_PRICING } from "@/lib/billing/plans"
-import { getProjectParticipantHoursAction } from "@/app/timeforing/actions"
+import { getCompanyPlanAndModules, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
+import { MODULE_PRICING, hasFeature } from "@/lib/billing/plans"
+import { canManageProjects } from "@/lib/roles"
+import { fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import { getDeviationsAction } from "@/app/avvik/actions"
 import { getProjectChecklistsAction } from "@/app/ks/actions"
 import { getProjectCustomer } from "@/app/prosjekter/project-utils"
@@ -25,8 +27,10 @@ import { EditProjectDialog } from "./edit-project-dialog"
 import ProjectDocumentsTab from "./project-documents-tab"
 import TilbudTab from "./tilbud-tab"
 import TimeforingTab from "./timeforing-tab"
+import KjorebokTab from "./kjorebok-tab"
 import { ProjectOverviewTab, type OverviewTask } from "./project-overview-tab"
 import { ProjectTabsShell } from "./project-tabs-shell"
+import { EtterkalkyleTab } from "./etterkalkyle-tab"
 
 type MemberUser = {
   id: string
@@ -60,11 +64,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const supabase = await createClient()
   const { user, canonicalRole } = await checkRoleAccess(["admin", "manager", "worker"])
 
+  // companyId only needs user.id (known above), so resolve it alongside the
+  // project reads instead of after them.
   const [
     { data: project },
     { data: tasksData },
     { data: offersData },
     { data: membersData },
+    companyId,
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -76,11 +83,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       .select("id, title, status, priority, due_date, assigned_to")
       .eq("project_id", resolvedParams.id)
       .order("due_date"),
-    supabase.from("offers").select("*").eq("project_id", resolvedParams.id),
+    supabase
+      .from("offers")
+      .select("id, title, description, amount_nok, status, created_at, analysis_result")
+      .eq("project_id", resolvedParams.id),
     supabase
       .from("project_members")
       .select("access_level, users(id, email, full_name, role)")
       .eq("project_id", resolvedParams.id),
+    getCurrentCompanyIdForUser(user.id),
   ])
 
   if (!project) {
@@ -104,13 +115,35 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     canonicalRole === "manager" ||
     currentMember?.access_level === "manager"
   const isWorker = canonicalRole === "worker"
-  const companyId = await getCurrentCompanyIdForUser(user.id)
-  const hasTimeforing = companyId ? await companyHasModule(companyId, "timeforing") : false
-  const participantHours =
-    hasTimeforing && isProjectAdmin ? await getProjectParticipantHoursAction(resolvedParams.id) : []
 
-  const projectDeviations = await getDeviationsAction({ projectId: resolvedParams.id })
-  const projectChecklists = await getProjectChecklistsAction(resolvedParams.id)
+  // Resolve plan + enabled modules in ONE read, then derive every gate
+  // in-memory. Previously companyHasModule + 3× companyHasFeature issued ~8
+  // separate admin reads for data that is identical across the calls.
+  const { plan, modules } = companyId
+    ? await getCompanyPlanAndModules(companyId)
+    : { plan: null, modules: [] as string[] }
+  const hasTimeforing = modules.includes("timeforing")
+  const hasKjorebok = modules.includes("kjorebok")
+  // Proff-only feature flags for the embedded tabs (KS, Avvik, Oppgaver).
+  const hasKs = hasFeature(plan, modules, "ks")
+  const hasAvvik = hasFeature(plan, modules, "avvik")
+  const hasTasks = hasFeature(plan, modules, "project_tasks")
+
+  // The three gated datasets are independent — fetch them concurrently. Each
+  // keeps its own gate: timeføring (admin/manager only, matching the action's
+  // canManageProjects gate), Avvik -> hasAvvik, KS -> hasKs. Mini companies
+  // never hit the Proff-only data paths.
+  const [participantHours, projectDeviations, projectChecklists] = await Promise.all([
+    hasTimeforing && canManageProjects(canonicalRole)
+      ? fetchParticipantHours(supabase, resolvedParams.id)
+      : Promise.resolve([] as Awaited<ReturnType<typeof fetchParticipantHours>>),
+    hasAvvik
+      ? getDeviationsAction({ projectId: resolvedParams.id })
+      : Promise.resolve([] as Awaited<ReturnType<typeof getDeviationsAction>>),
+    hasKs
+      ? getProjectChecklistsAction(resolvedParams.id)
+      : Promise.resolve([] as Awaited<ReturnType<typeof getProjectChecklistsAction>>),
+  ])
 
   const projectDeltakere = normalizedMembers.map((member) => {
     const memberUser = member.users
@@ -181,16 +214,18 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <ProjectTabsShell
             tabs={[
               { value: "oversikt", label: "Oversikt" },
-              { value: "tilbud", label: "Tilbud", hidden: isWorker },
-              { value: "oppgaver", label: "Oppgaver" },
+              { value: "tilbud", label: "Tilbud" },
+              { value: "oppgaver", label: "Oppgaver", hidden: !hasTasks },
               { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
               { value: "timeforing", label: "Timeføring" },
-              { value: "ks", label: "KS" },
-              { value: "avvik", label: "Avvik" },
-              { value: "deltakere", label: "Deltakere" },
+              { value: "kjorebok", label: "Kjørebok" },
+              // { value: "lonnsomhet", label: "Etterkalkyle", shortLabel: "Margin", hidden: isWorker },
+              { value: "ks", label: "KS", hidden: isWorker || !hasKs },
+              { value: "avvik", label: "Avvik", hidden: !hasAvvik },
+              { value: "deltakere", label: "Deltakere", hidden: isWorker },
             ]}
           >
-            <TabsContent value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+            <ProjectTabPanel value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
               <ProjectOverviewTab
                 projectId={project.id}
                 project={{
@@ -226,28 +261,34 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   hasTimeforing,
                 }}
               />
-            </TabsContent>
+            </ProjectTabPanel>
 
-            {!isWorker && (
-              <TabsContent value="tilbud">
-                <TilbudTab
-                  projectId={project.id}
-                  projectName={project.name}
-                  customerName={customer.name}
-                  offers={offers}
+            <ProjectTabPanel value="tilbud">
+              <TilbudTab
+                projectId={project.id}
+                projectName={project.name}
+                customerName={customer.name}
+                offers={offers}
+                readOnly={isWorker}
+              />
+            </ProjectTabPanel>
+
+            <ProjectTabPanel value="oppgaver">
+              {hasTasks ? (
+                <OppgaverTab projectId={project.id} canManageTasks={isProjectAdmin || isWorker} />
+              ) : (
+                <PlanGate
+                  featureName="Oppgaver"
+                  description="Planlegg og følg opp oppgaver direkte på prosjektet."
                 />
-              </TabsContent>
-            )}
+              )}
+            </ProjectTabPanel>
 
-            <TabsContent value="oppgaver">
-              <OppgaverTab projectId={project.id} canManageTasks={isProjectAdmin} />
-            </TabsContent>
-
-            <TabsContent value="filer">
+            <ProjectTabPanel value="filer">
               <ProjectDocumentsTab projectId={project.id} />
-            </TabsContent>
+            </ProjectTabPanel>
 
-            <TabsContent value="timeforing">
+            <ProjectTabPanel value="timeforing">
               {hasTimeforing ? (
                 <TimeforingTab projectId={project.id} canViewAllEntries={isProjectAdmin} />
               ) : (
@@ -257,24 +298,66 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   description="Registrer og følg arbeidstimer direkte på prosjektet."
                 />
               )}
-            </TabsContent>
+            </ProjectTabPanel>
 
-            <TabsContent value="ks">
-              <KsTab projectId={project.id} checklists={projectChecklists} />
-            </TabsContent>
+            <ProjectTabPanel value="kjorebok">
+              {hasKjorebok ? (
+                <KjorebokTab
+                  projectId={project.id}
+                  canViewAllEntries={isProjectAdmin}
+                  currentUserId={user.id}
+                />
+              ) : (
+                <ModuleGate
+                  moduleName="Kjørebok"
+                  monthlyPriceNok={MODULE_PRICING.kjorebok}
+                  description="Før kjørebok med GPS eller manuelt — statens satser og Tripletex-eksport, direkte på prosjektet."
+                />
+              )}
+            </ProjectTabPanel>
 
-            <TabsContent value="avvik">
-              <AvvikTab projectId={project.id} deviations={projectDeviations} />
-            </TabsContent>
+            {/*
+            {!isWorker && (
+              <ProjectTabPanel value="lonnsomhet">
+                <EtterkalkyleTab projectId={project.id} canManage={!isWorker} />
+              </ProjectTabPanel>
+            )}
+              */}
 
-            <TabsContent value="deltakere">
-              <DeltakereTab
-                projectId={project.id}
-                initialParticipants={projectDeltakere}
-                isProjectAdmin={isProjectAdmin}
-                participantHours={participantHours}
-              />
-            </TabsContent>
+            {!isWorker && (
+              <ProjectTabPanel value="ks">
+                {hasKs ? (
+                  <KsTab projectId={project.id} checklists={projectChecklists} />
+                ) : (
+                  <PlanGate
+                    featureName="KS"
+                    description="Kvalitetssikre prosjektet med sjekklister og maler."
+                  />
+                )}
+              </ProjectTabPanel>
+            )}
+
+            <ProjectTabPanel value="avvik">
+              {hasAvvik ? (
+                <AvvikTab projectId={project.id} deviations={projectDeviations} />
+              ) : (
+                <PlanGate
+                  featureName="Avvik"
+                  description="Registrer og følg opp avvik på prosjektet."
+                />
+              )}
+            </ProjectTabPanel>
+
+            {!isWorker && (
+              <ProjectTabPanel value="deltakere">
+                <DeltakereTab
+                  projectId={project.id}
+                  initialParticipants={projectDeltakere}
+                  isProjectAdmin={isProjectAdmin}
+                  participantHours={participantHours}
+                />
+              </ProjectTabPanel>
+            )}
           </ProjectTabsShell>
         </Suspense>
       </section>

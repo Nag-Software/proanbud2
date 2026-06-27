@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server"
 
 import { requireCompanyAdmin } from "@/lib/billing/guards"
-import { fetchSubscription, upsertCompanyBillingFromSubscription } from "@/lib/billing/sync"
+import { recoverFromDeadSubscription } from "@/lib/billing/confirm-checkout"
+import { upsertCompanyBillingFromSubscription } from "@/lib/billing/sync"
+import {
+  isStripeResourceMissing,
+  SubscriptionMissingError,
+} from "@/lib/billing/stripe-helpers"
 import { getStripe } from "@/lib/stripe/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 
 export async function POST() {
   try {
@@ -25,9 +31,18 @@ export async function POST() {
     }
 
     const stripe = getStripe()
-    const updated = await stripe.subscriptions.update(billing.stripe_subscription_id, {
-      trial_end: "now",
-    })
+    let updated
+    try {
+      updated = await stripe.subscriptions.update(billing.stripe_subscription_id, {
+        trial_end: "now",
+      })
+    } catch (error) {
+      if (isStripeResourceMissing(error)) {
+        await recoverFromDeadSubscription(auth.context.companyId)
+        throw new SubscriptionMissingError()
+      }
+      throw error
+    }
 
     await upsertCompanyBillingFromSubscription({
       companyId: auth.context.companyId,
@@ -38,8 +53,17 @@ export async function POST() {
     return NextResponse.json({ success: true, status: updated.status })
   } catch (error) {
     console.error("[stripe/end-trial]", error)
+    await logServerError({
+      message: "Avslutting av prøveperiode feilet",
+      error,
+      source: "api",
+      route: "/api/stripe/end-trial",
+    })
+    if (error instanceof SubscriptionMissingError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 })
+    }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Kunne ikke avslutte prøveperiode." },
+      { error: "Kunne ikke avslutte prøveperiode. Prøv igjen senere." },
       { status: 500 }
     )
   }

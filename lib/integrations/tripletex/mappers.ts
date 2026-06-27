@@ -2,7 +2,7 @@ import {
   buildTripletexOfferExternalAccountsNumber,
   buildTripletexOfferNumber,
 } from "@/lib/integrations/tripletex/offer-identity"
-import { calculateLineItemTotal, type OfferLineItem } from "@/lib/tilbud/types"
+import { calculateLineItemUnitPriceWithMarkupBeforeDiscount, type OfferLineItem } from "@/lib/tilbud/types"
 
 export function mapCustomerToTripletex(customer: {
   name: string
@@ -145,9 +145,11 @@ function normalizeOfferLineItems(input: unknown): OfferLineItem[] {
 }
 
 function lineUnitPriceExVat(item: OfferLineItem) {
-  const quantity = item.quantity > 0 ? item.quantity : 1
-  const lineTotal = calculateLineItemTotal(item)
-  return Math.round((lineTotal / quantity + Number.EPSILON) * 100) / 100
+  // Tripletex computes the line total as unitPriceExcludingVatCurrency * count * (1 - discount/100),
+  // and buildOrderLine / mapTilbudOrderLinesFromOffer pass line.discount = item.discountPercent
+  // separately. This MUST therefore be the unit price WITH markup but BEFORE discount — otherwise
+  // the discount is applied twice and Tripletex undercharges vs. the accepted offer.
+  return calculateLineItemUnitPriceWithMarkupBeforeDiscount(item)
 }
 
 function buildOrderLine(item: OfferLineItem, options?: { defaultVatTypeId?: number | null; defaultAccountId?: number | null }) {
@@ -310,3 +312,65 @@ export function mapTilbudOrderLinesFromOffer(
 
 /** @deprecated Use mapTilbudOrderLinesFromOffer */
 export const mapProjectOrderLinesFromOffer = mapTilbudOrderLinesFromOffer
+
+// --- Kjørebok → reiseregning (travel expense + mileage allowance) ----------
+
+type KjorebokTripForTripletex = {
+  id: string
+  trip_date: string
+  from_address: string | null
+  to_address: string | null
+  distance_km: number | string
+  purpose: string | null
+  rate_nok_per_km: number | string
+  amount_nok: number | string
+}
+
+/**
+ * POST /travelExpense — the parent reiseregning. `employee.id` is required and
+ * comes from the user→Tripletex-employee mapping; `project` links it to the
+ * ProAnbud project. Left as a draft (isApproved defaults false) for a manager to
+ * approve in Tripletex.
+ */
+export function mapTravelExpenseFromTrip(
+  trip: KjorebokTripForTripletex,
+  employeeExternalId: number,
+  options: { projectExternalId?: number | null }
+): Record<string, unknown> {
+  const route = [trip.from_address, trip.to_address].filter(Boolean).join("–")
+  const title = (trip.purpose?.trim() || (route ? `Kjøretur ${route}` : "Kjøretur")).slice(0, 255)
+  return {
+    employee: { id: employeeExternalId },
+    date: dateOnlyFromDb(trip.trip_date),
+    title,
+    ...(options.projectExternalId ? { project: { id: options.projectExternalId } } : {}),
+  }
+}
+
+/**
+ * POST /travelExpense/mileageAllowance — the kjøregodtgjørelse line on a reiseregning.
+ *
+ * We send the rate + amount snapshot stored on the trip (statens satser, incl.
+ * passenger/anleggsvei surcharges baked into the rate) so the payout matches what
+ * the user sees in ProAnbud and does not depend on Tripletex's own rate config.
+ *
+ * NOTE (sandbox): if a Tripletex environment rejects an explicit rate/amount and
+ * instead requires a rateType/rateCategory reference, switch this to resolve and
+ * send those ids (Strategy A in the plan). isCompanyCar must be false for a
+ * statens-sats payout (not firmabil).
+ */
+export function mapMileageAllowanceFromTrip(
+  trip: KjorebokTripForTripletex,
+  travelExpenseExternalId: number
+): Record<string, unknown> {
+  return {
+    travelExpense: { id: travelExpenseExternalId },
+    date: dateOnlyFromDb(trip.trip_date),
+    departureLocation: (trip.from_address ?? "").slice(0, 255),
+    destination: (trip.to_address ?? "").slice(0, 255),
+    km: Number(trip.distance_km),
+    rate: Number(trip.rate_nok_per_km),
+    amount: Number(trip.amount_nok),
+    isCompanyCar: false,
+  }
+}

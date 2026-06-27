@@ -4,10 +4,12 @@ import * as React from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import {
+  ArrowLeftIcon,
   ChevronRightIcon,
-  HistoryIcon,
+  GaugeIcon,
   LayoutDashboardIcon,
-  MailIcon,
+  TargetIcon,
+  WrenchIcon,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -35,21 +37,36 @@ import {
 } from "@/components/ui/sidebar"
 import { createClient } from "@/lib/supabase/client"
 
+// Three daily destinations + a Verktøy group that keeps the old pages reachable
+// without cluttering the cockpit. The seller lives in "I dag".
 const navItems = [
   {
-    title: "Oversikt",
+    title: "I dag",
     url: "/selger",
     icon: <LayoutDashboardIcon className="size-4" />,
   },
   {
-    title: "E-post",
-    url: "/selger/e-post",
-    icon: <MailIcon className="size-4" />,
+    title: "Pipeline",
+    url: "/selger/pipeline",
+    icon: <TargetIcon className="size-4" />,
   },
   {
-    title: "Aktivitet",
-    url: "/selger/aktivitet",
-    icon: <HistoryIcon className="size-4" />,
+    title: "Motor",
+    url: "/selger/motor",
+    icon: <GaugeIcon className="size-4" />,
+  },
+  {
+    title: "Verktøy",
+    url: "#",
+    icon: <WrenchIcon className="size-4" />,
+    collapsible: true,
+    items: [
+      { title: "Godkjenning", url: "/selger/godkjenning" },
+      { title: "E-post", url: "/selger/e-post" },
+      { title: "Leads", url: "/selger/leads" },
+      { title: "Analyse", url: "/selger/analyse" },
+      { title: "Aktivitet", url: "/selger/aktivitet" },
+    ],
   },
 ]
 
@@ -75,8 +92,19 @@ function SelgerSidebarHeader() {
           </span>
         )}
       </div>
-      {!isCollapsed && (
-        <div className="px-2 pt-2">
+      <div className="px-2 pt-2">
+        {isCollapsed ? (
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-8 hover:shadow-sm"
+            onClick={() => router.push("/")}
+            title="Tilbake til Proanbud"
+            aria-label="Tilbake til Proanbud"
+          >
+            <ArrowLeftIcon className="size-4" />
+          </Button>
+        ) : (
           <Button
             variant="outline"
             size="sm"
@@ -85,8 +113,8 @@ function SelgerSidebarHeader() {
           >
             Tilbake til Proanbud
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </SidebarHeader>
   )
 }

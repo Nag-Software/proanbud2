@@ -7,6 +7,8 @@ import {
   createDeviationSchema,
   type CreateDeviationInput,
 } from "@/app/avvik/schemas"
+import { assertPlanFeature } from "@/lib/billing/server-modules"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 import { OPEN_DEVIATION_STATUSES } from "@/lib/hms/constants"
 import type { DeviationStats, DeviationWithRelations } from "@/lib/hms/types"
@@ -183,6 +185,16 @@ export async function getDeviationStatsAction(): Promise<DeviationStats> {
     .eq("company_id", companyId)
 
   if (error) {
+    // Best-effort dashboard widget: keep the zero-fallback but record the failure
+    // so a broken stats query is not invisible.
+    await logServerError({
+      message: "Kunne ikke hente avviksstatistikk",
+      error,
+      level: "warning",
+      source: "action",
+      route: "getDeviationStatsAction",
+      context: { companyId },
+    })
     return { openCount: 0, closedCount: 0, ruhLast30Days: 0 }
   }
 
@@ -225,6 +237,7 @@ export async function getAccessibleProjectsAction() {
 export async function createDeviationAction(input: CreateDeviationInput) {
   const parsed = createDeviationSchema.parse(input)
   const { supabase, user, companyId } = await getAuthContext()
+  await assertPlanFeature(companyId, "avvik", "Avvik")
 
   const { data: project } = await supabase
     .from("projects")
@@ -273,6 +286,7 @@ export async function createDeviationAction(input: CreateDeviationInput) {
 export async function closeDeviationAction(input: { id: string; followUpNotes?: string }) {
   const parsed = closeDeviationSchema.parse(input)
   const { supabase, user, companyId, role } = await getAuthContext()
+  await assertPlanFeature(companyId, "avvik", "Avvik")
 
   const { data: existing } = await supabase
     .from("deviations")
@@ -303,6 +317,7 @@ export async function closeDeviationAction(input: { id: string; followUpNotes?: 
 
 export async function uploadDeviationPhotoAction(formData: FormData) {
   const { supabase, user, companyId } = await getAuthContext()
+  await assertPlanFeature(companyId, "avvik", "Avvik")
 
   const deviationId = String(formData.get("deviationId") || "")
   const file = formData.get("file") as File | null
@@ -343,7 +358,10 @@ export async function uploadDeviationPhotoAction(formData: FormData) {
 }
 
 export async function getDeviationPhotoUrlAction(storagePath: string) {
-  const { supabase } = await getAuthContext()
+  const { supabase, companyId } = await getAuthContext()
+  // Defense-in-depth on top of the storage RLS policy: only sign paths that live
+  // inside the caller's own company folder ({companyId}/...).
+  if (!storagePath.startsWith(`${companyId}/`)) return null
   const { data } = await supabase.storage.from("hms_avvik").createSignedUrl(storagePath, 3600)
   return data?.signedUrl || null
 }

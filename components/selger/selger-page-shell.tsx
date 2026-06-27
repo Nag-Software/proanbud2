@@ -6,8 +6,8 @@ import { SelgerSidebar } from "@/components/selger/selger-sidebar"
 import {
   Breadcrumb,
   BreadcrumbItem,
-  BreadcrumbLink,
   BreadcrumbList,
+  BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { Separator } from "@/components/ui/separator"
@@ -42,7 +42,7 @@ export function SelgerPageShell({ segments, children, noPadding }: SelgerPageShe
                   <Fragment key={`${segment}-${index}`}>
                     {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
                     <BreadcrumbItem className="hidden md:block">
-                      <BreadcrumbLink href="#">{segment}</BreadcrumbLink>
+                      <BreadcrumbPage>{segment}</BreadcrumbPage>
                     </BreadcrumbItem>
                   </Fragment>
                 ))}

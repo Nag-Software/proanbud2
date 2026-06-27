@@ -8,12 +8,15 @@ import {
   Building2Icon,
   ChevronRightIcon,
   FileTextIcon,
+  HandshakeIcon,
   InboxIcon,
   LayoutDashboardIcon,
   NewspaperIcon,
+  RadarIcon,
   ReceiptIcon,
   ScrollTextIcon,
   ShieldCheckIcon,
+  TriangleAlertIcon,
   UsersIcon,
 } from "lucide-react"
 
@@ -49,6 +52,11 @@ const navItems = [
     icon: <LayoutDashboardIcon className="size-4" />,
   },
   {
+    title: "Analyse",
+    url: "/sjefen/analyse",
+    icon: <RadarIcon className="size-4" />,
+  },
+  {
     title: "Firmaer",
     url: "/sjefen/firmaer",
     icon: <Building2Icon className="size-4" />,
@@ -57,6 +65,11 @@ const navItems = [
     title: "Brukere",
     url: "/sjefen/brukere",
     icon: <UsersIcon className="size-4" />,
+  },
+  {
+    title: "Selgere",
+    url: "/sjefen/selgere",
+    icon: <HandshakeIcon className="size-4" />,
   },
   {
     title: "Tilbud",
@@ -77,6 +90,11 @@ const navItems = [
     title: "Meldinger",
     url: "/sjefen/meldinger",
     icon: <InboxIcon className="size-4" />,
+  },
+  {
+    title: "Feillogg",
+    url: "/sjefen/feil",
+    icon: <TriangleAlertIcon className="size-4" />,
   },
   {
     title: "Artikler",

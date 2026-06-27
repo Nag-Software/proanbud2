@@ -6,6 +6,7 @@ import type { User } from "@supabase/supabase-js"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { canManageSubscription } from "@/lib/roles"
+import { reportClientError } from "@/lib/errors/client"
 
 import {
   Avatar,
@@ -218,6 +219,7 @@ export function NavUser() {
       router.refresh()
     } catch (error) {
       console.error("Error saving profile", error)
+      reportClientError(error, { context: { action: "save-profile", userId: user.id } })
       toast.error("Kunne ikke lagre innstillingene.")
     } finally {
       setIsSaving(false)

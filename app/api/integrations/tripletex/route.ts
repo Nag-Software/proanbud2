@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
+import { companyHasFeature } from "@/lib/billing/server-modules"
 import {
   encryptConnectionTokens,
   refreshTripletexSession,
@@ -230,10 +232,27 @@ function requireCompanyAdmin(ctx: { isCompanyAdmin: boolean }) {
   return null
 }
 
+async function requireIntegrasjonerFeature(ctx: { companyId: string }) {
+  if (!(await companyHasFeature(ctx.companyId, "integrasjoner"))) {
+    return NextResponse.json(
+      {
+        error: "Integrasjoner er inkludert i Proff eller kan aktiveres som modul.",
+        code: "plan_required",
+        feature: "integrasjoner",
+      },
+      { status: 403 }
+    )
+  }
+
+  return null
+}
+
 export async function GET() {
   try {
     const ctx = await resolveCompanyContext()
     if ("error" in ctx) return ctx.error
+    const planForbidden = await requireIntegrasjonerFeature(ctx)
+    if (planForbidden) return planForbidden
 
     const admin = createAdminClient()
     const [connectionResult, jobsResult, recentJobsResult, recentEventsResult] = await Promise.all([
@@ -301,6 +320,12 @@ export async function GET() {
       connected: Boolean(connection && connection.sync_state !== "disconnected"),
     })
   } catch (error) {
+    await logServerError({
+      message: "Failed to load Tripletex connection state",
+      error,
+      source: "api",
+      route: "GET /api/integrations/tripletex",
+    })
     const message = error instanceof Error ? error.message : "Ukjent feil"
     return NextResponse.json({ error: message }, { status: 500 })
   }
@@ -312,6 +337,8 @@ export async function POST(request: Request) {
     if ("error" in ctx) return ctx.error
     const forbidden = requireCompanyAdmin(ctx)
     if (forbidden) return forbidden
+    const planForbidden = await requireIntegrasjonerFeature(ctx)
+    if (planForbidden) return planForbidden
 
     const body = await request.json()
     const apiKey = normalizeTripletexApiKey(String(body.apiKey || body.employeeToken || ""))
@@ -395,6 +422,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (error) {
+    await logServerError({
+      message: "Tripletex connect/save (POST) failed",
+      error,
+      source: "api",
+      route: "POST /api/integrations/tripletex",
+    })
     const mapped = toClientError(error)
     const details = buildTripletexErrorDetails(error as KnownErrorShape)
     return NextResponse.json(
@@ -410,6 +443,8 @@ export async function PATCH(request: Request) {
     if ("error" in ctx) return ctx.error
     const forbidden = requireCompanyAdmin(ctx)
     if (forbidden) return forbidden
+    const planForbidden = await requireIntegrasjonerFeature(ctx)
+    if (planForbidden) return planForbidden
 
     const body = await request.json().catch(() => ({}))
     const action = String(body?.action || "")
@@ -587,6 +622,12 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ error: "Ugyldig handling", code: "invalid_action" }, { status: 400 })
   } catch (error) {
+    await logServerError({
+      message: "Tripletex PATCH action failed",
+      error,
+      source: "api",
+      route: "PATCH /api/integrations/tripletex",
+    })
     const message = error instanceof Error ? error.message : "Ukjent feil"
     return NextResponse.json({ error: message, code: "disconnect_error" }, { status: 500 })
   }
@@ -598,6 +639,8 @@ export async function DELETE() {
     if ("error" in ctx) return ctx.error
     const forbidden = requireCompanyAdmin(ctx)
     if (forbidden) return forbidden
+    const planForbidden = await requireIntegrasjonerFeature(ctx)
+    if (planForbidden) return planForbidden
 
     const admin = createAdminClient()
     const { error } = await admin
@@ -614,6 +657,12 @@ export async function DELETE() {
 
     return NextResponse.json({ ok: true })
   } catch (error) {
+    await logServerError({
+      message: "Tripletex DELETE (remove integration) failed",
+      error,
+      source: "api",
+      route: "DELETE /api/integrations/tripletex",
+    })
     const message = error instanceof Error ? error.message : "Ukjent feil"
     return NextResponse.json({ error: message, code: "delete_error" }, { status: 500 })
   }

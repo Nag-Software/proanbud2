@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { logServerError } from "@/lib/errors/log"
 
 export async function POST(request: Request) {
   // Google push notifications for Calendar will POST here.
@@ -8,6 +9,12 @@ export async function POST(request: Request) {
     // TODO: enqueue a sync job for the affected user/calendar
     return NextResponse.json({ ok: true })
   } catch (e) {
+    await logServerError({
+      message: "Google calendar webhook processing failed",
+      error: e,
+      source: "api",
+      route: "POST /api/webhooks/google",
+    })
     return NextResponse.json({ ok: false }, { status: 500 })
   }
 }

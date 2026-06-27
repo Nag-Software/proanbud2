@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { recordUsageEvent, requireActiveSubscription } from "@/lib/billing/guards"
+import { logServerError } from "@/lib/errors/log"
+import { getUsageSummary, recordUsageEvent, requireActiveSubscription } from "@/lib/billing/guards"
 import { createClient } from "@/lib/supabase/server"
+import { openaiFetch } from "@/lib/llm/openai-fetch"
 import type { CompanyPriceLevel } from "@/lib/tilbud/company-profile"
 import {
   buildAiPriceSelectionContext,
@@ -281,20 +283,7 @@ async function callOpenAiResponses(body: Record<string, unknown>): Promise<Respo
       })()
     : body
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify(requestBody),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`OpenAI feil (${response.status}): ${errorText.slice(0, 500)}`)
-  }
-
+  const response = await openaiFetch("responses", requestBody)
   return response.json() as Promise<ResponsesPayload>
 }
 
@@ -404,15 +393,22 @@ async function resolvePriceContext(
     .limit(10)
 
   const files = (fileData || []) as PriceFileSummary[]
+  // Scope the row fetch to exactly the files we loaded above. Otherwise, for a
+  // company with more files than the cap, rows from excluded files count toward
+  // the company total and the expectedRowCount early-break can stop before all
+  // rows of the *included* files are loaded — silently dropping prices (manual
+  // prices, each their own file, make crossing the cap far more likely).
+  const fileIds = files.map((file) => file.id)
   const expectedRowCount = files.reduce((sum, file) => sum + Math.max(file.row_count || 0, 0), 0)
 
   const allFetchedRows: DbPriceRow[] = []
   const batchSize = 1000
-  for (let offset = 0; ; offset += batchSize) {
+  for (let offset = 0; fileIds.length > 0; offset += batchSize) {
     const { data: batch } = await supabase
       .from("supplier_price_rows")
       .select("product, unit, net_price, list_price, category, nobb, supplier_sku, file_id, product_group_code")
       .eq("company_id", companyId)
+      .in("file_id", fileIds)
       .not("product", "is", null)
       .order("id", { ascending: true })
       .range(offset, offset + batchSize - 1)
@@ -465,7 +461,14 @@ async function extractAttachmentText(fileData: Blob, type?: string) {
       const parser = new PDFParse({ data: new Uint8Array(await fileData.arrayBuffer()) })
       const result = await parser.getText()
       return result.text.slice(0, 12000)
-    } catch {
+    } catch (error) {
+      void logServerError({
+        message: "PDF text extraction failed for ai-chat attachment",
+        error,
+        source: "api",
+        route: "POST /api/tilbud/ai-chat",
+        level: "warning",
+      })
       return ""
     }
   }
@@ -509,6 +512,14 @@ async function resolveAttachmentContext(
         name: doc.name,
         type: doc.type,
         error: error instanceof Error ? error.message : error,
+      })
+      void logServerError({
+        message: "Failed to process ai-chat attachment",
+        error,
+        source: "api",
+        route: "POST /api/tilbud/ai-chat",
+        level: "warning",
+        context: { documentId: doc.id, name: doc.name, type: doc.type },
       })
     }
 
@@ -743,6 +754,10 @@ async function buildResultPayload(input: {
   }
 }
 
+// AI generation can take longer than the default serverless limit — allow up to
+// 60s so requests aren't killed mid-generation on Vercel.
+export const maxDuration = 60
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -756,6 +771,23 @@ export async function POST(request: Request) {
 
     const subscription = await requireActiveSubscription()
     if (!subscription.ok) return subscription.response
+
+    // Absolute safety ceiling, independent of plan quota/overage. Overage is a
+    // legitimate paid feature, but a billing desync (e.g. a "zombie active" row
+    // pointing at a dead subscription) must never translate into unbounded AI
+    // spend. This ceiling sits far above any realistic monthly usage.
+    const HARD_AI_CAP = 1000
+    const preUsage = await getUsageSummary(subscription.context.companyId)
+    if ((preUsage.used ?? 0) >= HARD_AI_CAP) {
+      return NextResponse.json(
+        {
+          error:
+            "Du har nådd maksgrensen for AI-tilbud denne perioden. Kontakt support hvis du trenger mer.",
+          code: "ai_hard_cap",
+        },
+        { status: 429 }
+      )
+    }
 
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ error: "OpenAI API-nøkkel er ikke konfigurert" }, { status: 503 })
@@ -847,6 +879,13 @@ export async function POST(request: Request) {
     )
   } catch (error) {
     console.error("[ai-chat POST]", error)
+    await logServerError({
+      message: "ai-chat offer generation failed",
+      error,
+      source: "api",
+      route: "POST /api/tilbud/ai-chat",
+      statusCode: 500,
+    })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Ukjent feil" },
       { status: 500 }

@@ -12,7 +12,7 @@ import {
   type MouseEvent,
 } from "react"
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd"
-import { ChevronDown, ExternalLink, GripVertical, Info, Trash2 } from "lucide-react"
+import { ChevronDown, ExternalLink, GripVertical, Info, Pencil, Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -24,11 +24,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { cn } from "@/lib/utils"
 import { calculateLineItemTotal, formatNok, type OfferLineItem } from "@/lib/tilbud/types"
 
-type NewOfferItemsTableProps = {
+export type NewOfferItemsTableProps = {
   items: OfferLineItem[]
   onItemsChange: (next: OfferLineItem[]) => void
   supplierSuggestions: string[]
@@ -293,6 +302,7 @@ function EditableNumber({
   max,
   step,
   className,
+  inputMode,
 }: {
   value: number
   onChange: (v: number) => void
@@ -301,6 +311,7 @@ function EditableNumber({
   max?: number
   step?: number
   className?: string
+  inputMode?: "numeric" | "decimal"
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(String(value))
@@ -323,6 +334,7 @@ function EditableNumber({
       <input
         ref={inputRef}
         type="number"
+        inputMode={inputMode}
         value={draft}
         min={min}
         max={max}
@@ -361,8 +373,10 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
   { items, onItemsChange, supplierSuggestions },
   ref
 ) {
+  const confirm = useConfirm()
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [emptyGroups, setEmptyGroups] = useState<string[]>([])
+  const [editingItem, setEditingItem] = useState<OfferLineItem | null>(null)
 
   const groups = useMemo(() => buildGroups(items), [items])
 
@@ -447,12 +461,16 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
   }, [])
 
   const removeCategory = useCallback(
-    (group: string) => {
+    async (group: string) => {
       const groupItems = groupsRef.current[group] || []
       if (groupItems.length > 0) {
-        const confirmed = window.confirm(
-          `Kategorien «${group}» inneholder ${groupItems.length} linje${groupItems.length === 1 ? "" : "r"}. Vil du fjerne kategorien og alle linjene?`
-        )
+        const confirmed = await confirm({
+          title: "Fjerne kategori?",
+          description: `Kategorien «${group}» inneholder ${groupItems.length} linje${groupItems.length === 1 ? "" : "r"}. Kategorien og alle linjene i den fjernes fra tilbudet.`,
+          confirmText: "Fjern kategori",
+          cancelText: "Avbryt",
+          variant: "destructive",
+        })
         if (!confirmed) return
       }
 
@@ -464,7 +482,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
         return next
       })
     },
-    [onItemsChange]
+    [confirm, onItemsChange]
   )
 
   useImperativeHandle(
@@ -504,7 +522,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40">
               <TableHead className="w-8" />
-              <TableHead className="w-[33%] text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <TableHead className="w-[26%] max-w-md text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Produkt / element
               </TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Leverandør</TableHead>
@@ -616,7 +634,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                                           <GripVertical className="h-3.5 w-3.5" />
                                         </button>
                                       </td>
-                                      <td className="p-2 align-middle">
+                                      <td className="max-w-md p-2 align-middle">
                                         <div className="flex items-center gap-1">
                                           <div className="min-w-0 flex-1">
                                             <EditableText
@@ -671,6 +689,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                                           }
                                           min={0}
                                           step={0.01}
+                                          inputMode="decimal"
                                           className="w-28"
                                         />
                                       </td>
@@ -680,6 +699,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                                           onChange={(v) => updateRow(item.id, { quantity: v })}
                                           min={0}
                                           step={1}
+                                          inputMode="numeric"
                                           className="w-16"
                                         />
                                       </td>
@@ -710,6 +730,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                                           min={0}
                                           max={100}
                                           step={0.1}
+                                          inputMode="decimal"
                                           className="w-16"
                                         />
                                       </td>
@@ -746,29 +767,196 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
         </Table>
       </div>
     </div>
-    <div className="space-y-3 lg:hidden">
-      {items.length === 0 ? (
+    <div className="space-y-2 lg:hidden">
+      {groupOrder.length === 0 ? (
         <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">
           Ingen elementer enda. Legg til fra prisliste, fast jobb eller blank rad.
         </div>
       ) : (
-        items.map((item) => (
-          <div key={item.id} className="rounded-lg border p-3">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.subproject}</p>
-            <p className="mt-1 font-medium">{item.title}</p>
-            {item.description ? (
-              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
-            ) : null}
-            <div className="mt-3 flex items-end justify-between gap-3">
-              <p className="text-sm text-muted-foreground">
-                {item.quantity} {item.unit} · {item.supplier || "Ukjent leverandør"}
-              </p>
-              <p className="shrink-0 font-semibold tabular-nums">{formatNok(calculateLineItemTotal(item))}</p>
+        groupOrder.map((group) => {
+          const groupItems = groups[group] || []
+          const isExpanded = !collapsedGroups.has(group)
+          const groupTotal = groupItems.reduce((sum, item) => sum + calculateLineItemTotal(item), 0)
+
+          return (
+            <div key={group} className="overflow-hidden rounded-lg border bg-background">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 bg-muted/50 px-3 py-2.5 text-left"
+                onClick={() => toggleGroup(group)}
+                aria-expanded={isExpanded}
+                aria-label={isExpanded ? `Skjul ${group}` : `Vis ${group}`}
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150",
+                    !isExpanded && "-rotate-90"
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {group}
+                </span>
+                <Badge variant="outline" className="h-4 rounded-sm px-1.5 text-[10px] font-normal">
+                  {groupItems.length}
+                </Badge>
+                <span className="shrink-0 text-sm font-semibold tabular-nums">{formatNok(groupTotal)}</span>
+              </button>
+
+              {isExpanded ? (
+                groupItems.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                    Ingen komponenter i denne kategorien.
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {groupItems.map((item) => (
+                      <div key={item.id} className="p-3">
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-sm leading-snug">{item.title || "Uten navn"}</p>
+                            {item.description ? (
+                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
+                            ) : null}
+                          </div>
+                          <div className="flex shrink-0 gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              onClick={() => setEditingItem({ ...item })}
+                              aria-label="Rediger"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              onClick={() => removeRow(item.id)}
+                              aria-label="Slett"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">
+                          <p className="text-xs text-muted-foreground">
+                            {item.quantity} {item.unit || "stk"}
+                            {item.unitPriceNok > 0 ? ` · ${item.unitPriceNok.toLocaleString("no-NO")} kr/enhet` : ""}
+                            {item.discountPercent > 0 ? ` · ${item.discountPercent}% rabatt` : ""}
+                          </p>
+                          <p className="shrink-0 text-sm font-semibold tabular-nums">{formatNok(calculateLineItemTotal(item))}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : null}
             </div>
-          </div>
-        ))
+          )
+        })
       )}
     </div>
+
+    {/* Mobile edit sheet */}
+    <Sheet open={editingItem !== null} onOpenChange={(open) => { if (!open) setEditingItem(null) }}>
+      <SheetContent side="bottom" className="h-auto max-h-[90vh] overflow-y-auto rounded-t-xl px-5 pb-8">
+        <SheetHeader className="mb-4">
+          <SheetTitle className="text-base">Rediger komponent</SheetTitle>
+        </SheetHeader>
+        {editingItem && (
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Navn</Label>
+              <Input
+                value={editingItem.title}
+                onChange={(e) => setEditingItem((prev) => prev ? { ...prev, title: e.target.value } : null)}
+                placeholder="Komponentnavn"
+                className="h-10"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Antall</Label>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  value={editingItem.quantity}
+                  onChange={(e) => setEditingItem((prev) => prev ? { ...prev, quantity: parseNumber(e.target.value, prev.quantity) } : null)}
+                  min={0}
+                  step={1}
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Enhet</Label>
+                <Input
+                  value={editingItem.unit}
+                  onChange={(e) => setEditingItem((prev) => prev ? { ...prev, unit: e.target.value } : null)}
+                  placeholder="stk"
+                  className="h-10"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Enhetspris (kr)</Label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  value={editingItem.unitPriceNok}
+                  onChange={(e) => setEditingItem((prev) => prev ? { ...prev, unitPriceNok: parseNumber(e.target.value, prev.unitPriceNok) } : null)}
+                  min={0}
+                  step={0.01}
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Rabatt (%)</Label>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  value={editingItem.discountPercent}
+                  onChange={(e) => setEditingItem((prev) => prev ? { ...prev, discountPercent: parseNumber(e.target.value, prev.discountPercent) } : null)}
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  className="h-10"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">Linjesum</span>
+              <span className="font-semibold tabular-nums">{formatNok(calculateLineItemTotal(editingItem))}</span>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 h-11"
+                onClick={() => setEditingItem(null)}
+              >
+                Avbryt
+              </Button>
+              <Button
+                type="button"
+                className="flex-1 h-11"
+                onClick={() => {
+                  if (editingItem) {
+                    updateRow(editingItem.id, editingItem)
+                    setEditingItem(null)
+                  }
+                }}
+              >
+                Lagre
+              </Button>
+            </div>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
     </>
   )
 })

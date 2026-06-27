@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["mammoth", "pdf-parse"],
+  serverExternalPackages: ["mammoth", "pdf-parse", "puppeteer-core", "@sparticuz/chromium"],
   images: {
     remotePatterns: [
       {

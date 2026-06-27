@@ -1,5 +1,4 @@
 import { AppPageShell } from "@/components/app-page-shell"
-import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { ProsjekterFilters } from "./prosjekter-filters"
@@ -25,14 +24,28 @@ export default async function Page({
 
   let queryBuilder = supabase
     .from("projects")
-    .select("*, customers(name,email,phone), tasks(status)")
+    // Narrowed to the columns ProjectRow/ProjectCard actually use. The previous
+    // `tasks(status)` embed was dead (no consumer reads it) and scaled the query
+    // with task count, and `*` pulled unused wide columns on a primary nav target.
+    .select("id, name, status, customer_id, budget_nok, start_date, end_date, updated_at, customers(name,email,phone)")
 
   if (params.status && params.status !== "all") {
     queryBuilder = queryBuilder.eq("status", params.status)
   }
 
   if (params.search) {
-    queryBuilder = queryBuilder.or(`name.ilike.%${params.search}%,id.ilike.%${params.search}%`)
+    const term = params.search.trim()
+    // `projects.id` is a uuid column — Postgres has no `uuid ~~* text` (ILIKE) operator,
+    // so the old `id.ilike.%term%` made PostgREST reject the whole query and the list
+    // went blank the moment a user typed. Only match id when the term is a full uuid (uses `=`).
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(term)
+    // Escape PostgREST `or()` reserved chars (commas/parens) that would otherwise break the filter.
+    const safeTerm = term.replace(/[,()]/g, " ")
+    if (isUuid) {
+      queryBuilder = queryBuilder.or(`name.ilike.%${safeTerm}%,id.eq.${term}`)
+    } else {
+      queryBuilder = queryBuilder.ilike("name", `%${safeTerm}%`)
+    }
   }
 
   if (params.sort) {
@@ -68,15 +81,11 @@ export default async function Page({
   return (
     <AppPageShell segments={["Prosjekter"]}>
       <section className="space-y-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1">
+        <div className="grid grid-cols-2 items-center justify-between gap-2 sm:flex sm:justify-between w-full">
+          <div className="space-y-0">
             <h1 className="text-2xl font-semibold text-foreground">Prosjektoversikt</h1>
-            <p className="text-sm text-muted-foreground">
-              Aktive prosjekter som kort, og tidligere prosjekter i tabell nedenfor.
-            </p>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-            <Button variant="outline">Eksporter</Button>
             <CreateProjectDrawer variant="outline" />
           </div>
         </div>
@@ -84,7 +93,7 @@ export default async function Page({
         <ProsjekterFilters />
 
         {showActiveSection && (
-          <div className="space-y-4">
+          <div className="space-y-2 sm:space-y-4">
             <div className="flex items-baseline justify-between gap-3">
               <h2 className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
                 Aktive prosjekter
@@ -93,13 +102,13 @@ export default async function Page({
             </div>
 
             {activeProjects.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5" style={{ borderRadius: 5 }}>
                 {activeProjects.map((project) => (
                   <ProjectCard key={project.id} project={project} customers={customerOptions} />
                 ))}
               </div>
             ) : (
-              <div className="rounded-xl border border-dashed border-border/70 bg-card/40 px-6 py-14 text-center">
+              <div className="rounded-xl border border-dashed border-border/70 bg-card/40 px-6 py-14 text-center" style={{ borderRadius: 5 }}>
                 <p className="text-sm text-muted-foreground">Ingen aktive prosjekter funnet.</p>
               </div>
             )}
@@ -107,7 +116,7 @@ export default async function Page({
         )}
 
         {showArchiveSection && (
-          <div className="space-y-4">
+          <div className="space-y-2 sm:space-y-4">
             <div className="flex items-baseline justify-between gap-3">
               <h2 className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
                 Tidligere prosjekter

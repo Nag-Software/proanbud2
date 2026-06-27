@@ -2,6 +2,7 @@ import crypto from "crypto"
 import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import { decryptSecret } from "@/lib/integrations/tripletex/crypto"
 import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
@@ -9,8 +10,12 @@ import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
 function verifySignature(rawBody: string, secret: string, signature: string | null) {
   if (!secret) return false
   if (!signature) return false
-  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex")
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
+  const expected = Buffer.from(crypto.createHmac("sha256", secret).update(rawBody).digest("hex"))
+  const provided = Buffer.from(signature.trim())
+  // timingSafeEqual throws on a length mismatch, and `signature` is attacker-controlled —
+  // length-check first so a malformed header is a clean `false` (→ 401), not a thrown 500.
+  if (provided.length !== expected.length) return false
+  return crypto.timingSafeEqual(expected, provided)
 }
 
 export async function POST(request: Request) {
@@ -36,15 +41,21 @@ export async function POST(request: Request) {
       signatureValid = verifySignature(rawBody, webhookSecret, request.headers.get("x-tripletex-signature"))
     }
 
+    // Reject unverified webhooks BEFORE any DB write — no fail-open when companyId
+    // or the stored secret is missing (prevents unauthenticated inserts / log spam).
+    if (!signatureValid) {
+      return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 })
+    }
+
     const { data: eventRow, error: insertError } = await admin
       .from("integration_webhook_events")
       .insert({
         provider: "tripletex",
-        company_id: companyId || null,
+        company_id: companyId,
         event_type: eventType,
         external_event_id: externalEventId,
         payload,
-        signature_valid: signatureValid,
+        signature_valid: true,
         process_status: "pending",
       })
       .select("id")
@@ -52,15 +63,6 @@ export async function POST(request: Request) {
 
     if (insertError && insertError.code !== "23505") {
       return NextResponse.json({ error: insertError.message }, { status: 500 })
-    }
-
-    if (!signatureValid && companyId) {
-      await admin
-        .from("integration_webhook_events")
-        .update({ process_status: "failed", error_message: "Invalid signature", processed_at: new Date().toISOString() })
-        .eq("id", eventRow?.id)
-
-      return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 })
     }
 
     if (companyId && eventType === "invoice.paid") {
@@ -81,8 +83,15 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
-    return NextResponse.json({ error: message }, { status: 500 })
+    // Don't echo internal error text (decrypt/DB messages) to an unauthenticated caller.
+    console.error("[tripletex webhook] processing failed", error)
+    await logServerError({
+      message: "Tripletex webhook processing failed",
+      error,
+      source: "api",
+      route: "POST /api/integrations/tripletex/webhook",
+    })
+    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 })
   }
 }
 

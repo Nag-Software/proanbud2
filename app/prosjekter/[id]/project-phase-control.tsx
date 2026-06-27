@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { reportClientError } from "@/lib/errors/client"
 
 type ProjectPhaseControlProps = {
   projectId: string
@@ -44,6 +45,7 @@ export function ProjectPhaseControl({ projectId, status, canEdit }: ProjectPhase
       router.refresh()
     } catch (error) {
       console.error("Kunne ikke oppdatere prosjektfase", error)
+      reportClientError(error, { context: { action: "oppdatere prosjektfase", projectId } })
       toast.error("Kunne ikke oppdatere prosjektfase")
     } finally {
       setIsSaving(false)

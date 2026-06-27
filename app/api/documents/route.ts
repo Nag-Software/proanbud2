@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
+import { logServerError } from "@/lib/errors/log"
 import {
   enqueueDocumentTripletexSync,
   parseProjectIdFromDocumentPath,
@@ -230,6 +231,14 @@ export async function GET(request: Request) {
 
       if (upsertError) {
         console.error("UPSERT ERROR:", upsertError.message, upsertError.details)
+        await logServerError({
+          message: "Dokumenter: kunne ikke cache eksterne filer (upsert)",
+          error: upsertError,
+          level: "warning",
+          source: "api",
+          route: "GET /api/documents",
+          context: { userId: user.id, provider },
+        })
       }
     }
 
@@ -442,6 +451,15 @@ export async function POST(request: Request) {
         projectId,
       }).catch((error) => {
         console.error("Tripletex document sync enqueue failed:", error)
+        void logServerError({
+          message: "Tripletex: kunne ikke køe dokument-synk",
+          error,
+          level: "warning",
+          source: "api",
+          route: "POST /api/documents",
+          companyId: userRow.company_id,
+          context: { userId: user.id, documentItemId: inserted.id, projectId },
+        })
       })
     }
   }

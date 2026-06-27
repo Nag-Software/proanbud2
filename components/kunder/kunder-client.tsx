@@ -12,9 +12,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface KunderClientProps {
   initialData: Customer[]
+  tripletexEnabled?: boolean
 }
 
-export function KunderClient({ initialData }: KunderClientProps) {
+export function KunderClient({ initialData, tripletexEnabled = false }: KunderClientProps) {
   const [selectedCustomer, setSelectedCustomer] = React.useState<Customer | null>(null)
   const [isCustomerDrawerOpen, setIsCustomerDrawerOpen] = React.useState(false)
   const [isAddDrawerOpen, setIsAddDrawerOpen] = React.useState(false)
@@ -28,8 +29,8 @@ export function KunderClient({ initialData }: KunderClientProps) {
   }, [])
 
   const columns = React.useMemo(
-    () => createCustomerColumns({ onViewDetails: handleRowClick }),
-    [handleRowClick]
+    () => createCustomerColumns({ onViewDetails: handleRowClick, showTripletex: tripletexEnabled }),
+    [handleRowClick, tripletexEnabled]
   )
 
   // Handle local update so the open drawer reflects changes immediately

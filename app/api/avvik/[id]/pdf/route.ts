@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server"
 
 import { getDeviationExportDataAction } from "@/app/avvik/actions"
+import { companyHasFeature, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import {
   DEVIATION_STATUS_LABELS,
   DEVIATION_TYPE_LABELS,
 } from "@/lib/hms/constants"
 import type { DeviationAttachment } from "@/lib/hms/types"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
 function escapeHtml(value: string) {
@@ -67,12 +69,28 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const companyId = await getCurrentCompanyIdForUser(user.id)
+  if (!(await companyHasFeature(companyId, "avvik"))) {
+    return NextResponse.json(
+      { error: "Avvik krever Proff-abonnement", code: "plan_required" },
+      { status: 403 }
+    )
+  }
+
   const { id } = await params
 
   let deviation
   try {
     deviation = await getDeviationExportDataAction(id)
-  } catch {
+  } catch (error) {
+    await logServerError({
+      message: "Kunne ikke hente avvik for PDF-eksport",
+      error,
+      level: "warning",
+      source: "api",
+      route: "/api/avvik/[id]/pdf",
+      context: { companyId, deviationId: id },
+    })
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 

@@ -22,6 +22,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { createProjectAction } from "../actions"
+import { reportClientError } from "@/lib/errors/client"
 import { createProjectSchema, PROJECT_STATUS_OPTIONS, PROJECT_TYPE_OPTIONS, type CreateProjectInput } from "./removed-project-form-schema"
 
 type CustomerOption = {
@@ -196,6 +197,7 @@ export function CreateProjectForm({ currentUserId, customers, users }: CreatePro
       router.push(`/prosjekter/${result.id}`)
       router.refresh()
     } catch (error) {
+      reportClientError(error, { context: { action: "opprette nytt prosjekt (skjema)" } })
       setSubmitError(error instanceof Error ? error.message : "Kunne ikke opprette prosjektet")
     }
   })

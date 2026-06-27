@@ -1,3 +1,4 @@
+import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type {
   SjefenCompanyRow,
@@ -113,6 +114,7 @@ export async function fetchPlatformCompanies(): Promise<SjefenCompanyRow[]> {
 
   if (error) {
     console.error("fetchPlatformCompanies", error)
+    await logServerError({ message: "Kunne ikke hente firmaer (platform)", error, source: "server", route: "fetchPlatformCompanies" })
     return []
   }
 
@@ -164,6 +166,7 @@ export async function fetchPlatformUsers(): Promise<SjefenUserRow[]> {
 
   if (error) {
     console.error("fetchPlatformUsers", error)
+    await logServerError({ message: "Kunne ikke hente brukere (platform)", error, source: "server", route: "fetchPlatformUsers" })
     return []
   }
 
@@ -191,6 +194,7 @@ export async function fetchPlatformOffers(): Promise<SjefenOfferRow[]> {
 
   if (error) {
     console.error("fetchPlatformOffers", error)
+    await logServerError({ message: "Kunne ikke hente tilbud (platform)", error, source: "server", route: "fetchPlatformOffers" })
     return []
   }
 
@@ -225,6 +229,7 @@ export async function fetchPlatformContracts(): Promise<SjefenContractRow[]> {
 
   if (error) {
     console.error("fetchPlatformContracts", error)
+    await logServerError({ message: "Kunne ikke hente kontrakter (platform)", error, source: "server", route: "fetchPlatformContracts" })
     return []
   }
 
@@ -243,6 +248,7 @@ export async function fetchPlatformInvoices(): Promise<SjefenContractRow[]> {
 
   if (error) {
     console.error("fetchPlatformInvoices", error)
+    await logServerError({ message: "Kunne ikke hente fakturaer (platform)", error, source: "server", route: "fetchPlatformInvoices" })
     return []
   }
 
@@ -261,6 +267,7 @@ export async function fetchPlatformMessages(): Promise<SjefenMessageRow[]> {
 
   if (error) {
     console.error("fetchPlatformMessages", error)
+    await logServerError({ message: "Kunne ikke hente meldinger (platform)", error, source: "server", route: "fetchPlatformMessages" })
     return []
   }
 
@@ -278,6 +285,7 @@ export async function fetchPlatformBilling(): Promise<PlatformBillingRow[]> {
 
   if (error) {
     console.error("fetchPlatformBilling", error)
+    await logServerError({ message: "Kunne ikke hente fakturering (platform)", error, source: "server", route: "fetchPlatformBilling" })
     return []
   }
 

@@ -13,6 +13,7 @@ import {
   Send,
 } from "lucide-react"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,13 +22,13 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ResponsiveTabs, TabsContent } from "@/components/responsive-tabs"
+import { TilleggsarbeidTab } from "./tilleggsarbeid-tab"
 import { Textarea } from "@/components/ui/textarea"
-import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
+import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
-import { formatOfferReference } from "@/lib/tilbud/offer-document"
+import { formatOfferReference, type OfferDocumentData } from "@/lib/tilbud/offer-document"
 import { getOfferActivityTone, type OfferActivityEvent } from "@/lib/tilbud/offer-activity.shared"
-import { CONTRACT_BASIS_LABELS, DEFAULT_PAYMENT_SCHEDULE, PRICING_MODEL_LABELS } from "@/lib/contracts/pricing"
 import {
   type OfferCompanyContext,
   type OfferContractBasis,
@@ -229,7 +230,6 @@ export function OfferDetailClient({
   const [activityLog, setActivityLog] = useState<OfferActivityItem[]>(activity)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isAutoSaving, setIsAutoSaving] = useState(false)
-  const pdfDocRef = useRef<HTMLDivElement>(null)
   const itemsTableRef = useRef<NewOfferItemsTableHandle>(null)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
   const [lastAutoSaveAt, setLastAutoSaveAt] = useState<string | null>(initialOffer.updatedAt)
@@ -282,6 +282,33 @@ export function OfferDetailClient({
       orgNumber: linkedCustomer.orgNumber,
     }),
     [linkedCustomer, offer.recipientEmail, offer.recipientPhone]
+  )
+
+  const documentData = useMemo<OfferDocumentData>(
+    () => ({
+      title: offer.title,
+      description: offer.description,
+      projectSummary: offer.projectSummary,
+      quoteMessage: offer.sourceSummary,
+      projectName: offer.projectName,
+      customer: previewCustomer,
+      lineItems,
+      company,
+      issuedDate: offer.createdAt,
+      quoteValidUntil: offer.quoteValidUntil,
+    }),
+    [
+      offer.title,
+      offer.description,
+      offer.projectSummary,
+      offer.sourceSummary,
+      offer.projectName,
+      offer.createdAt,
+      offer.quoteValidUntil,
+      previewCustomer,
+      lineItems,
+      company,
+    ]
   )
 
   const saveFingerprint = useMemo(() => JSON.stringify(saveSnapshot), [saveSnapshot])
@@ -342,6 +369,7 @@ export function OfferDetailClient({
 
         return true
       } catch (error) {
+        reportClientError(error, { context: { action: "save offer snapshot", offerId: offer.id } })
         toast.error(error instanceof Error ? error.message : "Kunne ikke lagre tilbud")
         return false
       } finally {
@@ -357,35 +385,21 @@ export function OfferDetailClient({
     router.refresh()
   }, [router])
 
-  const handlePrintPdf = useCallback(async () => {
-    const node = pdfDocRef.current
-    if (!node) return
-
+  const logPdfExport = useCallback(async () => {
     try {
       await fetch(`/api/offers/${offer.id}/pdf-export`, { method: "POST" })
       void refreshActivity()
-    } catch {
+    } catch (error) {
       // Logging should not block export.
+      reportClientError(error, { level: "warning", context: { action: "log pdf export", offerId: offer.id } })
     }
-
-    const cssLinks = Array.from(document.styleSheets)
-      .filter((sheet) => sheet.href)
-      .map((sheet) => `<link rel="stylesheet" href="${sheet.href}">`)
-      .join("\n")
-    const printWin = window.open("", "_blank", "width=900,height=1100")
-    if (!printWin) {
-      toast.error("Kunne ikke åpne utskriftsvindu")
-      return
-    }
-    printWin.document.write(
-      `<!DOCTYPE html><html><head><meta charset="utf-8">${cssLinks}</head><body style="margin:0;background:#fff">${node.outerHTML}</body></html>`
-    )
-    printWin.document.close()
-    printWin.addEventListener("load", () => {
-      printWin.focus()
-      printWin.print()
-    })
   }, [offer.id, refreshActivity])
+
+  const handlePrintPdf = useCallback(() => {
+    void logPdfExport()
+    // Server-rendrer en ekte A4-PDF av tilbudet og åpner den i ny fane.
+    window.open(`/api/tilbud/${offer.id}/pdf`, "_blank")
+  }, [offer.id, logPdfExport])
 
   const triggerTripletexSyncInBackground = useCallback(async () => {
     try {
@@ -400,8 +414,9 @@ export function OfferDetailClient({
         const payload = await statusResponse.json()
         setTripletexSync(payload)
       }
-    } catch {
+    } catch (error) {
       // Non-blocking background sync.
+      reportClientError(error, { level: "warning", context: { action: "background Tripletex sync", offerId: offer.id } })
     }
   }, [offer.id])
 
@@ -445,6 +460,7 @@ export function OfferDetailClient({
         toast.success("Tilbud sendt til kunde på e-post")
         void refreshActivity()
       } catch (error) {
+        reportClientError(error, { context: { action: "send offer to customer", offerId: offer.id } })
         toast.error(error instanceof Error ? error.message : "Kunne ikke sende tilbud")
       }
     })
@@ -495,8 +511,9 @@ export function OfferDetailClient({
           setOffer((prev) => ({ ...prev, projectSummary: payload.summary.trim() }))
         }
       })
-      .catch(() => {
+      .catch((error) => {
         // Silent fallback.
+        reportClientError(error, { level: "warning", context: { action: "generate project summary", offerId: offer.id } })
       })
       .finally(() => {
         if (!cancelled) {
@@ -517,7 +534,7 @@ export function OfferDetailClient({
         offer.status === "rejected" ? "border-l-red-500" :
         "border-l-muted-foreground/30"
       }`}>
-        <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr] divide-x divide-border">
+        <div className="grid gap-0 divide-y divide-border lg:grid-cols-[1.2fr_0.8fr] lg:divide-x lg:divide-y-0">
           <div className="space-y-4 p-4 sm:p-5">
             <div className="flex flex-wrap items-center gap-2">
               {statusBadge(offer.status)}
@@ -548,110 +565,16 @@ export function OfferDetailClient({
               <Input type="date" className="h-8 w-36 bg-background text-xs" value={toInputDate(offer.quoteValidUntil)} onChange={(e) => setOffer((prev) => ({ ...prev, quoteValidUntil: e.target.value || null }))} />
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-3">
-              <div>
-                <Label className="text-[11px] text-muted-foreground">Vederlagsform</Label>
-                <Select
-                  value={offer.pricingModel}
-                  onValueChange={(value) =>
-                    setOffer((prev) => ({ ...prev, pricingModel: value as OfferPricingModel }))
-                  }
-                >
-                  <SelectTrigger className="mt-1 h-8 bg-background text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(PRICING_MODEL_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-[11px] text-muted-foreground">Kontraktsgrunnlag</Label>
-                <Select
-                  value={offer.contractBasis}
-                  onValueChange={(value) =>
-                    setOffer((prev) => ({ ...prev, contractBasis: value as OfferContractBasis }))
-                  }
-                >
-                  <SelectTrigger className="mt-1 h-8 bg-background text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(CONTRACT_BASIS_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {offer.pricingModel === "time_materials" || offer.pricingModel === "mixed" ? (
-                <div>
-                  <Label className="text-[11px] text-muted-foreground">Påslag %</Label>
-                  <Input
-                    type="number"
-                    className="mt-1 h-8 bg-background text-xs"
-                    value={offer.markupPercent}
-                    onChange={(event) =>
-                      setOffer((prev) => ({
-                        ...prev,
-                        markupPercent: Number(event.target.value || 0),
-                      }))
-                    }
-                  />
-                </div>
-              ) : null}
-            </div>
-
-            {offer.pricingModel === "fixed" || offer.pricingModel === "mixed" ? (
-              <div className="rounded-md border bg-muted/20 p-3">
-                <Label className="text-[11px] text-muted-foreground">Avdragsplan</Label>
-                <div className="mt-2 space-y-2">
-                  {(offer.paymentSchedule.length ? offer.paymentSchedule : DEFAULT_PAYMENT_SCHEDULE).map((entry, index) => (
-                    <div key={index} className="grid gap-2 sm:grid-cols-3">
-                      <Input
-                        className="h-8 bg-background text-xs"
-                        value={entry.label}
-                        onChange={(event) => {
-                          const base = offer.paymentSchedule.length ? offer.paymentSchedule : DEFAULT_PAYMENT_SCHEDULE
-                          const next = [...base]
-                          next[index] = { ...entry, label: event.target.value }
-                          setOffer((prev) => ({ ...prev, paymentSchedule: next }))
-                        }}
-                      />
-                      <Input
-                        type="number"
-                        className="h-8 bg-background text-xs"
-                        value={entry.percent}
-                        onChange={(event) => {
-                          const base = offer.paymentSchedule.length ? offer.paymentSchedule : DEFAULT_PAYMENT_SCHEDULE
-                          const next = [...base]
-                          next[index] = { ...entry, percent: Number(event.target.value || 0) }
-                          setOffer((prev) => ({ ...prev, paymentSchedule: next }))
-                        }}
-                      />
-                      <Input
-                        className="h-8 bg-background text-xs"
-                        value={entry.dueDescription || ""}
-                        onChange={(event) => {
-                          const base = offer.paymentSchedule.length ? offer.paymentSchedule : DEFAULT_PAYMENT_SCHEDULE
-                          const next = [...base]
-                          next[index] = { ...entry, dueDescription: event.target.value }
-                          setOffer((prev) => ({ ...prev, paymentSchedule: next }))
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={sendOffer} disabled={isPending || isAutoSaving || lineItems.length === 0} className="h-9">
+            <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
+              <Button onClick={sendOffer} disabled={isPending || isAutoSaving || lineItems.length === 0} className="h-11 sm:h-9">
                 <Send className="mr-2 h-4 w-4" />
                 Send tilbud
               </Button>
-              <Button variant="outline" onClick={() => setIsPreviewOpen(true)} className="h-9">
+              <Button variant="outline" onClick={() => setIsPreviewOpen(true)} className="h-11 sm:h-9">
                 <Eye className="mr-2 h-4 w-4" />
                 Forhåndsvis tilbud
               </Button>
-              <Button variant="outline" onClick={handlePrintPdf} disabled={lineItems.length === 0} className="h-9">
+              <Button variant="outline" onClick={handlePrintPdf} disabled={lineItems.length === 0} className="h-11 sm:h-9">
                 <Download className="mr-2 h-4 w-4" />
                 Last ned PDF
               </Button>
@@ -700,6 +623,7 @@ export function OfferDetailClient({
         defaultValue="komponenter"
         tabs={[
           { value: "komponenter", label: "Komponenter" },
+          { value: "tillegg", label: "Tillegg" },
           { value: "kunde", label: "Kundeinfo" },
           { value: "dokumenter", label: "Dokumenter" },
           { value: "hendelser", label: "Hendelser" },
@@ -778,9 +702,9 @@ export function OfferDetailClient({
 
         <TabsContent value="komponenter" className="m-0 focus-visible:outline-none focus-visible:ring-0">
           <div className="flex flex-col border border-border bg-background">
-            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-3">
               <h3 className="text-sm font-semibold tracking-tight text-foreground">Tilbudskomponenter</h3>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   size="sm"
@@ -931,56 +855,27 @@ export function OfferDetailClient({
             </div>
           </div>
         </TabsContent>
+
+        <TabsContent value="tillegg" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+          <TilleggsarbeidTab offerId={offer.id} />
+        </TabsContent>
       </ResponsiveTabs>
 
       <Sheet open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <SheetContent className="theme-preview-shell !max-w-[min(1500px,96vw)] w-[96vw] overflow-y-auto p-4 sm:!max-w-[min(1500px,96vw)]">
-          <SheetHeader className="flex-row items-start justify-between gap-4 space-y-0">
-            <div>
-              <SheetTitle>Forhåndsvisning av tilbud</SheetTitle>
-              <SheetDescription>Slik ser tilbudet ut for kunden.</SheetDescription>
-            </div>
-            <Button variant="outline" size="sm" onClick={handlePrintPdf} disabled={lineItems.length === 0}>
-              <Download className="mr-2 h-4 w-4" />
-              Last ned PDF
-            </Button>
+        <SheetContent className="theme-preview-shell !max-w-[min(1100px,96vw)] w-[96vw] overflow-y-auto p-4 sm:!max-w-[min(1100px,96vw)]">
+          <SheetHeader className="space-y-1">
+            <SheetTitle>Forhåndsvisning av tilbud</SheetTitle>
+            <SheetDescription>Slik ser tilbudet ut for kunden.</SheetDescription>
           </SheetHeader>
 
-          <div className="mx-auto w-fit max-w-full">
-            <OfferDocumentPreview
-              className="mt-0 bg-transparent p-0"
-              documentClassName="mx-auto w-[794px] max-w-none bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)]"
-              title={offer.title}
-              description={offer.description}
-              projectSummary={offer.projectSummary}
-              quoteMessage={offer.sourceSummary}
-              projectName={offer.projectName}
-              customer={previewCustomer}
-              lineItems={lineItems}
-              company={company}
-              issuedDate={offer.createdAt}
-              quoteValidUntil={offer.quoteValidUntil}
+          <div className="mt-4">
+            <OfferDocumentViewer
+              {...documentData}
+              onDownload={() => void logPdfExport()}
             />
           </div>
         </SheetContent>
       </Sheet>
-
-      <div className="sr-only" aria-hidden="true">
-        <div ref={pdfDocRef}>
-          <OfferDocumentPreview
-            title={offer.title}
-            description={offer.description}
-            projectSummary={offer.projectSummary}
-            quoteMessage={offer.sourceSummary}
-            projectName={offer.projectName}
-            customer={previewCustomer}
-            lineItems={lineItems}
-            company={company}
-            issuedDate={offer.createdAt}
-            quoteValidUntil={offer.quoteValidUntil}
-          />
-        </div>
-      </div>
     </div>
   )
 }

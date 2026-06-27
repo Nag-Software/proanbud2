@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building2, User, Phone, Mail, MapPin, Briefcase, TrendingUp, Clock, FileCheck } from "lucide-react"
 import { updateCustomerAction } from "@/app/kunder/actions"
 import { toast } from "sonner"
+import { reportClientError } from "@/lib/errors/client"
 import { CustomerProjectsTab } from "./customer-projects-tab"
 
 interface CustomerDrawerProps {
@@ -83,6 +84,7 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
         setIsEditing(false)
         toast.success("Kunden ble oppdatert")
       } catch (error) {
+        reportClientError(error, { context: { action: "update-customer", customerId: customer.id } })
         const message = error instanceof Error ? error.message : "Kunne ikke lagre kunde"
         toast.error(message)
       }
@@ -144,18 +146,18 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
               {editType === "bedrift" && (
                 <div className="grid gap-2">
                   <Label htmlFor="edit-orgNumber">Organisasjonsnummer</Label>
-                  <Input id="edit-orgNumber" name="orgNumber" defaultValue={customer.orgNumber} />
+                  <Input id="edit-orgNumber" name="orgNumber" inputMode="numeric" autoComplete="organization" defaultValue={customer.orgNumber} />
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="edit-email">E-post *</Label>
-                  <Input id="edit-email" name="email" type="email" defaultValue={customer.email} required />
+                  <Input id="edit-email" name="email" type="email" inputMode="email" autoComplete="email" defaultValue={customer.email} required />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit-phone">Telefon</Label>
-                  <Input id="edit-phone" name="phone" type="tel" defaultValue={customer.phone} />
+                  <Input id="edit-phone" name="phone" type="tel" autoComplete="tel" defaultValue={customer.phone} />
                 </div>
               </div>
 
@@ -168,7 +170,7 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
               <div className="grid grid-cols-3 gap-4">
                 <div className="grid gap-2 col-span-1">
                   <Label htmlFor="edit-postalCode">Postnr</Label>
-                  <Input id="edit-postalCode" name="postalCode" defaultValue={customer.postalCode} />
+                  <Input id="edit-postalCode" name="postalCode" inputMode="numeric" autoComplete="postal-code" defaultValue={customer.postalCode} />
                 </div>
                 <div className="grid gap-2 col-span-2">
                   <Label htmlFor="edit-city">Poststed</Label>
@@ -224,10 +226,10 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
                     <CardContent className="p-4 pt-2">
                       <div className="text-xs text-muted-foreground mb-3 flex items-center justify-between">
                         <span>Sist kontaktet:</span>
-                        <span className="font-medium text-foreground">{new Date(customer.lastContact).toLocaleDateString("nb-NO")}</span>
+                        <span className="font-medium text-foreground">—</span>
                       </div>
                       <div className="bg-muted/50 rounded-md p-3 text-sm border-l-2 border-primary/50 text-muted-foreground italic">
-                        "Kunde foretrekker å bli kontaktet via e-post etter kl 14."
+                        Ingen notater enda.
                       </div>
                     </CardContent>
                   </Card>
@@ -294,7 +296,7 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
         </div>
         
         {isEditing && (
-          <div className="p-4 sm:p-6 border-t shrink-0 flex justify-end gap-3 bg-background mt-auto">
+          <div className="p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom))] border-t shrink-0 flex justify-end gap-3 bg-background mt-auto">
             <Button type="button" variant="outline" onClick={() => setIsEditing(false)} disabled={isSaving}>Avbryt</Button>
             <Button type="submit" form="edit-customer-form" disabled={isSaving}>Lagre endringer</Button>
           </div>

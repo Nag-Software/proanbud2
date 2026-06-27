@@ -1,3 +1,4 @@
+import { logServerError } from "@/lib/errors/log"
 import {
   claimJobs,
   enqueueIntegrationJob,
@@ -6,14 +7,20 @@ import {
   markJobCompleted,
   markJobFailed,
   markJobRetry,
+  reapStuckJobs,
   updateTripletexConnectionHealth,
   upsertExternalEntityLink,
 } from "@/lib/integrations/tripletex/jobs"
 import {
   createTripletexInvoiceFromOrder,
+  createTripletexMileageAllowance,
   createTripletexProjectActivity,
+  deleteTripletexMileageAllowance,
+  deleteTripletexTravelExpense,
   findTripletexProjectOfferByProanbudId,
   getTripletexProjectFlags,
+  listTripletexEmployees,
+  listTripletexTravelExpenseMileageIds,
   replaceTripletexTilbudOrderLines,
   getTripletexProjectManagerEmployeeIds,
   getTripletexSessionEmployeeId,
@@ -22,13 +29,16 @@ import {
   upsertTripletexCustomer,
   upsertTripletexOrder,
   upsertTripletexProject,
+  upsertTripletexTravelExpense,
 } from "@/lib/integrations/tripletex/connector"
 import {
   mapCustomerToTripletex,
+  mapMileageAllowanceFromTrip,
   mapOrderFromOffer,
   mapProjectOfferFromOffer,
   mapTilbudOrderLinesFromOffer,
   mapProjectToTripletex,
+  mapTravelExpenseFromTrip,
   resolveProjectStartDateForTripletex,
 } from "@/lib/integrations/tripletex/mappers"
 import { getFreshTripletexConnection } from "@/lib/integrations/tripletex/session"
@@ -38,6 +48,7 @@ import {
   tripletexOfferUrl,
   tripletexOrderUrl,
   tripletexProjectUrl,
+  tripletexTravelExpenseUrl,
 } from "@/lib/integrations/tripletex/urls"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { IntegrationJobRow } from "@/lib/integrations/tripletex/types"
@@ -159,6 +170,37 @@ function enrichProjectUpsertError(input: {
   return enriched
 }
 
+/**
+ * Marks an error from a NON-idempotent create call (POST /order, /customer, /project;
+ * PUT /order/:invoice) as non-retryable when the outcome is AMBIGUOUS — a network drop,
+ * client timeout, or 5xx may mean Tripletex already created the entity. Tripletex has no
+ * idempotency key, and invoices/customers/orders can't be searched back by our reference,
+ * so an automatic retry would risk a real duplicate. The job lands in 'failed' for manual
+ * review instead. Clear 4xx (e.g. 429 rate-limit, 400 validation, 409 conflict) definitely
+ * did not create, so they pass through unchanged and follow the normal retry/fail rules.
+ */
+function nonRetryableIfAmbiguous(error: unknown): unknown {
+  const status = (error as { status?: number } | null)?.status
+  if (!status || status >= 500) {
+    const wrapped = error instanceof Error ? error : new Error(String(error))
+    ;(wrapped as { nonRetryable?: boolean }).nonRetryable = true
+    return wrapped
+  }
+  return error
+}
+
+/**
+ * A non-idempotent create call returned 2xx but we couldn't read the new entity's id —
+ * the entity may well have been created in Tripletex. Treat it exactly like an ambiguous
+ * create failure: fail for manual review, never auto-retry (a retry would re-POST and
+ * duplicate the order/invoice/customer/project).
+ */
+function missingIdError(message: string): Error {
+  const err = new Error(message)
+  ;(err as { nonRetryable?: boolean }).nonRetryable = true
+  return err
+}
+
 function classifyError(error: unknown) {
   const baseMessage = error instanceof Error ? error.message : String(error)
   const details = extractTripletexErrorMessage(error)
@@ -166,12 +208,28 @@ function classifyError(error: unknown) {
   const status = (error as any)?.status as number | undefined
   const rateLimitResetAt = (error as any)?.rateLimitResetAt as string | undefined
 
+  // A create call whose outcome is ambiguous (see nonRetryableIfAmbiguous) must NOT be
+  // auto-retried — fail it for manual review so we never double-create a money document.
+  if ((error as { nonRetryable?: boolean })?.nonRetryable === true) {
+    // Stable marker so the bulk "retry failed" endpoint can keep these quarantined for
+    // manual review (they may already have created the entity in Tripletex).
+    return { kind: "failed" as const, code: "ambiguous_create", message }
+  }
+
   if (status === 429 || (status && status >= 500)) {
     return { kind: "retry" as const, code: `http_${status || "transient"}`, message, rateLimitResetAt }
   }
 
   if (!status) {
     return { kind: "retry" as const, code: "network", message, rateLimitResetAt }
+  }
+
+  // 423 (locked) is transient — retry with backoff. 401/403 are auth failures that won't
+  // self-heal (the user must re-authenticate) and 409 conflict usually means the entity
+  // already exists; auto-retrying either just burns attempts and flaps the connection to
+  // 'degraded', so fail them instead and surface re-auth/conflict to the operator.
+  if (status === 423) {
+    return { kind: "retry" as const, code: `http_${status}`, message, rateLimitResetAt }
   }
 
   return { kind: "failed" as const, code: `http_${status}`, message }
@@ -207,11 +265,19 @@ async function processCustomerUpsert(job: IntegrationJobRow) {
   })
 
   const payload = mapCustomerToTripletex(customer.data)
-  const response = await upsertTripletexCustomer(connection, payload, existingLink?.external_id || undefined)
+  let response
+  try {
+    response = await upsertTripletexCustomer(connection, payload, existingLink?.external_id || undefined)
+  } catch (err) {
+    // PUT (existing link) is idempotent and safe to retry; a POST create is not.
+    throw existingLink?.external_id ? err : nonRetryableIfAmbiguous(err)
+  }
   const externalId = Number(response?.value?.id || response?.id || existingLink?.external_id)
 
   if (!Number.isFinite(externalId)) {
-    throw new Error("Tripletex customer id missing in response")
+    // Only reachable on the POST-create path (the PUT path falls back to the existing id),
+    // so a missing id here means a possible just-created customer — don't auto-retry.
+    throw missingIdError("Tripletex customer id missing in response")
   }
 
   await upsertExternalEntityLink({
@@ -559,11 +625,18 @@ async function processProjectUpsert(job: IntegrationJobRow, cache?: WorkerRuntim
   }
 
   // POST: Tripletex rejects creating a project that is already "avsluttet".
-  const createResponse = await upsertWithPayloadCandidates(true, undefined)
+  // Non-idempotent create — an ambiguous failure must not auto-retry (would duplicate).
+  let createResponse
+  try {
+    createResponse = await upsertWithPayloadCandidates(true, undefined)
+  } catch (err) {
+    throw nonRetryableIfAmbiguous(err)
+  }
   let externalId = Number(createResponse?.value?.id || createResponse?.id)
 
   if (!Number.isFinite(externalId)) {
-    throw new Error("Tripletex project id missing in response")
+    // POST-create path — a missing id means a possible just-created project; don't retry.
+    throw missingIdError("Tripletex project id missing in response")
   }
 
   await upsertExternalEntityLink({
@@ -755,15 +828,24 @@ async function processOrderCreateFromOffer(job: IntegrationJobRow) {
     }
   )
 
-  const response = await upsertTripletexOrder(
-    connection,
-    payload as Record<string, unknown>,
-    existingOrderLink?.external_id || undefined
-  )
+  let response
+  try {
+    response = await upsertTripletexOrder(
+      connection,
+      payload as Record<string, unknown>,
+      existingOrderLink?.external_id || undefined
+    )
+  } catch (err) {
+    // PUT (existing link) is idempotent; a POST create is not — don't auto-retry an
+    // ambiguous failure or we risk a duplicate order (Tripletex has no idempotency key).
+    throw existingOrderLink?.external_id ? err : nonRetryableIfAmbiguous(err)
+  }
 
   const externalId = Number(response?.value?.id || response?.id || existingOrderLink?.external_id)
   if (!Number.isFinite(externalId)) {
-    throw new Error("Tripletex order id missing in response")
+    // Only reachable on the POST-create path — a missing id means a possible just-created
+    // order, so fail for manual review rather than auto-retry into a duplicate.
+    throw missingIdError("Tripletex order id missing in response")
   }
 
   await upsertExternalEntityLink({
@@ -844,11 +926,22 @@ async function processInvoiceCreateFromOffer(job: IntegrationJobRow) {
     return
   }
 
-  const response = await createTripletexInvoiceFromOrder(connection, orderLink.external_id, { sendToCustomer })
+  // Creating an invoice from an order is non-idempotent and CANNOT be reconciled back
+  // from Tripletex (GET /invoice has no order filter, invoice numbers are auto-assigned).
+  // So an ambiguous failure must fail for manual review, never auto-retry — otherwise a
+  // timed-out-but-succeeded call would mint a second real invoice on the next run.
+  let response
+  try {
+    response = await createTripletexInvoiceFromOrder(connection, orderLink.external_id, { sendToCustomer })
+  } catch (err) {
+    throw nonRetryableIfAmbiguous(err)
+  }
   const externalId = Number(response?.value?.id || response?.id)
 
   if (!Number.isFinite(externalId)) {
-    throw new Error("Tripletex invoice id missing in response")
+    // The invoice may have been created (2xx) even though we can't read its id, and it
+    // can't be searched back — fail for manual review, never auto-retry into a 2nd invoice.
+    throw missingIdError("Tripletex invoice id missing in response")
   }
 
   const linkSyncStatus = sendToCustomer ? "sent" : "synced"
@@ -973,6 +1066,13 @@ async function processFullReconciliation(job: IntegrationJobRow) {
       : Promise.resolve({ data: [] as Array<{ id: string; customer_id: string; project_id: string | null; status: string }> }),
   ])
 
+  // IMPORTANT: entity CREATE jobs must use STABLE per-entity idempotency keys (the same
+  // ones the accept/send path uses), NOT the run-scoped reconcileRunKey. With run-scoped
+  // keys, two reconcile runs (nightly cron + manual sync_now), or a reconcile overlapping
+  // an accept, each enqueued a separate create job; both saw external_entity_link=null at
+  // runtime and both POSTed to Tripletex (which has no idempotency key) → DUPLICATE orders
+  // and customers in the customer's accounting. Stable keys (+ the UNIQUE(idempotency_key)
+  // index) make each entity's create at-most-once across all runs and the accept path.
   if (customersEnabled) {
     for (const customer of customersResult.data || []) {
       const { error } = await supabase.from("integration_jobs").insert({
@@ -980,7 +1080,7 @@ async function processFullReconciliation(job: IntegrationJobRow) {
         provider: "tripletex",
         job_type: "customer.upsert",
         payload: { customerId: customer.id },
-        idempotency_key: `${reconcileRunKey}:customer:${customer.id}`,
+        idempotency_key: `tripletex:customer:${customer.id}`,
         status: "pending",
         next_run_at: new Date().toISOString(),
       })
@@ -997,7 +1097,7 @@ async function processFullReconciliation(job: IntegrationJobRow) {
         provider: "tripletex",
         job_type: "project.upsert",
         payload: { projectId: project.id },
-        idempotency_key: `${reconcileRunKey}:project:${project.id}`,
+        idempotency_key: `tripletex:project:${project.id}`,
         status: "pending",
         next_run_at: new Date().toISOString(),
       })
@@ -1018,7 +1118,8 @@ async function processFullReconciliation(job: IntegrationJobRow) {
         provider: "tripletex",
         job_type: "offer.upsert",
         payload: { offerId, customerId, projectId },
-        idempotency_key: `${reconcileRunKey}:offer-quote:${offerId}`,
+        // Matches the accept/send quote key: `tripletex:offer:<id>:quote` + `:upsert`.
+        idempotency_key: `tripletex:offer:${offerId}:quote:upsert`,
         status: "pending",
         next_run_at: new Date().toISOString(),
       })
@@ -1032,7 +1133,8 @@ async function processFullReconciliation(job: IntegrationJobRow) {
           provider: "tripletex",
           job_type: "order.create_from_offer",
           payload: { offerId, customerId, ...(projectId ? { projectId } : {}) },
-          idempotency_key: `${reconcileRunKey}:offer-order:${offerId}`,
+          // Matches the accept/send order key: `tripletex:offer:<id>:order` + `:order`.
+          idempotency_key: `tripletex:offer:${offerId}:order:order`,
           status: "pending",
           next_run_at: new Date().toISOString(),
         })
@@ -1170,6 +1272,236 @@ async function processCalendarActivityUpsert(job: IntegrationJobRow) {
   }
 }
 
+// --- Kjørebok → reiseregning -----------------------------------------------
+
+async function setKjorebokTripStatus(
+  companyId: string,
+  tripId: string,
+  fields: {
+    status: "not_synced" | "pending" | "synced" | "failed" | "blocked"
+    externalId?: number | null
+    externalUrl?: string | null
+    error?: string | null
+  }
+) {
+  const admin = createAdminClient()
+  const update: Record<string, unknown> = {
+    tripletex_status: fields.status,
+    tripletex_last_error: fields.error ?? null,
+  }
+  if (fields.status === "synced") {
+    update.tripletex_synced_at = new Date().toISOString()
+    if (fields.externalId != null) update.tripletex_external_id = fields.externalId
+    if (fields.externalUrl) update.tripletex_external_url = fields.externalUrl
+  } else if (fields.status === "not_synced") {
+    update.tripletex_external_id = null
+    update.tripletex_external_url = null
+    update.tripletex_synced_at = null
+  }
+  await admin.from("kjorebok_trips").update(update).eq("id", tripId).eq("company_id", companyId)
+}
+
+async function processTravelExpenseUpsert(job: IntegrationJobRow) {
+  const tripId = String(job.payload.tripId || "")
+  if (!tripId) throw new Error("tripId missing in payload")
+
+  const supabase = createAdminClient()
+  const connection = await getFreshTripletexConnection(job.company_id)
+  if (!connection) throw new Error("Tripletex connection missing for company")
+
+  // Scope gate — if the company hasn't enabled kjørebok-sync, do nothing.
+  if (connection.scope_config && connection.scope_config.travelExpenses !== true) {
+    return
+  }
+
+  const { data: trip } = await supabase
+    .from("kjorebok_trips")
+    .select(
+      "id, company_id, driver_user_id, project_id, trip_date, from_address, to_address, distance_km, purpose, rate_nok_per_km, amount_nok, classification"
+    )
+    .eq("id", tripId)
+    .eq("company_id", job.company_id)
+    .maybeSingle()
+  if (!trip) throw new Error("Kjøretur ikke funnet")
+
+  // Private trips are not reimbursed — never sync.
+  if (trip.classification === "private") {
+    await setKjorebokTripStatus(job.company_id, tripId, { status: "not_synced", error: null })
+    return
+  }
+
+  // Resolve the driver → Tripletex-employee mapping. NEVER fall back to the
+  // session employee — that would post one person's allowance under another's name.
+  const employeeLink = await getExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "employee",
+    localId: trip.driver_user_id,
+  })
+  if (!employeeLink?.external_id) {
+    await setKjorebokTripStatus(job.company_id, tripId, {
+      status: "blocked",
+      error: "Sjåføren mangler kobling til en Tripletex-ansatt. Koble ansatte under Tripletex-innstillinger.",
+    })
+    return
+  }
+
+  // Optional project link — if the project isn't synced yet, queue it and retry.
+  let projectExternalId: number | null = null
+  if (trip.project_id && connection.scope_config?.projects !== false) {
+    const projectLink = await getExternalEntityLink({
+      companyId: job.company_id,
+      entityType: "project",
+      localId: trip.project_id,
+    })
+    if (projectLink?.external_id) {
+      projectExternalId = Number(projectLink.external_id)
+    } else {
+      await enqueueIntegrationJob({
+        companyId: job.company_id,
+        jobType: "project.upsert",
+        payload: { projectId: trip.project_id },
+        // Stable key (no time bucket) so repeated re-queues collapse onto one
+        // in-flight project.upsert via UNIQUE(idempotency_key); the travel_expense
+        // job just keeps retrying with backoff until the link appears.
+        idempotencyKey: `tripletex:project:${trip.project_id}:from_kjorebok`,
+      })
+      throw new Error("Prosjektet er ikke synket til Tripletex ennå — lagt i kø på nytt")
+    }
+  }
+
+  const existingLink = await getExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "kjorebok_trip",
+    localId: tripId,
+  })
+
+  // Parent reiseregning (non-idempotent create — guard the POST path).
+  const parentPayload = mapTravelExpenseFromTrip(trip, Number(employeeLink.external_id), { projectExternalId })
+  let parentResponse
+  try {
+    parentResponse = await upsertTripletexTravelExpense(connection, parentPayload, existingLink?.external_id || undefined)
+  } catch (err) {
+    throw existingLink?.external_id ? err : nonRetryableIfAmbiguous(err)
+  }
+  const externalId = Number(parentResponse?.value?.id || parentResponse?.id || existingLink?.external_id)
+  if (!Number.isFinite(externalId)) {
+    throw missingIdError("Tripletex travelExpense id missing in response")
+  }
+
+  // Create-then-link immediately so a child-line failure on retry never re-creates the parent.
+  await upsertExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "kjorebok_trip",
+    localId: tripId,
+    externalId,
+    externalUrl: tripletexTravelExpenseUrl(externalId),
+  })
+
+  // Mileage child line. On re-sync, create the new line FIRST then delete the old
+  // ones so the reiseregning is never left with zero mileage lines mid-update.
+  const existingMileageIds = existingLink?.external_id
+    ? await listTripletexTravelExpenseMileageIds(connection, externalId)
+    : []
+  await createTripletexMileageAllowance(connection, mapMileageAllowanceFromTrip(trip, externalId))
+  for (const mileageId of existingMileageIds) {
+    await deleteTripletexMileageAllowance(connection, mileageId)
+  }
+
+  await setKjorebokTripStatus(job.company_id, tripId, {
+    status: "synced",
+    externalId,
+    externalUrl: tripletexTravelExpenseUrl(externalId),
+    error: null,
+  })
+}
+
+async function processTravelExpenseDelete(job: IntegrationJobRow) {
+  const tripId = String(job.payload.tripId || "")
+  const externalId = Number(job.payload.externalId || 0)
+  const connection = await getFreshTripletexConnection(job.company_id)
+  if (!connection) throw new Error("Tripletex connection missing for company")
+
+  if (Number.isFinite(externalId) && externalId > 0) {
+    try {
+      await deleteTripletexTravelExpense(connection, externalId)
+    } catch (err) {
+      // Already gone in Tripletex → treat as success.
+      if ((err as { status?: number })?.status !== 404) throw err
+    }
+  }
+
+  const admin = createAdminClient()
+  await admin
+    .from("external_entity_links")
+    .delete()
+    .eq("company_id", job.company_id)
+    .eq("provider", "tripletex")
+    .eq("entity_type", "kjorebok_trip")
+    .eq("local_id", tripId)
+  await setKjorebokTripStatus(job.company_id, tripId, { status: "not_synced", error: null })
+}
+
+async function processEmployeeSyncAll(job: IntegrationJobRow) {
+  const supabase = createAdminClient()
+  const connection = await getFreshTripletexConnection(job.company_id)
+  if (!connection) throw new Error("Tripletex connection missing for company")
+
+  const employees = await listTripletexEmployees(connection)
+  // Collision-aware: if two Tripletex employees share an email, leave it AMBIGUOUS
+  // (unlinked) rather than silently picking the last one — a wrong driver→employee
+  // link would post one person's kjøregodtgjørelse under another's name.
+  const byEmail = new Map<string, number>()
+  const ambiguous = new Set<string>()
+  for (const e of employees) {
+    if (!e.email) continue
+    const key = e.email.toLowerCase()
+    const existing = byEmail.get(key)
+    if (existing !== undefined && existing !== e.id) {
+      ambiguous.add(key)
+      continue
+    }
+    byEmail.set(key, e.id)
+  }
+
+  const { data: users } = await supabase
+    .from("users")
+    .select("id, email")
+    .eq("company_id", job.company_id)
+
+  const linkedUserIds: string[] = []
+  for (const u of users || []) {
+    const email = (u.email as string | null)?.toLowerCase()
+    if (!email || ambiguous.has(email)) continue
+    const employeeId = byEmail.get(email)
+    if (!employeeId) continue
+    await upsertExternalEntityLink({
+      companyId: job.company_id,
+      entityType: "employee",
+      localId: u.id as string,
+      externalId: employeeId,
+    })
+    linkedUserIds.push(u.id as string)
+  }
+
+  // Self-heal: re-queue trips that were 'blocked' on a driver who is now linked.
+  if (linkedUserIds.length > 0) {
+    const { data: blockedTrips } = await supabase
+      .from("kjorebok_trips")
+      .select("id")
+      .eq("company_id", job.company_id)
+      .eq("tripletex_status", "blocked")
+      .in("driver_user_id", linkedUserIds)
+    for (const t of blockedTrips || []) {
+      await enqueueIntegrationJob({
+        companyId: job.company_id,
+        jobType: "travel_expense.upsert",
+        payload: { tripId: t.id as string },
+        idempotencyKey: `tripletex:travel_expense:${t.id}:reblock:${Math.floor(Date.now() / 30_000)}`,
+      })
+    }
+  }
+}
+
 async function processJob(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
   switch (job.job_type) {
     case "customer.pull_all":
@@ -1202,6 +1534,15 @@ async function processJob(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
     case "reconcile.full":
       await processFullReconciliation(job)
       return
+    case "travel_expense.upsert":
+      await processTravelExpenseUpsert(job)
+      return
+    case "travel_expense.delete":
+      await processTravelExpenseDelete(job)
+      return
+    case "employee.sync_all":
+      await processEmployeeSyncAll(job)
+      return
     default:
       throw new Error(`Unsupported job type: ${job.job_type}`)
   }
@@ -1220,6 +1561,11 @@ export async function runTripletexWorker(input?: { workerId?: string; batchSize?
     sessionEmployeeIdByCompany: new Map<string, number | null>(),
     projectManagerIdsByCompany: new Map<string, number[]>(),
   }
+
+  // Recover jobs orphaned in 'processing' by a worker that died mid-run (Vercel timeout,
+  // deploy, OOM): idempotent steps are requeued, non-idempotent creators are failed for
+  // manual review. Best-effort — never block today's run. See db/44.
+  await reapStuckJobs()
 
   for (let batch = 0; batch < maxBatches; batch += 1) {
     const jobs = await claimJobs(workerId, batchSize)
@@ -1243,6 +1589,14 @@ export async function runTripletexWorker(input?: { workerId?: string; batchSize?
         } else {
           await markJobFailed(job, classified.code, classified.message)
           failed += 1
+          await logServerError({
+            message: `Tripletex job permanently failed: ${job.job_type}`,
+            error,
+            source: "worker",
+            route: "runTripletexWorker",
+            companyId: job.company_id,
+            context: { jobId: job.id, jobType: job.job_type, code: classified.code },
+          })
         }
         await updateTripletexConnectionHealth({
           companyId: job.company_id,

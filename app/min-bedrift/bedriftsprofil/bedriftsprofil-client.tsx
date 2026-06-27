@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { createClient } from "@/lib/supabase/client"
+import { reportClientError } from "@/lib/errors/client"
 import {
   COMPANY_INDUSTRY_OPTIONS,
   COMPANY_PRICE_LEVEL_OPTIONS,
@@ -83,7 +84,17 @@ export function BedriftsprofilClient({
       toast.success("Logo lastet opp.")
     } catch (error) {
       console.error("Logo upload error", error)
-      toast.error("Kunne ikke laste opp logo.")
+      reportClientError(error, { context: { action: "upload company logo" } })
+      const message = error instanceof Error ? error.message.toLowerCase() : ""
+      if (message.includes("exceeded") || message.includes("too large") || message.includes("maximum size")) {
+        toast.error("Filen er for stor.", { description: "Logoen kan maks være 2 MB." })
+      } else if (message.includes("mime") || message.includes("type") || message.includes("invalid")) {
+        toast.error("Ugyldig filtype.", { description: "Velg en bildefil (PNG, JPG eller SVG)." })
+      } else {
+        toast.error("Kunne ikke laste opp logo.", {
+          description: error instanceof Error ? error.message : undefined,
+        })
+      }
     } finally {
       setIsUploadingLogo(false)
     }
@@ -160,6 +171,7 @@ export function BedriftsprofilClient({
       )
     } catch (error) {
       console.error("Save company profile error", error)
+      reportClientError(error, { context: { action: "save company profile" } })
       toast.error("Kunne ikke lagre bedriftsprofil.")
     } finally {
       setIsSaving(false)
@@ -169,7 +181,6 @@ export function BedriftsprofilClient({
   return (
     <div className="flex flex-col gap-6 pb-8">
       <div className="space-y-1">
-        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Min bedrift</p>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Bedriftsprofil</h1>
         <p className="text-sm text-muted-foreground">
           Logo og firmainformasjon brukes i tilbud, kontrakter og kommunikasjon med kunder.
@@ -224,7 +235,7 @@ export function BedriftsprofilClient({
                 ) : (
                   <Upload className="mr-2 h-4 w-4" />
                 )}
-                Last opp logo
+                {isUploadingLogo ? "Laster opp…" : "Last opp logo"}
               </Button>
               <p className="text-xs text-muted-foreground">PNG, JPG eller SVG. Maks 2 MB.</p>
             </div>
@@ -244,6 +255,8 @@ export function BedriftsprofilClient({
               <Label htmlFor="org-number">Organisasjonsnummer</Label>
               <Input
                 id="org-number"
+                inputMode="numeric"
+                autoComplete="organization"
                 value={orgNumber}
                 onChange={(event) => setOrgNumber(event.target.value)}
                 placeholder="9 siffer"
@@ -263,6 +276,8 @@ export function BedriftsprofilClient({
               <Label htmlFor="phone">Telefon</Label>
               <Input
                 id="phone"
+                type="tel"
+                autoComplete="tel"
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
                 placeholder="+47 ..."
@@ -290,6 +305,8 @@ export function BedriftsprofilClient({
               <Label htmlFor="postal-code">Postnummer</Label>
               <Input
                 id="postal-code"
+                inputMode="numeric"
+                autoComplete="postal-code"
                 value={postalCode}
                 onChange={(event) => setPostalCode(event.target.value)}
                 placeholder="0000"
@@ -362,7 +379,7 @@ export function BedriftsprofilClient({
       <div className="flex justify-end">
         <Button onClick={() => void handleSave()} disabled={isSaving || isUploadingLogo}>
           {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          Lagre endringer
+          {isSaving ? "Lagrer…" : "Lagre endringer"}
         </Button>
       </div>
     </div>

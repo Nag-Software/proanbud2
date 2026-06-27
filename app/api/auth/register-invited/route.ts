@@ -3,11 +3,12 @@ import crypto from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { assignUserRole } from '@/lib/company-roles';
 import { ROLE_DB_VALUES, normalizeRole, roleNameToDisplay } from '@/lib/roles';
+import { logServerError } from '@/lib/errors/log';
 
 export async function POST(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
-    const { token, fullName = "Ny Ansatt", password, email } = await request.json();
+    const { token, fullName = "Ny Ansatt", password } = await request.json();
 
     if (!token || !password) {
       return NextResponse.json({ error: 'Mangler påkrevde felt' }, { status: 400 });
@@ -30,7 +31,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invitasjonen har utløpt' }, { status: 400 });
     }
 
-    const targetEmail = (email || invite.email).trim().toLowerCase();
+    // Always bind to the invitation's email — never trust a client-supplied address
+    // (prevents creating a confirmed account / joining a company on an arbitrary email).
+    const targetEmail = String(invite.email).trim().toLowerCase();
 
     const { data: authRecord, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: targetEmail,
@@ -78,6 +81,14 @@ export async function POST(request: Request) {
       });
     } catch (roleError) {
       console.error('Assign role error:', roleError);
+      await logServerError({
+        message: 'Failed to assign role to invited user',
+        error: roleError,
+        source: 'api',
+        route: 'POST /api/auth/register-invited',
+        companyId: invite.company_id,
+        userId: newUserId,
+      });
     }
 
     await supabaseAdmin
@@ -90,6 +101,15 @@ export async function POST(request: Request) {
       await syncSeatQuantity(invite.company_id);
     } catch (seatSyncError) {
       console.error('Seat sync error after invite:', seatSyncError);
+      await logServerError({
+        message: 'Seat sync failed after invite acceptance',
+        error: seatSyncError,
+        source: 'api',
+        route: 'POST /api/auth/register-invited',
+        level: 'warning',
+        companyId: invite.company_id,
+        userId: newUserId,
+      });
     }
 
     return NextResponse.json({
@@ -100,6 +120,12 @@ export async function POST(request: Request) {
 
   } catch (error) {
     console.error('Error during registration:', error);
+    await logServerError({
+      message: 'Invited-user registration failed',
+      error,
+      source: 'api',
+      route: 'POST /api/auth/register-invited',
+    });
     return NextResponse.json({ error: 'Intern serverfeil' }, { status: 500 });
   }
 }

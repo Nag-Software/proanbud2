@@ -6,6 +6,7 @@ import { Archive, MoreVertical, Pencil, Users } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
+import { reportClientError } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -71,6 +72,7 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
       router.refresh()
     } catch (error) {
       console.error("Kunne ikke arkivere prosjekt", error)
+      reportClientError(error, { context: { action: "arkiver prosjekt", projectId: project.id } })
       toast.error("Kunne ikke arkivere prosjekt")
     } finally {
       setIsSaving(false)
@@ -89,6 +91,7 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
       router.refresh()
     } catch (error) {
       console.error("Kunne ikke oppdatere prosjektnavn", error)
+      reportClientError(error, { context: { action: "endre prosjektnavn", projectId: project.id } })
       toast.error("Kunne ikke oppdatere prosjektnavn")
     } finally {
       setIsSaving(false)
@@ -106,6 +109,7 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
       router.refresh()
     } catch (error) {
       console.error("Kunne ikke oppdatere kunde", error)
+      reportClientError(error, { context: { action: "endre kunde på prosjekt", projectId: project.id } })
       toast.error("Kunne ikke oppdatere kunde")
     } finally {
       setIsSaving(false)
@@ -122,7 +126,7 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground opacity-0 transition-opacity hover:bg-muted/80 hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100"
+                className="h-8 w-8 text-muted-foreground opacity-100 transition-opacity hover:bg-muted/80 hover:text-foreground md:opacity-0 md:group-hover:opacity-100 data-[state=open]:opacity-100"
                 onClick={(event) => event.preventDefault()}
               >
                 <MoreVertical className="h-4 w-4" />

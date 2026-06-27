@@ -20,3 +20,9 @@ export function tripletexOrderUrl(externalId: number) {
 export function tripletexInvoiceUrl(externalId: number) {
   return `${TRIPLETEX_APP_BASE}/execute/invoiceMenu?invoiceId=${externalId}`
 }
+
+/** Reiseregning (travel expense). Deep-link path assumed to follow the `<x>Menu?<x>Id=`
+ *  convention of the others — verify the exact path in a Tripletex sandbox. */
+export function tripletexTravelExpenseUrl(externalId: number) {
+  return `${TRIPLETEX_APP_BASE}/execute/travelExpenseMenu?travelExpenseId=${externalId}`
+}

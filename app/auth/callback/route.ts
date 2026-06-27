@@ -2,6 +2,8 @@ import { createServerClient } from '@supabase/ssr'
 import type { EmailOtpType } from '@supabase/supabase-js'
 import { NextResponse, type NextRequest } from 'next/server'
 
+import { logServerError } from '@/lib/errors/log'
+
 function redirectWithCookies(
   url: URL,
   pendingCookies: Array<{ name: string; value: string; options?: Record<string, unknown> }>
@@ -41,6 +43,13 @@ export async function GET(request: NextRequest) {
     if (!error) {
       return redirectWithCookies(new URL(nextPath, origin), pendingCookies)
     }
+    await logServerError({
+      message: 'Auth callback: exchangeCodeForSession failed',
+      error,
+      source: 'api',
+      route: '/auth/callback',
+      context: { nextPath },
+    })
   }
 
   if (tokenHash && type) {
@@ -51,6 +60,13 @@ export async function GET(request: NextRequest) {
     if (!error) {
       return redirectWithCookies(new URL(nextPath, origin), pendingCookies)
     }
+    await logServerError({
+      message: 'Auth callback: verifyOtp failed',
+      error,
+      source: 'api',
+      route: '/auth/callback',
+      context: { nextPath, type },
+    })
   }
 
   const loginUrl = new URL('/login', origin)

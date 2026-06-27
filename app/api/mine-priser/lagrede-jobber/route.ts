@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
 const saveSchema = z.object({
@@ -29,6 +30,12 @@ export async function GET() {
     return NextResponse.json({ jobs: data ?? [] })
   } catch (err) {
     console.error("[lagrede-jobber GET] catch", err)
+    await logServerError({
+      message: "Henting av lagrede jobber feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/lagrede-jobber GET",
+    })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
@@ -70,6 +77,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ job: data })
   } catch (err) {
     console.error("[lagrede-jobber POST] catch", err)
+    await logServerError({
+      message: "Lagring av jobb feilet",
+      error: err,
+      source: "api",
+      route: "/api/mine-priser/lagrede-jobber POST",
+    })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

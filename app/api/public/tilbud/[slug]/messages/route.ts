@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { companyHasFeature } from "@/lib/billing/server-modules"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 import { fetchPublicOfferBySlug } from "@/lib/tilbud/public-offer"
@@ -15,6 +16,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
 
   if (!offer || offer.status === "draft") {
     return NextResponse.json({ error: "Tilbudet finnes ikke" }, { status: 404 })
+  }
+
+  if (!(await companyHasFeature(offer.companyId, "meldinger"))) {
+    return NextResponse.json({ messages: [] })
   }
 
   const admin = createAdminClient()
@@ -49,6 +54,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     return NextResponse.json({ error: "Tilbudet finnes ikke" }, { status: 404 })
   }
 
+  if (!(await companyHasFeature(offer.companyId, "meldinger"))) {
+    return NextResponse.json(
+      { error: "Meldinger er ikke tilgjengelig for dette tilbudet.", code: "plan_required", feature: "meldinger" },
+      { status: 403 }
+    )
+  }
+
   const body = await request.json().catch(() => null)
   const parsed = messageSchema.safeParse(body)
   if (!parsed.success) {
@@ -73,14 +85,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     return NextResponse.json({ error: "Kunne ikke sende melding" }, { status: 500 })
   }
 
-  await logOfferActivity({
-    offerId: offer.id,
-    companyId: offer.companyId,
-    eventType: OFFER_ACTIVITY.CUSTOMER_MESSAGE,
-    title: "Ny melding fra kunde",
-    description: parsed.data.content.slice(0, 180),
-    metadata: { publicSlug: slug },
-  })
+  await logOfferActivity(
+    {
+      offerId: offer.id,
+      companyId: offer.companyId,
+      eventType: OFFER_ACTIVITY.CUSTOMER_MESSAGE,
+      title: "Ny melding fra kunde",
+      description: parsed.data.content.slice(0, 180),
+      metadata: { publicSlug: slug },
+    },
+    { admin: true }
+  )
 
   return NextResponse.json({
     message: {

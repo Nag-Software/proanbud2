@@ -2,7 +2,6 @@
 
 import { zodResolver } from "@hookform/resolvers/zod"
 import { addDays, format, isBefore, startOfDay } from "date-fns"
-import { AnimatePresence, motion } from "motion/react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMemo, useRef, useState } from "react"
@@ -11,6 +10,7 @@ import { toast } from "sonner"
 import { z } from "zod"
 
 import { createProjectAction } from "../actions"
+import { reportClientError } from "@/lib/errors/client"
 import { AddCustomerDrawer } from "@/components/kunder/add-customer-drawer"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -241,6 +241,7 @@ async function uploadProjectDocuments(projectId: string, projectFiles: File[], c
     }
   } catch (error) {
     console.error("Kunne ikke sikre dokumentmapper:", error)
+    reportClientError(error, { level: "warning", context: { action: "opprette dokumentmapper for nytt prosjekt", projectId } })
   }
 
   const uploads = await Promise.all([
@@ -429,6 +430,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
       setCreatedProjectId(result.id)
       setSuccessView(true)
     } catch (error) {
+      reportClientError(error, { context: { action: "opprette nytt prosjekt (wizard)" } })
       setSubmitError(error instanceof Error ? error.message : "Kunne ikke opprette prosjekt")
     }
   }
@@ -499,14 +501,12 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
 
           <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div>
-              <AnimatePresence mode="wait">
-                <motion.section
+              {/* CSS enter-animation (tw-animate-css) keyed by step instead of
+                  framer-motion's AnimatePresence — remounting on step change
+                  replays the fade/slide-in without bundling motion. */}
+              <section
                   key={step}
-                  initial={{ opacity: 0, x: 12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -12 }}
-                  transition={{ duration: 0.18 }}
-                  className="space-y-4"
+                  className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-200"
                 >
                   {step === 0 ? (
                     <div className="space-y-4 max-w-md">
@@ -647,8 +647,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
                       />
                     </div>
                   ) : null}
-                </motion.section>
-              </AnimatePresence>
+                </section>
             </div>
 
             <aside className="rounded-lg border bg-muted/30 p-4">

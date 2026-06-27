@@ -8,9 +8,24 @@
  */
 import Stripe from "stripe"
 
+// Next.js loads .env.local automatically, but plain `node` does not.
+// Load it (and .env as fallback) so the script picks up STRIPE_SECRET_KEY.
+if (typeof process.loadEnvFile === "function") {
+  for (const envFile of [".env.local", ".env"]) {
+    try {
+      process.loadEnvFile(envFile)
+    } catch {
+      // File missing/unreadable — ignore and fall back to existing process env.
+    }
+  }
+}
+
 const secretKey = process.env.STRIPE_SECRET_KEY?.trim()
 if (!secretKey) {
-  console.error("STRIPE_SECRET_KEY mangler")
+  console.error(
+    "STRIPE_SECRET_KEY mangler. Legg den i .env.local, eller kjør med:\n" +
+      "  STRIPE_SECRET_KEY=sk_... npm run stripe:seed-catalog"
+  )
   process.exit(1)
 }
 
@@ -78,47 +93,128 @@ async function main() {
     kind: "module_product",
     module_key: "timeforing",
   })
+  const dokumenterProduct = await ensureProduct("Proanbud Cloud", {
+    kind: "module_product",
+    module_key: "dokumenter",
+  })
+  const integrasjonerProduct = await ensureProduct("Proanbud Integrasjoner", {
+    kind: "module_product",
+    module_key: "integrasjoner",
+  })
+  const meldingerKiProduct = await ensureProduct("Proanbud KI-svar i meldinger", {
+    kind: "module_product",
+    module_key: "meldinger_ki",
+  })
+  const kjorebokProduct = await ensureProduct("Proanbud Kjørebok", {
+    kind: "module_product",
+    module_key: "kjorebok",
+  })
   const seatProduct = await ensureProduct("Proanbud Ansatt", { kind: "seat_product" })
 
   const prices = {
     STRIPE_PRICE_MINI_MONTHLY: await ensureRecurringPrice(
       miniProduct.id,
-      19900,
+      22900,
       { interval: "month" },
       { kind: "base", plan_key: "mini", interval: "month" }
     ),
     STRIPE_PRICE_MINI_YEARLY: await ensureRecurringPrice(
       miniProduct.id,
-      178800,
+      226800,
       { interval: "year" },
       { kind: "base", plan_key: "mini", interval: "year" }
     ),
     STRIPE_PRICE_PROFF_MONTHLY: await ensureRecurringPrice(
       proffProduct.id,
-      34900,
+      49900,
       { interval: "month" },
       { kind: "base", plan_key: "proff", interval: "month" }
     ),
     STRIPE_PRICE_PROFF_YEARLY: await ensureRecurringPrice(
       proffProduct.id,
-      346800,
+      502800,
       { interval: "year" },
       { kind: "base", plan_key: "proff", interval: "year" }
     ),
+    // OVERAGE_UNIT_ORE in lib/billing/plans.ts — keep in sync.
     STRIPE_PRICE_OVERAGE: await ensureOneTimePrice(overageProduct.id, 950, {
       kind: "overage",
     }),
     STRIPE_PRICE_MODULE_TIMEFORING: await ensureRecurringPrice(
       moduleProduct.id,
-      2900,
+      3900,
       { interval: "month" },
       { kind: "module", module_key: "timeforing" }
     ),
+    STRIPE_PRICE_MODULE_DOKUMENTER: await ensureRecurringPrice(
+      dokumenterProduct.id,
+      3900,
+      { interval: "month" },
+      { kind: "module", module_key: "dokumenter" }
+    ),
+    STRIPE_PRICE_MODULE_INTEGRASJONER: await ensureRecurringPrice(
+      integrasjonerProduct.id,
+      2900,
+      { interval: "month" },
+      { kind: "module", module_key: "integrasjoner" }
+    ),
+    STRIPE_PRICE_MODULE_MELDINGER_KI: await ensureRecurringPrice(
+      meldingerKiProduct.id,
+      2900,
+      { interval: "month" },
+      { kind: "module", module_key: "meldinger_ki" }
+    ),
+    // MODULE_PRICING.kjorebok in lib/billing/plans.ts — keep in sync (49 kr/mnd).
+    STRIPE_PRICE_MODULE_KJOREBOK: await ensureRecurringPrice(
+      kjorebokProduct.id,
+      4900,
+      { interval: "month" },
+      { kind: "module", module_key: "kjorebok" }
+    ),
     STRIPE_PRICE_SEAT_EMPLOYEE: await ensureRecurringPrice(
       seatProduct.id,
-      1900,
+      3900,
       { interval: "month" },
       { kind: "seat" }
+    ),
+    // Yearly add-on variants (12× monthly, no discount). Required so seat/module
+    // items can match a YEARLY base subscription's interval — Stripe rejects a
+    // subscription mixing monthly and yearly items (prices_in_different_intervals).
+    STRIPE_PRICE_MODULE_TIMEFORING_YEARLY: await ensureRecurringPrice(
+      moduleProduct.id,
+      3900 * 12,
+      { interval: "year" },
+      { kind: "module", module_key: "timeforing", interval: "year" }
+    ),
+    STRIPE_PRICE_MODULE_DOKUMENTER_YEARLY: await ensureRecurringPrice(
+      dokumenterProduct.id,
+      3900 * 12,
+      { interval: "year" },
+      { kind: "module", module_key: "dokumenter", interval: "year" }
+    ),
+    STRIPE_PRICE_MODULE_INTEGRASJONER_YEARLY: await ensureRecurringPrice(
+      integrasjonerProduct.id,
+      2900 * 12,
+      { interval: "year" },
+      { kind: "module", module_key: "integrasjoner", interval: "year" }
+    ),
+    STRIPE_PRICE_MODULE_MELDINGER_KI_YEARLY: await ensureRecurringPrice(
+      meldingerKiProduct.id,
+      2900 * 12,
+      { interval: "year" },
+      { kind: "module", module_key: "meldinger_ki", interval: "year" }
+    ),
+    STRIPE_PRICE_MODULE_KJOREBOK_YEARLY: await ensureRecurringPrice(
+      kjorebokProduct.id,
+      4900 * 12,
+      { interval: "year" },
+      { kind: "module", module_key: "kjorebok", interval: "year" }
+    ),
+    STRIPE_PRICE_SEAT_EMPLOYEE_YEARLY: await ensureRecurringPrice(
+      seatProduct.id,
+      3900 * 12,
+      { interval: "year" },
+      { kind: "seat", interval: "year" }
     ),
   }
 

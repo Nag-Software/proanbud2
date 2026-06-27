@@ -3,6 +3,7 @@ import crypto from "crypto"
 import { Resend } from "resend"
 
 import { logSellerActivity, logSellerEmail } from "@/lib/selger/activity-log"
+import { logServerError } from "@/lib/errors/log"
 import { renderSellerEmailTemplate } from "@/lib/selger/email-templates"
 import { requirePlatformSellerForApi } from "@/lib/auth/require-platform-seller-api"
 import { assignUserRole, ensureCompanyRoles } from "@/lib/company-roles"
@@ -72,6 +73,15 @@ export async function POST(request: Request) {
 
     if (authError || !authRecord.user) {
       console.error("create company auth error:", authError)
+      await logServerError({
+        message: "Opprett firma: kunne ikke opprette auth-bruker",
+        error: authError,
+        source: "api",
+        route: "/api/selger/companies",
+        method: "POST",
+        userId: auth.user?.id ?? null,
+        context: { email: normalizedEmail },
+      })
       return NextResponse.json(
         { error: "Kunne ikke opprette bruker: " + (authError?.message || "Ukjent feil") },
         { status: 500 }
@@ -111,6 +121,16 @@ export async function POST(request: Request) {
 
     if (userError) {
       console.error("create company user error:", userError)
+      await logServerError({
+        message: "Opprett firma: kunne ikke knytte bruker til bedrift",
+        error: userError,
+        source: "api",
+        route: "/api/selger/companies",
+        method: "POST",
+        userId: auth.user?.id ?? null,
+        companyId: companyData.id,
+        context: { email: normalizedEmail, newUserId: authRecord.user.id },
+      })
       return NextResponse.json({ error: "Kunne ikke knytte bruker til bedrift." }, { status: 500 })
     }
 
@@ -123,12 +143,34 @@ export async function POST(request: Request) {
       })
     } catch (roleSetupError) {
       console.error("Role setup error:", roleSetupError)
+      // Best-effort: company is created; roles can be repaired later. Surface for visibility.
+      await logServerError({
+        message: "Opprett firma: rolle-oppsett feilet",
+        error: roleSetupError,
+        level: "warning",
+        source: "api",
+        route: "/api/selger/companies",
+        method: "POST",
+        userId: auth.user?.id ?? null,
+        companyId: companyData.id,
+      })
     }
 
     try {
       await ensureCompanyBillingRow(companyData.id)
     } catch (billingSetupError) {
       console.error("Billing setup error:", billingSetupError)
+      // Best-effort: billing row can be reconciled later. Surface for visibility.
+      await logServerError({
+        message: "Opprett firma: billing-oppsett feilet",
+        error: billingSetupError,
+        level: "warning",
+        source: "api",
+        route: "/api/selger/companies",
+        method: "POST",
+        userId: auth.user?.id ?? null,
+        companyId: companyData.id,
+      })
     }
 
     if (send_welcome_email) {
@@ -140,12 +182,15 @@ export async function POST(request: Request) {
 
       if (rendered) {
         try {
-          await resend.emails.send({
+          const { error: sendError } = await resend.emails.send({
             from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <post@proanbud.no>",
             to: normalizedEmail,
             subject: rendered.subject,
             html: rendered.html,
           })
+          if (sendError) {
+            throw new Error(sendError.message ?? JSON.stringify(sendError))
+          }
 
           await logSellerEmail({
             sentBy: auth.user!.id,
@@ -155,6 +200,18 @@ export async function POST(request: Request) {
           })
         } catch (emailError) {
           console.error("Welcome email error:", emailError)
+          // Best-effort: welcome email failing must not fail company creation.
+          await logServerError({
+            message: "Opprett firma: velkomst-e-post feilet",
+            error: emailError,
+            level: "warning",
+            source: "api",
+            route: "/api/selger/companies",
+            method: "POST",
+            userId: auth.user?.id ?? null,
+            companyId: companyData.id,
+            context: { recipientEmail: normalizedEmail },
+          })
         }
       }
     }
@@ -183,6 +240,14 @@ export async function POST(request: Request) {
     )
   } catch (error) {
     console.error("POST /api/selger/companies", error)
+    await logServerError({
+      message: "POST /api/selger/companies feilet",
+      error,
+      source: "api",
+      route: "/api/selger/companies",
+      method: "POST",
+      userId: auth.user?.id ?? null,
+    })
     return NextResponse.json({ error: "Intern serverfeil" }, { status: 500 })
   }
 }

@@ -10,7 +10,10 @@ export function ComingSoon({
   description = "Denne siden er under arbeid og blir tilgjengelig når funksjonen er klar.",
 }: ComingSoonProps) {
   return (
-    <section className="flex min-h-[420px] w-full items-center justify-center rounded-lg border border-dashed bg-muted/20 px-6 py-12">
+    <section
+      role="status"
+      className="flex min-h-[420px] w-full items-center justify-center rounded-lg border border-dashed bg-muted/20 px-6 py-12"
+    >
       <div className="flex max-w-md flex-col items-center text-center">
         <div className="mb-4 flex size-11 items-center justify-center rounded-full border bg-background text-muted-foreground">
           <ClockIcon className="size-5" aria-hidden="true" />

@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
 import { runTripletexWorker } from "@/lib/integrations/tripletex/worker"
 import type { TripletexScopeConfig } from "@/lib/integrations/tripletex/scopes"
@@ -208,6 +209,60 @@ export async function enqueueCalendarTripletexSync(input: {
   return true
 }
 
+export async function enqueueTripletexTravelExpenseSync(input: {
+  companyId: string
+  tripId: string
+}) {
+  const connection = await getTripletexConnectionState(input.companyId)
+  if (!connection || connection.scopeConfig.travelExpenses !== true) {
+    return false
+  }
+  await enqueueIntegrationJob({
+    companyId: input.companyId,
+    jobType: "travel_expense.upsert",
+    payload: { tripId: input.tripId },
+    // Time-bucketed manual suffix so a legitimate re-sync after an edit isn't
+    // suppressed by the unique index, while rapid double-clicks collapse to one.
+    idempotencyKey: `tripletex:travel_expense:${input.tripId}:${Math.floor(Date.now() / 30_000)}`,
+  })
+  processTripletexQueueInBackground({ batchSize: 10, maxBatches: 3 })
+  return true
+}
+
+export async function enqueueTripletexTravelExpenseDelete(input: {
+  companyId: string
+  tripId: string
+  externalId: number
+}) {
+  const connection = await getTripletexConnectionState(input.companyId)
+  if (!connection) {
+    return false
+  }
+  await enqueueIntegrationJob({
+    companyId: input.companyId,
+    jobType: "travel_expense.delete",
+    payload: { tripId: input.tripId, externalId: input.externalId },
+    idempotencyKey: `tripletex:travel_expense:${input.tripId}:delete:${Math.floor(Date.now() / 30_000)}`,
+  })
+  processTripletexQueueInBackground({ batchSize: 10, maxBatches: 3 })
+  return true
+}
+
+export async function enqueueTripletexEmployeeSync(input: { companyId: string }) {
+  const connection = await getTripletexConnectionState(input.companyId)
+  if (!connection) {
+    return false
+  }
+  await enqueueIntegrationJob({
+    companyId: input.companyId,
+    jobType: "employee.sync_all",
+    payload: { source: "manual" },
+    idempotencyKey: `tripletex:employee_sync:${input.companyId}:${Math.floor(Date.now() / 60_000)}`,
+  })
+  processTripletexQueueInBackground({ batchSize: 5, maxBatches: 2 })
+  return true
+}
+
 export function processTripletexQueueInBackground(input?: { batchSize?: number; maxBatches?: number }) {
   void runTripletexWorker({
     workerId: `bg-${Date.now()}`,
@@ -215,6 +270,13 @@ export function processTripletexQueueInBackground(input?: { batchSize?: number; 
     maxBatches: input?.maxBatches ?? 5,
   }).catch((error) => {
     console.error("Tripletex background worker failed:", error)
+    void logServerError({
+      message: "Tripletex background worker failed",
+      error,
+      level: "warning",
+      source: "worker",
+      route: "processTripletexQueueInBackground",
+    })
   })
 }
 

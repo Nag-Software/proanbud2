@@ -6,12 +6,10 @@ import {
   Building2Icon,
   FileTextIcon,
   InboxIcon,
-  ReceiptIcon,
-  ScrollTextIcon,
-  UsersIcon,
 } from "lucide-react"
 import { ColumnDef } from "@tanstack/react-table"
 
+import { ActiveUsersMap } from "@/components/sjefen/active-users-map"
 import { AdminDataTable } from "@/components/sjefen/admin-data-table"
 import { SjefenPageShell } from "@/components/sjefen/sjefen-page-shell"
 import {
@@ -27,6 +25,7 @@ import {
   formatRelative,
   offerStatusLabels,
 } from "@/lib/sjefen/format"
+import type { SjefenAnalytics } from "@/lib/sjefen/analytics"
 import type {
   SjefenCompanyRow,
   SjefenMessageRow,
@@ -156,7 +155,13 @@ const messageColumns: ColumnDef<SjefenMessageRow>[] = [
   },
 ]
 
-export function OverviewClient({ stats }: { stats: SjefenOverviewStats }) {
+export function OverviewClient({
+  stats,
+  analytics,
+}: {
+  stats: SjefenOverviewStats
+  analytics: SjefenAnalytics
+}) {
   return (
     <SjefenPageShell segments={["Sjefen", "Oversikt"]}>
       <div className="space-y-6">
@@ -166,32 +171,28 @@ export function OverviewClient({ stats }: { stats: SjefenOverviewStats }) {
           </p>
           <h1 className="text-2xl font-semibold tracking-tight">Sjefen</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Full oversikt over alle firmaer, brukere, tilbud, kontrakter, fakturaer og meldinger.
+            Full oversikt over alle firmaer, tilbud, meldinger og aktive brukere.
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <KpiCard title="Firmaer" value={stats.companies} icon={<Building2Icon className="size-4" />} />
-          <KpiCard
-            title="Brukere"
-            value={stats.users}
-            hint={`${stats.activeUsers} aktive`}
-            icon={<UsersIcon className="size-4" />}
-          />
-          <KpiCard title="Tilbud" value={stats.offers} icon={<FileTextIcon className="size-4" />} />
-          <KpiCard title="Kontrakter" value={stats.contracts} icon={<ScrollTextIcon className="size-4" />} />
-          <KpiCard title="Fakturaer" value={stats.invoices} icon={<ReceiptIcon className="size-4" />} />
-          <KpiCard
-            title="Meldinger"
-            value={stats.messages}
-            hint={`${stats.unreadMessages} uleste fra kunder`}
-            icon={<InboxIcon className="size-4" />}
-          />
-          <KpiCard
-            title="Aktive abonnement"
-            value={stats.activeSubscriptions}
-            icon={<Building2Icon className="size-4" />}
-          />
+        <div className="grid gap-4 xl:grid-cols-[1fr_minmax(320px,400px)]">
+          <div className="grid content-start gap-4 sm:grid-cols-2">
+            <KpiCard title="Firmaer" value={stats.companies} icon={<Building2Icon className="size-4" />} />
+            <KpiCard title="Tilbud" value={stats.offers} icon={<FileTextIcon className="size-4" />} />
+            <KpiCard
+              title="Meldinger"
+              value={stats.messages}
+              hint={`${stats.unreadMessages} uleste fra kunder`}
+              icon={<InboxIcon className="size-4" />}
+            />
+            <KpiCard
+              title="Aktive abonnement"
+              value={stats.activeSubscriptions}
+              icon={<Building2Icon className="size-4" />}
+            />
+          </div>
+
+          <ActiveUsersMap initial={analytics} />
         </div>
 
         <div className="grid gap-6 xl:grid-cols-2">

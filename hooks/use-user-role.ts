@@ -1,48 +1,18 @@
-import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { useAuth } from "@/components/auth-provider"
-import { normalizeRole, type CanonicalRole, getRoleDisplayName } from "@/lib/roles"
+import { getRoleDisplayName } from "@/lib/roles"
+import { useRoleContext } from "@/components/role-provider"
+import { hasFeature as resolveFeature, type FeatureKey } from "@/lib/billing/plans"
 
+/**
+ * Reads the current user's role + plan context from the shared RoleProvider
+ * context. Both are fetched once per session by the provider — this hook
+ * performs no network requests, so it is cheap to use in many components.
+ *
+ * Plan helpers (`isProff`, `hasFeature`, `hasModule`) drive client-side gating
+ * of Proff-only features. Remember: client gating is UX only — every gated
+ * route is also enforced server-side.
+ */
 export function useUserRole() {
-  const { user } = useAuth()
-  const [role, setRole] = useState<string | null>(null)
-  const [canonicalRole, setCanonicalRole] = useState<CanonicalRole | null>(null)
-  const [loadingRole, setLoadingRole] = useState(true)
-
-  useEffect(() => {
-    async function fetchRole() {
-      if (!user) {
-        setRole(null)
-        setCanonicalRole(null)
-        setLoadingRole(false)
-        return
-      }
-
-      const supabase = createClient()
-
-      const { data: userRoleData } = await supabase
-        .from("user_roles")
-        .select("roles(name)")
-        .eq("user_id", user.id)
-        .maybeSingle()
-
-      const { data: userTableData } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle()
-
-      // @ts-expect-error Supabase nested relation typing
-      const effectiveRole = userRoleData?.roles?.name || userTableData?.role || null
-      const normalized = normalizeRole(effectiveRole)
-
-      setRole(effectiveRole)
-      setCanonicalRole(normalized)
-      setLoadingRole(false)
-    }
-
-    fetchRole()
-  }, [user])
+  const { role, canonicalRole, loadingRole, planKey, enabledModules, planKnown } = useRoleContext()
 
   return {
     role,
@@ -52,5 +22,13 @@ export function useUserRole() {
     isWorker: canonicalRole === "worker",
     isManager: canonicalRole === "manager",
     isAdmin: canonicalRole === "admin",
+    planKey,
+    enabledModules,
+    // Fail open when the plan context could not be resolved (planKnown === false),
+    // so a missing migration / transient RPC error never hides paid Proff features.
+    isProff: planKnown ? planKey === "proff" : true,
+    hasModule: (moduleKey: string) => (planKnown ? enabledModules.includes(moduleKey) : true),
+    hasFeature: (feature: FeatureKey) =>
+      planKnown ? resolveFeature(planKey, enabledModules, feature) : true,
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { logServerError } from "@/lib/errors/log"
 import {
   buildAiPriceSelectionContext,
   type CompanyPriceFileMeta,
@@ -9,6 +10,8 @@ import {
   type CompanyPriceRow,
 } from "@/lib/tilbud/company-price-utils"
 import { createClient } from "@/lib/supabase/server"
+import { openaiFetch } from "@/lib/llm/openai-fetch"
+import { getUsageSummary, recordUsageEvent, requireActiveSubscription } from "@/lib/billing/guards"
 import { matchNorwegianSupplierPrices } from "@/lib/tilbud/supplier-prices"
 import { formatNormalPriceForPrompt, mapNormalPriceRows, pickBestNormalPrice } from "@/lib/tilbud/normal-prices"
 import {
@@ -35,6 +38,8 @@ const analysisRequestSchema = z.object({
   sourceSummary: z.string().trim().default(""),
   subprojects: z.array(z.string().trim()).default([]),
   assignmentMode: z.enum(["project", "customer"]).default("project"),
+  // Stable id for the generation attempt so retries don't double-count usage.
+  generationId: z.string().trim().min(1).max(100).optional(),
 })
 
 const aiLineItemSchema = z.object({
@@ -182,26 +187,14 @@ async function runOpenAiAnalysis(
     })),
   }).join("\n\n")
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-5.2-mini",
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
-    }),
+  const response = await openaiFetch("chat/completions", {
+    model: process.env.OPENAI_MODEL || "gpt-5.2-mini",
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
+    ],
   })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`OpenAI analyse feilet: ${errorText}`)
-  }
 
   const payload = (await response.json()) as {
     choices?: Array<{
@@ -225,6 +218,10 @@ async function runOpenAiAnalysis(
   }
 }
 
+// AI generation can take longer than the default serverless limit — allow up to
+// 60s so requests aren't killed mid-generation on Vercel.
+export const maxDuration = 60
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -234,6 +231,26 @@ export async function POST(request: Request) {
 
     if (!user) {
       return NextResponse.json({ error: "Ikke autentisert" }, { status: 401 })
+    }
+
+    // Gate the most expensive endpoint (OpenAI + up to 8 Brave searches) behind an
+    // active subscription, mirroring the ai-chat route — prevents uncapped cost.
+    const subscription = await requireActiveSubscription()
+    if (!subscription.ok) return subscription.response
+
+    // Absolute safety ceiling, independent of plan quota/overage — a billing desync
+    // ("zombie active") must never translate into unbounded OpenAI + Brave spend.
+    // Mirrors the ai-chat route, which this endpoint previously failed to match.
+    const HARD_AI_CAP = 1000
+    const preUsage = await getUsageSummary(subscription.context.companyId)
+    if ((preUsage.used ?? 0) >= HARD_AI_CAP) {
+      return NextResponse.json(
+        {
+          error: "Du har nådd maksgrensen for AI-tilbud denne perioden. Kontakt support hvis du trenger mer.",
+          code: "ai_hard_cap",
+        },
+        { status: 429 }
+      )
     }
 
     const body = await request.json()
@@ -276,6 +293,7 @@ export async function POST(request: Request) {
         supabase.from("companies").select("name").eq("id", companyId).maybeSingle(),
       ])
 
+      const fileIds = ((fileRows ?? []) as Array<{ id: string }>).map((row) => row.id)
       const expectedRowCount = ((fileRows ?? []) as Array<{ row_count?: number | null }>).reduce(
         (sum, row) => sum + Math.max(row.row_count || 0, 0),
         0
@@ -283,11 +301,14 @@ export async function POST(request: Request) {
 
       const fetchedRows: Array<CompanyPriceRow & { file_id?: string | null }> = []
       const batchSize = 1000
-      for (let offset = 0; ; offset += batchSize) {
+      // Scope to the files loaded above so rows from files beyond the cap don't
+      // make the expectedRowCount early-break drop rows of the included files.
+      for (let offset = 0; fileIds.length > 0; offset += batchSize) {
         const { data: batch } = await supabase
           .from("supplier_price_rows")
           .select("product, unit, net_price, list_price, category, nobb, supplier_sku, file_id, product_group_code")
           .eq("company_id", companyId)
+          .in("file_id", fileIds)
           .not("product", "is", null)
           .order("id", { ascending: true })
           .range(offset, offset + batchSize - 1)
@@ -361,6 +382,15 @@ export async function POST(request: Request) {
       }
     } catch (error) {
       warnings.push(error instanceof Error ? error.message : "OpenAI-analyse feilet, bruker fallback")
+      void logServerError({
+        message: "OpenAI offer analysis failed; using fallback line items",
+        error,
+        source: "api",
+        route: "POST /api/tilbud/analyse",
+        level: "warning",
+        companyId,
+        userId: user.id,
+      })
     }
 
     if (lineItems.length === 0) {
@@ -415,12 +445,33 @@ export async function POST(request: Request) {
       supplierSnapshots,
     }
 
+    // Meter the generation against plan quota/overage. Idempotency key keeps retries
+    // of the same attempt from double-counting.
+    const usage = await recordUsageEvent({
+      companyId: subscription.context.companyId,
+      eventType: "ai_tilbud",
+      idempotencyKey: `ai_tilbud:${input.generationId ?? crypto.randomUUID()}`,
+      metadata: { user_id: user.id, model },
+    })
+
     return NextResponse.json({
       lineItems,
       totals,
       analysis: analysisResult,
+      usage: {
+        used: usage.used,
+        quota_limit: usage.quota_limit,
+        overage: usage.overage,
+      },
     })
   } catch (error) {
+    await logServerError({
+      message: "Offer analysis request failed",
+      error,
+      source: "api",
+      route: "POST /api/tilbud/analyse",
+      statusCode: 500,
+    })
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Ukjent feil under analyse",

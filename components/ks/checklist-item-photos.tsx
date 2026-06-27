@@ -11,6 +11,8 @@ import {
 } from "@/app/ks/actions"
 import { PhotoAnnotatorDialog } from "@/components/ks/photo-annotator"
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
+import { reportClientError } from "@/lib/errors/client"
 import type { ProjectChecklistItem } from "@/lib/ks/types"
 
 type Props = {
@@ -102,10 +104,10 @@ function PhotoThumb({
       <button
         type="button"
         onClick={onDelete}
-        className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-full bg-background/90 shadow"
+        className="absolute right-1.5 top-1.5 flex size-8 items-center justify-center rounded-full bg-background/90 shadow"
         aria-label="Slett bilde"
       >
-        <X className="size-3.5" />
+        <X className="size-4" />
       </button>
     </div>
   )
@@ -117,6 +119,7 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
   const [annotateOpen, setAnnotateOpen] = React.useState(false)
   const cameraRef = React.useRef<HTMLInputElement>(null)
   const galleryRef = React.useRef<HTMLInputElement>(null)
+  const confirm = useConfirm()
 
   async function handleFiles(files: FileList | null) {
     if (!files?.length) return
@@ -128,7 +131,8 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
         setAnnotateOpen(true)
         break
       }
-    } catch {
+    } catch (err) {
+      reportClientError(err, { context: { action: "Behandle bilde (KS)", itemId: item.id } })
       toast.error("Kunne ikke behandle bilde")
     } finally {
       setUploading(false)
@@ -146,11 +150,21 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
   }
 
   async function handleDelete(attachmentId: string) {
+    const ok = await confirm({
+      title: "Fjerne bildet?",
+      description: "Bildet slettes permanent og kan ikke gjenopprettes.",
+      confirmText: "Fjern",
+      cancelText: "Avbryt",
+      variant: "destructive",
+    })
+    if (!ok) return
+
     try {
       await deleteChecklistItemPhotoAction(attachmentId)
       toast.success("Bilde slettet")
       onUpdated()
-    } catch {
+    } catch (err) {
+      reportClientError(err, { context: { action: "Slette KS-bilde", attachmentId } })
       toast.error("Kunne ikke slette bilde")
     }
   }
@@ -201,7 +215,7 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
           type="button"
           variant="outline"
           size="sm"
-          className="h-10 flex-1"
+          className="h-11 flex-1"
           disabled={uploading}
           onClick={() => cameraRef.current?.click()}
         >
@@ -216,7 +230,7 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
           type="button"
           variant="outline"
           size="sm"
-          className="h-10 flex-1"
+          className="h-11 flex-1"
           disabled={uploading}
           onClick={() => galleryRef.current?.click()}
         >
