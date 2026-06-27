@@ -395,19 +395,24 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     const validationError = validateBeforeSave()
     if (validationError) {
       setFeedback(validationError)
+      toast.error(validationError)
       return
     }
 
     startPersisting(async () => {
+      const toastId = toast.loading("Lagrer tilbud...")
       try {
         const result = await saveOfferDraftAction(buildPayload())
         setOfferId(result.id)
         setFeedback("Tilbud lagret. Åpner tilbudssiden...")
+        toast.success("Tilbud lagret. Åpner tilbudssiden...", { id: toastId })
         onCompleted?.()
         router.push(`/tilbud/${result.id}`)
       } catch (error) {
         reportClientError(error, { context: { action: "save and open offer", projectId } })
-        setFeedback(error instanceof Error ? error.message : "Kunne ikke lagre tilbud")
+        const message = error instanceof Error ? error.message : "Kunne ikke lagre tilbud"
+        setFeedback(message)
+        toast.error(message, { id: toastId })
       }
     })
   }
