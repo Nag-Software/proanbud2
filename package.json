@@ -25,6 +25,7 @@
     "date-fns": "^4.1.0",
     "lucide-react": "^0.577.0",
     "mammoth": "^1.12.0",
+    "maplibre-gl": "^5.24.0",
     "metadata": "^0.1.0",
     "moment": "^2.30.1",
     "motion": "^12.38.0",

@@ -209,6 +209,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
+-- Manager-on-project check, RLS-safe: SECURITY DEFINER bypasses the caller's RLS
+-- so a policy ON project_members can call this WITHOUT self-recursion. (db/52
+-- re-asserts this; defined here too so a fresh install is never recursive.)
+CREATE OR REPLACE FUNCTION public.is_project_manager(p_project_id UUID)
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.project_members pm
+    WHERE pm.project_id = p_project_id
+      AND pm.user_id = auth.uid()
+      AND pm.access_level = 'manager'
+  );
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
 -- ==========================================
 -- 3. TRIGGERS (create only if not exists)
 -- ==========================================
@@ -415,7 +428,7 @@ BEGIN
     SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'project_members' AND policyname = 'admins_manage_project_assignments'
   ) THEN
     CREATE POLICY admins_manage_project_assignments ON public.project_members FOR ALL
-      USING (public.is_company_admin() OR EXISTS (SELECT 1 FROM public.project_members pm WHERE pm.project_id = project_id AND pm.user_id = auth.uid() AND pm.access_level = 'manager'));
+      USING (public.is_company_admin() OR public.is_project_manager(project_id));
   END IF;
 END$$;
 

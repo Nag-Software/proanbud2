@@ -27,6 +27,7 @@ import { EditProjectDialog } from "./edit-project-dialog"
 import ProjectDocumentsTab from "./project-documents-tab"
 import TilbudTab from "./tilbud-tab"
 import TimeforingTab from "./timeforing-tab"
+import KjorebokTab from "./kjorebok-tab"
 import { ProjectOverviewTab, type OverviewTask } from "./project-overview-tab"
 import { ProjectTabsShell } from "./project-tabs-shell"
 import { EtterkalkyleTab } from "./etterkalkyle-tab"
@@ -122,6 +123,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     ? await getCompanyPlanAndModules(companyId)
     : { plan: null, modules: [] as string[] }
   const hasTimeforing = modules.includes("timeforing")
+  const hasKjorebok = modules.includes("kjorebok")
   // Proff-only feature flags for the embedded tabs (KS, Avvik, Oppgaver).
   const hasKs = hasFeature(plan, modules, "ks")
   const hasAvvik = hasFeature(plan, modules, "avvik")
@@ -216,6 +218,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               { value: "oppgaver", label: "Oppgaver", hidden: !hasTasks },
               { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
               { value: "timeforing", label: "Timeføring" },
+              { value: "kjorebok", label: "Kjørebok" },
               { value: "lonnsomhet", label: "Etterkalkyle", shortLabel: "Margin", hidden: isWorker },
               { value: "ks", label: "KS", hidden: isWorker || !hasKs },
               { value: "avvik", label: "Avvik", hidden: !hasAvvik },
@@ -293,6 +296,22 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   moduleName="Timeføring"
                   monthlyPriceNok={MODULE_PRICING.timeforing}
                   description="Registrer og følg arbeidstimer direkte på prosjektet."
+                />
+              )}
+            </ProjectTabPanel>
+
+            <ProjectTabPanel value="kjorebok">
+              {hasKjorebok ? (
+                <KjorebokTab
+                  projectId={project.id}
+                  canViewAllEntries={isProjectAdmin}
+                  currentUserId={user.id}
+                />
+              ) : (
+                <ModuleGate
+                  moduleName="Kjørebok"
+                  monthlyPriceNok={MODULE_PRICING.kjorebok}
+                  description="Før kjørebok med GPS eller manuelt — statens satser og Tripletex-eksport, direkte på prosjektet."
                 />
               )}
             </ProjectTabPanel>

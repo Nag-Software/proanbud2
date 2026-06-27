@@ -8,7 +8,7 @@ import { checkRoleAccess } from "@/lib/auth-utils";
 import { companyHasFeature } from "@/lib/billing/server-modules";
 
 export const metadata = {
-  title: "Meldinger - Proanbud",
+  title: "Meldinger — Proanbud",
 };
 
 export default async function Page() {

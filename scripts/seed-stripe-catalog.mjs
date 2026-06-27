@@ -93,7 +93,7 @@ async function main() {
     kind: "module_product",
     module_key: "timeforing",
   })
-  const dokumenterProduct = await ensureProduct("Proanbud Dokumenter (Cloud)", {
+  const dokumenterProduct = await ensureProduct("Proanbud Cloud", {
     kind: "module_product",
     module_key: "dokumenter",
   })
@@ -104,6 +104,10 @@ async function main() {
   const meldingerKiProduct = await ensureProduct("Proanbud KI-svar i meldinger", {
     kind: "module_product",
     module_key: "meldinger_ki",
+  })
+  const kjorebokProduct = await ensureProduct("Proanbud Kjørebok", {
+    kind: "module_product",
+    module_key: "kjorebok",
   })
   const seatProduct = await ensureProduct("Proanbud Ansatt", { kind: "seat_product" })
 
@@ -160,6 +164,13 @@ async function main() {
       { interval: "month" },
       { kind: "module", module_key: "meldinger_ki" }
     ),
+    // MODULE_PRICING.kjorebok in lib/billing/plans.ts — keep in sync (49 kr/mnd).
+    STRIPE_PRICE_MODULE_KJOREBOK: await ensureRecurringPrice(
+      kjorebokProduct.id,
+      4900,
+      { interval: "month" },
+      { kind: "module", module_key: "kjorebok" }
+    ),
     STRIPE_PRICE_SEAT_EMPLOYEE: await ensureRecurringPrice(
       seatProduct.id,
       3900,
@@ -192,6 +203,12 @@ async function main() {
       2900 * 12,
       { interval: "year" },
       { kind: "module", module_key: "meldinger_ki", interval: "year" }
+    ),
+    STRIPE_PRICE_MODULE_KJOREBOK_YEARLY: await ensureRecurringPrice(
+      kjorebokProduct.id,
+      4900 * 12,
+      { interval: "year" },
+      { kind: "module", module_key: "kjorebok", interval: "year" }
     ),
     STRIPE_PRICE_SEAT_EMPLOYEE_YEARLY: await ensureRecurringPrice(
       seatProduct.id,

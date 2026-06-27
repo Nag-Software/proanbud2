@@ -5,7 +5,7 @@ import { fetchPublicOfferBySlug } from "@/lib/tilbud/public-offer"
 import { CustomerOfferView } from "./customer-offer-view"
 
 export const metadata: Metadata = {
-  title: "Tilbud",
+  title: "Tilbud — Proanbud",
   robots: { index: false, follow: false },
 }
 

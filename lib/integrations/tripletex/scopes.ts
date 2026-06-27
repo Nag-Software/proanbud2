@@ -5,6 +5,8 @@ export type TripletexScopeConfig = {
   invoices: boolean
   calendar: boolean
   documents: boolean
+  /** Kjørebok → reiseregning (kjøregodtgjørelse). Opt-in, default off. */
+  travelExpenses: boolean
 }
 
 export function buildTripletexScopeConfig(body: Record<string, unknown>): TripletexScopeConfig {
@@ -15,6 +17,7 @@ export function buildTripletexScopeConfig(body: Record<string, unknown>): Triple
     invoices: body.scopeInvoices !== false,
     calendar: body.scopeCalendar === true,
     documents: body.scopeDocuments === true,
+    travelExpenses: body.scopeTravelExpenses === true,
   }
 }
 
@@ -25,7 +28,8 @@ export function hasTripletexScopeOverride(body: Record<string, unknown>) {
     body.scopeOffers !== undefined ||
     body.scopeInvoices !== undefined ||
     body.scopeCalendar !== undefined ||
-    body.scopeDocuments !== undefined
+    body.scopeDocuments !== undefined ||
+    body.scopeTravelExpenses !== undefined
   )
 }
 

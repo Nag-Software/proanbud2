@@ -28,6 +28,7 @@ export type TripletexConnectionRow = {
     employees?: boolean
     calendar?: boolean
     documents?: boolean
+    travelExpenses?: boolean
   }
 }
 

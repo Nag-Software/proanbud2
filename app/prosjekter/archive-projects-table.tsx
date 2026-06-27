@@ -16,7 +16,7 @@ type ArchiveProjectsTableProps = {
 export function ArchiveProjectsTable({ projects }: ArchiveProjectsTableProps) {
   if (projects.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border/70 bg-card/40 px-6 py-12 text-center">
+      <div className="rounded-xl border border-dashed border-border/70 bg-card/40 px-6 py-12 text-center" style={{ borderRadius: 5 }}>
         <p className="text-sm text-muted-foreground">Ingen tidligere prosjekter.</p>
       </div>
     )

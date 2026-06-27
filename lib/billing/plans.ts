@@ -1,6 +1,6 @@
 export type PlanKey = "mini" | "proff"
 export type BillingInterval = "month" | "year"
-export type ModuleKey = "timeforing" | "dokumenter" | "integrasjoner" | "meldinger_ki"
+export type ModuleKey = "timeforing" | "dokumenter" | "integrasjoner" | "meldinger_ki" | "kjorebok"
 
 export const TRIAL_DAYS = 14
 export const OVERAGE_UNIT_NOK = 9.5
@@ -49,6 +49,7 @@ export const MODULE_PRICING: Record<ModuleKey, number> = {
   dokumenter: 39,
   integrasjoner: 29,
   meldinger_ki: 29,
+  kjorebok: 49,
 }
 
 /**
@@ -69,8 +70,8 @@ export const MODULE_CATALOG: Array<{
   },
   {
     key: "dokumenter",
-    label: "Dokumenter — Proanbud Cloud",
-    description: "Skylagring av prosjektdokumenter og filer i Proanbud.",
+    label: "Proanbud Cloud",
+    description: "Skylagring av dokumenter og filer i Proanbud Cloud.",
     monthlyNok: MODULE_PRICING.dokumenter,
   },
   {
@@ -85,6 +86,13 @@ export const MODULE_CATALOG: Array<{
     label: "Integrasjoner",
     description: "Koble til Tripletex, DocuSign m.m. Outlook og Google Drive er alltid gratis.",
     monthlyNok: MODULE_PRICING.integrasjoner,
+  },
+  {
+    key: "kjorebok",
+    label: "Kjørebok",
+    description:
+      "Før kjørebok med GPS eller manuelt — statens satser, kart og overføring til Tripletex som kjøregodtgjørelse.",
+    monthlyNok: MODULE_PRICING.kjorebok,
   },
 ]
 
@@ -108,6 +116,8 @@ export const PRICE_ENV_KEYS: Record<string, string> = {
   "module-integrasjoner-year": "STRIPE_PRICE_MODULE_INTEGRASJONER_YEARLY",
   "module-meldinger_ki-month": "STRIPE_PRICE_MODULE_MELDINGER_KI",
   "module-meldinger_ki-year": "STRIPE_PRICE_MODULE_MELDINGER_KI_YEARLY",
+  "module-kjorebok-month": "STRIPE_PRICE_MODULE_KJOREBOK",
+  "module-kjorebok-year": "STRIPE_PRICE_MODULE_KJOREBOK_YEARLY",
   "seat-month": "STRIPE_PRICE_SEAT_EMPLOYEE",
   "seat-year": "STRIPE_PRICE_SEAT_EMPLOYEE_YEARLY",
 }

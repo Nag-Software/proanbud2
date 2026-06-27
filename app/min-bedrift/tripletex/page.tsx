@@ -6,6 +6,7 @@ import { checkRoleAccess } from "@/lib/auth-utils"
 import { getTripletexApiBaseUrl, TRIPLETEX_HELP_URL } from "@/lib/integrations/tripletex/config"
 
 import { TripletexClient } from "./tripletex-client"
+import { TripletexEmployeeMapping } from "@/components/integrations/tripletex-employee-mapping"
 
 export default async function TripletexPage() {
   await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
@@ -87,6 +88,8 @@ export default async function TripletexPage() {
           canManage={canManageIntegration}
           helpUrl={TRIPLETEX_HELP_URL}
         />
+
+        {canManageIntegration && connectionResult.data && <TripletexEmployeeMapping />}
       </div>
     </AppPageShell>
   )

@@ -13,9 +13,14 @@ import {
 } from "@/lib/integrations/tripletex/jobs"
 import {
   createTripletexInvoiceFromOrder,
+  createTripletexMileageAllowance,
   createTripletexProjectActivity,
+  deleteTripletexMileageAllowance,
+  deleteTripletexTravelExpense,
   findTripletexProjectOfferByProanbudId,
   getTripletexProjectFlags,
+  listTripletexEmployees,
+  listTripletexTravelExpenseMileageIds,
   replaceTripletexTilbudOrderLines,
   getTripletexProjectManagerEmployeeIds,
   getTripletexSessionEmployeeId,
@@ -24,13 +29,16 @@ import {
   upsertTripletexCustomer,
   upsertTripletexOrder,
   upsertTripletexProject,
+  upsertTripletexTravelExpense,
 } from "@/lib/integrations/tripletex/connector"
 import {
   mapCustomerToTripletex,
+  mapMileageAllowanceFromTrip,
   mapOrderFromOffer,
   mapProjectOfferFromOffer,
   mapTilbudOrderLinesFromOffer,
   mapProjectToTripletex,
+  mapTravelExpenseFromTrip,
   resolveProjectStartDateForTripletex,
 } from "@/lib/integrations/tripletex/mappers"
 import { getFreshTripletexConnection } from "@/lib/integrations/tripletex/session"
@@ -40,6 +48,7 @@ import {
   tripletexOfferUrl,
   tripletexOrderUrl,
   tripletexProjectUrl,
+  tripletexTravelExpenseUrl,
 } from "@/lib/integrations/tripletex/urls"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { IntegrationJobRow } from "@/lib/integrations/tripletex/types"
@@ -1263,6 +1272,236 @@ async function processCalendarActivityUpsert(job: IntegrationJobRow) {
   }
 }
 
+// --- Kjørebok → reiseregning -----------------------------------------------
+
+async function setKjorebokTripStatus(
+  companyId: string,
+  tripId: string,
+  fields: {
+    status: "not_synced" | "pending" | "synced" | "failed" | "blocked"
+    externalId?: number | null
+    externalUrl?: string | null
+    error?: string | null
+  }
+) {
+  const admin = createAdminClient()
+  const update: Record<string, unknown> = {
+    tripletex_status: fields.status,
+    tripletex_last_error: fields.error ?? null,
+  }
+  if (fields.status === "synced") {
+    update.tripletex_synced_at = new Date().toISOString()
+    if (fields.externalId != null) update.tripletex_external_id = fields.externalId
+    if (fields.externalUrl) update.tripletex_external_url = fields.externalUrl
+  } else if (fields.status === "not_synced") {
+    update.tripletex_external_id = null
+    update.tripletex_external_url = null
+    update.tripletex_synced_at = null
+  }
+  await admin.from("kjorebok_trips").update(update).eq("id", tripId).eq("company_id", companyId)
+}
+
+async function processTravelExpenseUpsert(job: IntegrationJobRow) {
+  const tripId = String(job.payload.tripId || "")
+  if (!tripId) throw new Error("tripId missing in payload")
+
+  const supabase = createAdminClient()
+  const connection = await getFreshTripletexConnection(job.company_id)
+  if (!connection) throw new Error("Tripletex connection missing for company")
+
+  // Scope gate — if the company hasn't enabled kjørebok-sync, do nothing.
+  if (connection.scope_config && connection.scope_config.travelExpenses !== true) {
+    return
+  }
+
+  const { data: trip } = await supabase
+    .from("kjorebok_trips")
+    .select(
+      "id, company_id, driver_user_id, project_id, trip_date, from_address, to_address, distance_km, purpose, rate_nok_per_km, amount_nok, classification"
+    )
+    .eq("id", tripId)
+    .eq("company_id", job.company_id)
+    .maybeSingle()
+  if (!trip) throw new Error("Kjøretur ikke funnet")
+
+  // Private trips are not reimbursed — never sync.
+  if (trip.classification === "private") {
+    await setKjorebokTripStatus(job.company_id, tripId, { status: "not_synced", error: null })
+    return
+  }
+
+  // Resolve the driver → Tripletex-employee mapping. NEVER fall back to the
+  // session employee — that would post one person's allowance under another's name.
+  const employeeLink = await getExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "employee",
+    localId: trip.driver_user_id,
+  })
+  if (!employeeLink?.external_id) {
+    await setKjorebokTripStatus(job.company_id, tripId, {
+      status: "blocked",
+      error: "Sjåføren mangler kobling til en Tripletex-ansatt. Koble ansatte under Tripletex-innstillinger.",
+    })
+    return
+  }
+
+  // Optional project link — if the project isn't synced yet, queue it and retry.
+  let projectExternalId: number | null = null
+  if (trip.project_id && connection.scope_config?.projects !== false) {
+    const projectLink = await getExternalEntityLink({
+      companyId: job.company_id,
+      entityType: "project",
+      localId: trip.project_id,
+    })
+    if (projectLink?.external_id) {
+      projectExternalId = Number(projectLink.external_id)
+    } else {
+      await enqueueIntegrationJob({
+        companyId: job.company_id,
+        jobType: "project.upsert",
+        payload: { projectId: trip.project_id },
+        // Stable key (no time bucket) so repeated re-queues collapse onto one
+        // in-flight project.upsert via UNIQUE(idempotency_key); the travel_expense
+        // job just keeps retrying with backoff until the link appears.
+        idempotencyKey: `tripletex:project:${trip.project_id}:from_kjorebok`,
+      })
+      throw new Error("Prosjektet er ikke synket til Tripletex ennå — lagt i kø på nytt")
+    }
+  }
+
+  const existingLink = await getExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "kjorebok_trip",
+    localId: tripId,
+  })
+
+  // Parent reiseregning (non-idempotent create — guard the POST path).
+  const parentPayload = mapTravelExpenseFromTrip(trip, Number(employeeLink.external_id), { projectExternalId })
+  let parentResponse
+  try {
+    parentResponse = await upsertTripletexTravelExpense(connection, parentPayload, existingLink?.external_id || undefined)
+  } catch (err) {
+    throw existingLink?.external_id ? err : nonRetryableIfAmbiguous(err)
+  }
+  const externalId = Number(parentResponse?.value?.id || parentResponse?.id || existingLink?.external_id)
+  if (!Number.isFinite(externalId)) {
+    throw missingIdError("Tripletex travelExpense id missing in response")
+  }
+
+  // Create-then-link immediately so a child-line failure on retry never re-creates the parent.
+  await upsertExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "kjorebok_trip",
+    localId: tripId,
+    externalId,
+    externalUrl: tripletexTravelExpenseUrl(externalId),
+  })
+
+  // Mileage child line. On re-sync, create the new line FIRST then delete the old
+  // ones so the reiseregning is never left with zero mileage lines mid-update.
+  const existingMileageIds = existingLink?.external_id
+    ? await listTripletexTravelExpenseMileageIds(connection, externalId)
+    : []
+  await createTripletexMileageAllowance(connection, mapMileageAllowanceFromTrip(trip, externalId))
+  for (const mileageId of existingMileageIds) {
+    await deleteTripletexMileageAllowance(connection, mileageId)
+  }
+
+  await setKjorebokTripStatus(job.company_id, tripId, {
+    status: "synced",
+    externalId,
+    externalUrl: tripletexTravelExpenseUrl(externalId),
+    error: null,
+  })
+}
+
+async function processTravelExpenseDelete(job: IntegrationJobRow) {
+  const tripId = String(job.payload.tripId || "")
+  const externalId = Number(job.payload.externalId || 0)
+  const connection = await getFreshTripletexConnection(job.company_id)
+  if (!connection) throw new Error("Tripletex connection missing for company")
+
+  if (Number.isFinite(externalId) && externalId > 0) {
+    try {
+      await deleteTripletexTravelExpense(connection, externalId)
+    } catch (err) {
+      // Already gone in Tripletex → treat as success.
+      if ((err as { status?: number })?.status !== 404) throw err
+    }
+  }
+
+  const admin = createAdminClient()
+  await admin
+    .from("external_entity_links")
+    .delete()
+    .eq("company_id", job.company_id)
+    .eq("provider", "tripletex")
+    .eq("entity_type", "kjorebok_trip")
+    .eq("local_id", tripId)
+  await setKjorebokTripStatus(job.company_id, tripId, { status: "not_synced", error: null })
+}
+
+async function processEmployeeSyncAll(job: IntegrationJobRow) {
+  const supabase = createAdminClient()
+  const connection = await getFreshTripletexConnection(job.company_id)
+  if (!connection) throw new Error("Tripletex connection missing for company")
+
+  const employees = await listTripletexEmployees(connection)
+  // Collision-aware: if two Tripletex employees share an email, leave it AMBIGUOUS
+  // (unlinked) rather than silently picking the last one — a wrong driver→employee
+  // link would post one person's kjøregodtgjørelse under another's name.
+  const byEmail = new Map<string, number>()
+  const ambiguous = new Set<string>()
+  for (const e of employees) {
+    if (!e.email) continue
+    const key = e.email.toLowerCase()
+    const existing = byEmail.get(key)
+    if (existing !== undefined && existing !== e.id) {
+      ambiguous.add(key)
+      continue
+    }
+    byEmail.set(key, e.id)
+  }
+
+  const { data: users } = await supabase
+    .from("users")
+    .select("id, email")
+    .eq("company_id", job.company_id)
+
+  const linkedUserIds: string[] = []
+  for (const u of users || []) {
+    const email = (u.email as string | null)?.toLowerCase()
+    if (!email || ambiguous.has(email)) continue
+    const employeeId = byEmail.get(email)
+    if (!employeeId) continue
+    await upsertExternalEntityLink({
+      companyId: job.company_id,
+      entityType: "employee",
+      localId: u.id as string,
+      externalId: employeeId,
+    })
+    linkedUserIds.push(u.id as string)
+  }
+
+  // Self-heal: re-queue trips that were 'blocked' on a driver who is now linked.
+  if (linkedUserIds.length > 0) {
+    const { data: blockedTrips } = await supabase
+      .from("kjorebok_trips")
+      .select("id")
+      .eq("company_id", job.company_id)
+      .eq("tripletex_status", "blocked")
+      .in("driver_user_id", linkedUserIds)
+    for (const t of blockedTrips || []) {
+      await enqueueIntegrationJob({
+        companyId: job.company_id,
+        jobType: "travel_expense.upsert",
+        payload: { tripId: t.id as string },
+        idempotencyKey: `tripletex:travel_expense:${t.id}:reblock:${Math.floor(Date.now() / 30_000)}`,
+      })
+    }
+  }
+}
+
 async function processJob(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
   switch (job.job_type) {
     case "customer.pull_all":
@@ -1294,6 +1533,15 @@ async function processJob(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
       return
     case "reconcile.full":
       await processFullReconciliation(job)
+      return
+    case "travel_expense.upsert":
+      await processTravelExpenseUpsert(job)
+      return
+    case "travel_expense.delete":
+      await processTravelExpenseDelete(job)
+      return
+    case "employee.sync_all":
+      await processEmployeeSyncAll(job)
       return
     default:
       throw new Error(`Unsupported job type: ${job.job_type}`)

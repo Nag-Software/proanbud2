@@ -470,6 +470,114 @@ export async function createTripletexProjectActivity(
   })
 }
 
+// --- Kjørebok → reiseregning (travel expense + mileage allowance) ----------
+
+/** POST /travelExpense (create) or PUT /travelExpense/{id} (update). */
+export async function upsertTripletexTravelExpense(
+  connection: TripletexConnectionRow,
+  payload: Record<string, unknown>,
+  externalId?: number
+) {
+  if (externalId) {
+    return tripletexRequest(connection, {
+      method: "PUT",
+      path: `/travelExpense/${externalId}`,
+      body: { ...payload, id: externalId },
+    })
+  }
+  return tripletexRequest(connection, {
+    method: "POST",
+    path: "/travelExpense",
+    body: payload,
+  })
+}
+
+export async function deleteTripletexTravelExpense(connection: TripletexConnectionRow, externalId: number) {
+  await tripletexRequest(connection, {
+    method: "DELETE",
+    path: `/travelExpense/${externalId}`,
+  })
+}
+
+/** POST /travelExpense/mileageAllowance — the kjøregodtgjørelse line. */
+export async function createTripletexMileageAllowance(
+  connection: TripletexConnectionRow,
+  body: Record<string, unknown>
+) {
+  return tripletexRequest(connection, {
+    method: "POST",
+    path: "/travelExpense/mileageAllowance",
+    body,
+  })
+}
+
+export async function listTripletexTravelExpenseMileageIds(
+  connection: TripletexConnectionRow,
+  travelExpenseId: number
+): Promise<number[]> {
+  const response = await tripletexRequest(connection, {
+    path: `/travelExpense/mileageAllowance?travelExpenseId=${travelExpenseId}&count=100&fields=id`,
+  })
+  const record = response as Record<string, unknown>
+  const values = record?.values ?? record?.value
+  if (!Array.isArray(values)) return []
+  return values
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null
+      const id = Number((entry as Record<string, unknown>).id)
+      return Number.isFinite(id) ? id : null
+    })
+    .filter((id): id is number => id !== null)
+}
+
+export async function deleteTripletexMileageAllowance(connection: TripletexConnectionRow, mileageId: number) {
+  await tripletexRequest(connection, {
+    method: "DELETE",
+    path: `/travelExpense/mileageAllowance/${mileageId}`,
+  })
+}
+
+export type TripletexEmployeeRead = {
+  id: number
+  firstName: string | null
+  lastName: string | null
+  email: string | null
+  employeeNumber: string | null
+}
+
+/** GET /employee — paged. There is no email filter param, so callers match email client-side. */
+export async function listTripletexEmployees(
+  connection: TripletexConnectionRow
+): Promise<TripletexEmployeeRead[]> {
+  const out: TripletexEmployeeRead[] = []
+  let from = 0
+  const count = 1000
+  // SMBs have well under 1000 employees; cap at 5 pages as a safety bound.
+  for (let page = 0; page < 5; page++) {
+    const response = await tripletexRequest(connection, {
+      path: `/employee?from=${from}&count=${count}&fields=id,firstName,lastName,email,employeeNumber`,
+    })
+    const values = (response as Record<string, unknown>)?.values
+    const list = Array.isArray(values) ? values : []
+    for (const entry of list) {
+      if (!entry || typeof entry !== "object") continue
+      const e = entry as Record<string, unknown>
+      const id = Number(e.id)
+      if (!Number.isFinite(id)) continue
+      out.push({
+        id,
+        firstName: typeof e.firstName === "string" ? e.firstName : null,
+        lastName: typeof e.lastName === "string" ? e.lastName : null,
+        email: typeof e.email === "string" ? e.email : null,
+        employeeNumber: typeof e.employeeNumber === "string" ? e.employeeNumber : null,
+      })
+    }
+    if (list.length < count) break
+    from += count
+  }
+  return out
+}
+
 export async function getTripletexProjectManagerEmployeeIds(connection: TripletexConnectionRow): Promise<number[]> {
   const response = await tripletexRequest(connection, {
     path: "/project/onboarding/projectManagers?fields=employeeId",

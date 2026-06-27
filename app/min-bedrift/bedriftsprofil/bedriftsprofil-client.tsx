@@ -181,7 +181,6 @@ export function BedriftsprofilClient({
   return (
     <div className="flex flex-col gap-6 pb-8">
       <div className="space-y-1">
-        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Min bedrift</p>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Bedriftsprofil</h1>
         <p className="text-sm text-muted-foreground">
           Logo og firmainformasjon brukes i tilbud, kontrakter og kommunikasjon med kunder.

@@ -123,7 +123,7 @@ export function DataTableSection<T extends Record<string, any>>({
       style={{ maxHeight: maxHeight !== "none" ? maxHeight : undefined }}
     >
       <>
-        <div className="hidden sm:block">
+        <div className="hidden sm:block" >
           <table className="w-full">
             <thead className="sticky top-0 bg-gray-50 z-10">
               <tr className="border-b border-gray-200">

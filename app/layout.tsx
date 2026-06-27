@@ -29,7 +29,7 @@ const satoshi = localFont({
 })
 
 export const metadata: Metadata = {
-  title: "Proanbud — fra lead til betalt for bygg-SMB",
+  title: "Proanbud — fra befaring til betalt for byggebransjen",
   description:
     "Samlet arbeidsflyt for bygg- og anleggsbedrifter: anbud, kontrakter, HMS/KS, timeføring og fakturering rett til Tripletex. Smart automatikk som akselererer hvert steg.",
   applicationName: "ProAnbud",

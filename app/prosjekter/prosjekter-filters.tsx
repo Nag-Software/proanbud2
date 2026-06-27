@@ -122,7 +122,7 @@ export function ProsjekterFilters() {
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="hidden! mt-3 flex flex-wrap items-center gap-2">
         {statusFilters.map((status) => {
           const isActive = currentStatus === status.value
 

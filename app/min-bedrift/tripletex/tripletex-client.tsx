@@ -43,6 +43,7 @@ type ScopeConfig = {
   invoices: boolean
   calendar: boolean
   documents: boolean
+  travelExpenses: boolean
 }
 
 type StateResponse = {
@@ -81,6 +82,11 @@ const SCOPE_ITEMS: Array<{ key: keyof ScopeConfig; label: string; hint?: string 
   { key: "invoices", label: "Fakturaer" },
   { key: "calendar", label: "Kalender" },
   { key: "documents", label: "Dokumenter" },
+  {
+    key: "travelExpenses",
+    label: "Kjørebok / reiseregning",
+    hint: "Overfører kjøreturer som kjøregodtgjørelse per ansatt",
+  },
 ]
 
 async function readApiError(response: Response) {
@@ -105,6 +111,7 @@ function readScopeConfig(connection: Record<string, unknown> | null | undefined)
     invoices: scope.invoices !== false,
     calendar: scope.calendar === true,
     documents: scope.documents === true,
+    travelExpenses: scope.travelExpenses === true,
   }
 }
 
@@ -116,6 +123,7 @@ function scopePayload(scopes: ScopeConfig) {
     scopeInvoices: scopes.invoices,
     scopeCalendar: scopes.calendar,
     scopeDocuments: scopes.documents,
+    scopeTravelExpenses: scopes.travelExpenses,
   }
 }
 
@@ -131,6 +139,9 @@ function formatJobType(jobType: string) {
     "calendar.activity.upsert": "Synkroniserte kalenderhendelse",
     "webhook.invoice_paid": "Faktura betalt",
     "reconcile.full": "Avstemming",
+    "travel_expense.upsert": "Overførte kjøretur (reiseregning)",
+    "travel_expense.delete": "Fjernet kjøretur fra Tripletex",
+    "employee.sync_all": "Koblet ansatte",
   }
   return labels[jobType] || jobType
 }

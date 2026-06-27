@@ -145,6 +145,10 @@ const data: {
           url: "/min-bedrift/timeforing",
         },
         {
+          title: "Kjørebok",
+          url: "/min-bedrift/kjorebok",
+        },
+        {
           title: "KS-maler",
           url: "/min-bedrift/ks",
         },

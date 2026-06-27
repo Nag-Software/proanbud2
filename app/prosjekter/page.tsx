@@ -105,13 +105,13 @@ export default async function Page({
             </div>
 
             {activeProjects.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5" style={{ borderRadius: 5 }}>
                 {activeProjects.map((project) => (
                   <ProjectCard key={project.id} project={project} customers={customerOptions} />
                 ))}
               </div>
             ) : (
-              <div className="rounded-xl border border-dashed border-border/70 bg-card/40 px-6 py-14 text-center">
+              <div className="rounded-xl border border-dashed border-border/70 bg-card/40 px-6 py-14 text-center" style={{ borderRadius: 5 }}>
                 <p className="text-sm text-muted-foreground">Ingen aktive prosjekter funnet.</p>
               </div>
             )}

@@ -8,7 +8,7 @@ import { SubscriptionMissingError } from "@/lib/billing/stripe-helpers"
 import { logServerError } from "@/lib/errors/log"
 
 const bodySchema = z.object({
-  moduleKey: z.enum(["timeforing", "dokumenter", "integrasjoner", "meldinger_ki"]),
+  moduleKey: z.enum(["timeforing", "dokumenter", "integrasjoner", "meldinger_ki", "kjorebok"]),
   enabled: z.boolean(),
 })
 
