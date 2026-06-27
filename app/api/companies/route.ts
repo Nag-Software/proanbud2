@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createClient as createServerSupabase } from '@/lib/supabase/server'
 import { assignUserRole, ensureCompanyRoles } from '@/lib/company-roles'
 import { ensureCompanyBillingRow } from '@/lib/billing/sync'
+import { attributeCompanyToPartner, REF_COOKIE } from '@/lib/affiliate/attribution'
 import { logServerError } from '@/lib/errors/log'
 
 export async function POST(request: Request) {
@@ -71,6 +73,15 @@ export async function POST(request: Request) {
       }
       // Hvis API returnerer Permission denied ETTER dette, er det feil service key eller table structure!
       return NextResponse.json({ error: 'Kunne ikke opprette bedrift: ' + JSON.stringify(companyError) }, { status: 500 })
+    }
+
+    // Affiliate-attribusjon (henvisningspartner): knytt firmaet til selgeren bak
+    // pa_ref-cookien. Best-effort — kaster aldri og blokkerer aldri registrering.
+    try {
+      const refCode = (await cookies()).get(REF_COOKIE)?.value ?? null
+      await attributeCompanyToPartner(supabaseAdmin, companyData.id, refCode)
+    } catch (attributionError) {
+      console.warn('Affiliate attribution skipped:', attributionError)
     }
 
     // Lagre brukertilknytning

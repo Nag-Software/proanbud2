@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { corsHeaders } from "@/lib/affiliate/cors"
 import { sendAffiliateApplicationEmail } from "@/lib/affiliate/notify"
 import { createAffiliatePartner } from "@/lib/affiliate/queries"
 
@@ -21,30 +22,6 @@ import { createAffiliatePartner } from "@/lib/affiliate/queries"
  */
 
 export const dynamic = "force-dynamic"
-
-function resolveOrigin(origin: string | null): string {
-  if (origin) {
-    try {
-      const host = new URL(origin).hostname
-      if (host === "proanbud.no" || host.endsWith(".proanbud.no") || host === "localhost") {
-        return origin
-      }
-    } catch {
-      // fall through to default
-    }
-  }
-  return "https://www.proanbud.no"
-}
-
-function corsHeaders(origin: string | null): Record<string, string> {
-  return {
-    "Access-Control-Allow-Origin": resolveOrigin(origin),
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Max-Age": "86400",
-    Vary: "Origin",
-  }
-}
 
 export async function OPTIONS(request: Request) {
   return new NextResponse(null, {
