@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { format } from "date-fns"
 import { nb } from "date-fns/locale"
 import { NavigationIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react"
@@ -19,9 +20,9 @@ import { toast } from "sonner"
 import { reportClientError } from "@/lib/errors/client"
 import { deleteTripAction, getCompanyTripsOverviewAction } from "@/app/kjorebok/actions"
 import { TripFormDialog } from "@/components/kjorebok/trip-form-dialog"
-import { TripWizard } from "@/components/kjorebok/trip-wizard"
 import { LiveTracker } from "@/components/kjorebok/live-tracker"
-import type { LiveTripDraft, TripsOverview, TripWithRefs } from "@/lib/kjorebok/types"
+import { NEW_TRIP_DRAFT_KEY } from "@/lib/kjorebok/types"
+import type { TripsOverview, TripWithRefs } from "@/lib/kjorebok/types"
 
 function kr(n: number) {
   return n.toLocaleString("nb-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 })
@@ -47,12 +48,15 @@ export default function KjorebokTab({
   currentUserId: string
 }) {
   const confirm = useConfirm()
+  const router = useRouter()
   const [overview, setOverview] = useState<TripsOverview>(EMPTY)
   const [formOpen, setFormOpen] = useState(false)
-  const [wizardOpen, setWizardOpen] = useState(false)
   const [editingTrip, setEditingTrip] = useState<TripWithRefs | null>(null)
-  const [gpsDraft, setGpsDraft] = useState<LiveTripDraft | null>(null)
   const [trackerOpen, setTrackerOpen] = useState(false)
+
+  // New trips use the dedicated map-first "Ny tur" page, with this project
+  // preselected and a return path back to this tab.
+  const newTripPath = `/min-bedrift/kjorebok/ny?project=${projectId}`
 
   const load = useCallback(async () => {
     try {
@@ -103,13 +107,7 @@ export default function KjorebokTab({
           <Button variant="outline" size="sm" onClick={() => setTrackerOpen(true)}>
             <NavigationIcon className="size-4" /> Start kjøring
           </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              setGpsDraft(null)
-              setWizardOpen(true)
-            }}
-          >
+          <Button size="sm" onClick={() => router.push(newTripPath)}>
             <PlusIcon className="size-4" /> Ny tur
           </Button>
         </div>
@@ -166,7 +164,6 @@ export default function KjorebokTab({
                         variant="ghost"
                         size="icon"
                         onClick={() => {
-                          setGpsDraft(null)
                           setEditingTrip(t)
                           setFormOpen(true)
                         }}
@@ -213,7 +210,6 @@ export default function KjorebokTab({
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setGpsDraft(null)
                       setEditingTrip(t)
                       setFormOpen(true)
                     }}
@@ -229,22 +225,6 @@ export default function KjorebokTab({
           )}
         </div>
       </div>
-
-      <TripWizard
-        open={wizardOpen}
-        onOpenChange={setWizardOpen}
-        projects={projects}
-        drivers={drivers}
-        vehicles={vehicles}
-        canViewAll={canViewAll}
-        currentUserId={currentUserId}
-        defaultProjectId={projectId}
-        gpsDraft={gpsDraft}
-        onSaved={() => {
-          toast.success("Kjøretur lagret")
-          void load()
-        }}
-      />
 
       <TripFormDialog
         open={formOpen}
@@ -275,8 +255,12 @@ export default function KjorebokTab({
               onCancel={() => setTrackerOpen(false)}
               onComplete={(draft) => {
                 setTrackerOpen(false)
-                setGpsDraft(draft)
-                setWizardOpen(true)
+                try {
+                  sessionStorage.setItem(NEW_TRIP_DRAFT_KEY, JSON.stringify(draft))
+                } catch {
+                  /* storage blocked — the page just starts empty */
+                }
+                router.push(newTripPath)
               }}
             />
           </div>

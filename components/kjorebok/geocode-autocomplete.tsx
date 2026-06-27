@@ -86,7 +86,7 @@ export function GeocodeAutocomplete({ value, onChange, onSelect, placeholder, id
   }
 
   return (
-    <div ref={boxRef} className="relative">
+    <div ref={boxRef} className="relative w-full min-w-0">
       <Input
         id={id}
         value={value}

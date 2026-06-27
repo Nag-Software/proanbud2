@@ -40,6 +40,10 @@ const OVERVIEW_PATH = "/min-bedrift/kjorebok"
 type Props = {
   context: TripFormContext
   currentUserId: string
+  /** Preselect a project (when launched from a project's Kjørebok tab). */
+  defaultProjectId?: string | null
+  /** Where to go on save/cancel. Defaults to the company kjørebok overview. */
+  returnTo?: string
 }
 
 function todayIso() {
@@ -60,9 +64,10 @@ function kr(n: number) {
  * Used for brand-new trips and for finishing a GPS-tracked trip, which is handed
  * over via sessionStorage (NEW_TRIP_DRAFT_KEY) from the live tracker.
  */
-export function TripCreate({ context, currentUserId }: Props) {
+export function TripCreate({ context, currentUserId, defaultProjectId, returnTo }: Props) {
   const router = useRouter()
   const { projects, drivers, vehicles, canViewAll } = context
+  const returnPath = returnTo ?? OVERVIEW_PATH
 
   const [fromAddress, setFromAddress] = useState("")
   const [fromLat, setFromLat] = useState<number | null>(null)
@@ -77,7 +82,7 @@ export function TripCreate({ context, currentUserId }: Props) {
 
   const [vehicleId, setVehicleId] = useState<string>(NONE)
   const [tripDate, setTripDate] = useState<string>(todayIso())
-  const [projectId, setProjectId] = useState<string>(NONE)
+  const [projectId, setProjectId] = useState<string>(defaultProjectId || NONE)
   const [driverUserId, setDriverUserId] = useState<string>(currentUserId)
   const [purpose, setPurpose] = useState("")
   const [startTime, setStartTime] = useState<string | null>(null)
@@ -222,7 +227,7 @@ export function TripCreate({ context, currentUserId }: Props) {
   }
 
   function goBack() {
-    router.push(OVERVIEW_PATH)
+    router.push(returnPath)
   }
 
   async function handleSubmit() {
@@ -259,7 +264,7 @@ export function TripCreate({ context, currentUserId }: Props) {
         source,
       })
       toast.success("Kjøretur lagret")
-      router.push(OVERVIEW_PATH)
+      router.push(returnPath)
     } catch (e) {
       reportClientError(e, { context: { action: "lagre kjøretur" } })
       setError(e instanceof Error ? e.message : "Kunne ikke lagre kjøretur")
@@ -270,6 +275,13 @@ export function TripCreate({ context, currentUserId }: Props) {
   const mapFrom = fromLat != null && fromLng != null ? { lat: fromLat, lng: fromLng } : null
   const mapTo = toLat != null && toLng != null ? { lat: toLat, lng: toLng } : null
   const hasBothPoints = mapFrom != null && mapTo != null
+
+  // A worker (no company-wide view) may only file their own trips. When they open
+  // this from a project's Kjørebok tab, the driver is locked to them and the trip
+  // is fixed to that project — both shown read-only rather than as editable inputs.
+  const ownDriverName = drivers.find((d) => d.id === currentUserId)?.name ?? "Deg"
+  const lockProjectToCurrent = !canViewAll && projectId !== NONE
+  const lockedProjectName = projects.find((p) => p.id === projectId)?.name ?? "Dette prosjektet"
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 p-3 sm:p-4">
@@ -304,7 +316,7 @@ export function TripCreate({ context, currentUserId }: Props) {
               <div className="flex items-stretch gap-1.5">
                 <div className="flex flex-1 flex-col">
                   <div className="flex items-center gap-2.5 rounded-xl px-2.5 py-0.5 transition-colors focus-within:bg-muted/70">
-                    <span className="size-2.5 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15" />
+                    <span className="size-3 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15" />
                     <GeocodeAutocomplete
                       value={fromAddress}
                       onChange={(v) => {
@@ -319,7 +331,7 @@ export function TripCreate({ context, currentUserId }: Props) {
                   </div>
                   <div className="ml-[1.05rem] h-3.5 w-px border-l border-dashed border-muted-foreground/40" />
                   <div className="flex items-center gap-2.5 rounded-xl px-2.5 py-0.5 transition-colors focus-within:bg-muted/70">
-                    <span className="size-2.5 shrink-0 rounded-[3px] bg-rose-500 ring-4 ring-rose-500/15" />
+                    <span className="size-3 shrink-0 rounded-[3px] bg-rose-500 ring-4 ring-rose-500/15" />
                     <GeocodeAutocomplete
                       value={toAddress}
                       onChange={(v) => {
@@ -442,28 +454,38 @@ export function TripCreate({ context, currentUserId }: Props) {
 
             <div className="space-y-1.5">
               <Label>Prosjekt</Label>
-              <SearchableSelect
-                value={projectId}
-                onChange={setProjectId}
-                searchPlaceholder="Søk etter prosjekt…"
-                options={[
-                  { value: NONE, label: "Uten prosjekt" },
-                  ...projects.map((p) => ({ value: p.id, label: p.name })),
-                ]}
-              />
+              {lockProjectToCurrent ? (
+                <div className="flex h-9 w-full items-center rounded-md border bg-muted/40 px-3 text-sm">
+                  {lockedProjectName}
+                </div>
+              ) : (
+                <SearchableSelect
+                  value={projectId}
+                  onChange={setProjectId}
+                  searchPlaceholder="Søk etter prosjekt…"
+                  options={[
+                    { value: NONE, label: "Uten prosjekt" },
+                    ...projects.map((p) => ({ value: p.id, label: p.name })),
+                  ]}
+                />
+              )}
             </div>
 
-            {canViewAll && (
-              <div className="space-y-1.5">
-                <Label>Sjåfør</Label>
+            <div className="space-y-1.5">
+              <Label>Sjåfør</Label>
+              {canViewAll ? (
                 <SearchableSelect
                   value={driverUserId}
                   onChange={setDriverUserId}
                   searchPlaceholder="Søk etter sjåfør…"
                   options={drivers.map((d) => ({ value: d.id, label: d.name ?? "Ukjent" }))}
                 />
-              </div>
-            )}
+              ) : (
+                <div className="flex h-9 w-full items-center rounded-md border bg-muted/40 px-3 text-sm">
+                  {ownDriverName}
+                </div>
+              )}
+            </div>
 
             <div className="space-y-1.5">
               <Label htmlFor="trip-purpose">Formål</Label>

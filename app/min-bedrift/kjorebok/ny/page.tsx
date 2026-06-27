@@ -7,8 +7,20 @@ import { MODULE_PRICING } from "@/lib/billing/plans"
 import { createClient } from "@/lib/supabase/server"
 import { TripCreate } from "./trip-create"
 
-export default async function Page() {
-  await checkRoleAccess(["admin", "manager"])
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ project?: string }>
+}) {
+  // Workers may log their own trips (createTripAction enforces own-trips-only),
+  // and they reach this page from the project Kjørebok tab — so allow them here
+  // even though the company-wide overview stays admin/manager only.
+  await checkRoleAccess(["admin", "manager", "worker"])
+
+  const { project: projectId } = await searchParams
+  // When launched from a project, return there (its Kjørebok tab) on save/cancel
+  // instead of the company overview — which workers can't even open.
+  const returnTo = projectId ? `/prosjekter/${projectId}?tab=kjorebok` : undefined
 
   const supabase = await createClient()
   const {
@@ -33,7 +45,12 @@ export default async function Page() {
 
   return (
     <AppPageShell segments={["Min bedrift", "Kjørebok", "Ny tur"]} noPadding>
-      <TripCreate context={context} currentUserId={user!.id} />
+      <TripCreate
+        context={context}
+        currentUserId={user!.id}
+        defaultProjectId={projectId ?? null}
+        returnTo={returnTo}
+      />
     </AppPageShell>
   )
 }
