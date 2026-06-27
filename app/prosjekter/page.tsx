@@ -81,12 +81,9 @@ export default async function Page({
   return (
     <AppPageShell segments={["Prosjekter"]}>
       <section className="space-y-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1">
+        <div className="grid grid-cols-2 items-center justify-between gap-2 sm:flex sm:justify-between w-full">
+          <div className="space-y-0">
             <h1 className="text-2xl font-semibold text-foreground">Prosjektoversikt</h1>
-            <p className="text-sm text-muted-foreground">
-              Aktive prosjekter som kort, og tidligere prosjekter i tabell nedenfor.
-            </p>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <CreateProjectDrawer variant="outline" />
@@ -96,7 +93,7 @@ export default async function Page({
         <ProsjekterFilters />
 
         {showActiveSection && (
-          <div className="space-y-4">
+          <div className="space-y-2 sm:space-y-4">
             <div className="flex items-baseline justify-between gap-3">
               <h2 className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
                 Aktive prosjekter
@@ -119,7 +116,7 @@ export default async function Page({
         )}
 
         {showArchiveSection && (
-          <div className="space-y-4">
+          <div className="space-y-2 sm:space-y-4">
             <div className="flex items-baseline justify-between gap-3">
               <h2 className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
                 Tidligere prosjekter

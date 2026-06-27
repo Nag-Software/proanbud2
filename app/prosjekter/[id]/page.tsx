@@ -219,7 +219,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
               { value: "timeforing", label: "Timeføring" },
               { value: "kjorebok", label: "Kjørebok" },
-              { value: "lonnsomhet", label: "Etterkalkyle", shortLabel: "Margin", hidden: isWorker },
+              // { value: "lonnsomhet", label: "Etterkalkyle", shortLabel: "Margin", hidden: isWorker },
               { value: "ks", label: "KS", hidden: isWorker || !hasKs },
               { value: "avvik", label: "Avvik", hidden: !hasAvvik },
               { value: "deltakere", label: "Deltakere", hidden: isWorker },
@@ -316,11 +316,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               )}
             </ProjectTabPanel>
 
+            {/*
             {!isWorker && (
               <ProjectTabPanel value="lonnsomhet">
                 <EtterkalkyleTab projectId={project.id} canManage={!isWorker} />
               </ProjectTabPanel>
             )}
+              */}
 
             {!isWorker && (
               <ProjectTabPanel value="ks">

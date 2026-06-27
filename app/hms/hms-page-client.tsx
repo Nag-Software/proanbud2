@@ -117,8 +117,7 @@ export function HmsPageClient({
           <div className="space-y-1">
             <h1 className="text-xl font-semibold tracking-tight">HMS & Kvalitetssikring</h1>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Samlet oversikt over helse, miljø og sikkerhet for hele bedriften. Følg opp avvik
-              (RUH, HMS og KS), sjekk fremdrift på kvalitetssikring i prosjektene, og hold
+              Samlet oversikt over HMS. Følg opp avvik, sjekk KS, og hold
               HMS-håndboken oppdatert — alt på ett sted.
             </p>
           </div>
@@ -126,7 +125,7 @@ export function HmsPageClient({
       </div>
 
       {/* KPI cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <KpiCard
           label="Åpne avvik"
           value={stats.openCount}

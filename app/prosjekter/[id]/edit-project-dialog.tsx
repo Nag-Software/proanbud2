@@ -147,7 +147,7 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
           Innstillinger
         </Button>
       </ResponsiveDialogTrigger>
-      <ResponsiveDialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <ResponsiveDialogContent className="max-h-[90vh] px-2 md:p-4 overflow-y-hidden sm:max-w-lg">
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>Prosjektinnstillinger</ResponsiveDialogTitle>
           <ResponsiveDialogDescription>Rediger detaljer, fremdrift og arkivering for prosjektet.</ResponsiveDialogDescription>
@@ -159,9 +159,26 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Generelt
             </h3>
-            <div className="space-y-2">
-              <Label htmlFor="project-name">Prosjektnavn</Label>
-              <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="project-name">Prosjektnavn</Label>
+                <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Velg fase" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EDITABLE_PROJECT_STATUSES.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="project-description">Beskrivelse</Label>
@@ -173,11 +190,11 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
                 placeholder="Kort beskrivelse av prosjektet..."
               />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 grid-cols-2">
               <div className="space-y-2">
                 <Label>Prosjekttype</Label>
                 <Select value={projectType} onValueChange={setProjectType}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Velg type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -192,7 +209,7 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
               <div className="space-y-2">
                 <Label>Kunde</Label>
                 <Select value={customerId} onValueChange={setCustomerId}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Velg kunde" />
                   </SelectTrigger>
                   <SelectContent>
@@ -242,28 +259,6 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
                 onChange={(e) => setBudget(e.target.value)}
                 placeholder="0"
               />
-            </div>
-          </section>
-
-          {/* Fase */}
-          <section className="space-y-3 border-t pt-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Prosjektfase
-            </h3>
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Velg fase" />
-                </SelectTrigger>
-                <SelectContent>
-                  {EDITABLE_PROJECT_STATUSES.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </section>
 

@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
-import { ArrowLeftIcon, ArrowUpDownIcon, FuelIcon, Loader2Icon } from "lucide-react"
+import { ArrowLeftIcon, ArrowUpDownIcon, ChevronDownIcon, FuelIcon, Loader2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { cn } from "@/lib/utils"
 import {
   Select,
   SelectContent,
@@ -80,11 +81,14 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
   const [routes, setRoutes] = useState<RouteResult[]>([])
   const [selectedRouteIdx, setSelectedRouteIdx] = useState(0)
 
-  const [vehicleId, setVehicleId] = useState<string>(NONE)
+  // A vehicle is required, so default to the current driver's car (or the first
+  // available one) instead of "no vehicle".
+  const [vehicleId, setVehicleId] = useState<string>(
+    () => vehicles.find((v) => v.default_driver === currentUserId)?.id ?? vehicles[0]?.id ?? NONE
+  )
   const [tripDate, setTripDate] = useState<string>(todayIso())
   const [projectId, setProjectId] = useState<string>(defaultProjectId || NONE)
   const [driverUserId, setDriverUserId] = useState<string>(currentUserId)
-  const [purpose, setPurpose] = useState("")
   const [startTime, setStartTime] = useState<string | null>(null)
   const [endTime, setEndTime] = useState<string | null>(null)
   const [source, setSource] = useState<"manual" | "gps">("manual")
@@ -93,6 +97,9 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
   const [routeNote, setRouteNote] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Mobile-only: the optional fields collapse behind a "Flere detaljer" toggle so
+  // the default screen is just the map + from/to + Lagre. Desktop always shows them.
+  const [showMore, setShowMore] = useState(false)
 
   // Hydrate from a handed-over GPS draft (live tracker → this page), then clear it
   // so a refresh starts a clean manual trip.
@@ -233,11 +240,18 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
   async function handleSubmit() {
     setError(null)
     if (!Number.isFinite(kmNum) || kmNum <= 0) {
-      setError("Legg inn en strekning eller distanse")
+      setError("Søk opp fra/til på kartet, eller legg inn distanse under «Flere detaljer».")
+      setShowMore(true)
       return
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(tripDate)) {
       setError("Velg en gyldig dato")
+      setShowMore(true)
+      return
+    }
+    if (vehicles.length > 0 && vehicleId === NONE) {
+      setError("Velg kjøretøy")
+      setShowMore(true)
       return
     }
     setSubmitting(true)
@@ -256,7 +270,7 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
         toLat,
         toLng,
         distanceKm: kmNum,
-        purpose: purpose || null,
+        purpose: null,
         classification: "business",
         passengers: 0,
         anleggsvei: false,
@@ -283,234 +297,285 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
   const lockProjectToCurrent = !canViewAll && projectId !== NONE
   const lockedProjectName = projects.find((p) => p.id === projectId)?.name ?? "Dette prosjektet"
 
+  // Short summary of the defaulted optional fields, shown on the collapsed mobile toggle.
+  const driverLabel = canViewAll ? drivers.find((d) => d.id === driverUserId)?.name ?? "Sjåfør" : ownDriverName
+  const detailSummary = [
+    tripDate === todayIso() ? "I dag" : tripDate,
+    driverLabel,
+    selectedVehicle?.name,
+    projectId !== NONE ? projects.find((p) => p.id === projectId)?.name : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-3 sm:p-4">
-      {/* Header */}
-      <div className="flex shrink-0 items-center gap-3">
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Header — hidden on mobile, where the app shell already shows a back arrow + title. */}
+      <div className="hidden shrink-0 items-center gap-3 px-3 pt-3 sm:px-4 sm:pt-4 lg:flex">
         <Button variant="ghost" size="icon" onClick={goBack} title="Tilbake til kjørebok" className="shrink-0">
           <ArrowLeftIcon className="size-5" />
         </Button>
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Ny kjøretur</h1>
+        <h1 className="min-w-0 text-lg font-semibold tracking-tight sm:text-xl">Ny kjøretur</h1>
+      </div>
+
+      {/* Scrolls as one column on mobile; fixed two-column map+fields on desktop. */}
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 lg:overflow-hidden">
+        <div className="flex flex-col gap-3 lg:grid lg:h-full lg:grid-cols-[minmax(0,1fr)_clamp(340px,30vw,440px)]">
+          {/* MAP */}
+          <div className="relative h-[52vh] min-h-[300px] shrink-0 overflow-hidden rounded-2xl border bg-muted lg:h-full lg:min-h-0">
+            <TripMap
+              routeGeometry={routeGeometry}
+              routes={routes}
+              selectedRouteIndex={selectedRouteIdx}
+              onSelectRoute={selectRoute}
+              from={mapFrom}
+              to={mapTo}
+              interactive
+              className="absolute inset-0 h-full w-full"
+            />
+
+            {/* Route-maker — floating from/to card */}
+            <div className="absolute inset-x-2 top-2 z-10 sm:inset-x-3 sm:top-3 sm:max-w-md">
+              <div className="rounded-2xl border bg-background/95 p-2 shadow-xl ring-1 ring-black/5 backdrop-blur supports-backdrop-filter:bg-background/80">
+                <div className="flex items-stretch gap-1.5">
+                  <div className="flex flex-1 flex-col">
+                    <div className="flex items-center gap-2.5 rounded-xl px-2.5 py-0.5 transition-colors focus-within:bg-muted/70">
+                      <span className="size-3 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15" />
+                      <GeocodeAutocomplete
+                        value={fromAddress}
+                        onChange={(v) => {
+                          setFromAddress(v)
+                          setFromLat(null)
+                          setFromLng(null)
+                        }}
+                        onSelect={onPickFrom}
+                        placeholder="Fra hvor?"
+                        inputClassName="h-11 border-0 bg-transparent px-0 text-base shadow-none focus-visible:border-0 focus-visible:ring-0 sm:text-sm dark:bg-transparent"
+                      />
+                    </div>
+                    <div className="ml-[1.05rem] h-3.5 w-px border-l border-dashed border-muted-foreground/40" />
+                    <div className="flex items-center gap-2.5 rounded-xl px-2.5 py-0.5 transition-colors focus-within:bg-muted/70">
+                      <span className="size-3 shrink-0 rounded-[3px] bg-rose-500 ring-4 ring-rose-500/15" />
+                      <GeocodeAutocomplete
+                        value={toAddress}
+                        onChange={(v) => {
+                          setToAddress(v)
+                          setToLat(null)
+                          setToLng(null)
+                        }}
+                        onSelect={onPickTo}
+                        placeholder="Til hvor?"
+                        inputClassName="h-11 border-0 bg-transparent px-0 text-base shadow-none focus-visible:border-0 focus-visible:ring-0 sm:text-sm dark:bg-transparent"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 self-center text-muted-foreground hover:text-foreground"
+                    onClick={swapEndpoints}
+                    title="Bytt fra/til"
+                  >
+                    <ArrowUpDownIcon className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* KPIs — bottom-left, bold, on a dark gradient scrim so white text stays readable over any map tiles. */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/45 to-transparent p-3.5 pt-16">
+              <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+                <Kpi
+                  label="Distanse"
+                  value={
+                    routing ? (
+                      <Loader2Icon className="size-5 animate-spin" />
+                    ) : kmNum > 0 ? (
+                      `${kmNum.toLocaleString("nb-NO", { maximumFractionDigits: 1 })} km`
+                    ) : (
+                      "—"
+                    )
+                  }
+                />
+                <Kpi label="Godtgjørelse" value={kmNum > 0 ? kr(amount.amountNok) : "—"} />
+                <Kpi
+                  label="Drivstoff"
+                  value={fuel.costNok > 0 ? kr(fuel.costNok) : "—"}
+                  hint={
+                    vehicleId === NONE ? "Velg kjøretøy" : fuel.costNok === 0 ? "Mangler forbruk" : undefined
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* FIELDS */}
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border bg-card">
+            {/* Mobile-only disclosure: keeps the default screen to just map + from/to + Lagre. */}
+            <button
+              type="button"
+              onClick={() => setShowMore((s) => !s)}
+              aria-expanded={showMore}
+              className="flex items-center gap-3 p-4 text-left lg:hidden"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">
+                  Flere detaljer <span className="font-normal text-muted-foreground">(valgfritt)</span>
+                </span>
+                {!showMore && detailSummary && (
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">{detailSummary}</span>
+                )}
+              </span>
+              <ChevronDownIcon
+                className={cn(
+                  "size-5 shrink-0 text-muted-foreground transition-transform",
+                  showMore && "rotate-180"
+                )}
+              />
+            </button>
+
+            <div
+              className={cn(
+                "space-y-4 px-4 pb-4 lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:p-4",
+                showMore ? "block" : "hidden"
+              )}
+            >
+              {routeNote && <p className="text-xs text-amber-600">{routeNote}</p>}
+
+              <div className="space-y-1.5">
+                <Label>Kjøretøy</Label>
+                {vehicles.length === 0 ? (
+                  <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                    Ingen kjøretøy ennå. Legg til under «Kjøretøy» i kjøreboken.
+                  </p>
+                ) : (
+                  <Select value={vehicleId} onValueChange={onSelectVehicle}>
+                    <SelectTrigger className="h-11 w-full sm:h-9">
+                      <SelectValue placeholder="Velg kjøretøy" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vehicles.map((v) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          {v.name}
+                          {v.registration ? ` (${v.registration})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {selectedVehicle && fuel.costNok > 0 && (
+                  <p className="flex items-center gap-1.5 pt-0.5 text-xs text-muted-foreground">
+                    <FuelIcon className="size-3.5" />
+                    {fuel.liters.toLocaleString("nb-NO", { maximumFractionDigits: 1 })} liter ·{" "}
+                    {fuel.pricePerLiter} kr/l ({selectedVehicle.fuel_consumption_l_per_mil} l/mil)
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="trip-date">Dato</Label>
+                <Input
+                  id="trip-date"
+                  type="date"
+                  className="h-11 sm:h-9"
+                  value={tripDate}
+                  max={todayIso()}
+                  onChange={(e) => setTripDate(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="trip-distance">Distanse (km)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="trip-distance"
+                    inputMode="decimal"
+                    className="h-11 sm:h-9"
+                    value={distanceKm}
+                    onChange={(e) => setDistanceKm(e.target.value)}
+                    placeholder="0"
+                  />
+                  {hasBothPoints && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 shrink-0 sm:h-9"
+                      size="sm"
+                      onClick={() => void recalcRoute(fromLat!, fromLng!, toLat!, toLng!)}
+                      disabled={routing}
+                    >
+                      {routing ? <Loader2Icon className="size-4 animate-spin" /> : "Beregn rute"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Prosjekt</Label>
+                {lockProjectToCurrent ? (
+                  <div className="flex h-11 w-full items-center rounded-md border bg-muted/40 px-3 text-sm sm:h-9">
+                    {lockedProjectName}
+                  </div>
+                ) : (
+                  <SearchableSelect
+                    value={projectId}
+                    onChange={setProjectId}
+                    searchPlaceholder="Søk etter prosjekt…"
+                    options={[
+                      { value: NONE, label: "Uten prosjekt" },
+                      ...projects.map((p) => ({ value: p.id, label: p.name })),
+                    ]}
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Sjåfør</Label>
+                {canViewAll ? (
+                  <SearchableSelect
+                    value={driverUserId}
+                    onChange={setDriverUserId}
+                    searchPlaceholder="Søk etter sjåfør…"
+                    options={drivers.map((d) => ({ value: d.id, label: d.name ?? "Ukjent" }))}
+                  />
+                ) : (
+                  <div className="flex h-11 w-full items-center rounded-md border bg-muted/40 px-3 text-sm sm:h-9">
+                    {ownDriverName}
+                  </div>
+                )}
+              </div>
+
+              {/* Error shown here on desktop; mobile surfaces it above the sticky bar. */}
+              {error && <p className="hidden text-sm text-destructive lg:block">{error}</p>}
+            </div>
+
+            {/* Desktop action bar (mobile uses the sticky bar below). */}
+            <div className="hidden shrink-0 items-center justify-end gap-2 border-t bg-muted/40 p-3 lg:flex">
+              <Button variant="outline" onClick={goBack} disabled={submitting}>
+                Avbryt
+              </Button>
+              <Button onClick={handleSubmit} disabled={submitting}>
+                {submitting ? <Loader2Icon className="size-4 animate-spin" /> : null}
+                Lagre tur
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Map (left) + fields (right) */}
-      <div className="grid min-h-0 flex-1 grid-rows-[clamp(260px,40vh,440px)_1fr] gap-3 lg:grid-cols-[minmax(0,1fr)_clamp(340px,30vw,440px)] lg:grid-rows-1">
-        {/* MAP */}
-        <div className="relative min-h-0 overflow-hidden rounded-2xl border bg-muted">
-          <TripMap
-            routeGeometry={routeGeometry}
-            routes={routes}
-            selectedRouteIndex={selectedRouteIdx}
-            onSelectRoute={selectRoute}
-            from={mapFrom}
-            to={mapTo}
-            interactive
-            className="absolute inset-0 h-full w-full"
-          />
-
-          {/* Route-maker — floating from/to card */}
-          <div className="absolute inset-x-3 top-3 z-10 sm:max-w-md">
-            <div className="rounded-2xl border bg-background/95 p-2 shadow-xl ring-1 ring-black/5 backdrop-blur supports-backdrop-filter:bg-background/80">
-              <div className="flex items-stretch gap-1.5">
-                <div className="flex flex-1 flex-col">
-                  <div className="flex items-center gap-2.5 rounded-xl px-2.5 py-0.5 transition-colors focus-within:bg-muted/70">
-                    <span className="size-3 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15" />
-                    <GeocodeAutocomplete
-                      value={fromAddress}
-                      onChange={(v) => {
-                        setFromAddress(v)
-                        setFromLat(null)
-                        setFromLng(null)
-                      }}
-                      onSelect={onPickFrom}
-                      placeholder="Fra hvor?"
-                      inputClassName="h-10 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
-                    />
-                  </div>
-                  <div className="ml-[1.05rem] h-3.5 w-px border-l border-dashed border-muted-foreground/40" />
-                  <div className="flex items-center gap-2.5 rounded-xl px-2.5 py-0.5 transition-colors focus-within:bg-muted/70">
-                    <span className="size-3 shrink-0 rounded-[3px] bg-rose-500 ring-4 ring-rose-500/15" />
-                    <GeocodeAutocomplete
-                      value={toAddress}
-                      onChange={(v) => {
-                        setToAddress(v)
-                        setToLat(null)
-                        setToLng(null)
-                      }}
-                      onSelect={onPickTo}
-                      placeholder="Til hvor?"
-                      inputClassName="h-10 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
-                    />
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0 self-center text-muted-foreground hover:text-foreground"
-                  onClick={swapEndpoints}
-                  title="Bytt fra/til"
-                >
-                  <ArrowUpDownIcon className="size-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* KPIs — bottom-left, bold, on a dark gradient scrim so white text stays readable over any map tiles. */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 via-black/45 to-transparent p-3.5 pt-16">
-            <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
-              <Kpi
-                label="Distanse"
-                value={
-                  routing ? (
-                    <Loader2Icon className="size-5 animate-spin" />
-                  ) : kmNum > 0 ? (
-                    `${kmNum.toLocaleString("nb-NO", { maximumFractionDigits: 1 })} km`
-                  ) : (
-                    "—"
-                  )
-                }
-              />
-              <Kpi label="Godtgjørelse" value={kmNum > 0 ? kr(amount.amountNok) : "—"} />
-              <Kpi
-                label="Drivstoff"
-                value={fuel.costNok > 0 ? kr(fuel.costNok) : "—"}
-                hint={
-                  vehicleId === NONE ? "Velg kjøretøy" : fuel.costNok === 0 ? "Mangler forbruk" : undefined
-                }
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* FIELDS — single column on the right */}
-        <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border bg-card">
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-            {routeNote && <p className="text-xs text-amber-600">{routeNote}</p>}
-
-            <div className="space-y-1.5">
-              <Label>Kjøretøy</Label>
-              <Select value={vehicleId} onValueChange={onSelectVehicle}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Uten kjøretøy" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>Uten kjøretøy</SelectItem>
-                  {vehicles.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.name}
-                      {v.registration ? ` (${v.registration})` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedVehicle && fuel.costNok > 0 && (
-                <p className="flex items-center gap-1.5 pt-0.5 text-xs text-muted-foreground">
-                  <FuelIcon className="size-3.5" />
-                  {fuel.liters.toLocaleString("nb-NO", { maximumFractionDigits: 1 })} liter ·{" "}
-                  {fuel.pricePerLiter} kr/l ({selectedVehicle.fuel_consumption_l_per_mil} l/mil)
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="trip-date">Dato</Label>
-              <Input
-                id="trip-date"
-                type="date"
-                value={tripDate}
-                max={todayIso()}
-                onChange={(e) => setTripDate(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="trip-distance">Distanse (km)</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="trip-distance"
-                  inputMode="decimal"
-                  value={distanceKm}
-                  onChange={(e) => setDistanceKm(e.target.value)}
-                  placeholder="0"
-                />
-                {hasBothPoints && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0"
-                    onClick={() => void recalcRoute(fromLat!, fromLng!, toLat!, toLng!)}
-                    disabled={routing}
-                  >
-                    {routing ? <Loader2Icon className="size-4 animate-spin" /> : "Beregn rute"}
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Prosjekt</Label>
-              {lockProjectToCurrent ? (
-                <div className="flex h-9 w-full items-center rounded-md border bg-muted/40 px-3 text-sm">
-                  {lockedProjectName}
-                </div>
-              ) : (
-                <SearchableSelect
-                  value={projectId}
-                  onChange={setProjectId}
-                  searchPlaceholder="Søk etter prosjekt…"
-                  options={[
-                    { value: NONE, label: "Uten prosjekt" },
-                    ...projects.map((p) => ({ value: p.id, label: p.name })),
-                  ]}
-                />
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Sjåfør</Label>
-              {canViewAll ? (
-                <SearchableSelect
-                  value={driverUserId}
-                  onChange={setDriverUserId}
-                  searchPlaceholder="Søk etter sjåfør…"
-                  options={drivers.map((d) => ({ value: d.id, label: d.name ?? "Ukjent" }))}
-                />
-              ) : (
-                <div className="flex h-9 w-full items-center rounded-md border bg-muted/40 px-3 text-sm">
-                  {ownDriverName}
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="trip-purpose">Formål</Label>
-              <Input
-                id="trip-purpose"
-                value={purpose}
-                onChange={(e) => setPurpose(e.target.value)}
-                placeholder="F.eks. befaring, levering, kundemøte"
-              />
-            </div>
-
-            {error && <p className="text-sm text-destructive">{error}</p>}
-          </div>
-
-          {/* Action bar */}
-          <div className="flex shrink-0 items-center justify-end gap-2 border-t bg-muted/40 p-3">
-            <Button variant="outline" onClick={goBack} disabled={submitting}>
-              Avbryt
-            </Button>
-            <Button onClick={handleSubmit} disabled={submitting}>
-              {submitting ? <Loader2Icon className="size-4 animate-spin" /> : null}
-              Lagre tur
-            </Button>
-          </div>
-        </div>
+      {/* Mobile sticky action bar — big thumb-friendly Lagre, always visible. */}
+      {error && (
+        <p className="shrink-0 bg-background px-3 pt-2 text-center text-sm text-destructive lg:hidden">{error}</p>
+      )}
+      <div className="flex shrink-0 items-center gap-2 border-t bg-background p-3 lg:hidden">
+        <Button variant="outline" className="h-12" onClick={goBack} disabled={submitting}>
+          Avbryt
+        </Button>
+        <Button className="h-12 flex-1 text-base" onClick={handleSubmit} disabled={submitting}>
+          {submitting ? <Loader2Icon className="size-4 animate-spin" /> : null}
+          Lagre tur
+        </Button>
       </div>
     </div>
   )

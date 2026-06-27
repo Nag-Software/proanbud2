@@ -47,7 +47,7 @@ export function ResponsiveTabs({
 
   return (
     <Tabs value={value} onValueChange={handleValueChange} className={cn("w-full", className)}>
-      <div className="-mx-4 mb-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="-mx-4 mb-2 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <TabsList className="inline-flex h-auto w-max">
           {visibleTabs.map((tab) => (
             <TabsTrigger
