@@ -73,7 +73,7 @@ const steps = [
   },
   {
     id: 3,
-    title: "Prissammendrag",
+    title: "Forhåndsvisning",
     description: "Gjennomgå og bekreft prising",
     icon: Calculator,
   },
@@ -693,54 +693,6 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
 
           {step === 3 ? (
             <div className="space-y-5">
-              <div className="mx-auto max-w-2xl rounded-lg border px-5 py-4">
-                <div className="flex items-baseline justify-between gap-4 border-b pb-4">
-                  <h3 className="text-sm font-medium text-muted-foreground">Prissammendrag</h3>
-                  <div className="text-right">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Total tilbudssum</p>
-                    <p className="whitespace-nowrap text-2xl font-semibold tabular-nums tracking-tight text-foreground">
-                      {formatNok(totals.totalNok)}
-                    </p>
-                  </div>
-                </div>
-                <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-                  <div>
-                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Vederlagsform</dt>
-                    <dd className="mt-0.5 font-medium text-foreground">{PRICING_MODEL_LABELS[pricingModel]}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Gyldighet</dt>
-                    <dd className="mt-0.5 font-medium text-foreground">{validityDays} dager</dd>
-                  </div>
-                  <div className="sm:col-span-3">
-                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Mottaker</dt>
-                    <dd className="mt-0.5 truncate font-medium text-foreground">
-                      {selectedCustomer?.name || recipientName.trim() || "—"}
-                      {(selectedCustomer?.email || recipientEmail.trim()) ? (
-                        <span className="font-normal text-muted-foreground">
-                          {" · "}
-                          {selectedCustomer?.email || recipientEmail.trim()}
-                        </span>
-                      ) : null}
-                    </dd>
-                  </div>
-                  {quoteMessage.trim() ? (
-                    <div className="sm:col-span-3">
-                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Melding til kunde</dt>
-                      <dd className="mt-0.5 leading-relaxed text-foreground">{quoteMessage.trim()}</dd>
-                    </div>
-                  ) : null}
-                  {pricingModel === "fixed" || pricingModel === "mixed" ? (
-                    <div className="sm:col-span-3">
-                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Avdragsplan</dt>
-                      <dd className="mt-0.5 text-foreground">
-                        {paymentSchedule.map((entry) => `${entry.label} ${entry.percent}%`).join(" · ")}
-                      </dd>
-                    </div>
-                  ) : null}
-                </dl>
-              </div>
-
               <div className="rounded-lg border p-4">
                 <div className="mb-3 flex items-center gap-2">
                   <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
@@ -781,7 +733,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 <div className="order-2 sm:order-3 sm:basis-0 sm:flex-1">
                   <Button type="button" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleOpenOffer} disabled={isPersisting || lineItems.length === 0}>
                     {isPersisting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    {isPersisting ? "Åpner..." : "Gå til tilbud"}
+                    {isPersisting ? "Lagrer..." : "Lagre tilbud"}
                   </Button>
                 </div>
 
