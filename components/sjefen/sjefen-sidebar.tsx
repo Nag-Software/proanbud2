@@ -8,6 +8,7 @@ import {
   Building2Icon,
   ChevronRightIcon,
   FileTextIcon,
+  HandshakeIcon,
   InboxIcon,
   LayoutDashboardIcon,
   NewspaperIcon,
@@ -64,6 +65,11 @@ const navItems = [
     title: "Brukere",
     url: "/sjefen/brukere",
     icon: <UsersIcon className="size-4" />,
+  },
+  {
+    title: "Selgere",
+    url: "/sjefen/selgere",
+    icon: <HandshakeIcon className="size-4" />,
   },
   {
     title: "Tilbud",
