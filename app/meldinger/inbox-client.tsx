@@ -26,7 +26,7 @@ import {
   Check,
 } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, generateLocalId } from "@/lib/utils";
 import { reportClientError } from "@/lib/errors/client";
 import { useUserRole } from "@/hooks/use-user-role";
 
@@ -270,14 +270,18 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
     if (!aiSuggestion) return;
     setNewMessage(aiSuggestion);
     setAiSuggestion(null);
+    // Raise the iOS soft keyboard: focus() must run synchronously inside this
+    // click gesture — iOS WebKit withholds the keyboard when focus() is deferred
+    // into requestAnimationFrame (the user-activation chain is already broken).
+    // The height recompute + caret-to-end still need the post-render DOM
+    // (scrollHeight and the freshly-set value), so they stay in the rAF.
+    const ta = document.getElementById("chat-textarea") as HTMLTextAreaElement | null;
+    ta?.focus();
     requestAnimationFrame(() => {
-      const ta = document.getElementById("chat-textarea") as HTMLTextAreaElement | null;
-      if (ta) {
-        ta.style.height = "40px";
-        ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
-        ta.focus();
-        ta.setSelectionRange(ta.value.length, ta.value.length);
-      }
+      if (!ta) return;
+      ta.style.height = "40px";
+      ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
+      ta.setSelectionRange(ta.value.length, ta.value.length);
     });
   }, [aiSuggestion]);
 
@@ -310,7 +314,7 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
     if (attachedFile) {
       setIsUploading(true);
       const fileExt = attachedFile.name.split(".").pop() || "bin";
-      const fileName = `${crypto.randomUUID()}.${fileExt}`;
+      const fileName = `${generateLocalId()}.${fileExt}`;
       const filePath = `${companyId}/${selectedCustomerId}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
@@ -362,7 +366,7 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
     const textarea = document.getElementById("chat-textarea") as HTMLTextAreaElement;
     if (textarea) textarea.style.height = "44px";
 
-    const tempId = crypto.randomUUID();
+    const tempId = generateLocalId();
     const optimisticMsg: Message = {
       id: tempId,
       customer_id: selectedCustomerId,

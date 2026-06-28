@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Briefcase, ChevronDown, FilePlus2, Loader2, Package, Plus, Search } from "lucide-react"
 
 import { reportClientError } from "@/lib/errors/client"
+import { generateLocalId } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -84,7 +85,7 @@ export function AddOfferLineItemMenu({
   const addBlankLineItem = useCallback(() => {
     onAddItems([
       {
-        id: crypto.randomUUID(),
+        id: generateLocalId(),
         subproject: defaultSubproject,
         title: "Ny post",
         description: "",
