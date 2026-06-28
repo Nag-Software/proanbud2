@@ -15,14 +15,14 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, Bell, CalendarDays, FolderIcon, FilesIcon, ShieldCheckIcon } from "lucide-react"
-import { Button } from "./ui/button"
+import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, CalendarDays, FolderIcon, FilesIcon, ShieldCheckIcon } from "lucide-react"
 import { useUserRole } from "@/hooks/use-user-role"
 import { canManageSubscription } from "@/lib/roles"
 import { useAuth } from "@/components/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { CreateProjectDrawer } from "@/app/prosjekter/create-project-dialog"
-import { useUnreadMessages } from "@/hooks/use-unread-messages"
+import { useNotifications, type NotificationItem } from "@/hooks/use-notifications"
+import { NotificationsPopover } from "@/components/notifications-popover"
 import { useOpenDeviationCount } from "@/hooks/use-open-deviation-count"
 
 type SidebarProject = {
@@ -209,7 +209,19 @@ const data: {
 }
 
 
-function AppSidebarHeader({ unreadCount }: { unreadCount: number }) {
+function AppSidebarHeader({
+  unreadCount,
+  notifications,
+  notificationsLoading,
+  onMarkAllRead,
+  onMarkThreadRead,
+}: {
+  unreadCount: number
+  notifications: NotificationItem[]
+  notificationsLoading: boolean
+  onMarkAllRead: () => void
+  onMarkThreadRead: (customerId: string) => void
+}) {
   const { state } = useSidebar()
   const router = useRouter();
   const isCollapsed = state === "collapsed"
@@ -234,18 +246,14 @@ function AppSidebarHeader({ unreadCount }: { unreadCount: number }) {
           )}
         </div>
         {!isCollapsed && (
-          <div className="relative shrink-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push("/meldinger")}
-              aria-label={unreadCount > 0 ? `${unreadCount} uleste meldinger` : "Meldinger"}
-            >
-              <Bell className="h-4 w-4" />
-            </Button>
-            {unreadCount > 0 && (
-              <span className="pointer-events-none absolute right-1.5 top-1.5 size-2 rounded-full bg-primary ring-2 ring-sidebar" />
-            )}
+          <div className="shrink-0">
+            <NotificationsPopover
+              notifications={notifications}
+              unreadCount={unreadCount}
+              loading={notificationsLoading}
+              onMarkAllRead={onMarkAllRead}
+              onMarkThreadRead={onMarkThreadRead}
+            />
           </div>
         )}
       </div>
@@ -263,7 +271,13 @@ function AppSidebarHeader({ unreadCount }: { unreadCount: number }) {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { role, canonicalRole, hasFeature, loadingRole } = useUserRole();
   const { user } = useAuth();
-  const unreadCount = useUnreadMessages();
+  const {
+    notifications,
+    unreadCount,
+    loading: notificationsLoading,
+    markAllRead,
+    markThreadRead,
+  } = useNotifications({ enabled: loadingRole || hasFeature("meldinger") });
   const openDeviationCount = useOpenDeviationCount();
   const [activeProjects, setActiveProjects] = React.useState<SidebarProject[]>([]);
   const isWorker = canonicalRole === "worker";
@@ -359,7 +373,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <AppSidebarHeader unreadCount={visibleUnreadCount} />
+      <AppSidebarHeader
+        unreadCount={visibleUnreadCount}
+        notifications={notifications}
+        notificationsLoading={notificationsLoading}
+        onMarkAllRead={markAllRead}
+        onMarkThreadRead={markThreadRead}
+      />
       <SidebarContent>
         <NavMain items={filteredNavMain} />
         <NavProjects projects={activeProjects} />

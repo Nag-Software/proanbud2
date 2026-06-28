@@ -11,7 +11,16 @@ export const metadata = {
   title: "Meldinger — Proanbud",
 };
 
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ kunde?: string | string[] }>;
+}) {
+  // `?kunde=<id>` deep-links straight into a conversation (used by the sidebar
+  // notifications panel). Only a single string value is meaningful.
+  const { kunde } = await searchParams;
+  const initialCustomerId = typeof kunde === "string" ? kunde : null;
+
   // checkRoleAccess already resolves (and guarantees) the authenticated user —
   // reuse it instead of issuing a second auth.getUser() round-trip.
   const { user } = await checkRoleAccess(["admin", "manager"]);
@@ -42,7 +51,11 @@ export default async function Page() {
   return (
 
     <AppPageShell segments={["Meldinger"]} noPadding>
-      <InboxClient companyId={userData.company_id} currentUserId={user.id} />
+      <InboxClient
+        companyId={userData.company_id}
+        currentUserId={user.id}
+        initialCustomerId={initialCustomerId}
+      />
     </AppPageShell>
   );
 }

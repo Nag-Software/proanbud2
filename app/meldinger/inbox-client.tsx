@@ -56,6 +56,7 @@ type FilterTab = "all" | "unread";
 interface InboxClientProps {
   companyId: string;
   currentUserId: string;
+  initialCustomerId?: string | null;
 }
 
 function isUnread(message: Message) {
@@ -69,7 +70,7 @@ function formatMessageTime(date: Date) {
   return formatDistanceToNow(date, { addSuffix: true, locale: nb });
 }
 
-export default function InboxClient({ companyId, currentUserId }: InboxClientProps) {
+export default function InboxClient({ companyId, currentUserId, initialCustomerId }: InboxClientProps) {
   const supabase = createClient();
   const { hasFeature } = useUserRole();
   const canUseAi = hasFeature("meldinger_ki");
@@ -91,6 +92,7 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
   const messagesRef = useRef<Message[]>([]);
   const selectedCustomerIdRef = useRef<string | null>(null);
   const customersRef = useRef<Customer[]>([]);
+  const initialSelectionAppliedRef = useRef(false);
 
   messagesRef.current = messages;
   selectedCustomerIdRef.current = selectedCustomerId;
@@ -173,6 +175,16 @@ export default function InboxClient({ companyId, currentUserId }: InboxClientPro
     }
     loadData();
   }, [companyId, supabase]);
+
+  // Honour a deep-link (?kunde=<id>) once the customer list is available, so
+  // opening a conversation from the notifications panel lands on that thread.
+  useEffect(() => {
+    if (initialSelectionAppliedRef.current) return;
+    if (isLoading || !initialCustomerId) return;
+    if (!customers.some((c) => c.id === initialCustomerId)) return;
+    initialSelectionAppliedRef.current = true;
+    handleSelectCustomer(initialCustomerId);
+  }, [initialCustomerId, isLoading, customers, handleSelectCustomer]);
 
   useEffect(() => {
     const channel = supabase
