@@ -152,6 +152,20 @@ export default function CreateCompanyClient() {
         throw new Error(errorMessage)
       }
 
+      // Bedriften er opprettet og users.company_id er skrevet server-side. Men en
+      // hard navigering kan nå middleware-gaten FØR denne nettleser-sesjonen klarer
+      // å lese tilbake koblingen (særlig i Safari) — da ser get_current_company_id()
+      // null og middleware bouncer oss til /create-company?reason=missing-company
+      // (tilbake til steg 1). Bekreft derfor at koblingen er synlig for DENNE
+      // sesjonen — via samme RPC som middleware bruker — før vi navigerer. Dette
+      // friskner samtidig opp access-tokenet, så navigeringen bærer en konsistent
+      // sesjon. Bounded retry: faller tilbake til navigering uansett etter ~2,4 s.
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const { data: visibleCompanyId } = await supabase.rpc('get_current_company_id')
+        if (visibleCompanyId) break
+        await new Promise((resolve) => setTimeout(resolve, 300))
+      }
+
       completeClientLogin(router, "/onboarding/abonnement")
     } catch (e: any) {
       console.error(e)
