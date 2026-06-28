@@ -34,6 +34,7 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
   const shell = useAppShell()
   const segments = shell?.pageMeta.segments ?? []
   const noPadding = shell?.pageMeta.noPadding ?? false
+  const hideMobileTitle = shell?.pageMeta.hideMobileTitle ?? false
 
   return (
     <SidebarProvider>
@@ -50,7 +51,7 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
               orientation="vertical"
               className="mr-2 hidden data-vertical:h-4 data-vertical:self-auto md:block"
             />
-            <ShellBreadcrumb segments={segments} />
+            <ShellBreadcrumb segments={segments} hideMobileTitle={hideMobileTitle} />
           </div>
         </header>
         <div

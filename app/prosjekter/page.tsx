@@ -4,7 +4,8 @@ import { checkRoleAccess } from "@/lib/auth-utils"
 import { ProsjekterFilters } from "./prosjekter-filters"
 import { CreateProjectDrawer } from "./create-project-dialog"
 import { ArchiveProjectsTable } from "./archive-projects-table"
-import { ProjectCard } from "./project-card"
+import { ActiveProjects } from "./active-projects"
+import { ProjectsViewProvider } from "./projects-view"
 import {
   ACTIVE_PROJECT_STATUSES,
   ARCHIVE_PROJECT_STATUSES,
@@ -16,9 +17,10 @@ import {
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; sort?: string; search?: string }>
+  searchParams: Promise<{ status?: string; sort?: string; search?: string; view?: string }>
 }) {
   const params = await searchParams
+  const initialView = params.view === "kanban" ? "kanban" : "kort"
   const supabase = await createClient()
   await checkRoleAccess(["admin", "manager", "worker"])
 
@@ -79,7 +81,8 @@ export default async function Page({
     ARCHIVE_PROJECT_STATUSES.includes(params.status as (typeof ARCHIVE_PROJECT_STATUSES)[number])
 
   return (
-    <AppPageShell segments={["Prosjekter"]}>
+    <AppPageShell segments={["Prosjekter"]} hideMobileTitle>
+      <ProjectsViewProvider initialView={initialView}>
       <section className="space-y-8">
         <div className="grid grid-cols-2 items-center justify-between gap-2 sm:flex sm:justify-between w-full">
           <div className="space-y-0">
@@ -93,26 +96,7 @@ export default async function Page({
         <ProsjekterFilters />
 
         {showActiveSection && (
-          <div className="space-y-2 sm:space-y-4">
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                Aktive prosjekter
-              </h2>
-              <span className="text-xs text-muted-foreground">{activeProjects.length} prosjekter</span>
-            </div>
-
-            {activeProjects.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5" style={{ borderRadius: 5 }}>
-                {activeProjects.map((project) => (
-                  <ProjectCard key={project.id} project={project} customers={customerOptions} />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-border/70 bg-card/40 px-6 py-14 text-center" style={{ borderRadius: 5 }}>
-                <p className="text-sm text-muted-foreground">Ingen aktive prosjekter funnet.</p>
-              </div>
-            )}
-          </div>
+          <ActiveProjects projects={activeProjects} customers={customerOptions} />
         )}
 
         {showArchiveSection && (
@@ -128,6 +112,7 @@ export default async function Page({
           </div>
         )}
       </section>
+      </ProjectsViewProvider>
     </AppPageShell>
   )
 }

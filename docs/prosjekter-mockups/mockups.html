@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.31.0/iconfont/tabler-icons.min.css" />
+<style>
+@font-face{
+  font-family:'Satoshi';
+  src:url('file:///Users/casper/Desktop/Nag-Software/proanbud2/lib/fonts/Satoshi_Complete/Fonts/WEB/fonts/Satoshi-Variable.woff2') format('woff2');
+  font-weight:300 900; font-display:block; font-style:normal;
+}
+:root{
+  --bg:#ffffff; --fg:#151515; --card:#ffffff; --muted:#727272; --border:#e8e8e8;
+  --border-soft:#ededed; --accent:#c7ef63; --soft:#fafafa;
+  --gold:#b9852b; --green:#7ca92c; --grey:#7b7b7b; --danger:#c25a4b; --warn:#95681f;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Satoshi',system-ui,sans-serif;color:var(--fg);letter-spacing:-0.015em;background:#ffffff;-webkit-font-smoothing:antialiased}
+.frames{display:flex;flex-direction:column;gap:40px;padding:24px;width:1488px}
+.screen{width:1440px;display:flex;background:linear-gradient(180deg,#ffffff 0%,#fcfcfc 55%,#f7f7f7 100%);border:1px solid var(--border);border-radius:12px;overflow:hidden;min-height:912px}
+
+/* ---------- Sidebar ---------- */
+.sidebar{width:256px;flex:none;background:#fbfbfb;border-right:1px solid #ececec;display:flex;flex-direction:column;padding:14px 12px}
+.logo-row{display:flex;align-items:center;gap:10px;padding:6px 6px 12px}
+.logo-mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(150deg,#39d39a,#23b27e);display:flex;align-items:center;justify-content:center}
+.logo-mark span{width:11px;height:11px;background:#fff;border-radius:3px;transform:rotate(45deg)}
+.logo-text{font-size:19px;font-weight:700;letter-spacing:-0.03em}
+.logo-row .ti-bell{margin-left:auto;color:#9a9a9a;font-size:19px}
+.new-btn{display:flex;align-items:center;justify-content:center;gap:8px;margin:4px 2px 12px;height:42px;border:1px solid #e4e4e4;background:#fff;border-radius:6px;font-size:14px;font-weight:500;color:#151515}
+.new-btn i{font-size:17px}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:13px;padding:9px 10px;border-radius:7px;font-size:15px;color:#1c1c1c;border:1px solid transparent}
+.nav-item i:first-child{font-size:20px;color:#454545;width:20px;text-align:center}
+.nav-item .chev{margin-left:auto;color:#bcbcbc;font-size:16px}
+.nav-item.active{background:#fff;border-color:#e6e6e6;font-weight:500}
+.nav-label{margin:16px 10px 6px;font-size:12px;color:#9a9a9a;letter-spacing:-0.01em}
+.see-all{color:#9a9a9a}
+.see-all i:first-child{color:#b0b0b0}
+.user-chip{margin-top:auto;display:flex;align-items:center;gap:10px;padding-top:12px;margin-top:auto;border-top:1px solid #ececec;padding:12px 6px 4px}
+.user-av{width:34px;height:34px;border-radius:50%;background:#23b27e;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;flex:none}
+.user-name{font-size:14px;font-weight:600;line-height:1.2}
+.user-mail{font-size:12px;color:#8c8c8c;line-height:1.3}
+.user-chip .ti-selector{margin-left:auto;color:#a8a8a8;font-size:18px}
+
+/* ---------- Main ---------- */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{height:56px;flex:none;display:flex;align-items:center;gap:12px;padding:0 22px;color:#5a5a5a}
+.topbar .ti-layout-sidebar-left-collapse{font-size:20px;color:#6b6b6b}
+.topsep{width:1px;height:16px;background:#e1e1e1}
+.crumb{font-size:14px;color:#6b6b6b}
+.content{flex:1;padding:18px 30px 40px;display:flex;flex-direction:column;gap:26px;min-width:0}
+
+.page-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.page-head h1{font-size:25px;font-weight:600;letter-spacing:-0.025em}
+.head-actions{display:flex;align-items:center;gap:12px}
+.btn-outline{display:inline-flex;align-items:center;gap:8px;height:42px;padding:0 16px;border:1px solid #e2e2e2;background:#fff;border-radius:6px;font-size:14px;font-weight:500;color:#151515}
+.btn-outline i{font-size:17px}
+.btn-primary{display:inline-flex;align-items:center;gap:8px;height:42px;padding:0 18px;border:none;background:#151515;color:#fff;border-radius:6px;font-size:14px;font-weight:500}
+.btn-primary i{font-size:17px}
+
+.toggle{display:inline-flex;border:1px solid #e4e4e4;background:#fff;border-radius:7px;padding:3px}
+.toggle button{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;border:none;background:transparent;border-radius:5px;font-size:13px;font-weight:500;color:#6f6f6f}
+.toggle button.on{background:#151515;color:#fff}
+.toggle button i{font-size:16px}
+
+.filters{display:grid;grid-template-columns:1fr 190px;gap:14px;align-items:end}
+.flabel{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.18em;color:#8a8a8a;margin-bottom:7px}
+.input-wrap{position:relative}
+.input-wrap i{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#9a9a9a;font-size:17px}
+.input-wrap input{width:100%;height:40px;border:1px solid #e8e8e8;border-radius:6px;background:#fff;padding:0 14px 0 38px;font-family:inherit;font-size:14px;color:#151515;letter-spacing:-0.01em}
+.input-wrap input::placeholder{color:#a3a3a3}
+.select{height:40px;border:1px solid #e8e8e8;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 13px;font-size:14px;color:#151515}
+.select i{color:#9a9a9a;font-size:17px}
+
+.sec-head{display:flex;align-items:baseline;justify-content:space-between}
+.sec-head h2{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.22em;color:#8a8a8a}
+.sec-head .count{font-size:12px;color:#9a9a9a}
+
+/* ---------- status bar (the bit you like) ---------- */
+.sbar{padding:11px 14px;border-top:1px solid var(--border);border-left:3px solid var(--rail)}
+.sbar.flush{padding:0;border:none}
+.bars{display:flex;gap:4px}
+.bars span{flex:1;height:6px;border-radius:999px;background:var(--fill)}
+.bars span.off{opacity:.25}
+.sbar-label{display:flex;align-items:center;gap:7px;margin-top:8px}
+.sbar-dot{width:8px;height:8px;border-radius:50%;background:var(--fill);flex:none}
+.sbar-label p{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.14em;color:#151515}
+
+/* ---------- generic card ---------- */
+.card{background:#fff;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.dots{position:absolute;top:8px;right:8px;width:30px;height:30px;border:none;background:transparent;border-radius:6px;color:#9a9a9a;font-size:18px;display:flex;align-items:center;justify-content:center}
+
+/* baseline */
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.base-card{position:relative;display:flex;flex-direction:column}
+.base-body{padding:14px 40px 14px 14px;flex:1}
+.base-name{font-size:14px;font-weight:600;line-height:1.3}
+.base-code{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.12em;color:#888;margin-top:3px}
+.base-meta{margin-top:14px;font-size:12px;color:#777;line-height:1.55}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* archive table */
+.atable{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fff}
+.atable .arow{display:grid;grid-template-columns:2fr 1.4fr 1.4fr 1.4fr;align-items:center;padding:13px 16px;border-bottom:1px solid var(--border-soft)}
+.atable .arow:last-child{border-bottom:none}
+.atable .ahead{background:#fafafa;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;color:#8a8a8a}
+.atable .aname{font-size:14px;font-weight:500}
+.atable .acode{font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:#8f8f8f;margin-top:3px}
+.atable .acell{font-size:14px;color:#444}
+.atable .amuted{font-size:13px;color:#888}
+
+/* Forslag A — rich cards */
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.rich-card{position:relative;display:flex;flex-direction:column}
+.rich-top{padding:15px 15px 14px}
+.rich-head{display:flex;align-items:center;gap:11px}
+.avatar{width:38px;height:38px;border-radius:9px;background:#f0f0ec;color:#3f3f3f;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;flex:none}
+.rich-id{min-width:0}
+.rich-name{font-size:15px;font-weight:600;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rich-code{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.12em;color:#8d8d8d;margin-top:2px}
+.rich-sub{font-size:12.5px;color:#787878;margin-top:11px}
+.mstrip{display:flex;margin-top:13px;border:1px solid var(--border-soft);background:#fafafa;border-radius:6px;overflow:hidden}
+.mcell{flex:1;padding:9px 6px 8px 12px;border-left:1px solid #ededed}
+.mcell:first-child{border-left:none}
+.mtop{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600}
+.mtop i{font-size:15px;color:#9a9a9a}
+.mlabel{font-size:10.5px;color:#8d8d8d;margin-top:3px;letter-spacing:-0.01em}
+.tone-danger .mtop,.tone-danger{color:var(--danger)}
+.tone-danger .mtop i{color:var(--danger)}
+.tone-warn .mtop,.tone-warn{color:var(--warn)}
+.tone-warn .mtop i{color:var(--warn)}
+.prog{margin-top:13px}
+.prog-top{display:flex;justify-content:space-between;font-size:11.5px;color:#777;margin-bottom:6px}
+.prog-top b{color:#151515;font-weight:600}
+.track{height:6px;border-radius:999px;background:#ededed;overflow:hidden}
+.track span{display:block;height:6px;border-radius:999px}
+
+/* Forslag B — list */
+.list{border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fff}
+.lrow{display:grid;grid-template-columns:2.3fr 1.4fr 1.2fr 1.7fr 2fr 24px;align-items:center;gap:16px;padding:14px 18px;border-bottom:1px solid var(--border-soft);border-left:3px solid var(--rail)}
+.lrow:last-child{border-bottom:none}
+.lhead{background:#fafafa;border-left:3px solid transparent;padding:11px 18px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;color:#8a8a8a}
+.lname{font-size:14px;font-weight:600;line-height:1.25}
+.lcode{font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:#8f8f8f;margin-top:3px}
+.lcell{font-size:13.5px;color:#3f3f3f}
+.lmuted{font-size:13px;color:#8a8a8a;font-variant-numeric:tabular-nums}
+.lmetrics{display:flex;gap:16px}
+.lm{display:flex;align-items:center;gap:6px;font-size:13px;color:#444}
+.lm i{font-size:15px;color:#a0a0a0}
+.lstatus{display:flex;align-items:center;gap:11px}
+.lstatus .bars{width:84px;flex:none}
+.lstatus p{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:#151515;white-space:nowrap}
+.chev-end{color:#c4c4c4;font-size:18px;text-align:center}
+
+/* Forslag C — kanban */
+.board{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;align-items:start}
+.kcol{background:#fafafa;border:1px solid var(--border-soft);border-top:2px solid var(--rail);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.kcol-head{display:flex;align-items:center;gap:9px;padding:2px 4px 4px}
+.kcol-dot{width:9px;height:9px;border-radius:50%;background:var(--fill)}
+.kcol-head .ttl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.14em;color:#151515}
+.kcol-head .cnt{margin-left:auto;font-size:12px;font-weight:600;color:#8a8a8a;background:#fff;border:1px solid var(--border);border-radius:999px;min-width:22px;height:22px;display:flex;align-items:center;justify-content:center;padding:0 6px}
+.kcard{position:relative;background:#fff;border:1px solid var(--border);border-radius:7px;padding:12px 12px 13px}
+.kname{font-size:14px;font-weight:600;line-height:1.25;padding-right:22px}
+.kcode{font-size:10.5px;text-transform:uppercase;letter-spacing:0.12em;color:#8f8f8f;margin-top:2px}
+.ksub{font-size:12.5px;color:#7d7d7d;margin-top:9px}
+.kmetrics{display:flex;gap:14px;margin-top:11px}
+.kmetrics .lm{font-size:12.5px}
+.kprog{margin-top:12px}
+.kprog .ptop{display:flex;justify-content:space-between;font-size:11px;color:#8a8a8a;margin-bottom:5px}
+.kdots{position:absolute;top:9px;right:8px;color:#b3b3b3;font-size:17px}
+.kadd{border:1px dashed #d8d8d8;background:transparent;border-radius:7px;padding:10px;color:#9a9a9a;font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:7px}
+.kadd i{font-size:16px}
+.archstrip{display:flex;align-items:center;gap:10px;border:1px solid var(--border-soft);background:#fcfcfc;border-radius:8px;padding:13px 16px;color:#7a7a7a;font-size:13px}
+.archstrip .ti-archive{font-size:18px;color:#9a9a9a}
+.archstrip .go{margin-left:auto;display:flex;align-items:center;gap:6px;color:#151515;font-weight:500}
+
+/* Forslag D — focus */
+.hero{position:relative;display:flex;align-items:stretch;gap:0;border:1px solid var(--border);border-left:4px solid var(--rail);border-radius:9px;background:#fff;overflow:hidden}
+.hero-main{padding:18px 22px;border-right:1px solid var(--border-soft);width:340px;flex:none;display:flex;flex-direction:column}
+.hero-kicker{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.18em;color:var(--rail);display:flex;align-items:center;gap:7px}
+.hero-kicker .pulse{width:7px;height:7px;border-radius:50%;background:var(--fill)}
+.hero-name{font-size:20px;font-weight:600;letter-spacing:-0.02em;margin-top:10px;line-height:1.2}
+.hero-code{font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:#8f8f8f;margin-top:4px}
+.hero-cust{font-size:13.5px;color:#6f6f6f;margin-top:10px}
+.hero-sbar{margin-top:auto;padding-top:16px}
+.hero-kpis{flex:1;display:grid;grid-template-columns:repeat(2,1fr);gap:2px;padding:18px 8px;align-content:center}
+.kpi{padding:8px 18px}
+.kpi .v{font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1}
+.kpi .l{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em;color:#8d8d8d;margin-top:6px}
+.kpi .v.red{color:var(--danger)}
+.hero-side{width:280px;flex:none;border-left:1px solid var(--border-soft);padding:18px;display:flex;flex-direction:column;gap:14px}
+.nexttask{}
+.nexttask .nl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#9a9a9a}
+.nexttask .nt{display:flex;align-items:center;gap:9px;margin-top:8px;border:1px solid var(--border-soft);border-radius:6px;padding:9px 11px;font-size:13px;font-weight:500}
+.nexttask .nt i{color:#9a9a9a;font-size:16px}
+.team{display:flex;align-items:center;gap:10px}
+.avstack{display:flex}
+.avstack span{width:30px;height:30px;border-radius:50%;background:#eceae3;border:2px solid #fff;margin-left:-8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#555}
+.avstack span:first-child{margin-left:0}
+.team .tl{font-size:13px;color:#777}
+.hero-open{margin-top:auto;display:flex;align-items:center;justify-content:center;gap:8px;height:42px;background:#151515;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:500}
+.hero-open i{font-size:17px}
+
+.grid4b{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.scard{position:relative;background:#fff;border:1px solid var(--border);border-radius:7px;overflow:hidden;display:flex;flex-direction:column}
+.scard-top{padding:13px 13px 12px;flex:1}
+.scard-name{font-size:14px;font-weight:600;line-height:1.25;padding-right:18px;display:flex;align-items:center;gap:8px}
+.scard-dot{width:8px;height:8px;border-radius:50%;background:var(--fill);flex:none}
+.scard-name span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scard-sub{font-size:12px;color:#7d7d7d;margin-top:8px}
+.scard-mx{display:flex;gap:14px;margin-top:11px}
+.scard-mx .lm{font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="frames" id="frames"></div>
+<script>
+const STATUS={
+  planning:{label:'Planlegges',fill:'#b9852b',rail:'#b9852b',bars:1},
+  active:{label:'Under utførelse',fill:'#c7ef63',rail:'#c7ef63',bars:3},
+  on_hold:{label:'På pause',fill:'#7b7b7b',rail:'#7b7b7b',bars:2},
+  completed:{label:'Fullført',fill:'#7ca92c',rail:'#7ca92c',bars:3},
+  rejected:{label:'Avvist',fill:'#c25a4b',rail:'#c25a4b',bars:0}
+};
+const P=[
+ {name:'Sydhøyveien 1',code:'PRJ-66A2F8',cust:'casper nag',ini:'C',status:'planning',period:'27.06.2026 — —',done:1,total:8,avvik:0,overdue:0,team:3,days:null,next:'Befaring og oppmåling'},
+ {name:'Bad – Storgata 14',code:'PRJ-7B12C4',cust:'Solberg Eiendom AS',ini:'S',status:'active',period:'02.06 — 18.07.2026',done:9,total:14,avvik:1,overdue:1,team:4,days:12,next:'Membran bad 2. etg'},
+ {name:'Tilbygg Lindevegen 8',code:'PRJ-9F4A21',cust:'Familien Haugen',ini:'H',status:'active',period:'12.05 — 30.06.2026',done:11,total:13,avvik:0,overdue:0,team:2,days:3,next:'Kledning sørvegg'},
+ {name:'Borettslaget Solsiden',code:'PRJ-2C88E0',cust:'Solsiden BRL',ini:'S',status:'on_hold',period:'01.04 — 15.09.2026',done:5,total:22,avvik:2,overdue:1,team:5,days:80,next:'Avventer styrevedtak'},
+ {name:'Takomlegging Fjellveien 22',code:'PRJ-51DD3A',cust:'Fjell Eiendom AS',ini:'F',status:'planning',period:'15.07 — 20.08.2026',done:0,total:9,avvik:0,overdue:0,team:2,days:47,next:'Innhente materialpriser'},
+ {name:'Garasje Bjørkåsen 5',code:'PRJ-A3E1F9',cust:'Kjell Andersen',ini:'K',status:'active',period:'20.06 — 05.07.2026',done:6,total:10,avvik:0,overdue:0,team:2,days:7,next:'Støpe gulv'}
+];
+const ARCH=[
+ {name:'Vinduer Åsveien 3',code:'PRJ-44B2C1',cust:'Åsen Sameie',status:'completed',period:'10.03 — 28.04.2026'},
+ {name:'Anbud Næringsbygg Vest',code:'PRJ-77C9D2',cust:'Vest Utvikling AS',status:'rejected',period:'—'}
+];
+const pct=p=>p.total?Math.round(p.done/p.total*100):0;
+function frist(p){
+  if(p.days==null) return {l:'Ikke satt',t:''};
+  if(p.days<0) return {l:Math.abs(p.days)+' d over',t:'danger'};
+  if(p.days<=7) return {l:p.days+' dager',t:'warn'};
+  return {l:p.days+' dager',t:''};
+}
+function sbar(status,flush){
+  const s=STATUS[status];let b='';
+  for(let i=0;i<3;i++)b+=`<span class="${i<s.bars?'':'off'}"></span>`;
+  return `<div class="sbar ${flush?'flush':''}" style="--rail:${s.rail};--fill:${s.fill}">
+    <div class="bars">${b}</div>
+    <div class="sbar-label"><span class="sbar-dot"></span><p>${s.label}</p></div>
+  </div>`;
+}
+function sidebar(){
+  const items=[
+    ['ti-layout-dashboard','Dashbord',0,0],['ti-folder','Prosjekter',1,0],['ti-users','Kunder',0,0],
+    ['ti-calendar','Kalender',0,0],['ti-mail','Meldinger',0,0],['ti-copy','Dokumenter',0,0],
+    ['ti-shield','HMS',0,1],['ti-rosette-discount-check','Mine priser',0,1],['ti-building','Min bedrift',0,1],
+    ['ti-adjustments-horizontal','Innstillinger',0,1]
+  ];
+  let nav=items.map(([ic,lab,act,chev])=>`<div class="nav-item ${act?'active':''}"><i class="ti ${ic}"></i><span>${lab}</span>${chev?'<i class="ti ti-chevron-right chev"></i>':''}</div>`).join('');
+  return `<div class="sidebar">
+    <div class="logo-row"><div class="logo-mark"><span></span></div><div class="logo-text">Proanbud</div><i class="ti ti-bell"></i></div>
+    <button class="new-btn"><i class="ti ti-circle-plus"></i> Nytt prosjekt</button>
+    <div class="nav">${nav}</div>
+    <div class="nav-label">Pågående Prosjekter</div>
+    <div class="nav"><div class="nav-item"><i class="ti ti-hash"></i><span>Sydhøyveien 1</span></div>
+    <div class="nav-item see-all"><i class="ti ti-dots"></i><span>Se alle prosjekter</span></div></div>
+    <div class="user-chip"><div class="user-av">n</div><div><div class="user-name">nagsoftware</div><div class="user-mail">casper@nagsoftware.no</div></div><i class="ti ti-selector"></i></div>
+  </div>`;
+}
+function pageHead(actions){
+  return `<div class="page-head"><h1>Prosjektoversikt</h1><div class="head-actions">${actions||''}<button class="btn-outline"><i class="ti ti-circle-plus"></i> Nytt prosjekt</button></div></div>`;
+}
+function filters(){
+  return `<div class="filters">
+    <div><div class="flabel">Søk</div><div class="input-wrap"><i class="ti ti-search"></i><input placeholder="Søk prosjekt, kunde eller ID"></div></div>
+    <div><div class="flabel">Sorter</div><div class="select"><span>Sist oppdatert</span><i class="ti ti-chevron-down"></i></div></div>
+  </div>`;
+}
+function secHead(t,c){return `<div class="sec-head"><h2>${t}</h2><span class="count">${c} prosjekter</span></div>`;}
+function metric(ic,val,lab,tone){
+  return `<div class="mcell ${tone?'tone-'+tone:''}"><div class="mtop"><i class="ti ${ic}"></i>${val}</div><div class="mlabel">${lab}</div></div>`;
+}
+function lm(ic,val,tone){return `<div class="lm ${tone?'tone-'+tone:''}"><i class="ti ${ic}"></i>${val}</div>`;}
+
+function screen(inner){return `<div class="screen">${sidebar()}<div class="main"><div class="topbar"><i class="ti ti-layout-sidebar-left-collapse"></i><div class="topsep"></div><div class="crumb">Prosjekter</div></div><div class="content">${inner}</div></div></div>`;}
+
+/* ===== Baseline ===== */
+function baselineCard(p){
+  return `<div class="card base-card">
+    <button class="dots"><i class="ti ti-dots-vertical"></i></button>
+    <div class="base-body"><div><p class="base-name">${p.name}</p><p class="base-code">${p.code}</p></div>
+    <div class="base-meta"><div>${p.cust}</div><div class="tnum">${p.period}</div></div></div>
+    ${sbar(p.status)}
+  </div>`;
+}
+function archTable(){
+  let rows=`<div class="arow ahead"><div>Prosjekt</div><div>Kunde</div><div>Periode</div><div>Status</div></div>`;
+  rows+=ARCH.map(p=>`<div class="arow"><div><div class="aname">${p.name}</div><div class="acode">${p.code}</div></div><div class="acell">${p.cust}</div><div class="amuted">${p.period}</div><div style="--rail:${STATUS[p.status].rail};--fill:${STATUS[p.status].fill}">${sbar(p.status,true)}</div></div>`).join('');
+  return `<div class="atable">${rows}</div>`;
+}
+function vBaseline(){
+  return screen(pageHead()+filters()+
+    `<div>${secHead('Aktive prosjekter',P.length)}<div class="grid4" style="margin-top:14px">${P.map(baselineCard).join('')}</div></div>`+
+    `<div>${secHead('Tidligere prosjekter',ARCH.length)}<div style="margin-top:14px">${archTable()}</div></div>`);
+}
+
+/* ===== Forslag A — rich ===== */
+function richCard(p){
+  const f=frist(p);const s=STATUS[p.status];
+  return `<div class="card rich-card">
+    <button class="dots"><i class="ti ti-dots-vertical"></i></button>
+    <div class="rich-top">
+      <div class="rich-head"><div class="avatar">${p.ini}</div><div class="rich-id"><p class="rich-name">${p.name}</p><p class="rich-code">${p.code}</p></div></div>
+      <div class="rich-sub">${p.cust} · <span class="tnum">${p.period}</span></div>
+      <div class="mstrip">
+        ${metric('ti-list-check',p.done+'/'+p.total,'Oppgaver')}
+        ${metric('ti-alert-triangle',p.avvik,'Avvik',p.avvik>0?'danger':'')}
+        ${metric('ti-calendar-event',f.l,'Frist',f.t)}
+      </div>
+      <div class="prog"><div class="prog-top"><span>Fremdrift</span><b>${pct(p)}%</b></div><div class="track"><span style="width:${pct(p)}%;background:${s.fill}"></span></div></div>
+    </div>
+    ${sbar(p.status)}
+  </div>`;
+}
+function vRich(){
+  return screen(pageHead()+filters()+
+    `<div>${secHead('Aktive prosjekter',P.length)}<div class="grid3" style="margin-top:14px">${P.map(richCard).join('')}</div></div>`);
+}
+
+/* ===== Forslag B — list ===== */
+function listRow(p){
+  const f=frist(p);const s=STATUS[p.status];let b='';
+  for(let i=0;i<3;i++)b+=`<span class="${i<s.bars?'':'off'}"></span>`;
+  return `<div class="lrow" style="--rail:${s.rail};--fill:${s.fill}">
+    <div><div class="lname">${p.name}</div><div class="lcode">${p.code}</div></div>
+    <div class="lcell">${p.cust}</div>
+    <div class="lmuted">${p.period}</div>
+    <div class="lmetrics">${lm('ti-list-check',p.done+'/'+p.total)}${lm('ti-alert-triangle',p.avvik,p.avvik>0?'danger':'')}${lm('ti-calendar-event',f.l,f.t)}</div>
+    <div class="lstatus"><div class="bars">${b}</div><p>${s.label}</p></div>
+    <i class="ti ti-chevron-right chev-end"></i>
+  </div>`;
+}
+function vList(){
+  const toggle=`<div class="toggle"><button><i class="ti ti-layout-grid"></i> Kort</button><button class="on"><i class="ti ti-list"></i> Liste</button></div>`;
+  const head=`<div class="lhead lrow" style="--rail:transparent;border-bottom:1px solid var(--border-soft)"><div>Prosjekt</div><div>Kunde</div><div>Periode</div><div>Oppgaver · avvik · frist</div><div>Status</div><div></div></div>`;
+  return screen(pageHead(toggle)+filters()+
+    `<div>${secHead('Aktive prosjekter',P.length)}<div class="list" style="margin-top:14px">${head}${P.map(listRow).join('')}</div></div>`);
+}
+
+/* ===== Forslag C — kanban ===== */
+function kanCard(p){
+  const f=frist(p);const s=STATUS[p.status];
+  return `<div class="kcard" style="--fill:${s.fill}">
+    <i class="ti ti-dots-vertical kdots"></i>
+    <div class="kname">${p.name}</div><div class="kcode">${p.code}</div>
+    <div class="ksub">${p.cust}</div>
+    <div class="kmetrics">${lm('ti-list-check',p.done+'/'+p.total)}${lm('ti-calendar-event',f.l,f.t)}${p.avvik>0?lm('ti-alert-triangle',p.avvik,'danger'):''}</div>
+    <div class="kprog"><div class="ptop"><span>Fremdrift</span><span>${pct(p)}%</span></div><div class="track"><span style="width:${pct(p)}%;background:${s.fill}"></span></div></div>
+  </div>`;
+}
+function kanCol(status){
+  const s=STATUS[status];const list=P.filter(p=>p.status===status);
+  return `<div class="kcol" style="--rail:${s.rail};--fill:${s.fill}">
+    <div class="kcol-head"><span class="kcol-dot"></span><span class="ttl">${s.label}</span><span class="cnt">${list.length}</span></div>
+    ${list.map(kanCard).join('')}
+    <button class="kadd"><i class="ti ti-plus"></i> Nytt prosjekt</button>
+  </div>`;
+}
+function vKanban(){
+  return screen(pageHead()+filters()+
+    `<div>${secHead('Aktive prosjekter',P.length)}<div class="board" style="margin-top:14px">${kanCol('planning')}${kanCol('active')}${kanCol('on_hold')}</div></div>`+
+    `<div class="archstrip"><i class="ti ti-archive"></i> <b style="font-weight:600;color:#151515">Tidligere prosjekter</b> · ${ARCH.length} fullførte og avviste <span class="go">Vis alle <i class="ti ti-chevron-right"></i></span></div>`);
+}
+
+/* ===== Forslag D — focus ===== */
+function heroCard(p){
+  const f=frist(p);const s=STATUS[p.status];
+  return `<div class="hero" style="--rail:${s.rail};--fill:${s.fill}">
+    <div class="hero-main">
+      <div class="hero-kicker"><span class="pulse"></span> Pågår nå</div>
+      <div class="hero-name">${p.name}</div><div class="hero-code">${p.code}</div>
+      <div class="hero-cust">${p.cust} · <span class="tnum">${p.period}</span></div>
+      <div class="hero-sbar">${sbar(p.status,true)}</div>
+    </div>
+    <div class="hero-kpis">
+      <div class="kpi"><div class="v">${p.done}/${p.total}</div><div class="l">Oppgaver</div></div>
+      <div class="kpi"><div class="v ${p.overdue>0?'red':''}">${p.overdue}</div><div class="l">Forfalte</div></div>
+      <div class="kpi"><div class="v ${p.avvik>0?'red':''}">${p.avvik}</div><div class="l">Åpne avvik</div></div>
+      <div class="kpi"><div class="v">${f.l}</div><div class="l">Frist</div></div>
+    </div>
+    <div class="hero-side">
+      <div class="nexttask"><div class="nl">Neste oppgave</div><div class="nt"><i class="ti ti-checkbox"></i> ${p.next}</div></div>
+      <div class="team"><div class="avstack"><span>SO</span><span>PE</span><span>MA</span><span>+1</span></div><div class="tl">${p.team} på laget</div></div>
+      <button class="hero-open">Åpne prosjekt <i class="ti ti-arrow-right"></i></button>
+    </div>
+  </div>`;
+}
+function smallCard(p){
+  const f=frist(p);const s=STATUS[p.status];
+  return `<div class="scard" style="--fill:${s.fill}">
+    <button class="dots"><i class="ti ti-dots-vertical"></i></button>
+    <div class="scard-top">
+      <div class="scard-name"><span class="scard-dot"></span><span>${p.name}</span></div>
+      <div class="scard-sub">${p.cust}</div>
+      <div class="scard-mx">${lm('ti-list-check',p.done+'/'+p.total)}${lm('ti-calendar-event',f.l,f.t)}</div>
+    </div>
+    ${sbar(p.status)}
+  </div>`;
+}
+function vFocus(){
+  const hero=P[1];const rest=P.filter(p=>p!==hero);
+  return screen(pageHead()+filters()+
+    `<div>${secHead('I fokus',1)}<div style="margin-top:14px">${heroCard(hero)}</div></div>`+
+    `<div>${secHead('Andre aktive prosjekter',rest.length)}<div class="grid4b" style="margin-top:14px">${rest.map(smallCard).join('')}</div></div>`);
+}
+
+document.getElementById('frames').innerHTML=
+  `<div id="s-baseline">${vBaseline()}</div>`+
+  `<div id="s-rich">${vRich()}</div>`+
+  `<div id="s-list">${vList()}</div>`+
+  `<div id="s-kanban">${vKanban()}</div>`+
+  `<div id="s-focus">${vFocus()}</div>`;
+</script>
+</body>
+</html>

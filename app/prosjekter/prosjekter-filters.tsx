@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { ProjectsViewToggle } from "./projects-view"
 
 const statusFilters = [
   { value: "all", label: "Alle" },
@@ -104,21 +105,25 @@ export function ProsjekterFilters() {
 
         <div className="sm:space-y-1">
           <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Sorter</p>
-          <Select value={currentSort} onValueChange={handleSortChange} disabled={isPending}>
-            <SelectTrigger className="h-9! w-full md:w-[180px]">
-              <SelectValue placeholder="Sorter etter" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectLabel>Sorter etter</SelectLabel>
-                {sortOptions.map((option) => (
-                  <SelectItem key={option.key} value={option.key}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          <div className="flex items-stretch gap-2">
+            <Select value={currentSort} onValueChange={handleSortChange} disabled={isPending}>
+              <SelectTrigger className="h-9! w-1/2 md:w-[180px]">
+                <SelectValue placeholder="Sorter etter" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>Sorter etter</SelectLabel>
+                  {sortOptions.map((option) => (
+                    <SelectItem key={option.key} value={option.key}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            {/* Kort/Kanban-bryteren bor til høyre for Sorter på alle skjermer. */}
+            <ProjectsViewToggle className="ml-auto" />
+          </div>
         </div>
       </div>
 

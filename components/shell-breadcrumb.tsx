@@ -12,7 +12,13 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 
-export function ShellBreadcrumb({ segments }: { segments: string[] }) {
+export function ShellBreadcrumb({
+  segments,
+  hideMobileTitle = false,
+}: {
+  segments: string[]
+  hideMobileTitle?: boolean
+}) {
   const router = useRouter()
   const mobileTitle = segments[segments.length - 1]
   // On detail pages (more than one crumb) show a native-style back arrow on mobile.
@@ -30,7 +36,7 @@ export function ShellBreadcrumb({ segments }: { segments: string[] }) {
           <ChevronLeftIcon className="size-6" />
         </button>
       ) : null}
-      {mobileTitle ? (
+      {mobileTitle && !hideMobileTitle ? (
         <span className="min-w-0 truncate text-sm font-medium md:hidden">{mobileTitle}</span>
       ) : null}
       <Breadcrumb className="hidden md:block">

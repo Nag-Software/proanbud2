@@ -17,6 +17,7 @@ type AppPageShellProps = {
   segments: string[]
   children?: ReactNode
   noPadding?: boolean
+  hideMobileTitle?: boolean
 }
 
 function DefaultCanvas() {
@@ -32,7 +33,7 @@ function DefaultCanvas() {
   )
 }
 
-function LegacyAppPageShell({ segments, children, noPadding }: AppPageShellProps) {
+function LegacyAppPageShell({ segments, children, noPadding, hideMobileTitle }: AppPageShellProps) {
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -45,7 +46,7 @@ function LegacyAppPageShell({ segments, children, noPadding }: AppPageShellProps
               orientation="vertical"
               className="mr-2 data-vertical:h-4 data-vertical:self-auto"
             />
-            <ShellBreadcrumb segments={segments} />
+            <ShellBreadcrumb segments={segments} hideMobileTitle={hideMobileTitle} />
           </div>
         </header>
         <div
@@ -61,7 +62,7 @@ function LegacyAppPageShell({ segments, children, noPadding }: AppPageShellProps
   )
 }
 
-export function AppPageShell({ segments, children, noPadding }: AppPageShellProps) {
+export function AppPageShell({ segments, children, noPadding, hideMobileTitle }: AppPageShellProps) {
   const shell = useAppShell()
   const insideShell = shell?.insideShell ?? false
   const setPageMeta = shell?.setPageMeta
@@ -72,15 +73,16 @@ export function AppPageShell({ segments, children, noPadding }: AppPageShellProp
     setPageMeta({
       segments,
       noPadding: Boolean(noPadding),
+      hideMobileTitle: Boolean(hideMobileTitle),
     })
-  }, [insideShell, setPageMeta, segmentsKey, noPadding])
+  }, [insideShell, setPageMeta, segmentsKey, noPadding, hideMobileTitle])
 
   if (shell?.insideShell) {
     return <>{children ?? <DefaultCanvas />}</>
   }
 
   return (
-    <LegacyAppPageShell segments={segments} noPadding={noPadding}>
+    <LegacyAppPageShell segments={segments} noPadding={noPadding} hideMobileTitle={hideMobileTitle}>
       {children}
     </LegacyAppPageShell>
   )

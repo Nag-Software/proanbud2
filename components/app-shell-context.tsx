@@ -12,6 +12,9 @@ import {
 export type AppShellPageMeta = {
   segments: string[]
   noPadding: boolean
+  // Hide the redundant single-segment page title in the mobile header (the bottom
+  // nav already shows the section). Desktop breadcrumb is unaffected.
+  hideMobileTitle: boolean
 }
 
 type AppShellContextValue = {
@@ -23,10 +26,12 @@ type AppShellContextValue = {
 const defaultPageMeta: AppShellPageMeta = {
   segments: [],
   noPadding: false,
+  hideMobileTitle: false,
 }
 
 function pageMetaEquals(a: AppShellPageMeta, b: AppShellPageMeta) {
   if (a.noPadding !== b.noPadding) return false
+  if (a.hideMobileTitle !== b.hideMobileTitle) return false
   if (a.segments.length !== b.segments.length) return false
   return a.segments.every((segment, index) => segment === b.segments[index])
 }
