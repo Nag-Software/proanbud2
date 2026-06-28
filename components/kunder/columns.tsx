@@ -25,7 +25,7 @@ type CustomerColumnHandlers = {
   showTripletex?: boolean
 }
 
-function CustomerRowActions({
+export function CustomerRowActions({
   customer,
   onViewDetails,
 }: {

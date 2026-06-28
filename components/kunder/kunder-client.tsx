@@ -2,13 +2,11 @@
 
 import * as React from "react"
 import { Customer } from "./schema"
-import { createCustomerColumns } from "./columns"
-import { DataTable } from "./data-table"
+import { CustomerList } from "./customer-list"
 import { CustomerDrawer } from "./customer-drawer"
 import { AddCustomerDrawer } from "./add-customer-drawer"
 import { Button } from "@/components/ui/button"
-import { PlusCircle, Users, Building2, User } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { PlusCircle } from "lucide-react"
 
 interface KunderClientProps {
   initialData: Customer[]
@@ -27,11 +25,6 @@ export function KunderClient({ initialData, tripletexEnabled = false }: KunderCl
     setSelectedCustomer(customer)
     setIsCustomerDrawerOpen(true)
   }, [])
-
-  const columns = React.useMemo(
-    () => createCustomerColumns({ onViewDetails: handleRowClick, showTripletex: tripletexEnabled }),
-    [handleRowClick, tripletexEnabled]
-  )
 
   // Handle local update so the open drawer reflects changes immediately
   const handleUpdateCustomer = (updatedCustomer: Customer) => {
@@ -59,7 +52,7 @@ export function KunderClient({ initialData, tripletexEnabled = false }: KunderCl
 
       
       <div>
-        <DataTable columns={columns} data={data} onRowClick={handleRowClick} />
+        <CustomerList data={data} onRowClick={handleRowClick} tripletexEnabled={tripletexEnabled} />
       </div>
 
       <CustomerDrawer 
