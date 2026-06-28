@@ -16,6 +16,12 @@ type RoleContextValue = {
   planKey: PlanKey | null
   enabledModules: string[]
   /**
+   * Raw billing status from the plan-context RPC (e.g. "trialing", "active").
+   * During an active trial EVERY feature/module is unlocked, so useUserRole
+   * short-circuits its gates when this is "trialing".
+   */
+  status: string | null
+  /**
    * Whether the plan context was resolved successfully. False means the RPC
    * failed (e.g. the get_company_plan_context migration is not applied yet).
    * Consumers fail OPEN when this is false so a missing migration degrades to
@@ -31,18 +37,25 @@ const RoleContext = createContext<RoleContextValue>({
   loadingRole: true,
   planKey: null,
   enabledModules: [],
+  status: null,
   planKnown: false,
 })
 
-type PlanContextRow = { plan_key?: PlanKey | null; enabled_modules?: string[] | null }
+type PlanContextRow = {
+  plan_key?: PlanKey | null
+  enabled_modules?: string[] | null
+  status?: string | null
+}
 
 function readPlan(data: PlanContextRow | null | undefined): {
   planKey: PlanKey | null
   enabledModules: string[]
+  status: string | null
 } {
   return {
     planKey: (data?.plan_key ?? null) as PlanKey | null,
     enabledModules: (data?.enabled_modules ?? []) as string[],
+    status: (data?.status ?? null) as string | null,
   }
 }
 
@@ -65,6 +78,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     loadingRole: true,
     planKey: null,
     enabledModules: [],
+    status: null,
     planKnown: false,
   })
 
@@ -81,6 +95,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
             loadingRole: false,
             planKey: null,
             enabledModules: [],
+            status: null,
             planKnown: true,
           })
         return

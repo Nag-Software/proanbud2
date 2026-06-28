@@ -3,6 +3,7 @@ import { cache } from "react"
 import {
   hasBillableAccess,
   hasFeature,
+  isTrialStatus,
   type FeatureKey,
   type PlanKey,
 } from "@/lib/billing/plans"
@@ -23,6 +24,7 @@ export async function companyHasModule(companyId: string, moduleKey: string): Pr
   // drift, so require the subscription to still be active/trialing.
   const { plan, modules, status } = await getCompanyPlanAndModules(companyId)
   void plan
+  if (isTrialStatus(status)) return true // trial = every module unlocked
   if (!hasBillableAccess(status)) return false
   return modules.includes(moduleKey)
 }
@@ -87,6 +89,7 @@ export async function companyHasFeature(
 ): Promise<boolean> {
   if (!companyId) return false
   const { plan, modules, status } = await getCompanyPlanAndModules(companyId)
+  if (isTrialStatus(status)) return true // trial = every feature unlocked
   if (!hasBillableAccess(status)) return false
   return hasFeature(plan, modules, feature)
 }

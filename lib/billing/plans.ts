@@ -207,6 +207,19 @@ export function hasBillableAccess(status: string | null | undefined): boolean {
   return status === "trialing" || status === "active" || status === "past_due"
 }
 
+/**
+ * Is the company in its free trial? During the trial EVERYTHING is unlocked —
+ * every plan feature and every à-la-carte module — regardless of which plan was
+ * chosen at signup or which modules have been added. This lets prospects try the
+ * full product (Proff features + Kjørebok and all other modules) before the trial
+ * converts to the plan/modules they actually pay for. Feature/module access gates
+ * short-circuit to `true` on this; see companyHasModule / companyHasFeature /
+ * requireModule (server) and useUserRole (client).
+ */
+export function isTrialStatus(status: string | null | undefined): boolean {
+  return status === "trialing"
+}
+
 type PriceMetadata = Record<string, string> | null | undefined
 
 export function planKeyFromPriceMetadata(metadata: PriceMetadata): PlanKey | null {

@@ -1,6 +1,6 @@
 import { getRoleDisplayName } from "@/lib/roles"
 import { useRoleContext } from "@/components/role-provider"
-import { hasFeature as resolveFeature, type FeatureKey } from "@/lib/billing/plans"
+import { hasFeature as resolveFeature, isTrialStatus, type FeatureKey } from "@/lib/billing/plans"
 
 /**
  * Reads the current user's role + plan context from the shared RoleProvider
@@ -12,7 +12,13 @@ import { hasFeature as resolveFeature, type FeatureKey } from "@/lib/billing/pla
  * route is also enforced server-side.
  */
 export function useUserRole() {
-  const { role, canonicalRole, loadingRole, planKey, enabledModules, planKnown } = useRoleContext()
+  const { role, canonicalRole, loadingRole, planKey, enabledModules, status, planKnown } =
+    useRoleContext()
+
+  // During the free trial every feature/module is unlocked regardless of the
+  // chosen plan or purchased modules — mirrors the server gates so the UI never
+  // shows an upsell/lock for something the trial company can actually use.
+  const isTrialing = isTrialStatus(status)
 
   return {
     role,
@@ -26,9 +32,10 @@ export function useUserRole() {
     enabledModules,
     // Fail open when the plan context could not be resolved (planKnown === false),
     // so a missing migration / transient RPC error never hides paid Proff features.
-    isProff: planKnown ? planKey === "proff" : true,
-    hasModule: (moduleKey: string) => (planKnown ? enabledModules.includes(moduleKey) : true),
+    isProff: planKnown ? isTrialing || planKey === "proff" : true,
+    hasModule: (moduleKey: string) =>
+      planKnown ? isTrialing || enabledModules.includes(moduleKey) : true,
     hasFeature: (feature: FeatureKey) =>
-      planKnown ? resolveFeature(planKey, enabledModules, feature) : true,
+      planKnown ? isTrialing || resolveFeature(planKey, enabledModules, feature) : true,
   }
 }
