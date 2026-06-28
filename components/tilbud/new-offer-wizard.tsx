@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { toast } from "sonner"
 
 import { reportClientError } from "@/lib/errors/client"
+import { generateLocalId } from "@/lib/utils"
 import { AiChatPanel } from "@/components/tilbud/ai-chat-panel"
 import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
 import { useRouter } from "next/navigation"
@@ -191,7 +192,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     const slotsLeft = Math.max(0, 10 - sourceDocuments.length)
     const selectedFiles = Array.from(event.target.files).slice(0, slotsLeft)
     const next = selectedFiles.map((file) => ({
-      id: crypto.randomUUID(),
+      id: generateLocalId(),
       name: file.name,
       sizeBytes: file.size,
       type: file.type,
@@ -574,7 +575,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                     if (lineItems.length === 0) {
                       addLineItems([
                         {
-                          id: crypto.randomUUID(),
+                          id: generateLocalId(),
                           subproject: defaultSubproject,
                           title: "Ny komponent",
                           description: "",

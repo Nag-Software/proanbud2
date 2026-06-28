@@ -154,7 +154,11 @@ export function LiveTracker({ onComplete, onCancel }: Props) {
       },
       (err) => {
         if (err.code === err.PERMISSION_DENIED) {
-          setError("Posisjon ble avslått. Tillat posisjon for å spore kjøringen, eller registrer turen manuelt.")
+          // On iPhone a denial can come from EITHER the global Location Services
+          // toggle OR the per-site/app permission — and when the global toggle is
+          // off, Safari/iOS reports PERMISSION_DENIED with no in-page prompt to
+          // tap, so "allow in the page" alone can't fix it. Name both paths.
+          setError("Posisjon ble avslått. På iPhone: sjekk at Posisjonstjenester er på under Innstillinger → Personvern og sikkerhet, og at nettleseren har posisjonstilgang. Du kan også registrere turen manuelt.")
         } else {
           setError("Fikk ikke posisjon akkurat nå. Hold appen åpen og prøv igjen.")
         }

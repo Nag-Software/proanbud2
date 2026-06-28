@@ -45,6 +45,29 @@ function defaultSlotTimes(day: Date) {
   return { start, end }
 }
 
+// <input type="datetime-local"> exchanges a bare "YYYY-MM-DDTHH:mm" string with
+// no timezone offset. `new Date(value)` on that form is NOT portable: V8 (Chrome)
+// parses it as LOCAL time, but JavaScriptCore (Safari) parses it as UTC — so on
+// Safari reading the field back shifts the saved event by the user's offset
+// (1–2 h in Norway), and that wrong time is persisted via toISOString() and
+// synced to Google/Microsoft/Tripletex. Going through explicit local components
+// (the `new Date(y, m, d, ...)` constructor is local on every engine) fixes it.
+function parseLocalDatetimeInput(value: string): Date | null {
+  if (!value) return null
+  const [datePart, timePart] = value.split("T")
+  if (!datePart || !timePart) return null
+  const [year, month, day] = datePart.split("-").map(Number)
+  const [hour, minute] = timePart.split(":").map(Number)
+  if ([year, month, day, hour, minute].some(Number.isNaN)) return null
+  return new Date(year, month - 1, day, hour, minute, 0, 0)
+}
+
+function formatLocalDatetimeInput(date: Date | null): string {
+  if (!date) return ""
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 function KalenderPage() {
   const isMobile = useIsMobile()
   const confirm = useConfirm()
@@ -583,11 +606,11 @@ function KalenderPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Starttidspunkt</Label>
-                <Input type="datetime-local" className="rounded-none" value={eventStart ? new Date(eventStart.getTime() - eventStart.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEventStart(new Date(e.target.value))} />
+                <Input type="datetime-local" className="rounded-none" value={formatLocalDatetimeInput(eventStart)} onChange={(e) => setEventStart(parseLocalDatetimeInput(e.target.value))} />
               </div>
               <div className="space-y-2">
                 <Label>Sluttidspunkt</Label>
-                <Input type="datetime-local" className="rounded-none" value={eventEnd ? new Date(eventEnd.getTime() - eventEnd.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} onChange={(e) => setEventEnd(new Date(e.target.value))} />
+                <Input type="datetime-local" className="rounded-none" value={formatLocalDatetimeInput(eventEnd)} onChange={(e) => setEventEnd(parseLocalDatetimeInput(e.target.value))} />
               </div>
             </div>
 
