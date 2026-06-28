@@ -115,7 +115,11 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: 'Bruker registrert og tilgang tildelt',
-      userId: newUserId
+      userId: newUserId,
+      // Return the email the account was actually bound to (the invitation's
+      // email, never the client-supplied one) so the client can auto-log-in with
+      // the correct address even if the typed value differed.
+      email: targetEmail,
     }, { status: 201 });
 
   } catch (error) {

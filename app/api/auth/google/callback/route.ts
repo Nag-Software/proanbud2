@@ -52,6 +52,14 @@ export async function GET(request: Request) {
               email: user.email ?? `${user.id}@no-email.local`,
               full_name: fullName ?? user.email?.split('@')[0] ?? 'Ny Bruker',
               company_id: null,
+              // Leave role NULL (not the column default 'worker'). A self-signup
+              // user must look "not onboarded yet" so middleware sends them to
+              // /create-company (where they become admin). Defaulting to 'worker'
+              // makes isInvitedCompanyMember() true and bounces them to
+              // /ingen-tilgang ("ask your admin for an invite") — a dead end for
+              // someone who just created an account. Mirrors the email-signup path,
+              // where no users row exists until /create-company assigns 'admin'.
+              role: null,
             },
             { onConflict: 'id', ignoreDuplicates: true }
           )

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, Suspense } from "react"
+import React, { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -38,6 +38,37 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  // Invitation context: the account is always created on the invitation's email
+  // server-side, so we bind the form to it (prefill + lock) to keep the typed
+  // value from drifting and breaking auto-login.
+  const [inviteEmail, setInviteEmail] = useState<string | null>(null)
+  const [inviteCompany, setInviteCompany] = useState<string | null>(null)
+  const [inviteInvalid, setInviteInvalid] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!inviteToken) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/invitations/${encodeURIComponent(inviteToken)}/validate`)
+        const data = await res.json().catch(() => ({}))
+        if (cancelled) return
+        if (!res.ok || !data?.valid) {
+          setInviteInvalid(data?.error || "Invitasjonen er ugyldig eller utløpt. Be om en ny invitasjon.")
+          return
+        }
+        if (data.email) setEmail(data.email)
+        setInviteEmail(data.email ?? null)
+        setInviteCompany(data.companyName ?? null)
+      } catch {
+        // Network hiccup — leave the field editable; auto-login still falls back
+        // to the canonical email returned by /api/auth/register-invited.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [inviteToken])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -63,14 +94,18 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
            return;
         }
 
-        // Logger inn automatisk etter at account + bedrift/rolle er satt opp
+        // Logger inn automatisk etter at account + bedrift/rolle er satt opp.
+        // Bruk e-posten serveren faktisk knyttet kontoen til (invitasjonens
+        // e-post, ikke den innskrevne) slik at innloggingen ikke feiler dersom
+        // verdiene skulle avvike.
+        const loginEmail = resData.email || inviteEmail || email
         const { error: signInError } = await supabase.auth.signInWithPassword({
-          email,
+          email: loginEmail,
           password
         });
 
         if (signInError) {
-          setError("Konto opprettet, men kunne ikke logge inn automatisk.");
+          setError("Konto opprettet, men automatisk innlogging feilet. Gå til innlogging og logg inn manuelt.");
         } else {
           completeClientLogin(router);
         }
@@ -112,9 +147,13 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
       <div className={cn("flex flex-col gap-6", className)} {...props}>
         <Card>
           <CardHeader className="text-center">
-            <CardTitle className="text-xl">{inviteToken ? "Aksepter Invitasjon" : "Velkommen til Proanbud"}</CardTitle>
+            <CardTitle className="text-xl">{inviteToken ? "Aksepter invitasjon" : "Velkommen til Proanbud"}</CardTitle>
             <CardDescription>
-              {inviteToken ? "Registrer deg for å få tilgang til arbeidsområdet." : "Opprett en ny bruker"}
+              {inviteToken
+                ? inviteCompany
+                  ? `Du er invitert til ${inviteCompany}. Fullfør registreringen for å få tilgang.`
+                  : "Registrer deg for å få tilgang til arbeidsområdet."
+                : "Opprett en ny bruker"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -124,7 +163,7 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
                   <Button
                     variant="outline"
                     type="button"
-                    disabled={loading}
+                    disabled={loading || !!inviteInvalid}
                     onClick={() => {
                       startGoogleLogin()
                     }}
@@ -154,7 +193,7 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
                   />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="email">Epost</FieldLabel>
+                  <FieldLabel htmlFor="email">E-post</FieldLabel>
                   <Input
                     id="email"
                     type="email"
@@ -162,7 +201,15 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    readOnly={!!inviteEmail}
+                    aria-readonly={!!inviteEmail}
+                    className={inviteEmail ? "bg-muted text-muted-foreground" : undefined}
                   />
+                  {inviteEmail ? (
+                    <FieldDescription>
+                      Invitasjonen er knyttet til denne e-posten.
+                    </FieldDescription>
+                  ) : null}
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="password">Passord</FieldLabel>
@@ -198,9 +245,9 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
                     </div>
                   ) : (
                     <>
-                      <Button type="submit" disabled={loading}>{loading ? 'Oppretter konto…' : 'Opprett konto'}</Button>
-                      {error ? (
-                        <FieldDescription className="text-center text-destructive">{error}</FieldDescription>
+                      <Button type="submit" disabled={loading || !!inviteInvalid}>{loading ? 'Oppretter konto…' : 'Opprett konto'}</Button>
+                      {(inviteInvalid || error) ? (
+                        <FieldDescription className="text-center text-destructive">{inviteInvalid || error}</FieldDescription>
                       ) : (
                         <FieldDescription className="text-center">
                           Har du allerede en konto? <a href="/login">Logg inn</a>
