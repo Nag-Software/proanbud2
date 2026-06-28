@@ -74,6 +74,36 @@ function replacePrefix(value: string, oldPrefix: string, nextPrefix: string) {
   return `${nextPrefix}${value.slice(oldPrefix.length)}`
 }
 
+type SupabaseClient = Awaited<ReturnType<typeof createServerSupabase>>
+
+/**
+ * Sign every file's storage path in ONE round-trip per bucket (createSignedUrls)
+ * instead of one createSignedUrl call per file. Returns a path -> signedUrl map.
+ */
+async function batchSignUrls(
+  supabase: SupabaseClient,
+  rows: Pick<SupabaseDocumentRow, "item_type" | "storage_bucket" | "storage_path">[]
+) {
+  const byBucket = new Map<string, string[]>()
+  for (const row of rows) {
+    if (row.item_type !== "file" || !row.storage_bucket || !row.storage_path) continue
+    const paths = byBucket.get(row.storage_bucket) ?? []
+    paths.push(row.storage_path)
+    byBucket.set(row.storage_bucket, paths)
+  }
+
+  const signedByPath = new Map<string, string>()
+  await Promise.all(
+    [...byBucket.entries()].map(async ([bucket, paths]) => {
+      const { data } = await supabase.storage.from(bucket).createSignedUrls(paths, 60 * 60)
+      for (const entry of data ?? []) {
+        if (entry.signedUrl && entry.path) signedByPath.set(entry.path, entry.signedUrl)
+      }
+    })
+  )
+  return signedByPath
+}
+
 async function getAuthenticatedUser() {
   const supabase = await createServerSupabase()
   const {
@@ -92,8 +122,59 @@ export async function GET(request: Request) {
   const provider = (url.searchParams.get("provider") ?? "supabase") as Provider
   const parentId = url.searchParams.get("parentId") ?? undefined
   const queryIsRootOnly = url.searchParams.get("rootOnly") === "true"
+  const searchTerm = (url.searchParams.get("search") ?? "")
+    .replace(/[,()*%_]/g, " ")
+    .trim()
+    .slice(0, 80)
 
   if (provider === "supabase") {
+    // Recursive name search across all of the user's items (RLS-scoped).
+    if (searchTerm.length >= 2) {
+      const { data, error } = await supabase
+        .from("document_items")
+        .select("id,name,item_type,external_parent_id,mime_type,extension,size_bytes,storage_bucket,storage_path,web_url,download_url,last_modified_at,updated_at")
+        .eq("user_id", user.id)
+        .eq("provider", "supabase")
+        .ilike("name", `%${searchTerm}%`)
+        .order("item_type", { ascending: true })
+        .order("name", { ascending: true })
+        .limit(100)
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
+
+      const hitRows = (data ?? []) as SupabaseDocumentRow[]
+      const signedByPath = await batchSignUrls(supabase, hitRows)
+
+      const items = hitRows.map((row) => {
+        const parentPath = row.external_parent_id || null
+        const signedUrl = row.storage_path ? signedByPath.get(row.storage_path) ?? null : null
+        return {
+          id: row.id,
+          parentPath,
+          folderPath:
+            row.item_type === "folder"
+              ? parentPath
+                ? `${parentPath}/${row.name}`
+                : row.name
+              : null,
+          name: row.name,
+          itemType: row.item_type,
+          mimeType: row.mime_type,
+          extension: row.extension,
+          sizeBytes: row.size_bytes,
+          provider: "supabase",
+          webUrl: signedUrl ?? row.web_url,
+          downloadUrl: signedUrl ?? row.download_url,
+          lastModifiedAt: row.last_modified_at,
+          updatedAt: row.updated_at,
+        }
+      })
+
+      return NextResponse.json({ items })
+    }
+
     // Only fetch exactly what we need, filtering natively in the DB instead of fetching ALL rows
     let query = supabase
       .from("document_items")
@@ -150,46 +231,25 @@ export async function GET(request: Request) {
     }
 
     const directFiles = childRows.filter((row) => row.item_type === "file")
+    const signedByPath = await batchSignUrls(supabase, directFiles)
 
-    const filesWithSignedUrls = await Promise.all(
-      directFiles.map(async (row) => {
-        if (!row.storage_bucket || !row.storage_path) {
-          return {
-            id: row.id,
-            folderPath: currentFolder || null,
-            name: row.name,
-            itemType: row.item_type,
-            mimeType: row.mime_type,
-            extension: row.extension,
-            sizeBytes: row.size_bytes,
-            provider: "supabase",
-            webUrl: row.web_url,
-            downloadUrl: row.download_url,
-            lastModifiedAt: row.last_modified_at,
-            updatedAt: row.updated_at,
-          }
-        }
-
-        const { data: signed } = await supabase.storage
-          .from(row.storage_bucket)
-          .createSignedUrl(row.storage_path, 60 * 60)
-
-        return {
-          id: row.id,
-          folderPath: currentFolder || null,
-          name: row.name,
-          itemType: row.item_type,
-          mimeType: row.mime_type,
-          extension: row.extension,
-          sizeBytes: row.size_bytes,
-          provider: "supabase",
-          webUrl: signed?.signedUrl ?? row.web_url,
-          downloadUrl: signed?.signedUrl ?? row.download_url,
-          lastModifiedAt: row.last_modified_at,
-          updatedAt: row.updated_at,
-        }
-      })
-    )
+    const filesWithSignedUrls = directFiles.map((row) => {
+      const signedUrl = row.storage_path ? signedByPath.get(row.storage_path) ?? null : null
+      return {
+        id: row.id,
+        folderPath: currentFolder || null,
+        name: row.name,
+        itemType: row.item_type,
+        mimeType: row.mime_type,
+        extension: row.extension,
+        sizeBytes: row.size_bytes,
+        provider: "supabase",
+        webUrl: signedUrl ?? row.web_url,
+        downloadUrl: signedUrl ?? row.download_url,
+        lastModifiedAt: row.last_modified_at,
+        updatedAt: row.updated_at,
+      }
+    })
 
     return NextResponse.json({ items: [...folders, ...filesWithSignedUrls] })
   }
@@ -545,15 +605,14 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: moved.error.message }, { status: 500 })
     }
 
-    const { data: signed } = await supabase.storage.from(row.storage_bucket).createSignedUrl(newPath, 60 * 60)
-
+    // URLs are minted lazily/batched on the next GET — no need to sign here.
     const { error: updateError } = await supabase
       .from("document_items")
       .update({
         storage_path: newPath,
         external_parent_id: targetFolderPath || null,
-        web_url: signed?.signedUrl ?? null,
-        download_url: signed?.signedUrl ?? null,
+        web_url: null,
+        download_url: null,
         last_modified_at: new Date().toISOString(),
       })
       .eq("id", id)
@@ -679,7 +738,6 @@ export async function PATCH(request: Request) {
           return NextResponse.json({ error: moved.error.message }, { status: 500 })
         }
 
-        const { data: signed } = await supabase.storage.from(fileRow.storage_bucket).createSignedUrl(newPath, 60 * 60)
         const newRelative = stripUserPrefix(newPath, user.id)
         const newSlashIndex = newRelative.lastIndexOf("/")
         const newParentPath = newSlashIndex > 0 ? newRelative.slice(0, newSlashIndex) : ""
@@ -689,8 +747,8 @@ export async function PATCH(request: Request) {
           .update({
             storage_path: newPath,
             external_parent_id: newParentPath || null,
-            web_url: signed?.signedUrl ?? null,
-            download_url: signed?.signedUrl ?? null,
+            web_url: null,
+            download_url: null,
             last_modified_at: nowIso,
             last_synced_at: nowIso,
           })
@@ -718,16 +776,15 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: moved.error.message }, { status: 500 })
     }
 
-    const { data: signed } = await supabase.storage.from(row.storage_bucket).createSignedUrl(newPath, 60 * 60)
-
+    // URLs are minted lazily/batched on the next GET — no need to sign here.
     const { error: updateError } = await supabase
       .from("document_items")
       .update({
         name: newName,
         extension: fileExtension(newName),
         storage_path: newPath,
-        web_url: signed?.signedUrl ?? null,
-        download_url: signed?.signedUrl ?? null,
+        web_url: null,
+        download_url: null,
         last_modified_at: new Date().toISOString(),
       })
       .eq("id", id)

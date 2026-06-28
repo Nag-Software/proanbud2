@@ -1,705 +1,471 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
-import {
-  ChevronLeft,
-  ChevronRight,
-  Cloud,
-  CloudUpload,
-  Cog,
-  ExternalLink,
-  FileText,
-  Folder,
-  FolderPlus,
-  HardDrive,
-  Loader2,
-  PanelLeft,
-  PencilLine,
-  Plus,
-  Trash2,
-  Upload,
-} from "lucide-react"
+import { useCallback, useMemo, useState } from "react"
 import { toast } from "sonner"
-import Image from "next/image"
-
-type Provider = "supabase" | "google_drive" | "onedrive"
-
-type DocumentItem = {
-  id: string
-  folderPath?: string | null
-  name: string
-  itemType: "file" | "folder"
-  mimeType: string | null
-  extension: string | null
-  sizeBytes: number | null
-  provider: Provider
-  webUrl: string | null
-  downloadUrl: string | null
-  lastModifiedAt: string | null
-  updatedAt: string
-}
-
-type Integration = {
-  provider: "google_drive" | "onedrive"
-}
-
-type PathNode = {
-  id: string | null
-  name: string
-}
-
-type ContextMenuState =
-  | {
-      type: "item"
-      item: DocumentItem
-      x: number
-      y: number
-    }
-  | {
-      type: "blank"
-      x: number
-      y: number
-    }
-
-function formatBytes(size?: number | null) {
-  if (!size || size <= 0) return "-"
-  const units = ["B", "KB", "MB", "GB", "TB"]
-  let value = size
-  let unitIndex = 0
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
-  }
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`
-}
-
-function providerLabel(provider: Provider) {
-  if (provider === "supabase") return "Proanbud"
-  if (provider === "google_drive") return "Google Drive"
-  return "OneDrive"
-}
-
-function folderPathFromItem(item: DocumentItem) {
-  if (item.provider !== "supabase" || item.itemType !== "folder") return null
-  if (item.folderPath) return item.folderPath
-  return item.id.startsWith("folder:") ? item.id.replace("folder:", "") : null
-}
-
-function itemAccentClass(item: DocumentItem) {
-  if (item.itemType === "folder") return "theme-doc-accent-folder"
-  if (item.extension === "pdf") return "theme-doc-accent-pdf"
-  if (item.extension === "xlsx" || item.extension === "xls") return "theme-doc-accent-sheet"
-  if (item.extension === "docx" || item.extension === "doc") return "theme-doc-accent-doc"
-  return "theme-doc-accent-file"
-}
+import { useConfirm } from "@/components/ui/confirm-dialog"
+import { sortItems } from "./utils"
+import * as api from "./data/api"
+import {
+  cacheInsertItem,
+  cacheMoveItem,
+  cacheRemoveItem,
+  cacheRenameItem,
+  ensureFolder,
+  ensureRootFolders,
+  invalidateProvider,
+  prefetchFolder,
+  useFolder,
+  useIntegrations,
+  useRootFolders,
+  useSearch,
+} from "./data/documents-store"
+import { useNavigation } from "./hooks/use-navigation"
+import { useMediaQuery } from "./hooks/use-media-query"
+import { useSelection } from "./hooks/use-selection"
+import { useViewPrefs } from "./hooks/use-view-prefs"
+import { useUploadQueue } from "./hooks/use-upload-queue"
+import { useDragMove } from "./hooks/use-drag-move"
+import { useContextMenu } from "./hooks/use-context-menu"
+import { DocumentsToolbar } from "./components/documents-toolbar"
+import { DocumentsBreadcrumb } from "./components/documents-breadcrumb"
+import { DocumentsSidebar } from "./components/documents-sidebar"
+import { ListView } from "./components/list-view"
+import { GridView } from "./components/grid-view"
+import { PreviewPanel } from "./components/preview-panel"
+import { DocumentsContextMenu } from "./components/context-menu"
+import { UploadQueue } from "./components/upload-queue"
+import { ErrorState, EmptyFolderState, NotConnectedState } from "./components/empty-states"
+import { MoveToDialog, NewAreaDialog, NewFolderDialog, RenameDialog } from "./components/dialogs"
+import { FolderSkeletonBody } from "./components/folder-skeleton"
+import type { ItemActions } from "./components/view-types"
+import type { DocumentItem, Provider, SearchHit } from "./types"
 
 export default function DocumentsManager() {
   const [provider, setProvider] = useState<Provider>("supabase")
-  const [items, setItems] = useState<DocumentItem[]>([])
-  const [integrations, setIntegrations] = useState<Integration[]>([])
-  const [loading, setLoading] = useState(true)
+  const hasPreviewPane = useMediaQuery("(min-width: 1024px)", true)
+  const nav = useNavigation(provider)
+  const folder = useFolder(provider, nav.currentFolderId)
+  const rootFolders = useRootFolders(provider)
+  const integrations = useIntegrations()
+  const prefs = useViewPrefs()
+  const confirm = useConfirm()
+
   const [query, setQuery] = useState("")
-  const [busyId, setBusyId] = useState<string | null>(null)
-  const [notConnected, setNotConnected] = useState(false)
-  const [rootFolders, setRootFolders] = useState<DocumentItem[]>([])
+  const [searchReload, setSearchReload] = useState(0)
+  const trimmedQuery = query.trim()
+  const searchMode = provider === "supabase" && trimmedQuery.length >= 2
+  const search = useSearch(provider, searchMode ? trimmedQuery : "", searchReload)
+
+  const [previewItem, setPreviewItem] = useState<DocumentItem | null>(null)
   const [newFolderOpen, setNewFolderOpen] = useState(false)
-  const [newFolderName, setNewFolderName] = useState("")
   const [newAreaOpen, setNewAreaOpen] = useState(false)
-  const [newAreaName, setNewAreaName] = useState("")
-  const [areasOpen, setAreasOpen] = useState(false)
   const [renameTarget, setRenameTarget] = useState<DocumentItem | null>(null)
-  const [renameValue, setRenameValue] = useState("")
-  const [deleteTarget, setDeleteTarget] = useState<DocumentItem | null>(null)
-  const [disconnectTarget, setDisconnectTarget] = useState<"google_drive" | "onedrive" | null>(null)
-  const [detailsTarget, setDetailsTarget] = useState<DocumentItem | null>(null)
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
-  const [draggingItem, setDraggingItem] = useState<DocumentItem | null>(null)
-  const [dropTargetPath, setDropTargetPath] = useState<string | null | undefined>(undefined)
-  const [isDraggingNative, setIsDraggingNative] = useState(false)
-  const [pathStacks, setPathStacks] = useState<Record<Provider, PathNode[]>>({
-    supabase: [{ id: null, name: "Alle områder" }],
-    google_drive: [{ id: null, name: "Google Drive" }],
-    onedrive: [{ id: null, name: "OneDrive" }],
-  })
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const contextMenuRef = useRef<HTMLDivElement>(null)
-
-  const currentPath = pathStacks[provider] ?? [{ id: null, name: "Root" }]
-  const currentFolderId = currentPath[currentPath.length - 1]?.id ?? null
+  const [moveTargets, setMoveTargets] = useState<DocumentItem[] | null>(null)
+  const [areasOpen, setAreasOpen] = useState(false)
 
   const googleConnected = integrations.some((x) => x.provider === "google_drive")
   const oneDriveConnected = integrations.some((x) => x.provider === "onedrive")
+  const canMutate = true
 
-  const visibleItems = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return items
-    return items.filter((item) => item.name.toLowerCase().includes(q))
-  }, [items, query])
+  // ---- derive the items to show (recursive search OR current folder, then filter + sort) ----
+  const displayItems = useMemo(() => {
+    let base: DocumentItem[]
+    if (searchMode) {
+      base = search.hits
+    } else if (trimmedQuery.length === 1) {
+      const q = trimmedQuery.toLowerCase()
+      base = folder.items.filter((i) => i.name.toLowerCase().includes(q))
+    } else {
+      base = folder.items
+    }
+    return sortItems(base, prefs.sortKey, prefs.sortDir)
+  }, [searchMode, search.hits, folder.items, trimmedQuery, prefs.sortKey, prefs.sortDir])
 
-  const listItems = useMemo(() => {
-    const folderItems = visibleItems.filter((item) => item.itemType === "folder")
-    const fileItems = visibleItems.filter((item) => item.itemType === "file")
+  const selection = useSelection(displayItems)
+  const ctx = useContextMenu()
 
-    folderItems.sort((a, b) => a.name.localeCompare(b.name, "nb"))
-    fileItems.sort((a, b) => a.name.localeCompare(b.name, "nb"))
+  // The preview only stays open while its item is in the current list — derived,
+  // so navigating away or deleting the item closes it without an effect.
+  const activePreview = useMemo(
+    () => (previewItem && displayItems.some((i) => i.id === previewItem.id) ? previewItem : null),
+    [previewItem, displayItems]
+  )
 
-    return [...folderItems, ...fileItems]
-  }, [visibleItems])
+  const reloadSearch = useCallback(() => setSearchReload((n) => n + 1), [])
 
-  const loadIntegrations = useCallback(async () => {
-    const res = await fetch("/api/documents/integrations")
-    if (!res.ok) return
-    const data = await res.json()
-    setIntegrations(data.integrations ?? [])
-  }, [])
+  const parentIdOf = useCallback(
+    (item: DocumentItem) => (searchMode ? (item as SearchHit).parentPath ?? null : nav.currentFolderId),
+    [searchMode, nav.currentFolderId]
+  )
 
-  const loadRootFolders = useCallback(async () => {
-    const params = new URLSearchParams({ provider, rootOnly: "true" })
-    const res = await fetch(`/api/documents?${params.toString()}`)
-    if (!res.ok) {
-      setRootFolders([])
+  // ---- mutations ----
+  const downloadFile = useCallback(async (item: DocumentItem) => {
+    if (item.itemType !== "file") return
+    const url = await api.resolveFileUrl(item)
+    if (!url) {
+      toast.error("Ingen lenke tilgjengelig for filen.")
       return
     }
+    try {
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const objUrl = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = objUrl
+      a.download = item.name
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(objUrl)
+    } catch {
+      window.open(url, "_blank", "noreferrer")
+    }
+  }, [])
 
-    const data = await res.json()
-    const root = data.items ?? []
-    setRootFolders(root)
+  const deleteItems = useCallback(
+    async (targets: DocumentItem[]) => {
+      if (targets.length === 0) return
+      const ok = await confirm({
+        title: targets.length > 1 ? `Slette ${targets.length} elementer?` : "Slette element?",
+        description:
+          targets.length === 1 ? `Dette kan ikke angres. Element: ${targets[0].name}` : "Dette kan ikke angres.",
+        confirmText: "Slett",
+        variant: "destructive",
+      })
+      if (!ok) return
+
+      let success = 0
+      let failed = 0
+      let lastError = ""
+      for (const item of targets) {
+        const rollback = searchMode ? null : cacheRemoveItem(provider, parentIdOf(item), item.id)
+        try {
+          await api.deleteItem(provider, item.id)
+          success += 1
+        } catch (e) {
+          rollback?.()
+          failed += 1
+          lastError = (e as Error).message
+        }
+      }
+      ensureRootFolders(provider, true)
+      if (searchMode) reloadSearch()
+      selection.clear()
+      if (failed === 0) {
+        toast.success(success > 1 ? `${success} elementer slettet.` : "Elementet ble slettet.")
+      } else {
+        toast.error(success > 0 ? `${success} slettet, ${failed} feilet. ${lastError}` : lastError || "Sletting feilet.")
+      }
+    },
+    [confirm, provider, searchMode, parentIdOf, selection, reloadSearch]
+  )
+
+  const submitRename = useCallback(
+    async (item: DocumentItem, name: string) => {
+      if (name === item.name) return
+      const rollback = searchMode ? null : cacheRenameItem(provider, parentIdOf(item), item.id, name)
+      try {
+        await api.renameItem(provider, item.id, name)
+        if (item.itemType === "folder") ensureRootFolders(provider, true)
+        if (searchMode) reloadSearch()
+      } catch (e) {
+        rollback?.()
+        toast.error((e as Error).message)
+      }
+    },
+    [provider, searchMode, parentIdOf, reloadSearch]
+  )
+
+  const moveItemTo = useCallback(
+    async (item: DocumentItem, targetPath: string | null) => {
+      const from = parentIdOf(item)
+      if (from === targetPath) return
+      const rollback = searchMode ? null : cacheMoveItem(provider, from, targetPath, item)
+      try {
+        await api.moveItem(provider, item.id, targetPath)
+        ensureRootFolders(provider, true)
+        if (searchMode) reloadSearch()
+      } catch (e) {
+        rollback?.()
+        toast.error((e as Error).message)
+      }
+    },
+    [provider, searchMode, parentIdOf, reloadSearch]
+  )
+
+  const submitMove = useCallback(
+    async (targetPath: string | null) => {
+      const targets = moveTargets ?? []
+      for (const item of targets) await moveItemTo(item, targetPath)
+      selection.clear()
+      if (targets.length) toast.success(targets.length > 1 ? "Elementene ble flyttet." : "Elementet ble flyttet.")
+    },
+    [moveTargets, moveItemTo, selection]
+  )
+
+  const submitNewFolder = useCallback(
+    async (name: string) => {
+      try {
+        const item = await api.createFolder(provider, name, nav.currentFolderId)
+        if (item) cacheInsertItem(provider, nav.currentFolderId, item)
+        ensureRootFolders(provider, true)
+        toast.success("Mappe opprettet.")
+      } catch (e) {
+        toast.error((e as Error).message)
+      }
+    },
+    [provider, nav.currentFolderId]
+  )
+
+  const submitNewArea = useCallback(
+    async (name: string) => {
+      try {
+        const item = await api.createFolder(provider, name, null)
+        if (item) cacheInsertItem(provider, null, item)
+        ensureRootFolders(provider, true)
+        toast.success("Nytt område opprettet.")
+      } catch (e) {
+        toast.error((e as Error).message)
+      }
+    },
+    [provider]
+  )
+
+  const uploadQueue = useUploadQueue(provider, nav.currentFolderId)
+  const onUploadFiles = useCallback((files: FileList | null) => uploadQueue.enqueue(files), [uploadQueue])
+
+  const drag = useDragMove({
+    provider,
+    onMove: moveItemTo,
+    onNativeDrop: (files) => uploadQueue.enqueue(files),
+  })
+
+  // ---- item actions ----
+  const showFile = useCallback(
+    (item: DocumentItem) => {
+      // Desktop shows the side preview pane; smaller screens open the file directly.
+      if (hasPreviewPane) {
+        setPreviewItem(item)
+        return
+      }
+      void api.resolveFileUrl(item).then((url) => {
+        if (url) window.open(url, "_blank", "noreferrer")
+        else toast.error("Ingen lenke tilgjengelig for filen.")
+      })
+    },
+    [hasPreviewPane]
+  )
+
+  const onOpen = useCallback(
+    (item: DocumentItem) => {
+      if (item.itemType === "folder") {
+        if (searchMode) {
+          if (item.folderPath) nav.navigateToPath(item.folderPath)
+          setQuery("")
+        } else {
+          nav.openFolder(item)
+        }
+        return
+      }
+      if (searchMode) {
+        const parent = (item as SearchHit).parentPath
+        if (parent) nav.navigateToPath(parent)
+        setQuery("")
+        return
+      }
+      showFile(item)
+    },
+    [searchMode, nav, showFile]
+  )
+
+  const onPreview = useCallback(
+    (item: DocumentItem) => {
+      if (item.itemType === "folder") {
+        onOpen(item)
+        return
+      }
+      showFile(item)
+    },
+    [onOpen, showFile]
+  )
+
+  const onContextMenu = useCallback(
+    (e: React.MouseEvent, item: DocumentItem, index: number) => {
+      if (!selection.isSelected(item.id)) selection.selectOnly(index)
+      ctx.openItem(e, item, index)
+    },
+    [selection, ctx]
+  )
+
+  const actions: ItemActions = useMemo(
+    () => ({
+      onOpen,
+      onActivate: (index, e) => selection.handleItemClick(index, e),
+      onContextMenu,
+      onContextMenuAt: (item, index, x, y) => {
+        if (!selection.isSelected(item.id)) selection.selectOnly(index)
+        ctx.openAt(x, y, item, index)
+      },
+      onPreview,
+      onRename: (item) => setRenameTarget(item),
+      onDeleteItems: deleteItems,
+      onDownload: downloadFile,
+      onMoveRequest: (item) => setMoveTargets([item]),
+      onHoverItem: (item) => {
+        if (provider === "supabase" && item.itemType === "folder" && item.folderPath) {
+          prefetchFolder(provider, item.folderPath)
+        }
+      },
+    }),
+    [onOpen, onPreview, onContextMenu, selection, ctx, deleteItems, downloadFile, provider]
+  )
+
+  // ---- provider connect / disconnect ----
+  const connectActiveProvider = useCallback(() => {
+    if (provider === "google_drive") window.location.href = "/api/auth/google-drive/start"
+    else if (provider === "onedrive") window.location.href = "/api/auth/onedrive/start"
   }, [provider])
 
-  const loadItems = useCallback(async (currentProvider: Provider, parentId: string | null) => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ provider: currentProvider })
-      if (parentId) {
-        params.set("parentId", parentId)
-      }
-
-      const res = await fetch(`/api/documents?${params.toString()}`)
-      if (!res.ok) {
-        setItems([])
-        setNotConnected(false)
-        return
-      }
-
-      const data = await res.json()
-      setItems(data.items ?? [])
-      setNotConnected(Boolean(data.notConnected))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const refreshAll = useCallback(async (currentProvider: Provider, parentId: string | null) => {
-    await Promise.all([
-      loadIntegrations(), 
-      loadItems(currentProvider, parentId)
-    ])
-  }, [loadIntegrations, loadItems])
-
-  useEffect(() => {
-    refreshAll(provider, currentFolderId)
-  }, [provider, currentFolderId, refreshAll])
-
-  useEffect(() => {
-    void loadRootFolders()
-  }, [loadRootFolders])
-
-  useEffect(() => {
-    if (!contextMenu) return
-
-    function onEsc(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        setContextMenu(null)
-      }
-    }
-
-    function onMouseDown(e: Event) {
-      if (contextMenuRef.current && contextMenuRef.current.contains(e.target as Node)) {
-        return
-      }
-      setContextMenu(null)
-    }
-
-    window.addEventListener("keydown", onEsc)
-    window.addEventListener("mousedown", onMouseDown)
-    window.addEventListener("scroll", onMouseDown, true)
-
-    return () => {
-      window.removeEventListener("keydown", onEsc)
-      window.removeEventListener("mousedown", onMouseDown)
-      window.removeEventListener("scroll", onMouseDown, true)
-    }
-  }, [contextMenu])
-
-  async function onUpload(files: FileList | null) {
-    if (!files || files.length === 0) return
-
-    const fileCount = files.length
-    setBusyId("__upload__")
-    let hasError = false
-    let errorCount = 0
-
-    const uploadingToastId = toast.loading(
-      fileCount === 1 ? `Laster opp ${files[0].name}…` : `Laster opp ${fileCount} filer…`
-    )
-
-    try {
-      // Loop via Array.from to support multiple file uploads
-      const uploadPromises = Array.from(files).map(async (file) => {
-        const payload = new FormData()
-        payload.set("file", file)
-        payload.set("provider", provider)
-        if (currentFolderId) {
-          payload.set("parentId", currentFolderId)
-        }
-
-        const res = await fetch("/api/documents", {
-          method: "POST",
-          body: payload,
-        })
-
-        if (!res.ok) {
-          const data = await res.json()
-          toast.error(`Kunne ikke laste opp ${file.name}: ${data.error ?? "Feil"}`)
-          hasError = true
-          errorCount += 1
-        }
-      })
-
-      await Promise.all(uploadPromises)
-
-      if (!hasError) {
-        toast.success(
-          fileCount === 1 ? "Filen ble lastet opp." : `${fileCount} filer lastet opp.`,
-          { id: uploadingToastId }
-        )
-      } else {
-        const ok = fileCount - errorCount
-        toast.error(
-          ok > 0
-            ? `${ok} av ${fileCount} filer lastet opp. ${errorCount} feilet.`
-            : "Ingen filer ble lastet opp.",
-          { id: uploadingToastId }
-        )
-      }
-
-      await loadItems(provider, currentFolderId)
-    } finally {
-      setBusyId(null)
-      if (fileInputRef.current) fileInputRef.current.value = ""
-    }
-  }
-
-  function askRename(item: DocumentItem) {
-    setRenameTarget(item)
-    setRenameValue(item.name)
-  }
-
-  async function onRename(item: DocumentItem, newName: string) {
-    if (!newName || newName.trim() === item.name) return
-
-    setBusyId(item.id)
-    try {
-      const res = await fetch("/api/documents", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: item.provider, id: item.id, newName: newName.trim(), action: "rename" }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        toast.error(data.error ?? "Kunne ikke endre navn.")
-        return
-      }
-
-      await loadItems(provider, currentFolderId)
-      void loadRootFolders()
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  async function onDelete(item: DocumentItem) {
-    setBusyId(item.id)
-    try {
-      const res = await fetch(
-        `/api/documents?provider=${encodeURIComponent(item.provider)}&id=${encodeURIComponent(item.id)}`,
-        { method: "DELETE" }
-      )
-
-      if (!res.ok) {
-        const data = await res.json()
-        toast.error(data.error ?? "Kunne ikke slette elementet.")
-        return
-      }
-
-      await loadItems(provider, currentFolderId)
-      void loadRootFolders()
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  async function onDisconnect(providerToDisconnect: "google_drive" | "onedrive") {
-    const connected = integrations.some((it) => it.provider === providerToDisconnect)
-    if (!connected) return
-
-    const res = await fetch("/api/documents/integrations/revoke", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: providerToDisconnect }),
+  const onDisconnect = useCallback(async () => {
+    if (provider === "supabase") return
+    const ok = await confirm({
+      title: "Koble fra integrasjon?",
+      description: "Du må koble til igjen for å hente filer fra denne leverandøren.",
+      confirmText: "Koble fra",
+      variant: "destructive",
     })
-
-    if (!res.ok) {
-      toast.error("Kunne ikke koble fra integrasjonen.")
-      return
-    }
-
-    await loadIntegrations()
-    if (provider === providerToDisconnect) {
+    if (!ok) return
+    try {
+      await api.revokeIntegration(provider)
+      invalidateProvider(provider)
       setProvider("supabase")
+    } catch (e) {
+      toast.error((e as Error).message)
     }
-  }
+  }, [provider, confirm])
 
-  async function onCreateFolder() {
-    if (!newFolderName.trim()) return
+  // selection helpers for the toolbar
+  const selectedFiles = selection.selectedItems.filter((i) => i.itemType === "file")
+  const downloadSelected = useCallback(async () => {
+    for (const item of selectedFiles) await downloadFile(item)
+  }, [selectedFiles, downloadFile])
 
-    setBusyId("__create_folder__")
-    try {
-      const res = await fetch("/api/documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create_folder",
-          provider: provider,
-          name: newFolderName.trim(),
-          parentId: currentFolderId,
-        }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        toast.error(data.error ?? "Kunne ikke opprette mappe.")
-        return
-      }
-
-      setNewFolderOpen(false)
-      setNewFolderName("")
-      await loadItems(provider, currentFolderId)
-      if (currentFolderId === null) void loadRootFolders()
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  async function onCreateArea() {
-    if (!newAreaName.trim()) return
-
-    setBusyId("__create_area__")
-    try {
-      const res = await fetch("/api/documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create_folder",
-          provider: provider,
-          name: newAreaName.trim(),
-          parentId: null,
-        }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        toast.error(data.error ?? "Kunne ikke opprette område.")
-        return
-      }
-
-      setNewAreaOpen(false)
-      setNewAreaName("")
-      
-      if (currentFolderId === null) {
-        await loadItems(provider, currentFolderId)
-      } else {
-        toast.success("Nytt område opprettet i rotmappen.")
-      }
-      
-      await loadRootFolders()
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  async function onMoveFile(item: DocumentItem, targetFolderPath: string | null) {
-    if (item.itemType !== "file") return
-
-    setBusyId(item.id)
-    try {
-      const res = await fetch("/api/documents", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "move",
-          provider: item.provider,
-          id: item.id,
-          targetFolderId: targetFolderPath,
-        }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        toast.error(data.error ?? "Kunne ikke flytte filen.")
-        return
-      }
-
-      await loadItems(provider, currentFolderId)
-      // Since root folders are just folders, moving a file typically doesn't affect the root folders list directly,
-      // but just to be safe if we change logic:
-      if (currentFolderId === null || targetFolderPath === null) void loadRootFolders()
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  function onRowDragStart(item: DocumentItem) {
-    if (provider !== "supabase" || item.itemType !== "file") return
-    setDraggingItem(item)
-  }
-
-  function onRowDragEnd() {
-    setDraggingItem(null)
-    setDropTargetPath(undefined)
-  }
-
-  function onDragOverFolder(e: React.DragEvent, targetFolderPath: string | null) {
-    if (!draggingItem || draggingItem.provider !== "supabase" || draggingItem.itemType !== "file") return
-    e.preventDefault()
-    setDropTargetPath(targetFolderPath)
-  }
-
-  async function onDropToFolder(e: React.DragEvent, targetFolderPath: string | null) {
-    e.preventDefault()
-    if (!draggingItem) return
-    setDropTargetPath(undefined)
-    const movedItem = draggingItem
-    setDraggingItem(null)
-    await onMoveFile(movedItem, targetFolderPath)
-  }
-
-  function selectArea(folder: DocumentItem) {
-    const nextId = folder.provider === "supabase" ? (folder.folderPath ?? folder.id.replace("folder:", "")) : folder.id
-    setPathStacks((prev) => ({
-      ...prev,
-      [provider]: [{ id: nextId, name: folder.name }],
-    }))
-    setAreasOpen(false)
-  }
-
-  function goHome() {
-    setPathStacks((prev) => ({
-      ...prev,
-      [provider]: [{ id: null, name: "Alle områder" }],
-    }))
-    setAreasOpen(false)
-  }
-
-  function openFolder(item: DocumentItem) {
-    const nextId = item.provider === "supabase" ? (item.folderPath ?? item.id.replace("folder:", "")) : item.id
-
-    setPathStacks((prev) => ({
-      ...prev,
-      [provider]: [...(prev[provider] ?? []), { id: nextId, name: item.name }],
-    }))
-  }
-
-  function goBackFolder() {
-    if (currentPath.length <= 1) return
-
-    setPathStacks((prev) => ({
-      ...prev,
-      [provider]: prev[provider].slice(0, -1),
-    }))
-  }
-
-  function jumpToPathIndex(index: number) {
-    setPathStacks((prev) => ({
-      ...prev,
-      [provider]: prev[provider].slice(0, index + 1),
-    }))
-  }
-
-  function activeProviderConnected() {
-    if (provider === "supabase") return true
-    if (provider === "google_drive") return googleConnected
-    return oneDriveConnected
-  }
-
-  function connectActiveProvider() {
-    if (provider === "google_drive") {
-      window.location.href = "/api/auth/google-drive/start"
-      return
-    }
-    if (provider === "onedrive") {
-      window.location.href = "/api/auth/onedrive/start"
-    }
-  }
-
-  function openContextMenu(e: React.MouseEvent, item: DocumentItem) {
-    e.preventDefault()
-    e.stopPropagation()
-    setContextMenu({ type: "item", item, x: e.clientX, y: e.clientY })
-  }
-
-  function openBlankContextMenu(e: React.MouseEvent) {
-    if (provider !== "supabase") return
-    e.preventDefault()
-    setContextMenu({ type: "blank", x: e.clientX, y: e.clientY })
-  }
-
-  async function viewItem(item: DocumentItem) {
-    if (item.itemType === "folder") {
-      openFolder(item)
-      return
-    }
-
-    if (!item.webUrl && !item.downloadUrl) {
-      toast.error("Ingen lenke tilgjengelig for dette elementet.")
-      return
-    }
-    window.open(item.webUrl ?? item.downloadUrl ?? "", "_blank")
+  // ---- content area ----
+  let content: React.ReactNode
+  if (provider !== "supabase" && folder.notConnected) {
+    content = <NotConnectedState provider={provider} onConnect={connectActiveProvider} />
+  } else if (searchMode && search.searching && displayItems.length === 0) {
+    content = <FolderSkeletonBody />
+  } else if (!searchMode && folder.status === "loading" && folder.items.length === 0) {
+    content = <FolderSkeletonBody />
+  } else if (!searchMode && folder.status === "error") {
+    content = (
+      <ErrorState message={folder.error ?? "Ukjent feil."} onRetry={() => ensureFolder(provider, nav.currentFolderId, true)} />
+    )
+  } else if (displayItems.length === 0) {
+    content = (
+      <EmptyFolderState
+        searching={searchMode}
+        canMutate={canMutate}
+        onUpload={() => document.getElementById("docs-hidden-upload")?.click()}
+        onNewFolder={() => setNewFolderOpen(true)}
+      />
+    )
+  } else if (prefs.viewMode === "grid") {
+    content = (
+      <GridView
+        items={displayItems}
+        selection={selection}
+        drag={drag}
+        actions={actions}
+        busyId={null}
+        sortKey={prefs.sortKey}
+        sortDir={prefs.sortDir}
+        onSort={prefs.setSort}
+        canMutate={canMutate}
+      />
+    )
+  } else {
+    content = (
+      <ListView
+        items={displayItems}
+        selection={selection}
+        drag={drag}
+        actions={actions}
+        busyId={null}
+        sortKey={prefs.sortKey}
+        sortDir={prefs.sortDir}
+        onSort={prefs.setSort}
+        canMutate={canMutate}
+      />
+    )
   }
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
-      <div className="theme-docs-shell shrink-0 shadow-sm">
-        <div className="theme-docs-header theme-docs-divider flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
-          <div className="flex flex-wrap items-center gap-1">
-            <Button variant={provider === "supabase" ? "secondary" : "ghost"} onClick={() => setProvider("supabase")} size="sm" className="h-8 gap-2 rounded-md">
-              <HardDrive className="h-4 w-4" />
-              Proanbud Cloud
-            </Button>
-            <Button variant={provider === "google_drive" ? "secondary" : "ghost"} disabled size="sm" className="h-8 gap-2 rounded-md" title="Kommer seinere...">
-              <Image src="/google-drive.svg" alt="Google Drive" width={14} height={14} />
-              Google Drive (Kommer seinere...)
-            </Button>
-            <Button variant={provider === "onedrive" ? "secondary" : "ghost"} disabled size="sm" className="h-8 gap-2 rounded-md" title="Kommer seinere...">
-              <Image src="/onedrive.svg" alt="OneDrive" width={18} height={14} />
-              OneDrive (Kommer seinere...)
-            </Button>
-          </div>
+      <input
+        id="docs-hidden-upload"
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          onUploadFiles(e.target.files)
+          e.currentTarget.value = ""
+        }}
+      />
 
-          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-            <Input placeholder="Søk i mappe" value={query} onChange={(e) => setQuery(e.target.value)} className="h-8 w-full sm:w-56" />
-            <>
-              <Button onClick={() => setNewFolderOpen(true)} disabled={busyId === "__create_folder__"} size="sm" variant="outline" className="h-8 gap-2">
-                <FolderPlus className="h-4 w-4" />
-                Ny mappe
-              </Button>
-              <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => void onUpload(e.target.files)} />
-              <Button onClick={() => fileInputRef.current?.click()} disabled={busyId === "__upload__"} size="sm" className="h-8 gap-2">
-                {busyId === "__upload__" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="h-4 w-4" />
-                )}
-                {busyId === "__upload__" ? "Laster opp…" : "Last opp"}
-              </Button>
-            </>
-            {provider !== "supabase" && activeProviderConnected() && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8"
-                onClick={() => setDisconnectTarget(provider === "google_drive" ? "google_drive" : "onedrive")}
-              >
-                Koble fra
-              </Button>
-            )}
-          </div>
-        </div>
+      <div className="theme-docs-shell flex h-full min-h-0 flex-col shadow-sm">
+        <DocumentsToolbar
+          provider={provider}
+          setProvider={setProvider}
+          query={query}
+          setQuery={setQuery}
+          viewMode={prefs.viewMode}
+          toggleViewMode={prefs.toggleViewMode}
+          sortKey={prefs.sortKey}
+          sortDir={prefs.sortDir}
+          setSort={prefs.setSort}
+          onNewFolder={() => setNewFolderOpen(true)}
+          onUploadFiles={onUploadFiles}
+          isUploading={uploadQueue.isUploading}
+          canMutate={canMutate}
+          showDisconnect={
+            provider !== "supabase" && (provider === "google_drive" ? googleConnected : oneDriveConnected)
+          }
+          onDisconnect={onDisconnect}
+          selectedCount={selection.count}
+          onClearSelection={selection.clear}
+          onDownloadSelected={downloadSelected}
+          onMoveSelected={() => setMoveTargets(selection.selectedItems)}
+          onDeleteSelected={() => deleteItems(selection.selectedItems)}
+        />
 
-        <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[250px_minmax(0,1fr)] lg:min-h-100">
-          <aside className="theme-docs-sidebar theme-docs-divider hidden overflow-y-auto border-r p-3 pb-0 lg:block">
-            <div>
-              <div className="mb-2 flex items-center justify-between px-2">
-                <p className="theme-doc-area-label text-[11px] font-semibold uppercase tracking-wide">Områder</p>
-                <Button variant="ghost" size="icon" className="theme-hover-muted h-5 w-5" onClick={() => setNewAreaOpen(true)} title="Nytt område">
-                  <Plus className="theme-icon-muted h-3.5 w-3.5" />
-                </Button>
-              </div>
-              <div className="space-y-1">
-                <Button variant={currentPath.length === 1 && currentPath[0].id === null ? "secondary" : "ghost"} className="h-8 w-full justify-start gap-2 rounded-md" onClick={goHome}>
-                  <HardDrive className="theme-icon-brand h-4 w-4" />
-                  <span
-                    className={`truncate ${dropTargetPath === null ? "font-semibold theme-doc-area-active-label" : ""}`}
-                    onDragOver={(e) => onDragOverFolder(e, null)}
-                    onDrop={(e) => void onDropToFolder(e, null)}
-                  >
-                    Alle områder
-                  </span>
-                </Button>
-                
-                {rootFolders.map((folder) => {
-                  const fPath = folderPathFromItem(folder)
-                  const isActiveArea = currentPath.length > 1 && currentPath[1].id === fPath
-                  return (
-                    <Button
-                      key={`sidebar-${folder.id}`}
-                      variant={isActiveArea ? "secondary" : "ghost"}
-                      className={`h-8 w-full justify-start gap-2 rounded-md pl-6 ${dropTargetPath === fPath ? "theme-doc-area-drop" : ""}`}
-                      onClick={() => selectArea(folder)}
-                      onDragOver={(e) => onDragOverFolder(e, fPath)}
-                      onDrop={(e) => void onDropToFolder(e, fPath)}
-                    >
-                      <Folder className={`h-4 w-4 ${isActiveArea ? "theme-doc-folder-active" : "theme-icon-folder"}`} />
-                      <span className={`truncate ${isActiveArea ? "font-medium" : ""}`}>{folder.name}</span>
-                    </Button>
-                  )
-                })}
-              </div>
-            </div>
-          </aside>
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)]">
+          <DocumentsSidebar
+            rootFolders={rootFolders}
+            currentPath={nav.currentPath}
+            onGoHome={nav.goHome}
+            onSelectArea={nav.selectArea}
+            onNewArea={() => setNewAreaOpen(true)}
+            onHoverArea={(folderItem) =>
+              folderItem.folderPath && prefetchFolder(provider, folderItem.folderPath)
+            }
+            drag={drag}
+            canMutate={canMutate}
+            mobileOpen={areasOpen}
+            setMobileOpen={setAreasOpen}
+          />
 
-          <section 
-            className="theme-doc-content group/section relative flex min-h-0 min-w-0 flex-col"
-            onContextMenu={openBlankContextMenu}
-            onDragOver={(e) => {
-              e.preventDefault()
-              if (!draggingItem) setIsDraggingNative(true)
+          <section
+            className="theme-doc-content relative flex min-h-0 min-w-0 flex-col"
+            onContextMenu={(e) => {
+              if (provider === "supabase" && !searchMode) ctx.openBlank(e)
             }}
-            onDragLeave={(e) => {
-              e.preventDefault()
-              // small trick to avoid flickering on children
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                setIsDraggingNative(false)
-              }
-            }}
-            onDrop={(e) => {
-              e.preventDefault()
-              setIsDraggingNative(false)
-              if (!draggingItem && e.dataTransfer.files?.length > 0) {
-                void onUpload(e.dataTransfer.files)
-              }
-            }}
+            onDragOver={drag.onSectionDragOver}
+            onDragLeave={drag.onSectionDragLeave}
+            onDrop={drag.onSectionDrop}
           >
-            {isDraggingNative && (
+            {drag.isDraggingNative && (
               <div className="theme-doc-drop-overlay pointer-events-none absolute inset-2 z-[60] flex items-center justify-center rounded-xl border-2 border-dashed border-primary/40">
                 <p className="theme-doc-drop-label rounded-lg bg-background/85 px-4 py-2 text-lg font-semibold shadow-sm backdrop-blur-sm">
                   Slipp filene her for å laste opp
@@ -707,511 +473,64 @@ export default function DocumentsManager() {
               </div>
             )}
 
-            <div className="theme-doc-breadcrumbs flex flex-wrap items-center gap-1 border-b px-3 py-2">
-              <Sheet open={areasOpen} onOpenChange={setAreasOpen}>
-                <SheetTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 gap-1.5 lg:hidden">
-                    <PanelLeft className="h-4 w-4" />
-                    Områder
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="w-[min(100%,280px)] p-0">
-                  <SheetHeader className="border-b px-4 py-3">
-                    <SheetTitle>Områder</SheetTitle>
-                  </SheetHeader>
-                  <div className="overflow-y-auto p-3">
-                    <div className="mb-2 flex items-center justify-between px-2">
-                      <p className="theme-doc-area-label text-[11px] font-semibold uppercase tracking-wide">Områder</p>
-                      <Button variant="ghost" size="icon" className="theme-hover-muted h-5 w-5" onClick={() => setNewAreaOpen(true)} title="Nytt område">
-                        <Plus className="theme-icon-muted h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                    <div className="space-y-1">
-                      <Button variant={currentPath.length === 1 && currentPath[0].id === null ? "secondary" : "ghost"} className="h-8 w-full justify-start gap-2 rounded-md" onClick={goHome}>
-                        <HardDrive className="theme-icon-brand h-4 w-4" />
-                        <span className="truncate">Alle områder</span>
-                      </Button>
-                      {rootFolders.map((folder) => {
-                        const fPath = folderPathFromItem(folder)
-                        const isActiveArea = currentPath.length > 1 && currentPath[1].id === fPath
-                        return (
-                          <Button
-                            key={`sheet-sidebar-${folder.id}`}
-                            variant={isActiveArea ? "secondary" : "ghost"}
-                            className="h-8 w-full justify-start gap-2 rounded-md pl-6"
-                            onClick={() => selectArea(folder)}
-                          >
-                            <Folder className={`h-4 w-4 ${isActiveArea ? "theme-doc-folder-active" : "theme-icon-folder"}`} />
-                            <span className={`truncate ${isActiveArea ? "font-medium" : ""}`}>{folder.name}</span>
-                          </Button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </SheetContent>
-              </Sheet>
-              <Button variant="ghost" size="icon" className="h-7 w-7" disabled={currentPath.length <= 1} onClick={goBackFolder}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
+            <DocumentsBreadcrumb
+              currentPath={nav.currentPath}
+              onBack={nav.goBack}
+              onJump={nav.jumpToPathIndex}
+              onOpenAreas={() => setAreasOpen(true)}
+            />
 
-              {currentPath.map((node, index) => (
-                <div key={`${node.name}-${index}`} className="flex items-center">
-                  {index > 0 && <ChevronRight className="theme-icon-muted h-4 w-4" />}
-                  <Button variant="ghost" size="sm" className="theme-doc-breadcrumb h-7 px-2" onClick={() => jumpToPathIndex(index)}>
-                    {node.name}
-                  </Button>
-                </div>
-              ))}
+            <div className="flex min-h-0 flex-1">
+              <div className="flex min-h-0 flex-1 flex-col">{content}</div>
+              {activePreview && (
+                <PreviewPanel
+                  item={activePreview}
+                  onClose={() => setPreviewItem(null)}
+                  canMutate={canMutate}
+                  onRename={(item) => setRenameTarget(item)}
+                  onDelete={(item) => deleteItems([item])}
+                  onDownload={downloadFile}
+                />
+              )}
             </div>
-
-            {provider !== "supabase" && notConnected ? (
-              <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
-                <div className="rounded-full border p-4">
-                  {provider === "google_drive" ? <Cloud className="h-6 w-6" /> : <CloudUpload className="h-6 w-6" />}
-                </div>
-                <div>
-                  <p className="text-lg font-semibold">{providerLabel(provider)} er ikke koblet til</p>
-                  <p className="text-sm text-muted-foreground">Koble til for å åpne mapper og filer i Finder-visningen.</p>
-                </div>
-                <Button onClick={connectActiveProvider}>Koble til {providerLabel(provider)}</Button>
-              </div>
-            ) : (
-              <>
-                <div className="theme-doc-table-head theme-docs-divider theme-doc-table-label hidden grid-cols-[minmax(0,1fr)_120px_140px_140px] gap-2 border-b px-3 py-2 text-[11px] font-semibold uppercase tracking-wide md:grid">
-                  <span>Navn</span>
-                  <span>Type</span>
-                  <span>Endret</span>
-                  <span>Størrelse</span>
-                </div>
-
-                <div className="flex-1 min-h-0 overflow-y-auto">
-                  {loading ? (
-                    <div className="p-6 text-sm text-muted-foreground">Laster mappe...</div>
-                  ) : listItems.length === 0 ? (
-                    <div className="p-6 text-sm text-muted-foreground">Tom mappe</div>
-                  ) : (
-                    <>
-                    <div className="theme-doc-row-list hidden divide-y divide-border/80 md:block">
-                    {listItems.map((item) => {
-                      const isBusy = busyId === item.id
-
-                      return (
-                        <div
-                          key={`${item.provider}-${item.id}`}
-                          className={`group grid cursor-default grid-cols-[minmax(0,1fr)_120px_140px_140px] items-center gap-2 px-3 py-2 hover:bg-muted/60 ${
-                            dropTargetPath === folderPathFromItem(item) ? "theme-doc-row-drop" : ""
-                          }`}
-                          draggable={item.itemType === "file"}
-                          onDragStart={() => onRowDragStart(item)}
-                          onDragEnd={onRowDragEnd}
-                          onDragOver={(e) => {
-                            if (item.itemType === "folder") {
-                              onDragOverFolder(e, folderPathFromItem(item))
-                            }
-                          }}
-                          onDrop={(e) => {
-                            if (item.itemType === "folder") {
-                              void onDropToFolder(e, folderPathFromItem(item))
-                            }
-                          }}
-                          onDoubleClick={() => {
-                            if (item.itemType === "folder") {
-                              openFolder(item)
-                            } else if (item.webUrl || item.downloadUrl) {
-                              window.open(item.webUrl ?? item.downloadUrl ?? "", "_blank")
-                            }
-                          }}
-                          onContextMenu={(e) => openContextMenu(e, item)}
-                        >
-                          <div className="flex min-w-0 items-center gap-2">
-                            {item.itemType === "folder" ? (
-                              <Folder className="theme-icon-folder h-4 w-4 shrink-0" />
-                            ) : (
-                              <FileText className="theme-icon-file h-4 w-4 shrink-0" />
-                            )}
-
-                            <span className="theme-doc-file-name truncate text-sm">{item.name}</span>
-
-                            {item.itemType === "folder" && (
-                              <Button variant="ghost" size="icon" className="ml-auto h-6 w-6 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100" onClick={() => openFolder(item)}>
-                                <ChevronRight className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-
-                          <span className="theme-doc-meta text-xs">{item.itemType === "folder" ? "Mappe" : "Fil"}</span>
-                          <span className="theme-doc-meta text-xs">{item.lastModifiedAt ? new Date(item.lastModifiedAt).toLocaleDateString("nb-NO") : "-"}</span>
-
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="theme-doc-meta text-xs">{formatBytes(item.sizeBytes)}</span>
-
-                            <div className="flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
-                              <Button size="icon" variant="ghost" className="h-7 w-7" disabled={isBusy || !(item.webUrl || item.downloadUrl)} asChild>
-                                <a href={item.webUrl ?? item.downloadUrl ?? "#"} target="_blank" rel="noreferrer">
-                                  <ExternalLink className="h-4 w-4" />
-                                </a>
-                              </Button>
-
-                              <Button size="icon" variant="ghost" className="h-7 w-7" disabled={isBusy} onClick={() => askRename(item)}>
-                                <PencilLine className="h-4 w-4" />
-                              </Button>
-
-                              <Button size="icon" variant="ghost" className="h-7 w-7" disabled={isBusy} onClick={() => setDeleteTarget(item)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <div className="divide-y md:hidden">
-                    {listItems.map((item) => {
-                      const isBusy = busyId === item.id
-                      return (
-                        <div
-                          key={`mobile-${item.provider}-${item.id}`}
-                          className="flex items-start gap-3 px-3 py-3"
-                          onClick={() => {
-                            if (item.itemType === "folder") openFolder(item)
-                          }}
-                        >
-                          {item.itemType === "folder" ? (
-                            <Folder className="theme-icon-folder mt-0.5 h-4 w-4 shrink-0" />
-                          ) : (
-                            <FileText className="theme-icon-file mt-0.5 h-4 w-4 shrink-0" />
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">{item.name}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {item.itemType === "folder" ? "Mappe" : "Fil"}
-                              {item.lastModifiedAt
-                                ? ` · ${new Date(item.lastModifiedAt).toLocaleDateString("nb-NO")}`
-                                : ""}
-                              {item.sizeBytes ? ` · ${formatBytes(item.sizeBytes)}` : ""}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1">
-                            {item.itemType === "file" && (item.webUrl || item.downloadUrl) ? (
-                              <Button size="icon" variant="ghost" className="h-8 w-8" disabled={isBusy} asChild>
-                                <a href={item.webUrl ?? item.downloadUrl ?? "#"} target="_blank" rel="noreferrer">
-                                  <ExternalLink className="h-4 w-4" />
-                                </a>
-                              </Button>
-                            ) : null}
-                            <Button size="icon" variant="ghost" className="h-8 w-8" disabled={isBusy} onClick={() => askRename(item)}>
-                              <PencilLine className="h-4 w-4" />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-8 w-8" disabled={isBusy} onClick={() => setDeleteTarget(item)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                    </>
-                )}
-                </div>
-              </>
-            )}
           </section>
         </div>
       </div>
 
-      {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          className="theme-doc-context-menu fixed z-[70] min-w-[220px] rounded-lg border p-1.5 shadow-xl"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-        >
-          {contextMenu.type === "item" ? (
-            <>
-              <div className="mb-1 flex items-center gap-2 rounded-md px-2 py-1.5">
-                {contextMenu.item.itemType === "folder" ? (
-                  <Folder className="theme-icon-folder h-4 w-4" />
-                ) : (
-                  <FileText className="theme-icon-file h-4 w-4" />
-                )}
-                <span className="truncate text-xs font-medium">{contextMenu.item.name}</span>
-                <span className={`ml-auto h-2.5 w-2.5 rounded-full ${itemAccentClass(contextMenu.item)}`} />
-              </div>
-
-              <button
-                type="button"
-                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
-                onClick={() => {
-                  setContextMenu(null)
-                  void viewItem(contextMenu.item)
-                }}
-              >
-                <ExternalLink className="h-4 w-4" />
-                Vis
-              </button>
-
-              <button
-                type="button"
-                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
-                onClick={() => {
-                  setContextMenu(null)
-                  setDetailsTarget(contextMenu.item)
-                }}
-              >
-                <Cog className="h-4 w-4" />
-                Filinnstillinger
-              </button>
-
-              <button
-                type="button"
-                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
-                onClick={() => {
-                  setContextMenu(null)
-                  askRename(contextMenu.item)
-                }}
-              >
-                <PencilLine className="h-4 w-4" />
-                Gi nytt navn
-              </button>
-
-              <button
-                type="button"
-                className="theme-doc-context-item theme-doc-context-item-danger flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
-                onClick={() => {
-                  setContextMenu(null)
-                  setDeleteTarget(contextMenu.item)
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-                Slett
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
-                onClick={() => {
-                  setContextMenu(null)
-                  setNewFolderOpen(true)
-                }}
-              >
-                <FolderPlus className="h-4 w-4" />
-                Ny mappe
-              </button>
-
-              <button
-                type="button"
-                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
-                onClick={() => {
-                  setContextMenu(null)
-                  fileInputRef.current?.click()
-                }}
-              >
-                <Upload className="h-4 w-4" />
-                Last opp fil
-              </button>
-
-              <button
-                type="button"
-                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
-                onClick={() => {
-                  setContextMenu(null)
-                  jumpToPathIndex(0)
-                }}
-              >
-                <HardDrive className="h-4 w-4" />
-                Gå til rotmappe
-              </button>
-
-              <button
-                type="button"
-                className="theme-doc-context-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"
-                onClick={() => {
-                  setContextMenu(null)
-                  void refreshAll(provider, currentFolderId)
-                }}
-              >
-                <ChevronRight className="h-4 w-4" />
-                Oppdater visning
-              </button>
-            </>
-          )}
-        </div>
+      {ctx.contextMenu && (
+        <DocumentsContextMenu
+          state={ctx.contextMenu}
+          menuRef={ctx.menuRef}
+          close={ctx.close}
+          canMutate={canMutate}
+          onOpen={(item) => onOpen(item)}
+          onPreview={onPreview}
+          onDownload={downloadFile}
+          onRename={(item) => setRenameTarget(item)}
+          onMove={(item) => setMoveTargets([item])}
+          onDelete={(item) => deleteItems([item])}
+          onNewFolder={() => setNewFolderOpen(true)}
+          onUpload={() => document.getElementById("docs-hidden-upload")?.click()}
+          onGoRoot={nav.goHome}
+          onRefresh={() => ensureFolder(provider, nav.currentFolderId, true)}
+        />
       )}
 
-      <Dialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Opprett mappe</DialogTitle>
-            <DialogDescription>Opprett en ny mappe i gjeldende plassering.</DialogDescription>
-          </DialogHeader>
-          <Input
-            autoFocus
-            value={newFolderName}
-            onChange={(e) => setNewFolderName(e.target.value)}
-            placeholder="Mappe-navn"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault()
-                void onCreateFolder()
-              }
-            }}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNewFolderOpen(false)}>Avbryt</Button>
-            <Button onClick={() => void onCreateFolder()} disabled={!newFolderName.trim() || busyId === "__create_folder__"}>Opprett</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <UploadQueue queue={uploadQueue} />
 
-      <Dialog open={newAreaOpen} onOpenChange={setNewAreaOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Opprett nytt område (rotmappe)</DialogTitle>
-            <DialogDescription>Dette vil opprette en ny overordnet mappe helt på toppen i hierarkiet.</DialogDescription>
-          </DialogHeader>
-          <Input
-            autoFocus
-            value={newAreaName}
-            onChange={(e) => setNewAreaName(e.target.value)}
-            placeholder="Navn på nytt område"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault()
-                void onCreateArea()
-              }
-            }}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNewAreaOpen(false)}>Avbryt</Button>
-            <Button onClick={() => void onCreateArea()} disabled={!newAreaName.trim() || busyId === "__create_area__"}>Opprett</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(renameTarget)} onOpenChange={(open) => !open && setRenameTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Gi nytt navn</DialogTitle>
-            <DialogDescription>Endre navnet på elementet.</DialogDescription>
-          </DialogHeader>
-          <Input
-            autoFocus
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            placeholder="Nytt navn"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && renameTarget) {
-                e.preventDefault()
-                void onRename(renameTarget, renameValue)
-                setRenameTarget(null)
-              }
-            }}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameTarget(null)}>Avbryt</Button>
-            <Button
-              onClick={() => {
-                if (!renameTarget) return
-                void onRename(renameTarget, renameValue)
-                setRenameTarget(null)
-              }}
-              disabled={!renameValue.trim()}
-            >
-              Lagre
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Slette element?</DialogTitle>
-            <DialogDescription>
-              Dette kan ikke angres. {deleteTarget ? `Element: ${deleteTarget.name}` : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Avbryt</Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (!deleteTarget) return
-                void onDelete(deleteTarget)
-                setDeleteTarget(null)
-              }}
-            >
-              Slett
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(disconnectTarget)} onOpenChange={(open) => !open && setDisconnectTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Koble fra integrasjon?</DialogTitle>
-            <DialogDescription>Du må koble til igjen for å hente filer fra denne leverandøren.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDisconnectTarget(null)}>Avbryt</Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (!disconnectTarget) return
-                void onDisconnect(disconnectTarget)
-                setDisconnectTarget(null)
-              }}
-            >
-              Koble fra
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(detailsTarget)} onOpenChange={(open) => !open && setDetailsTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Filinnstillinger</DialogTitle>
-            <DialogDescription>Detaljer for valgt element.</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3 text-sm">
-            <div className="flex items-center gap-2">
-              {detailsTarget?.itemType === "folder" ? (
-                <Folder className="theme-icon-folder h-4 w-4" />
-              ) : (
-                <FileText className="theme-icon-file h-4 w-4" />
-              )}
-              <span className="font-medium">{detailsTarget?.name}</span>
-              {detailsTarget && <span className={`ml-auto h-2.5 w-2.5 rounded-full ${itemAccentClass(detailsTarget)}`} />}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-              <span>Type</span>
-              <span>{detailsTarget?.itemType === "folder" ? "Mappe" : "Fil"}</span>
-              <span>Leverandør</span>
-              <span>{detailsTarget ? providerLabel(detailsTarget.provider) : "-"}</span>
-              <span>Størrelse</span>
-              <span>{formatBytes(detailsTarget?.sizeBytes)}</span>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDetailsTarget(null)}>Lukk</Button>
-            <Button
-              onClick={() => {
-                if (!detailsTarget) return
-                void viewItem(detailsTarget)
-              }}
-              disabled={!(detailsTarget?.webUrl || detailsTarget?.downloadUrl)}
-            >
-              Vis
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <NewFolderDialog open={newFolderOpen} onOpenChange={setNewFolderOpen} onSubmit={submitNewFolder} />
+      <NewAreaDialog open={newAreaOpen} onOpenChange={setNewAreaOpen} onSubmit={submitNewArea} />
+      <RenameDialog
+        item={renameTarget}
+        onOpenChange={(open) => !open && setRenameTarget(null)}
+        onSubmit={submitRename}
+      />
+      <MoveToDialog
+        items={moveTargets}
+        rootFolders={rootFolders}
+        onOpenChange={(open) => !open && setMoveTargets(null)}
+        onSubmit={submitMove}
+      />
     </div>
   )
 }
