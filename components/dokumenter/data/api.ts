@@ -37,7 +37,7 @@ export async function listItems(
 export async function listRootFolders(provider: Provider, signal?: AbortSignal): Promise<DocumentItem[]> {
   const params = new URLSearchParams({ provider, rootOnly: "true" })
   const res = await fetch(`/api/documents?${params.toString()}`, { signal })
-  if (!res.ok) return []
+  if (!res.ok) throw await parseError(res, "Kunne ikke laste områder.")
   const data = await res.json()
   return (data.items ?? []) as DocumentItem[]
 }
@@ -95,7 +95,7 @@ export async function moveItem(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "move", provider, id, targetFolderId }),
   })
-  if (!res.ok) throw await parseError(res, "Kunne ikke flytte filen.")
+  if (!res.ok) throw await parseError(res, "Kunne ikke flytte elementet.")
 }
 
 export async function deleteItem(provider: Provider, id: string): Promise<void> {
@@ -175,10 +175,13 @@ export function uploadFile(
   return { promise, abort: () => xhr.abort() }
 }
 
-/** Resolve a guaranteed-usable URL for a file: prefer the cached one, re-sign if missing. */
+/**
+ * Resolve a guaranteed-fresh URL for a file. For Supabase we always re-sign (the
+ * cached downloadUrl from a list may have expired during a long session); the cached
+ * value is only a fallback if signing fails. External providers use their stored URL.
+ */
 export async function resolveFileUrl(item: DocumentItem): Promise<string | null> {
   if (item.provider !== "supabase") return item.webUrl ?? item.downloadUrl ?? null
-  if (item.downloadUrl) return item.downloadUrl
   const urls = await signUrls(item.provider, [item.id]).catch(() => ({}) as Record<string, string>)
-  return urls[item.id] ?? null
+  return urls[item.id] ?? item.downloadUrl ?? item.webUrl ?? null
 }

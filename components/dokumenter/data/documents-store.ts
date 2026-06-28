@@ -122,6 +122,9 @@ async function fetchRootFolders(provider: Provider) {
     const items = await api.listRootFolders(provider, controller.signal)
     rootCache.set(provider, { items, fetchedAt: Date.now() })
     emit()
+  } catch {
+    // On a transient error keep the previously-loaded areas; don't wipe the sidebar
+    // or stamp it fresh, so the next ensureRootFolders retries promptly.
   } finally {
     inFlight.delete(key)
   }
@@ -288,6 +291,11 @@ export function cacheRenameItem(
           ...item,
           name: newName,
           extension: item.itemType === "file" ? fileExtension(newName) : item.extension,
+          // A folder's path includes its own name; keep it in sync so navigation still works.
+          folderPath:
+            item.itemType === "folder" && item.folderPath
+              ? [...item.folderPath.split("/").slice(0, -1), newName].join("/")
+              : item.folderPath,
           lastModifiedAt: new Date().toISOString(),
         }
       : item

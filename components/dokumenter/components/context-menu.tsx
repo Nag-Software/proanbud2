@@ -88,7 +88,10 @@ export function DocumentsContextMenu(props: Props) {
       entries.push({ icon: Download, label: "Last ned", run: () => props.onDownload(item) })
     }
     if (props.canMutate) {
-      entries.push({ icon: FolderInput, label: "Flytt til…", run: () => props.onMove(item) })
+      // Move is currently only supported for files (server-side folder move is not implemented).
+      if (item.itemType === "file") {
+        entries.push({ icon: FolderInput, label: "Flytt til…", run: () => props.onMove(item) })
+      }
       entries.push({ icon: PencilLine, label: "Gi nytt navn", run: () => props.onRename(item) })
       entries.push({ icon: Trash2, label: "Slett", danger: true, run: () => props.onDelete(item) })
     }

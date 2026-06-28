@@ -687,17 +687,39 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: renameFolderError.message }, { status: 500 })
       }
 
-      const { data: folderDescendants, error: folderDescendantsError } = await supabase
-        .from("document_items")
-        .select("id,external_parent_id")
-        .eq("user_id", user.id)
-        .eq("provider", "supabase")
-        .eq("item_type", "folder")
-        .or(`external_parent_id.eq.${oldFullPath},external_parent_id.like.${oldFullPath}/%`)
+      // Two parameterized queries (the folder itself + its subtree) instead of a raw
+      // .or() string — folder names may contain '(' ')' which break PostgREST's logic-tree parser.
+      const [{ data: exactChild, error: exactChildError }, { data: deepChildren, error: deepChildrenError }] =
+        await Promise.all([
+          supabase
+            .from("document_items")
+            .select("id,external_parent_id")
+            .eq("user_id", user.id)
+            .eq("provider", "supabase")
+            .eq("item_type", "folder")
+            .eq("external_parent_id", oldFullPath),
+          supabase
+            .from("document_items")
+            .select("id,external_parent_id")
+            .eq("user_id", user.id)
+            .eq("provider", "supabase")
+            .eq("item_type", "folder")
+            .like("external_parent_id", `${oldFullPath}/%`),
+        ])
 
-      if (folderDescendantsError) {
-        return NextResponse.json({ error: folderDescendantsError.message }, { status: 500 })
+      if (exactChildError || deepChildrenError) {
+        return NextResponse.json(
+          { error: (exactChildError ?? deepChildrenError)?.message ?? "rename_failed" },
+          { status: 500 }
+        )
       }
+
+      const seenDescendant = new Set<string>()
+      const folderDescendants = [...(exactChild ?? []), ...(deepChildren ?? [])].filter((row) => {
+        if (seenDescendant.has(row.id)) return false
+        seenDescendant.add(row.id)
+        return true
+      })
 
       for (const childFolder of folderDescendants ?? []) {
         const existingParentPath = sanitizeFolderPath(childFolder.external_parent_id)

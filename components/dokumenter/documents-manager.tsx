@@ -177,17 +177,24 @@ export default function DocumentsManager() {
   )
 
   const moveItemTo = useCallback(
-    async (item: DocumentItem, targetPath: string | null) => {
+    async (item: DocumentItem, targetPath: string | null): Promise<boolean> => {
+      // Folder move is not supported server-side yet — guard so we never 404 + roll back.
+      if (item.itemType !== "file") {
+        toast.error("Det er foreløpig bare filer som kan flyttes.")
+        return false
+      }
       const from = parentIdOf(item)
-      if (from === targetPath) return
+      if (from === targetPath) return true
       const rollback = searchMode ? null : cacheMoveItem(provider, from, targetPath, item)
       try {
         await api.moveItem(provider, item.id, targetPath)
         ensureRootFolders(provider, true)
         if (searchMode) reloadSearch()
+        return true
       } catch (e) {
         rollback?.()
         toast.error((e as Error).message)
+        return false
       }
     },
     [provider, searchMode, parentIdOf, reloadSearch]
@@ -195,10 +202,13 @@ export default function DocumentsManager() {
 
   const submitMove = useCallback(
     async (targetPath: string | null) => {
-      const targets = moveTargets ?? []
-      for (const item of targets) await moveItemTo(item, targetPath)
+      const targets = (moveTargets ?? []).filter((i) => i.itemType === "file")
+      let moved = 0
+      for (const item of targets) {
+        if (await moveItemTo(item, targetPath)) moved += 1
+      }
       selection.clear()
-      if (targets.length) toast.success(targets.length > 1 ? "Elementene ble flyttet." : "Elementet ble flyttet.")
+      if (moved > 0) toast.success(moved > 1 ? `${moved} filer ble flyttet.` : "Filen ble flyttet.")
     },
     [moveTargets, moveItemTo, selection]
   )
@@ -236,7 +246,9 @@ export default function DocumentsManager() {
 
   const drag = useDragMove({
     provider,
-    onMove: moveItemTo,
+    onMove: (item, target) => {
+      void moveItemTo(item, target)
+    },
     onNativeDrop: (files) => uploadQueue.enqueue(files),
   })
 
@@ -436,7 +448,13 @@ export default function DocumentsManager() {
           selectedCount={selection.count}
           onClearSelection={selection.clear}
           onDownloadSelected={downloadSelected}
-          onMoveSelected={() => setMoveTargets(selection.selectedItems)}
+          onMoveSelected={() => {
+            if (selectedFiles.length === 0) {
+              toast.error("Det er foreløpig bare filer som kan flyttes.")
+              return
+            }
+            setMoveTargets(selectedFiles)
+          }}
           onDeleteSelected={() => deleteItems(selection.selectedItems)}
         />
 
