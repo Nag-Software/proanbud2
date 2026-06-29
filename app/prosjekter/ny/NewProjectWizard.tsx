@@ -401,6 +401,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
       const result = await createProjectAction({
         name: parsedValues.projectName,
         customer_id: parsedValues.clientId,
+        site_address: parsedValues.location,
         project_type: parsedValues.category,
         status: "planning",
         description: composeDescription(parsedValues.location, parsedValues.tasks),

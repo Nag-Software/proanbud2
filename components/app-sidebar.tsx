@@ -79,6 +79,11 @@ const data: {
       icon: <UsersIcon className="size-4" />,
     },
     {
+      title: "Kart",
+      url: "/kart",
+      icon: <MapIcon className="size-4" />,
+    },
+    {
       title: "Kalender",
       url: "/kalender",
       icon: <CalendarDays className="size-4" />,

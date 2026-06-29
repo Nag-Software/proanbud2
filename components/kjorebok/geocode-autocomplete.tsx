@@ -18,9 +18,19 @@ type Props = {
   id?: string
   /** Extra classes for the underlying input (e.g. borderless inside a map card). */
   inputClassName?: string
+  /** Geocoding endpoint to query. Defaults to the kjørebok route. */
+  endpoint?: string
 }
 
-export function GeocodeAutocomplete({ value, onChange, onSelect, placeholder, id, inputClassName }: Props) {
+export function GeocodeAutocomplete({
+  value,
+  onChange,
+  onSelect,
+  placeholder,
+  id,
+  inputClassName,
+  endpoint = "/api/kjorebok/geocode",
+}: Props) {
   const [results, setResults] = useState<GeocodeResult[]>([])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -48,7 +58,7 @@ export function GeocodeAutocomplete({ value, onChange, onSelect, placeholder, id
     const ctrl = new AbortController()
     const handle = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/kjorebok/geocode?q=${encodeURIComponent(q)}`, {
+        const res = await fetch(`${endpoint}?q=${encodeURIComponent(q)}`, {
           signal: ctrl.signal,
         })
         const data = await res.json()
@@ -67,7 +77,7 @@ export function GeocodeAutocomplete({ value, onChange, onSelect, placeholder, id
       ctrl.abort()
       clearTimeout(handle)
     }
-  }, [value])
+  }, [value, endpoint])
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {

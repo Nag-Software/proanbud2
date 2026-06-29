@@ -10,6 +10,7 @@ import { enqueueEntityTripletexSync, processTripletexQueueInBackground } from "@
 import { assertPlanFeature, companyHasFeature } from "@/lib/billing/server-modules"
 import { canManageProjects } from "@/lib/roles"
 import { logServerError } from "@/lib/errors/log"
+import { geocodeAddress } from "@/lib/geo/geocode"
 
 const taskStatusToDb: Record<string, string> = {
   "Ikke startet": "todo",
@@ -396,6 +397,18 @@ export async function createProjectAction(input: CreateProjectInput) {
     }
   }
 
+  // Geocode the construction-site address so the project lands precisely on the
+  // map at the site (not the customer's office). Best-effort — a miss just leaves
+  // coords null and the project can be placed later from the map.
+  const siteAddress = values.site_address?.trim() || null
+  let siteLat: number | null = null
+  let siteLng: number | null = null
+  if (siteAddress) {
+    const hit = await geocodeAddress(siteAddress)
+    siteLat = hit?.lat ?? null
+    siteLng = hit?.lng ?? null
+  }
+
   const { data: project, error } = await supabase
     .from("projects")
     .insert({
@@ -409,6 +422,9 @@ export async function createProjectAction(input: CreateProjectInput) {
       end_date: values.end_date ?? null,
       budget_nok: values.budget_nok,
       description: values.description || null,
+      site_address: siteAddress,
+      lat: siteLat,
+      lng: siteLng,
     })
     .select("id")
     .single()
@@ -509,6 +525,7 @@ const EDITABLE_PROJECT_FIELDS = [
   "end_date",
   "budget_nok",
   "customer_id",
+  "site_address",
 ] as const
 
 export async function updateProjectAction(projectId: string, values: Record<string, unknown>) {
@@ -579,6 +596,21 @@ export async function updateProjectAction(projectId: string, values: Record<stri
   if ("start_date" in updates && !updates.start_date) updates.start_date = null
   if ("end_date" in updates && !updates.end_date) updates.end_date = null
   if ("customer_id" in updates && !updates.customer_id) updates.customer_id = null
+
+  // Changing the site address re-geocodes the pin (or clears it when emptied).
+  if ("site_address" in updates) {
+    const addr = String(updates.site_address ?? "").trim()
+    if (!addr) {
+      updates.site_address = null
+      updates.lat = null
+      updates.lng = null
+    } else {
+      updates.site_address = addr
+      const hit = await geocodeAddress(addr)
+      updates.lat = hit?.lat ?? null
+      updates.lng = hit?.lng ?? null
+    }
+  }
 
   if (Object.keys(updates).length === 0) {
     throw new Error("Ingen gyldige felter å oppdatere")

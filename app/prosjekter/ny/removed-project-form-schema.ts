@@ -28,6 +28,12 @@ export const createProjectSchema = z
       .min(2, "Prosjektnavnet må være minst 2 tegn")
       .max(120, "Prosjektnavnet kan ikke være lengre enn 120 tegn"),
     customer_id: z.string().trim().min(1, "Velg en kunde"),
+    site_address: z
+      .string()
+      .trim()
+      .max(180, "Adressen kan ikke være lengre enn 180 tegn")
+      .optional()
+      .or(z.literal("")),
     project_type: z.enum(PROJECT_TYPE_OPTIONS.map((option) => option.value) as [string, ...string[]], {
       message: "Velg prosjekttype",
     }),
