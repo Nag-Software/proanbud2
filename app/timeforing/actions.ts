@@ -13,6 +13,7 @@ import {
 } from "@/lib/time-tracking"
 import { completedEntriesQuery, fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import { canManageProjects, normalizeRole } from "@/lib/roles"
+import { pointInArea, haversineMeters, type AreaGeometry } from "@/lib/geo/point-in-polygon"
 
 const TIMEFORING_MODULE = "timeforing" as const
 
@@ -141,6 +142,117 @@ export async function startWorkSessionAction(projectId: string, description?: st
       context: { projectId, userId: user.id, companyId },
     })
     throw new Error("Kunne ikke starte arbeid")
+  }
+
+  revalidatePath(`/prosjekter/${projectId}`)
+  revalidatePath("/min-bedrift/timeforing")
+  return data
+}
+
+// Worker-initiated clock-in confirmed by GPS: starts a session only when the
+// fix is inside the project's geofence (real teig polygon, else a 100 m circle),
+// with a tolerance buffer for GPS drift. A single location point is stored for
+// the declared time-tracking purpose. If the project has no geofence yet, we
+// still start the session (and record the fix) so the feature degrades safely.
+export async function geofenceCheckInAction(
+  projectId: string,
+  lat: number,
+  lng: number,
+  accuracyM?: number | null,
+  description?: string
+) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error("Du må være logget inn")
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new Error("Mangler gyldig posisjon")
+  }
+
+  const { companyId } = await getEffectiveRole(supabase, user.id)
+  if (!companyId) {
+    throw new Error("Kunne ikke hente bedriftsinformasjon")
+  }
+  await assertCompanyHasModule(companyId, TIMEFORING_MODULE, "Timeføring")
+
+  // One active session per user (matches startWorkSessionAction).
+  const { data: existingActive } = await supabase
+    .from("time_entries")
+    .select("id, project_id, projects(name)")
+    .eq("user_id", user.id)
+    .is("ended_at", null)
+    .maybeSingle()
+  if (existingActive) {
+    if (existingActive.project_id === projectId) {
+      throw new Error("Du har allerede en aktiv arbeidsøkt på dette prosjektet")
+    }
+    const project = Array.isArray(existingActive.projects)
+      ? existingActive.projects[0]
+      : existingActive.projects
+    throw new Error(
+      `Du har allerede en aktiv arbeidsøkt${project?.name ? ` på «${project.name}»` : ""}. Avslutt den først.`
+    )
+  }
+
+  // Validate against the project's stored geofence, when one exists.
+  const { data: gf } = await supabase
+    .from("project_geofences")
+    .select("geofence_kind, center_lat, center_lng, radius_m, polygon")
+    .eq("project_id", projectId)
+    .eq("company_id", companyId)
+    .maybeSingle()
+
+  if (gf) {
+    let within = false
+    let distanceM = Infinity
+    const polygon = gf.polygon as AreaGeometry | null
+    if (gf.geofence_kind === "polygon" && polygon) {
+      within = pointInArea(lng, lat, polygon)
+    }
+    if (gf.center_lat != null && gf.center_lng != null) {
+      distanceM = haversineMeters(lng, lat, gf.center_lng as number, gf.center_lat as number)
+      const buffer = 30 + Math.min(Number(accuracyM) || 0, 100)
+      if (distanceM <= ((gf.radius_m as number) ?? 100) + buffer) within = true
+    }
+    if (!within) {
+      throw new Error(
+        `Du er ikke på byggeplassen${Number.isFinite(distanceM) ? ` (~${Math.round(distanceM)} m unna)` : ""}. Gå nærmere og prøv igjen.`
+      )
+    }
+  }
+
+  const now = new Date()
+  const { data, error } = await supabase
+    .from("time_entries")
+    .insert({
+      project_id: projectId,
+      user_id: user.id,
+      company_id: companyId,
+      entry_date: now.toISOString().slice(0, 10),
+      started_at: now.toISOString(),
+      description: description?.trim() || null,
+      hours: null,
+      ended_at: null,
+      source: "geofence",
+      check_in_lat: lat,
+      check_in_lng: lng,
+      check_in_accuracy_m: Number.isFinite(Number(accuracyM)) ? Number(accuracyM) : null,
+    })
+    .select("id, project_id, user_id, started_at, ended_at, description, entry_date")
+    .single()
+
+  if (error) {
+    await logServerError({
+      message: "Kunne ikke stemple inn (geofence)",
+      error,
+      source: "action",
+      route: "geofenceCheckInAction",
+      context: { projectId, userId: user.id, companyId },
+    })
+    throw new Error("Kunne ikke stemple inn")
   }
 
   revalidatePath(`/prosjekter/${projectId}`)

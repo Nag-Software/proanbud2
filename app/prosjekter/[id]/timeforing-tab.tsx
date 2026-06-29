@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { format } from "date-fns"
 import { nb } from "date-fns/locale"
-import { Clock, Pencil, Play, Square } from "lucide-react"
+import { Clock, Loader2, MapPin, Pencil, Play, Square } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {
   addManualTimeEntryAction,
+  geofenceCheckInAction,
   getActiveWorkSessionAction,
   getProjectTimeEntriesAction,
   startWorkSessionAction,
@@ -69,6 +70,7 @@ export default function TimeforingTab({
   const [description, setDescription] = useState("")
   const [elapsedLabel, setElapsedLabel] = useState("0m 00s")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [checkingIn, setCheckingIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastSavedHours, setLastSavedHours] = useState<number | null>(null)
 
@@ -152,6 +154,35 @@ export default function TimeforingTab({
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  function handleGeofenceCheckIn() {
+    setError(null)
+    setLastSavedHours(null)
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setError("Enheten støtter ikke posisjon")
+      return
+    }
+    setCheckingIn(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude, accuracy } = pos.coords
+          const session = await geofenceCheckInAction(projectId, latitude, longitude, accuracy, description)
+          setActiveSession(session as ActiveSession)
+        } catch (checkInError) {
+          reportClientError(checkInError, { context: { action: "stemple inn (geofence)", projectId } })
+          setError(checkInError instanceof Error ? checkInError.message : "Kunne ikke stemple inn")
+        } finally {
+          setCheckingIn(false)
+        }
+      },
+      () => {
+        setError("Fikk ikke posisjon. Slå på stedstjenester og prøv igjen.")
+        setCheckingIn(false)
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+    )
   }
 
   function handleToggleManual() {
@@ -250,15 +281,35 @@ export default function TimeforingTab({
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 
+          <div className="space-y-1">
+            <Button
+              type="button"
+              className="w-full gap-2"
+              onClick={handleGeofenceCheckIn}
+              disabled={isWorking || isSubmitting || checkingIn}
+            >
+              {checkingIn ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MapPin className="h-4 w-4" />
+              )}
+              {checkingIn ? "Henter posisjon …" : "Stemple inn på plassen"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Bruker GPS for å bekrefte at du er på byggeplassen.
+            </p>
+          </div>
+
           <div className="grid gap-2 sm:grid-cols-2">
             <Button
               type="button"
+              variant="outline"
               className="gap-2"
               onClick={handleStart}
               disabled={isWorking || isSubmitting}
             >
               <Play className="h-4 w-4" />
-              Start arbeid
+              Start uten GPS
             </Button>
             <Button
               type="button"
