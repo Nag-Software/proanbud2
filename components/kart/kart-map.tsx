@@ -5,8 +5,13 @@ import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { useTheme } from "next-themes"
 
-import { geoJsonCircle, type GeoCircle } from "@/lib/geo/circle"
-import type { KartProject, KartCustomer } from "@/app/kart/actions"
+import { geoJsonCircle } from "@/lib/geo/circle"
+import type { KartProject, KartCustomer, KartGeofence } from "@/app/kart/actions"
+
+type FenceGeometry =
+  | { type: "Polygon"; coordinates: number[][][] }
+  | { type: "MultiPolygon"; coordinates: number[][][][] }
+type FenceFeature = { type: "Feature"; properties: Record<string, unknown>; geometry: FenceGeometry }
 
 // Apple-Maps-like operations map. Renders project + customer pins and project
 // geofence circles on a clean light/dark MapTiler basemap. maplibre-gl touches
@@ -19,7 +24,7 @@ export type KartMapProps = {
   onSelect: (id: string | null) => void
   showCustomers: boolean
   showGeofences: boolean
-  geofenceRadiusM?: number
+  geofences: KartGeofence[]
   className?: string
 }
 
@@ -54,7 +59,7 @@ export default function KartMap({
   onSelect,
   showCustomers,
   showGeofences,
-  geofenceRadiusM = 100,
+  geofences,
   className,
 }: KartMapProps) {
   const { resolvedTheme } = useTheme()
@@ -68,8 +73,8 @@ export default function KartMap({
   const resizeObsRef = useRef<ResizeObserver | null>(null)
 
   // Latest props for imperative handlers/effects that register once.
-  const propsRef = useRef({ projects, customers, selectedId, showCustomers, showGeofences, geofenceRadiusM })
-  propsRef.current = { projects, customers, selectedId, showCustomers, showGeofences, geofenceRadiusM }
+  const propsRef = useRef({ projects, customers, selectedId, showCustomers, showGeofences, geofences })
+  propsRef.current = { projects, customers, selectedId, showCustomers, showGeofences, geofences }
   const onSelectRef = useRef(onSelect)
   useEffect(() => {
     onSelectRef.current = onSelect
@@ -117,7 +122,7 @@ export default function KartMap({
   useEffect(() => {
     if (loadedRef.current) renderAll()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, customers, selectedId, showCustomers, showGeofences, geofenceRadiusM])
+  }, [projects, customers, selectedId, showCustomers, showGeofences, geofences])
 
   // --- selection → fly to ---
   useEffect(() => {
@@ -150,7 +155,7 @@ export default function KartMap({
   function renderAll() {
     const map = mapRef.current
     if (!map || !loadedRef.current) return
-    const { projects, customers, selectedId, showCustomers, showGeofences, geofenceRadiusM } =
+    const { projects, customers, selectedId, showCustomers, showGeofences, geofences } =
       propsRef.current
 
     // Markers
@@ -176,15 +181,20 @@ export default function KartMap({
       }
     }
 
-    // Geofence circles (selected always; all when toggled on)
-    const features: GeoCircle[] = []
-    for (const p of projects) {
-      if (p.lat == null || p.lng == null) continue
-      const include = showGeofences || p.id === selectedId
+    // Geofences (selected always; all when toggled on). Real teig polygon when we
+    // have one, else a 100 m circle fallback.
+    const features: FenceFeature[] = []
+    for (const gf of geofences) {
+      const include = showGeofences || gf.projectId === selectedId
       if (!include) continue
-      const circle = geoJsonCircle(p.lng, p.lat, geofenceRadiusM)
-      circle.properties = { selected: p.id === selectedId ? 1 : 0 }
-      features.push(circle)
+      const selected = gf.projectId === selectedId ? 1 : 0
+      if (gf.kind === "polygon" && gf.polygon) {
+        features.push({ type: "Feature", properties: { selected }, geometry: gf.polygon })
+      } else if (gf.centerLat != null && gf.centerLng != null) {
+        const circle = geoJsonCircle(gf.centerLng, gf.centerLat, gf.radiusM || 100)
+        circle.properties = { selected }
+        features.push(circle)
+      }
     }
     const src = map.getSource(GEOFENCE_SOURCE) as maplibregl.GeoJSONSource | undefined
     src?.setData({ type: "FeatureCollection", features })

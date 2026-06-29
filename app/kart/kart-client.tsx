@@ -25,6 +25,7 @@ import {
   getKartDataAction,
   setProjectSiteAddressAction,
   type KartCustomer,
+  type KartGeofence,
   type KartProject,
 } from "./actions"
 
@@ -60,12 +61,15 @@ function statusDot(s: string) {
 export function KartClient({
   initialProjects,
   initialCustomers,
+  initialGeofences,
 }: {
   initialProjects: KartProject[]
   initialCustomers: KartCustomer[]
+  initialGeofences: KartGeofence[]
 }) {
   const [projects, setProjects] = useState(initialProjects)
   const [customers, setCustomers] = useState(initialCustomers)
+  const [geofences, setGeofences] = useState(initialGeofences)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showCustomers, setShowCustomers] = useState(false)
   const [showGeofences, setShowGeofences] = useState(false)
@@ -80,12 +84,15 @@ export function KartClient({
     () => projects.filter((p) => p.lat != null && p.lng != null),
     [projects]
   )
-  const missing = useMemo(
-    () =>
-      projects.filter((p) => p.lat == null).length +
-      customers.filter((c) => c.lat == null).length,
-    [projects, customers]
-  )
+  const missing = useMemo(() => {
+    const fenceIds = new Set(geofences.map((g) => g.projectId))
+    const missingCoords =
+      projects.filter((p) => p.lat == null).length + customers.filter((c) => c.lat == null).length
+    const missingGeofence = projects.filter(
+      (p) => p.lat != null && p.lng != null && !fenceIds.has(p.id)
+    ).length
+    return missingCoords + missingGeofence
+  }, [projects, customers, geofences])
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     const list = q
@@ -119,16 +126,19 @@ export function KartClient({
       const data = await getKartDataAction()
       setProjects(data.projects)
       setCustomers(data.customers)
-      const total = res.projectsGeocoded + res.customersGeocoded
+      setGeofences(data.geofences)
+      const total = res.projectsGeocoded + res.customersGeocoded + res.geofencesBuilt
       if (total === 0) {
-        toast.info("Fant ingen nye adresser å plassere")
+        toast.info("Kartet er allerede oppdatert")
       } else {
-        toast.success(
-          `Plasserte ${res.projectsGeocoded} prosjekt og ${res.customersGeocoded} kunder på kartet`
-        )
+        const parts: string[] = []
+        if (res.projectsGeocoded) parts.push(`${res.projectsGeocoded} prosjekt`)
+        if (res.customersGeocoded) parts.push(`${res.customersGeocoded} kunder`)
+        if (res.geofencesBuilt) parts.push(`${res.geofencesBuilt} geofence`)
+        toast.success(`Oppdaterte ${parts.join(", ")}`)
       }
       if (res.remaining > 0) {
-        toast.info(`${res.remaining} gjenstår — kjør «Plasser adresser» igjen`)
+        toast.info(`${res.remaining} gjenstår — kjør «Oppdater kart» igjen`)
       }
     } catch {
       toast.error("Geokoding feilet")
@@ -162,11 +172,11 @@ export function KartClient({
         toast.error(res.error || "Kunne ikke lagre")
         return
       }
-      setProjects((prev) =>
-        prev.map((p) =>
-          p.id === selected.id ? { ...p, address: res.address, lat: res.lat, lng: res.lng } : p
-        )
-      )
+      // Refetch so the new pin + geofence (teig polygon) show.
+      const data = await getKartDataAction()
+      setProjects(data.projects)
+      setCustomers(data.customers)
+      setGeofences(data.geofences)
       setEditing(false)
       if (res.lat == null) {
         toast.info("Lagret, men fant ingen posisjon for adressen")
@@ -187,6 +197,7 @@ export function KartClient({
       <KartMap
         projects={projects}
         customers={customers}
+        geofences={geofences}
         selectedId={selectedId}
         onSelect={setSelectedId}
         showCustomers={showCustomers}
@@ -267,7 +278,7 @@ export function KartClient({
             ) : (
               <Crosshair className="size-4" />
             )}
-            Plasser adresser ({missing})
+            Oppdater kart ({missing})
           </Button>
         )}
       </div>

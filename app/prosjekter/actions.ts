@@ -11,6 +11,7 @@ import { assertPlanFeature, companyHasFeature } from "@/lib/billing/server-modul
 import { canManageProjects } from "@/lib/roles"
 import { logServerError } from "@/lib/errors/log"
 import { geocodeAddress } from "@/lib/geo/geocode"
+import { upsertProjectGeofence } from "@/lib/geo/project-geofence"
 
 const taskStatusToDb: Record<string, string> = {
   "Ikke startet": "todo",
@@ -500,9 +501,15 @@ export async function createProjectAction(input: CreateProjectInput) {
     }
   }
 
+  // Store the project's geofence (real teig boundary, else 100 m circle).
+  if (siteAddress) {
+    await upsertProjectGeofence(companyId, project.id, siteLat, siteLng)
+  }
+
   revalidatePath("/prosjekter")
   revalidatePath(`/prosjekter/${project.id}`)
   revalidatePath("/prosjekter/ny")
+  revalidatePath("/kart")
 
   await enqueueEntityTripletexSync({
     companyId,
@@ -637,8 +644,19 @@ export async function updateProjectAction(projectId: string, values: Record<stri
     throw new Error("Kunne ikke oppdatere prosjekt")
   }
 
+  // Re-sync the geofence when the site address (and thus coords) changed.
+  if ("site_address" in updates) {
+    await upsertProjectGeofence(
+      userData.company_id,
+      projectId,
+      (updates.lat as number | null | undefined) ?? null,
+      (updates.lng as number | null | undefined) ?? null
+    )
+  }
+
   revalidatePath(`/prosjekter/${projectId}`)
   revalidatePath(`/prosjekter`)
+  revalidatePath("/kart")
 
   await enqueueEntityTripletexSync({
     companyId: userData.company_id,

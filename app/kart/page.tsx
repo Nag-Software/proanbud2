@@ -10,11 +10,15 @@ export const dynamic = "force-dynamic"
 
 export default async function Page() {
   await checkRoleAccess(["admin", "manager"])
-  const { projects, customers } = await getKartDataAction()
+  const { projects, customers, geofences } = await getKartDataAction()
 
   return (
     <AppPageShell segments={["Kart"]} noPadding>
-      <KartClient initialProjects={projects} initialCustomers={customers} />
+      <KartClient
+        initialProjects={projects}
+        initialCustomers={customers}
+        initialGeofences={geofences}
+      />
     </AppPageShell>
   )
 }

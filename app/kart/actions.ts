@@ -7,6 +7,7 @@ import { getCurrentUserRole } from "@/lib/auth-utils"
 import { getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import { canManageProjects } from "@/lib/roles"
 import { geocodeAddress } from "@/lib/geo/geocode"
+import { upsertProjectGeofence } from "@/lib/geo/project-geofence"
 import { logServerError } from "@/lib/errors/log"
 
 // The map is an admin/prosjektleder surface — never workers. Tenant isolation is
@@ -31,9 +32,23 @@ export type KartCustomer = {
   lng: number | null
 }
 
+export type GeoArea =
+  | { type: "Polygon"; coordinates: number[][][] }
+  | { type: "MultiPolygon"; coordinates: number[][][][] }
+
+export type KartGeofence = {
+  projectId: string
+  kind: "polygon" | "circle"
+  centerLat: number | null
+  centerLng: number | null
+  radiusM: number
+  polygon: GeoArea | null
+}
+
 export type KartData = {
   projects: KartProject[]
   customers: KartCustomer[]
+  geofences: KartGeofence[]
 }
 
 /** True only for admin/manager. Workers can never read the map data. */
@@ -43,10 +58,10 @@ async function assertManager(): Promise<boolean> {
 }
 
 export async function getKartDataAction(): Promise<KartData> {
-  if (!(await assertManager())) return { projects: [], customers: [] }
+  if (!(await assertManager())) return { projects: [], customers: [], geofences: [] }
 
   const supabase = await createClient()
-  const [{ data: projectRows }, { data: customerRows }] = await Promise.all([
+  const [{ data: projectRows }, { data: customerRows }, { data: geofenceRows }] = await Promise.all([
     supabase
       .from("projects")
       .select("id, name, status, customer_id, site_address, lat, lng")
@@ -55,6 +70,9 @@ export async function getKartDataAction(): Promise<KartData> {
       .from("customers")
       .select("id, name, address, lat, lng")
       .order("name", { ascending: true }),
+    supabase
+      .from("project_geofences")
+      .select("project_id, geofence_kind, center_lat, center_lng, radius_m, polygon"),
   ])
 
   const projects: KartProject[] = (projectRows ?? []).map((p) => ({
@@ -75,7 +93,16 @@ export async function getKartDataAction(): Promise<KartData> {
     lng: (c.lng as number | null) ?? null,
   }))
 
-  return { projects, customers }
+  const geofences: KartGeofence[] = (geofenceRows ?? []).map((g) => ({
+    projectId: g.project_id as string,
+    kind: (g.geofence_kind as "polygon" | "circle") ?? "circle",
+    centerLat: (g.center_lat as number | null) ?? null,
+    centerLng: (g.center_lng as number | null) ?? null,
+    radiusM: (g.radius_m as number | null) ?? 100,
+    polygon: (g.polygon as GeoArea | null) ?? null,
+  }))
+
+  return { projects, customers, geofences }
 }
 
 export type SetSiteAddressResult = {
@@ -130,6 +157,8 @@ export async function setProjectSiteAddressAction(
       return { ok: false, address: null, lat: null, lng: null, error: "Kunne ikke lagre" }
     }
 
+    await upsertProjectGeofence(companyId, projectId, nextLat, nextLng)
+
     revalidatePath("/kart")
     return { ok: true, address: trimmed, lat: nextLat, lng: nextLng }
   } catch (error) {
@@ -148,6 +177,7 @@ export type GeocodeMissingResult = {
   ok: boolean
   customersGeocoded: number
   projectsGeocoded: number
+  geofencesBuilt: number
   remaining: number
   error?: string
 }
@@ -158,19 +188,20 @@ const MAX_PER_RUN = 80
 
 export async function geocodeMissingKartAction(): Promise<GeocodeMissingResult> {
   if (!(await assertManager())) {
-    return { ok: false, customersGeocoded: 0, projectsGeocoded: 0, remaining: 0, error: "Ingen tilgang" }
+    return { ok: false, customersGeocoded: 0, projectsGeocoded: 0, geofencesBuilt: 0, remaining: 0, error: "Ingen tilgang" }
   }
 
   const { user } = await getCurrentUserRole()
   const companyId = await getCurrentCompanyIdForUser(user.id)
   if (!companyId) {
-    return { ok: false, customersGeocoded: 0, projectsGeocoded: 0, remaining: 0, error: "Mangler bedrift" }
+    return { ok: false, customersGeocoded: 0, projectsGeocoded: 0, geofencesBuilt: 0, remaining: 0, error: "Mangler bedrift" }
   }
 
   const supabase = await createClient()
   let budget = MAX_PER_RUN
   let customersGeocoded = 0
   let projectsGeocoded = 0
+  let geofencesBuilt = 0
   let remaining = 0
 
   try {
@@ -233,8 +264,32 @@ export async function geocodeMissingKartAction(): Promise<GeocodeMissingResult> 
       if (!error) projectsGeocoded++
     }
 
+    // 3) Build a geofence (real teig boundary, else 100 m circle) for any project
+    //    that now has coordinates but no stored geofence yet.
+    const { data: coordRows } = await supabase
+      .from("projects")
+      .select("id, lat, lng")
+      .eq("company_id", companyId)
+      .not("lat", "is", null)
+    const { data: fenceRows } = await supabase
+      .from("project_geofences")
+      .select("project_id")
+      .eq("company_id", companyId)
+    const haveFence = new Set((fenceRows ?? []).map((r) => r.project_id as string))
+
+    for (const p of coordRows ?? []) {
+      if (haveFence.has(p.id as string)) continue
+      if (budget <= 0) {
+        remaining++
+        continue
+      }
+      budget--
+      await upsertProjectGeofence(companyId, p.id as string, p.lat as number, p.lng as number)
+      geofencesBuilt++
+    }
+
     revalidatePath("/kart")
-    return { ok: true, customersGeocoded, projectsGeocoded, remaining }
+    return { ok: true, customersGeocoded, projectsGeocoded, geofencesBuilt, remaining }
   } catch (error) {
     await logServerError({
       message: "Geokoding av kart-data feilet",
@@ -247,6 +302,7 @@ export async function geocodeMissingKartAction(): Promise<GeocodeMissingResult> 
       ok: false,
       customersGeocoded,
       projectsGeocoded,
+      geofencesBuilt,
       remaining,
       error: "Geokoding feilet",
     }
