@@ -13,9 +13,13 @@ import {
 } from "@/lib/time-tracking"
 import { completedEntriesQuery, fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import { canManageProjects, normalizeRole } from "@/lib/roles"
-import { pointInArea, haversineMeters, type AreaGeometry } from "@/lib/geo/point-in-polygon"
+import { distanceToAreaMeters, haversineMeters, type AreaGeometry } from "@/lib/geo/point-in-polygon"
 
 const TIMEFORING_MODULE = "timeforing" as const
+
+// GPS-drift tolerance: a fix counts as on-site when it's inside the geofence or
+// within this many metres of its edge.
+const GEOFENCE_BUFFER_M = 10
 
 async function getEffectiveRole(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const { data: userRoleData } = await supabase
@@ -206,20 +210,17 @@ export async function geofenceCheckInAction(
     .maybeSingle()
 
   if (gf) {
-    let within = false
-    let distanceM = Infinity
     const polygon = gf.polygon as AreaGeometry | null
+    let outsideBy = Infinity // metres outside the allowed zone (0 = inside)
     if (gf.geofence_kind === "polygon" && polygon) {
-      within = pointInArea(lng, lat, polygon)
+      outsideBy = distanceToAreaMeters(lng, lat, polygon)
+    } else if (gf.center_lat != null && gf.center_lng != null) {
+      const dc = haversineMeters(lng, lat, gf.center_lng as number, gf.center_lat as number)
+      outsideBy = Math.max(0, dc - ((gf.radius_m as number) ?? 100))
     }
-    if (gf.center_lat != null && gf.center_lng != null) {
-      distanceM = haversineMeters(lng, lat, gf.center_lng as number, gf.center_lat as number)
-      const buffer = 30 + Math.min(Number(accuracyM) || 0, 100)
-      if (distanceM <= ((gf.radius_m as number) ?? 100) + buffer) within = true
-    }
-    if (!within) {
+    if (outsideBy > GEOFENCE_BUFFER_M) {
       throw new Error(
-        `Du er ikke på byggeplassen${Number.isFinite(distanceM) ? ` (~${Math.round(distanceM)} m unna)` : ""}. Gå nærmere og prøv igjen.`
+        `Du er ikke på byggeplassen${Number.isFinite(outsideBy) ? ` (~${Math.round(outsideBy)} m utenfor)` : ""}. Gå nærmere og prøv igjen.`
       )
     }
   }
@@ -237,6 +238,7 @@ export async function geofenceCheckInAction(
       hours: null,
       ended_at: null,
       source: "geofence",
+      status: "pending",
       check_in_lat: lat,
       check_in_lng: lng,
       check_in_accuracy_m: Number.isFinite(Number(accuracyM)) ? Number(accuracyM) : null,
@@ -391,6 +393,111 @@ export async function addManualTimeEntryAction(
   revalidatePath(`/prosjekter/${projectId}`)
   revalidatePath("/min-bedrift/timeforing")
   return data
+}
+
+export type PendingApproval = {
+  id: string
+  projectId: string
+  projectName: string
+  userName: string
+  entryDate: string
+  startedAt: string | null
+  endedAt: string | null
+  hours: number | null
+  source: string
+  onSite: boolean
+}
+
+/** Completed entries awaiting manager approval (geofence/auto check-ins). */
+export async function getPendingApprovalsAction(): Promise<PendingApproval[]> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { role, companyId } = await getEffectiveRole(supabase, user.id)
+  if (!companyId || !(await hasTimeforingModule(companyId))) return []
+  if (!canManageProjects(role)) return []
+
+  const { data, error } = await supabase
+    .from("time_entries")
+    .select(
+      "id, project_id, entry_date, started_at, ended_at, hours, source, check_in_lat, users(full_name, email), projects(name)"
+    )
+    .eq("company_id", companyId)
+    .eq("status", "pending")
+    .not("ended_at", "is", null)
+    .order("ended_at", { ascending: false })
+    .limit(200)
+
+  if (error) {
+    await logServerError({
+      message: "Kunne ikke hente timer til godkjenning",
+      error,
+      source: "action",
+      route: "getPendingApprovalsAction",
+      context: { userId: user.id, companyId },
+    })
+    return []
+  }
+
+  return (data || []).map((r) => {
+    const u = Array.isArray(r.users) ? r.users[0] : r.users
+    const p = Array.isArray(r.projects) ? r.projects[0] : r.projects
+    return {
+      id: r.id as string,
+      projectId: r.project_id as string,
+      projectName: (p?.name as string) || "Ukjent prosjekt",
+      userName: (u?.full_name as string) || (u?.email as string) || "Ukjent",
+      entryDate: r.entry_date as string,
+      startedAt: (r.started_at as string | null) ?? null,
+      endedAt: (r.ended_at as string | null) ?? null,
+      hours: (r.hours as number | null) ?? null,
+      source: (r.source as string) || "manual",
+      onSite: r.check_in_lat != null,
+    }
+  })
+}
+
+async function setTimeEntryStatus(entryId: string, status: "approved" | "rejected") {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error("Du må være logget inn")
+
+  const { role, companyId } = await getEffectiveRole(supabase, user.id)
+  if (!companyId || !canManageProjects(role)) {
+    throw new Error("Du har ikke tilgang til å godkjenne timer")
+  }
+
+  const { error } = await supabase
+    .from("time_entries")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", entryId)
+    .eq("company_id", companyId)
+
+  if (error) {
+    await logServerError({
+      message: "Kunne ikke endre godkjenningsstatus",
+      error,
+      source: "action",
+      route: "setTimeEntryStatus",
+      context: { userId: user.id, companyId, entryId, status },
+    })
+    throw new Error("Kunne ikke oppdatere status")
+  }
+
+  revalidatePath("/min-bedrift/timeforing")
+}
+
+export async function approveTimeEntryAction(entryId: string) {
+  await setTimeEntryStatus(entryId, "approved")
+}
+
+export async function rejectTimeEntryAction(entryId: string) {
+  await setTimeEntryStatus(entryId, "rejected")
 }
 
 export async function getProjectTimeEntriesAction(projectId: string, viewAll = false) {

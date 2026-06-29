@@ -1,6 +1,7 @@
 import { AppPageShell } from "@/components/app-page-shell"
 import { ModuleGate } from "@/components/billing/module-gate"
-import { getCompanyTimeOverviewAction } from "@/app/timeforing/actions"
+import { getCompanyTimeOverviewAction, getPendingApprovalsAction } from "@/app/timeforing/actions"
+import { ApprovalsPanel } from "@/components/timeforing/approvals-panel"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import { MODULE_PRICING } from "@/lib/billing/plans"
@@ -29,7 +30,10 @@ export default async function Page() {
     )
   }
 
-  const overview = await getCompanyTimeOverviewAction()
+  const [overview, pending] = await Promise.all([
+    getCompanyTimeOverviewAction(),
+    getPendingApprovalsAction(),
+  ])
 
   return (
     <AppPageShell segments={["Min bedrift", "Timeføring"]}>
@@ -45,6 +49,8 @@ export default async function Page() {
             Timer registreres automatisk når ansatte avslutter arbeid på et prosjekt.
           </p>
         </div>
+
+        <ApprovalsPanel initialPending={pending} />
 
         <TimeforingClient
           canViewAll={overview.canViewAll}

@@ -14,6 +14,7 @@ export function completedEntriesQuery(supabase: ServerClient) {
     )
     .not("ended_at", "is", null)
     .not("hours", "is", null)
+    .neq("status", "rejected")
 }
 
 /** Per-participant hour summaries for a single project. The caller is
