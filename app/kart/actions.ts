@@ -11,9 +11,12 @@ import { upsertProjectGeofence } from "@/lib/geo/project-geofence"
 import { calculateSessionHours, unwrapRelation } from "@/lib/time-tracking"
 import { logServerError } from "@/lib/errors/log"
 
-// The map is an admin/prosjektleder surface — never workers. Tenant isolation is
-// enforced by RLS on every query (get_current_company_id), so the role gate here
-// is purely about who may open the view, not which company's rows return.
+// The live operations map (crew, avvik, budget, editing) is an admin/prosjektleder
+// surface — every action here is manager-gated via assertManager(). Workers get a
+// separate, read-only path (getKartWorkerProjectsAction) that returns just placed
+// projects with no financial/ops data. Tenant isolation is enforced by RLS on every
+// query (get_current_company_id), so the role gate is about who sees what, not which
+// company's rows return.
 
 export type KartProject = {
   id: string
@@ -214,6 +217,44 @@ export async function getKartOpsAction(): Promise<KartOps[]> {
   if (!(await assertManager())) return []
   const supabase = await createClient()
   return fetchKartOps(supabase)
+}
+
+// Lean project shape for the read-only worker map — just enough to drop a pin
+// and show a card. No budget, ops, geofence, or customer data ever reaches a
+// worker client.
+export type KartWorkerProject = {
+  id: string
+  name: string
+  status: string
+  address: string | null
+  lat: number | null
+  lng: number | null
+}
+
+// Placed projects the current user may see, for the worker locator map. NOT
+// manager-gated: any authenticated company member may call it, and RLS
+// (view_assigned_projects) already narrows the rows to the worker's own
+// assigned projects. Returns strictly less than getKartDataAction, so this is
+// safe to expose more broadly. Unplaced projects (no coords) are filtered out —
+// workers can't geocode, so they'd only be invisible clutter.
+export async function getKartWorkerProjectsAction(): Promise<KartWorkerProject[]> {
+  // Redirects unauthenticated callers to /login; we don't need the role here.
+  await getCurrentUserRole()
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("projects")
+    .select("id, name, status, site_address, lat, lng")
+    .not("lat", "is", null)
+    .order("updated_at", { ascending: false })
+
+  return (data ?? []).map((p) => ({
+    id: p.id as string,
+    name: (p.name as string) ?? "Uten navn",
+    status: (p.status as string) ?? "planning",
+    address: (p.site_address as string | null) ?? null,
+    lat: (p.lat as number | null) ?? null,
+    lng: (p.lng as number | null) ?? null,
+  }))
 }
 
 // Recent driven business routes for the optional "kjørebok" overlay. Prefers the

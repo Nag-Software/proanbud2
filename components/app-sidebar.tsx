@@ -366,9 +366,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     if (item.title === "Kalender" && !featureEnabled("kalender")) return false;
     if (item.title === "Meldinger" && !featureEnabled("meldinger")) return false;
     if (item.title === "HMS" && !featureEnabled("hms")) return false;
-    // Workers have a deliberately small surface: only Projects and Calendar.
+    // Workers have a deliberately small surface: Projects, Kart (read-only
+    // locator) and Calendar.
     if (isWorker) {
-      return ["Prosjekter", "Kalender"].includes(item.title);
+      return ["Prosjekter", "Kart", "Kalender"].includes(item.title);
     }
     if (item.title === "Innstillinger" && !canManageBilling) {
       return false;

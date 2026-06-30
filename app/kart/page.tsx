@@ -1,17 +1,29 @@
 import { AppPageShell } from "@/components/app-page-shell"
 import { checkRoleAccess } from "@/lib/auth-utils"
 
-import { getKartDataAction } from "./actions"
+import { getKartDataAction, getKartWorkerProjectsAction } from "./actions"
 import { KartClient } from "./kart-client"
+import { KartWorkerClient } from "./kart-worker-client"
 
-// Operations map — admin + prosjektleder only (workers are redirected by
-// checkRoleAccess). Dynamic so the pin data is never served stale.
+// Dynamic so the pin data is never served stale.
 export const dynamic = "force-dynamic"
 
 export default async function Page() {
-  await checkRoleAccess(["admin", "manager"])
-  const { projects, customers, geofences, ops } = await getKartDataAction()
+  const { canonicalRole } = await checkRoleAccess(["admin", "manager", "worker"])
 
+  // Workers get a read-only locator: their assigned projects as pins plus a
+  // bottom-sheet card (navigate / open project). No live ops, no editing.
+  if (canonicalRole === "worker") {
+    const projects = await getKartWorkerProjectsAction()
+    return (
+      <AppPageShell segments={["Kart"]} noPadding>
+        <KartWorkerClient initialProjects={projects} />
+      </AppPageShell>
+    )
+  }
+
+  // Admin + prosjektleder get the full live operations console.
+  const { projects, customers, geofences, ops } = await getKartDataAction()
   return (
     <AppPageShell segments={["Kart"]} noPadding>
       <KartClient

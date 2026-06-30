@@ -8,6 +8,7 @@ import {
   ShieldCheckIcon,
   InboxIcon,
   MenuIcon,
+  MapIcon,
   CalendarDays,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -22,9 +23,10 @@ const fullNavItems = [
   { href: "/meldinger", icon: InboxIcon, label: "Meldinger", exact: false },
 ]
 
-// Workers only have Projects + Calendar.
+// Workers only have Projects, Kart (read-only locator) + Calendar.
 const workerNavItems = [
   { href: "/prosjekter", icon: FolderIcon, label: "Prosjekter", exact: false },
+  { href: "/kart", icon: MapIcon, label: "Kart", exact: false },
   { href: "/kalender", icon: CalendarDays, label: "Kalender", exact: false },
 ]
 
