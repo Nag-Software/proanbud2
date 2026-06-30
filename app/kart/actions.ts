@@ -8,6 +8,7 @@ import { getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import { canManageProjects } from "@/lib/roles"
 import { geocodeAddress } from "@/lib/geo/geocode"
 import { upsertProjectGeofence } from "@/lib/geo/project-geofence"
+import { calculateSessionHours, unwrapRelation } from "@/lib/time-tracking"
 import { logServerError } from "@/lib/errors/log"
 
 // The map is an admin/prosjektleder surface — never workers. Tenant isolation is
@@ -22,6 +23,32 @@ export type KartProject = {
   address: string | null
   lat: number | null
   lng: number | null
+  budgetNok: number | null
+  endDate: string | null
+}
+
+// One worker currently clocked in on a project (an open time entry).
+export type KartCrew = {
+  userId: string
+  name: string
+  since: string | null
+  gpsConfirmed: boolean
+}
+
+// Live operational signal per project — drives the pin badges and the detail
+// panel. Refetched on a short poll so the map reads as "right now".
+export type KartOps = {
+  projectId: string
+  crew: KartCrew[]
+  hoursToday: number
+  openAvvik: number
+  overdueTasks: number
+}
+
+// A driven kjørebok route, simplified to a [lng,lat] polyline for the map.
+export type KartTrip = {
+  id: string
+  coords: [number, number][]
 }
 
 export type KartCustomer = {
@@ -49,6 +76,79 @@ export type KartData = {
   projects: KartProject[]
   customers: KartCustomer[]
   geofences: KartGeofence[]
+  ops: KartOps[]
+}
+
+// Local Oslo date (YYYY-MM-DD) for "today" comparisons. The DB stores entry_date
+// as a local calendar day, so we compare against the Norwegian day, not UTC.
+function osloToday(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Oslo" }).format(new Date())
+}
+
+// Per-project live operations: who's clocked in now, hours logged today (closed
+// entries + the live elapsed of open ones), open avvik, and overdue tasks. All
+// queries are RLS-scoped to the caller's company.
+async function fetchKartOps(
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<KartOps[]> {
+  const today = osloToday()
+  const [{ data: openRows }, { data: todayRows }, { data: avvikRows }, { data: taskRows }] =
+    await Promise.all([
+      supabase
+        .from("time_entries")
+        .select("project_id, user_id, started_at, source, check_in_lat, users(full_name, email)")
+        .is("ended_at", null),
+      supabase.from("time_entries").select("project_id, hours, started_at, ended_at").eq("entry_date", today),
+      supabase.from("deviations").select("project_id").eq("status", "open"),
+      supabase.from("tasks").select("project_id").neq("status", "done").not("due_date", "is", null).lt("due_date", today),
+    ])
+
+  const ops = new Map<string, KartOps>()
+  const get = (projectId: string): KartOps => {
+    let entry = ops.get(projectId)
+    if (!entry) {
+      entry = { projectId, crew: [], hoursToday: 0, openAvvik: 0, overdueTasks: 0 }
+      ops.set(projectId, entry)
+    }
+    return entry
+  }
+
+  for (const r of openRows ?? []) {
+    const projectId = r.project_id as string | null
+    if (!projectId) continue
+    const u = unwrapRelation(
+      r.users as
+        | { full_name: string | null; email: string | null }
+        | { full_name: string | null; email: string | null }[]
+        | null
+    )
+    get(projectId).crew.push({
+      userId: r.user_id as string,
+      name: u?.full_name || u?.email || "Ukjent",
+      since: (r.started_at as string | null) ?? null,
+      gpsConfirmed: r.source === "geofence" || r.check_in_lat != null,
+    })
+  }
+
+  for (const r of todayRows ?? []) {
+    const projectId = r.project_id as string | null
+    if (!projectId) continue
+    const closed = r.hours != null ? Number(r.hours) : null
+    const live = r.ended_at == null && r.started_at ? calculateSessionHours(r.started_at as string) : 0
+    get(projectId).hoursToday += closed ?? live
+  }
+
+  for (const r of avvikRows ?? []) {
+    const projectId = r.project_id as string | null
+    if (projectId) get(projectId).openAvvik += 1
+  }
+
+  for (const r of taskRows ?? []) {
+    const projectId = r.project_id as string | null
+    if (projectId) get(projectId).overdueTasks += 1
+  }
+
+  return Array.from(ops.values())
 }
 
 /** True only for admin/manager. Workers can never read the map data. */
@@ -58,13 +158,13 @@ async function assertManager(): Promise<boolean> {
 }
 
 export async function getKartDataAction(): Promise<KartData> {
-  if (!(await assertManager())) return { projects: [], customers: [], geofences: [] }
+  if (!(await assertManager())) return { projects: [], customers: [], geofences: [], ops: [] }
 
   const supabase = await createClient()
-  const [{ data: projectRows }, { data: customerRows }, { data: geofenceRows }] = await Promise.all([
+  const [{ data: projectRows }, { data: customerRows }, { data: geofenceRows }, ops] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, name, status, customer_id, site_address, lat, lng")
+      .select("id, name, status, customer_id, site_address, lat, lng, budget_nok, end_date")
       .order("updated_at", { ascending: false }),
     supabase
       .from("customers")
@@ -73,6 +173,7 @@ export async function getKartDataAction(): Promise<KartData> {
     supabase
       .from("project_geofences")
       .select("project_id, geofence_kind, center_lat, center_lng, radius_m, polygon"),
+    fetchKartOps(supabase),
   ])
 
   const projects: KartProject[] = (projectRows ?? []).map((p) => ({
@@ -83,6 +184,8 @@ export async function getKartDataAction(): Promise<KartData> {
     address: (p.site_address as string | null) ?? null,
     lat: (p.lat as number | null) ?? null,
     lng: (p.lng as number | null) ?? null,
+    budgetNok: (p.budget_nok as number | null) ?? null,
+    endDate: (p.end_date as string | null) ?? null,
   }))
 
   const customers: KartCustomer[] = (customerRows ?? []).map((c) => ({
@@ -102,7 +205,156 @@ export async function getKartDataAction(): Promise<KartData> {
     polygon: (g.polygon as GeoArea | null) ?? null,
   }))
 
-  return { projects, customers, geofences }
+  return { projects, customers, geofences, ops }
+}
+
+// Just the live ops slice — for the client poll that keeps the map current
+// without refetching projects/customers/geofences.
+export async function getKartOpsAction(): Promise<KartOps[]> {
+  if (!(await assertManager())) return []
+  const supabase = await createClient()
+  return fetchKartOps(supabase)
+}
+
+// Recent driven business routes for the optional "kjørebok" overlay. Prefers the
+// stored simplified polyline; falls back to a straight from→to line. RLS-scoped.
+export async function getKjorebokRoutesAction(): Promise<KartTrip[]> {
+  if (!(await assertManager())) return []
+  const supabase = await createClient()
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10)
+
+  const { data } = await supabase
+    .from("kjorebok_trips")
+    .select("id, route_geometry, from_lat, from_lng, to_lat, to_lng")
+    .eq("classification", "business")
+    .gte("trip_date", since)
+    .order("trip_date", { ascending: false })
+    .limit(300)
+
+  const trips: KartTrip[] = []
+  for (const t of data ?? []) {
+    let coords: [number, number][] = []
+    const rg = t.route_geometry as unknown
+    if (Array.isArray(rg)) {
+      coords = rg
+        .filter(
+          (pt): pt is [number, number] =>
+            Array.isArray(pt) &&
+            pt.length >= 2 &&
+            Number.isFinite(pt[0]) &&
+            Number.isFinite(pt[1])
+        )
+        .map((pt) => [pt[0], pt[1]])
+    }
+    if (coords.length < 2) {
+      const fromLat = t.from_lat as number | null
+      const fromLng = t.from_lng as number | null
+      const toLat = t.to_lat as number | null
+      const toLng = t.to_lng as number | null
+      if (fromLat != null && fromLng != null && toLat != null && toLng != null) {
+        coords = [
+          [fromLng, fromLat],
+          [toLng, toLat],
+        ]
+      }
+    }
+    if (coords.length >= 2) trips.push({ id: t.id as string, coords })
+  }
+  return trips
+}
+
+export type GeofenceResult = { ok: boolean; error?: string }
+
+// Save a hand-tuned circular geofence (center + radius). Marked 'manuell' so the
+// automatic teig/circle logic won't overwrite it on later address edits.
+export async function setProjectGeofenceAction(
+  projectId: string,
+  centerLat: number,
+  centerLng: number,
+  radiusM: number
+): Promise<GeofenceResult> {
+  if (!(await assertManager())) return { ok: false, error: "Ingen tilgang" }
+  if (!Number.isFinite(centerLat) || !Number.isFinite(centerLng)) {
+    return { ok: false, error: "Ugyldig posisjon" }
+  }
+  const radius = Math.round(Math.min(2000, Math.max(20, radiusM)))
+
+  const { user } = await getCurrentUserRole()
+  const companyId = await getCurrentCompanyIdForUser(user.id)
+  if (!companyId) return { ok: false, error: "Mangler bedrift" }
+
+  const supabase = await createClient()
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .eq("company_id", companyId)
+    .maybeSingle()
+  if (!project) return { ok: false, error: "Ugyldig prosjekt" }
+
+  const { error } = await supabase.from("project_geofences").upsert(
+    {
+      company_id: companyId,
+      project_id: projectId,
+      geofence_kind: "circle",
+      center_lat: centerLat,
+      center_lng: centerLng,
+      radius_m: radius,
+      polygon: null,
+      matrikkel_kommunenr: null,
+      gnr: null,
+      bnr: null,
+      festenr: null,
+      polygon_source: "manuell",
+      srid: 4326,
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "project_id" }
+  )
+  if (error) {
+    await logServerError({
+      message: "Kunne ikke lagre manuell geofence",
+      error,
+      source: "action",
+      route: "setProjectGeofenceAction",
+      context: { projectId, companyId },
+    })
+    return { ok: false, error: "Kunne ikke lagre geofence" }
+  }
+
+  revalidatePath("/kart")
+  return { ok: true }
+}
+
+// Discard a manual geofence and re-derive the automatic one (teig boundary, else
+// 100 m circle) from the project's coordinates.
+export async function resetProjectGeofenceAction(projectId: string): Promise<GeofenceResult> {
+  if (!(await assertManager())) return { ok: false, error: "Ingen tilgang" }
+
+  const { user } = await getCurrentUserRole()
+  const companyId = await getCurrentCompanyIdForUser(user.id)
+  if (!companyId) return { ok: false, error: "Mangler bedrift" }
+
+  const supabase = await createClient()
+  const { data: project } = await supabase
+    .from("projects")
+    .select("lat, lng")
+    .eq("id", projectId)
+    .eq("company_id", companyId)
+    .maybeSingle()
+  if (!project) return { ok: false, error: "Ugyldig prosjekt" }
+
+  await upsertProjectGeofence(
+    companyId,
+    projectId,
+    (project.lat as number | null) ?? null,
+    (project.lng as number | null) ?? null,
+    { force: true }
+  )
+
+  revalidatePath("/kart")
+  return { ok: true }
 }
 
 export type SetSiteAddressResult = {

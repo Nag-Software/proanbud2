@@ -10,7 +10,8 @@ export async function upsertProjectGeofence(
   companyId: string,
   projectId: string,
   lat: number | null,
-  lng: number | null
+  lng: number | null,
+  opts?: { force?: boolean }
 ): Promise<void> {
   try {
     const admin = createAdminClient()
@@ -19,6 +20,18 @@ export async function upsertProjectGeofence(
     if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
       await admin.from("project_geofences").delete().eq("project_id", projectId).eq("company_id", companyId)
       return
+    }
+
+    // Never silently overwrite a hand-tuned ("manuell") geofence from an automatic
+    // path (address edit / bulk geocode). Only an explicit reset passes force.
+    if (!opts?.force) {
+      const { data: existing } = await admin
+        .from("project_geofences")
+        .select("polygon_source")
+        .eq("project_id", projectId)
+        .eq("company_id", companyId)
+        .maybeSingle()
+      if (existing?.polygon_source === "manuell") return
     }
 
     const boundary = await fetchPropertyBoundary(lat, lng)
