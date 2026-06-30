@@ -1,7 +1,12 @@
 import { AppPageShell } from "@/components/app-page-shell"
 import { ModuleGate } from "@/components/billing/module-gate"
-import { getCompanyTimeOverviewAction, getPendingApprovalsAction } from "@/app/timeforing/actions"
+import {
+  getCompanyTimeOverviewAction,
+  getCompanyTrackingSettingsAction,
+  getPendingApprovalsAction,
+} from "@/app/timeforing/actions"
 import { ApprovalsPanel } from "@/components/timeforing/approvals-panel"
+import { AutoCloseSettings } from "@/components/timeforing/auto-close-settings"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import { MODULE_PRICING } from "@/lib/billing/plans"
@@ -30,9 +35,10 @@ export default async function Page() {
     )
   }
 
-  const [overview, pending] = await Promise.all([
+  const [overview, pending, trackingSettings] = await Promise.all([
     getCompanyTimeOverviewAction(),
     getPendingApprovalsAction(),
+    getCompanyTrackingSettingsAction(),
   ])
 
   return (
@@ -59,6 +65,8 @@ export default async function Page() {
           byProject={overview.byProject}
           byEmployee={overview.byEmployee}
         />
+
+        <AutoCloseSettings initial={trackingSettings} />
       </div>
     </AppPageShell>
   )

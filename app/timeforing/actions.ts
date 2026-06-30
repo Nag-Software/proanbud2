@@ -406,6 +406,7 @@ export type PendingApproval = {
   hours: number | null
   source: string
   onSite: boolean
+  autoClosed: boolean
 }
 
 /** Completed entries awaiting manager approval (geofence/auto check-ins). */
@@ -423,7 +424,7 @@ export async function getPendingApprovalsAction(): Promise<PendingApproval[]> {
   const { data, error } = await supabase
     .from("time_entries")
     .select(
-      "id, project_id, entry_date, started_at, ended_at, hours, source, check_in_lat, users(full_name, email), projects(name)"
+      "id, project_id, entry_date, started_at, ended_at, hours, source, check_in_lat, auto_closed, users(full_name, email), projects(name)"
     )
     .eq("company_id", companyId)
     .eq("status", "pending")
@@ -456,8 +457,88 @@ export async function getPendingApprovalsAction(): Promise<PendingApproval[]> {
       hours: (r.hours as number | null) ?? null,
       source: (r.source as string) || "manual",
       onSite: r.check_in_lat != null,
+      autoClosed: r.auto_closed === true,
     }
   })
+}
+
+export type CompanyTrackingSettings = {
+  autoCloseEnabled: boolean
+  defaultShiftEnd: string | null // "HH:MM"
+  maxSessionHours: number
+}
+
+export async function getCompanyTrackingSettingsAction(): Promise<CompanyTrackingSettings> {
+  const fallback: CompanyTrackingSettings = {
+    autoCloseEnabled: true,
+    defaultShiftEnd: null,
+    maxSessionHours: 10,
+  }
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return fallback
+
+  const { role, companyId } = await getEffectiveRole(supabase, user.id)
+  if (!companyId || !canManageProjects(role)) return fallback
+
+  const { data } = await supabase
+    .from("company_tracking_settings")
+    .select("auto_close_enabled, default_shift_end, max_session_hours")
+    .eq("company_id", companyId)
+    .maybeSingle()
+
+  if (!data) return fallback
+  return {
+    autoCloseEnabled: data.auto_close_enabled ?? true,
+    defaultShiftEnd: data.default_shift_end ? String(data.default_shift_end).slice(0, 5) : null,
+    maxSessionHours: (data.max_session_hours as number) ?? 10,
+  }
+}
+
+export async function saveCompanyTrackingSettingsAction(input: CompanyTrackingSettings) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error("Du må være logget inn")
+
+  const { role, companyId } = await getEffectiveRole(supabase, user.id)
+  if (!companyId || !canManageProjects(role)) {
+    throw new Error("Du har ikke tilgang til disse innstillingene")
+  }
+
+  const shiftEnd =
+    input.defaultShiftEnd && /^\d{2}:\d{2}$/.test(input.defaultShiftEnd)
+      ? input.defaultShiftEnd
+      : null
+  const maxHours = Math.min(24, Math.max(1, Math.round(Number(input.maxSessionHours) || 10)))
+
+  const { error } = await supabase.from("company_tracking_settings").upsert(
+    {
+      company_id: companyId,
+      auto_close_enabled: Boolean(input.autoCloseEnabled),
+      default_shift_end: shiftEnd,
+      max_session_hours: maxHours,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "company_id" }
+  )
+
+  if (error) {
+    await logServerError({
+      message: "Kunne ikke lagre innstillinger for timeføring",
+      error,
+      source: "action",
+      route: "saveCompanyTrackingSettingsAction",
+      context: { userId: user.id, companyId },
+    })
+    throw new Error("Kunne ikke lagre innstillinger")
+  }
+
+  revalidatePath("/min-bedrift/timeforing")
+  return { ok: true as const }
 }
 
 async function setTimeEntryStatus(entryId: string, status: "approved" | "rejected") {
