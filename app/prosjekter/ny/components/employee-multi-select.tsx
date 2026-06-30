@@ -18,7 +18,7 @@ type EmployeeMultiSelectProps = {
 }
 
 const roleLabel: Record<string, string> = {
-  admin: "Admin",
+  admin: "Administrator",
   manager: "Prosjektleder",
   worker: "Håndverker",
 }

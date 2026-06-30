@@ -16,7 +16,7 @@ export function AddParticipantDialog({ projectId, currentParticipants }: { proje
   const [submitting, setSubmitting] = useState(false)
   
   const [selectedUser, setSelectedUser] = useState<string>("")
-  const [accessLevel, setAccessLevel] = useState<string>("read")
+  const [accessLevel, setAccessLevel] = useState<string>("write")
   const [error, setError] = useState<string>("")
 
   // Fetch users when dialog opens
@@ -38,7 +38,7 @@ export function AddParticipantDialog({ projectId, currentParticipants }: { proje
     } else {
         // Reset state on close
         setSelectedUser("")
-        setAccessLevel("read")
+        setAccessLevel("write")
         setError("")
     }
   }, [open, currentParticipants])
@@ -114,13 +114,13 @@ export function AddParticipantDialog({ projectId, currentParticipants }: { proje
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="read">Bare visning (Read)</SelectItem>
-                <SelectItem value="write">Kan redigere (Write)</SelectItem>
-                <SelectItem value="manager">Prosjektleder (Full tilgang)</SelectItem>
+                <SelectItem value="write">Håndverker</SelectItem>
+                <SelectItem value="manager">Prosjektleder</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground mt-1">
-              Admin kan endre detaljer og økonomi. Bare visning kan kun se prosjektoppgaver og detaljer.
+              Prosjektleder kan endre prosjektet, økonomi og legge til deltakere. Håndverker ser
+              prosjektet, fører timer og oppdaterer egne oppgaver.
             </p>
           </div>
           

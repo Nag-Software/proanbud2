@@ -134,11 +134,10 @@ export default function DeltakereTab({
                     </td>
                     <td className="px-3 py-2">
                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                          p.accessLevel === "Admin" ? "bg-amber-100 text-amber-800" :
-                          p.accessLevel === "Bare visning" ? "bg-blue-100 text-blue-800" :
+                          p.accessLevel === "Prosjektleder" ? "bg-amber-100 text-amber-800" :
                           "bg-slate-100 text-slate-800"
                         }`}>
-                          {p.accessLevel === "Admin" && <Shield className="h-3 w-3" />}
+                          {p.accessLevel === "Prosjektleder" && <Shield className="h-3 w-3" />}
                           {p.accessLevel}
                         </span>
                     </td>
@@ -260,21 +259,21 @@ export default function DeltakereTab({
         <Card className="bg-muted/40 border-dashed gap-1">
           <CardHeader className="pb-2">
              <CardTitle className="text-sm flex items-center gap-2">
-                <Shield className="h-4 w-4 text-amber-500" /> Admin-tilgang
+                <Shield className="h-4 w-4 text-amber-500" /> Prosjektleder
              </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Brukere med Admin-tilgang kan redigere prosjektdetaljer, invitere andre deltakere, se økonomi og slette prosjektet. Typisk forbeholdt prosjektledere og administratorer.
+            Kan redigere prosjektdetaljer, legge til og fjerne deltakere, se økonomi og slette prosjektet. Typisk prosjektlederen eller administrator.
           </CardContent>
         </Card>
         <Card className="bg-muted/40 border-dashed gap-1">
           <CardHeader className="">
-             <CardTitle className="text-sm text-blue-600 flex items-center gap-2">
-                Bare visning
+             <CardTitle className="text-sm flex items-center gap-2">
+                Håndverker
              </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
-            Brukere med lese-tilgang kan kun se prosjektoppgaver og detaljer, og eventuelt oppdatere status på oppgaver tildelt dem. Kan ikke se økonomi eller avtaler med mindre de spesifikt er delt.
+            Ser prosjektet og oppgavene, fører timer og oppdaterer status på egne oppgaver. Ser ikke økonomi med mindre det deles spesifikt.
           </CardContent>
         </Card>
       </div>

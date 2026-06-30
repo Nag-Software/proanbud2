@@ -13,7 +13,7 @@ import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { getCompanyPlanAndModules, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import { MODULE_PRICING, hasFeature } from "@/lib/billing/plans"
-import { canManageProjects } from "@/lib/roles"
+import { canManageProjects, getRoleDisplayName } from "@/lib/roles"
 import { fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import { getDeviationsAction } from "@/app/avvik/actions"
 import { getProjectChecklistsAction } from "@/app/ks/actions"
@@ -147,19 +147,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   const projectDeltakere = normalizedMembers.map((member) => {
     const memberUser = member.users
-    const roleName = memberUser?.role || "Ukjent"
 
     return {
       id: memberUser?.id || crypto.randomUUID(),
       name: memberUser?.full_name || "Ukjent",
       email: memberUser?.email || "",
-      role: roleName,
-      accessLevel:
-        member.access_level === "manager"
-          ? "Admin"
-          : member.access_level === "write"
-            ? "Kan redigere"
-            : "Bare visning",
+      role: getRoleDisplayName(memberUser?.role),
+      // Per-project access is simplified to two levels: a project lead (manager)
+      // and everyone else who works on it (Håndverker). Legacy 'read' rows map to
+      // Håndverker too — no data migration needed.
+      accessLevel: member.access_level === "manager" ? "Prosjektleder" : "Håndverker",
       avatar: memberUser?.full_name ? memberUser.full_name.substring(0, 2).toUpperCase() : "U",
     }
   })
