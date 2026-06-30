@@ -6,7 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css"
 import { useTheme } from "next-themes"
 
 import { geoJsonCircle } from "@/lib/geo/circle"
-import type { KartProject, KartCustomer, KartGeofence, KartTrip } from "@/app/kart/actions"
+import type { KartCustomer, KartGeofence, KartTrip } from "@/app/kart/actions"
 
 type FenceGeometry =
   | { type: "Polygon"; coordinates: number[][][] }
@@ -26,8 +26,20 @@ export type Basemap = "standard" | "satellite" | "hybrid"
 // map. null = not editing.
 export type GeoEdit = { center: { lat: number; lng: number }; radiusM: number }
 
+// Minimal project shape the map needs to plot + label a pin. Both the full
+// manager `KartProject` and the lean read-only `KartWorkerProject` satisfy it,
+// so workers never receive budget/ops fields they shouldn't see.
+export type KartMapProject = {
+  id: string
+  name: string
+  status: string
+  lat: number | null
+  lng: number | null
+  budgetNok?: number | null
+}
+
 export type KartMapProps = {
-  projects: KartProject[]
+  projects: KartMapProject[]
   customers: KartCustomer[]
   geofences: KartGeofence[]
   trips: KartTrip[]
@@ -207,7 +219,9 @@ export default function KartMap({
   useEffect(() => {
     const map = mapRef.current
     if (!map || !loadedRef.current) return
-    map.setStyle(styleFor(basemap, isDark))
+    // diff:false forces a full reload. Diffing a vector style (streets) into a
+    // raster one (satellite/hybrid) can no-op and leave the old basemap showing.
+    map.setStyle(styleFor(basemap, isDark), { diff: false })
     map.once("styledata", () => {
       ensureLayers(map)
       renderAll()
@@ -234,8 +248,11 @@ export default function KartMap({
     const map = mapRef.current
     if (!map || !loadedRef.current) return
     if (!map.getSource(PROJECT_SOURCE) || !map.isSourceLoaded(PROJECT_SOURCE)) return
-    const { projects, selectedId, badges } = propsRef.current
+    const { projects, selectedId, badges, geoEdit } = propsRef.current
     const byId = new Map(projects.map((p) => [p.id, p]))
+    // While editing a project's geofence, hide that project's pin so it can't sit
+    // on top of (and steal the pointer from) the draggable center handle.
+    const editingId = geoEdit ? selectedId : null
 
     const next: Record<string, maplibregl.Marker> = {}
     const features = map.querySourceFeatures(PROJECT_SOURCE)
@@ -243,7 +260,7 @@ export default function KartMap({
       const props = f.properties || {}
       if (props.point_count) continue
       const id = props.id as string | undefined
-      if (!id || next[id]) continue
+      if (!id || next[id] || id === editingId) continue
       const p = byId.get(id)
       if (!p) continue
       const coords = (f.geometry as { coordinates: [number, number] }).coordinates
@@ -252,22 +269,24 @@ export default function KartMap({
       const avvik = b?.avvik ?? 0
       const sig = `${crew}|${avvik}|${id === selectedId ? 1 : 0}`
 
-      let marker = projectCacheRef.current[id]
-      if (!marker || projectSigRef.current[id] !== sig) {
-        if (marker) marker.remove()
+      const existing = projectCacheRef.current[id]
+      const onScreen = Boolean(projectOnScreenRef.current[id])
+      if (!existing || projectSigRef.current[id] !== sig) {
+        if (existing) existing.remove()
         const el = projectMarkerEl(p, id === selectedId, crew, avvik)
         el.addEventListener("click", (e) => {
           e.stopPropagation()
           onSelectRef.current(id)
         })
-        marker = new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(coords)
+        const marker = new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(coords).addTo(map)
         projectCacheRef.current[id] = marker
         projectSigRef.current[id] = sig
+        next[id] = marker
       } else {
-        marker.setLngLat(coords)
+        existing.setLngLat(coords)
+        if (!onScreen) existing.addTo(map)
+        next[id] = existing
       }
-      next[id] = marker
-      if (!projectOnScreenRef.current[id]) marker.addTo(map)
     }
 
     for (const id in projectOnScreenRef.current) {
@@ -415,9 +434,12 @@ export default function KartMap({
     if (handlersRef.current) return
     handlersRef.current = true
 
-    // Keep HTML project markers in sync with clustering as the user pans/zooms.
-    map.on("render", () => {
-      if (map.isSourceLoaded(PROJECT_SOURCE)) syncProjectMarkers()
+    // Keep HTML project markers in sync with clustering after the view settles or
+    // the cluster data updates. NOT on every "render" frame — that fires during a
+    // marker drag and would yank the pins (and the geofence handle) mid-gesture.
+    map.on("moveend", syncProjectMarkers)
+    map.on("sourcedata", (e) => {
+      if (e.sourceId === PROJECT_SOURCE && e.isSourceLoaded) syncProjectMarkers()
     })
 
     // Click a cluster → zoom to expand it.
@@ -456,7 +478,7 @@ function setVisible(map: maplibregl.Map, layerId: string, visible: boolean) {
 }
 
 function projectMarkerEl(
-  p: KartProject,
+  p: KartMapProject,
   selected: boolean,
   crew: number,
   avvik: number
