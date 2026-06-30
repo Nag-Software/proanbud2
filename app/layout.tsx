@@ -10,6 +10,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { ConfirmProvider } from "@/components/ui/confirm-dialog"
 import { PwaRegister } from "@/components/pwa-register"
 import { NativeAuthBridge } from "@/components/native-auth-bridge"
+import { NativeTrackingBridge } from "@/components/native-tracking-bridge"
 import { MockRoleBanner } from "@/components/dev/mock-role-banner"
 import { Analytics } from "@vercel/analytics/next"
 
@@ -79,6 +80,7 @@ export default function RootLayout({
         <Toaster richColors closeButton />
         <PwaRegister />
         <NativeAuthBridge />
+        <NativeTrackingBridge />
         <MockRoleBanner />
         <Analytics />
       </body>

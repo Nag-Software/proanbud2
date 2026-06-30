@@ -18,6 +18,14 @@ export function isNativeApp(): boolean {
   return getReactNativeWebView() !== null
 }
 
+/** Post a structured message to the native shell. No-op on the regular web. */
+export function postToNative(message: Record<string, unknown>): boolean {
+  const rn = getReactNativeWebView()
+  if (!rn) return false
+  rn.postMessage(JSON.stringify(message))
+  return true
+}
+
 /**
  * Start Google login. Inside the native app, Google blocks OAuth in the embedded
  * WebView, so we ask the native shell to run it in the system browser and hand
