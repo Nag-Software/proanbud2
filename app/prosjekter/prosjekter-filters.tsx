@@ -107,7 +107,7 @@ export function ProsjekterFilters() {
           <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Sorter</p>
           <div className="flex items-stretch gap-2">
             <Select value={currentSort} onValueChange={handleSortChange} disabled={isPending}>
-              <SelectTrigger className="h-9! w-1/2 md:w-[180px]">
+              <SelectTrigger className="h-9 w-1/2 md:w-[180px]">
                 <SelectValue placeholder="Sorter etter" />
               </SelectTrigger>
               <SelectContent>

@@ -13,18 +13,19 @@ import {
   Send,
 } from "lucide-react"
 
+import { track } from "@/lib/analytics/track"
 import { reportClientError } from "@/lib/errors/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -500,6 +501,7 @@ export function OfferDetailClient({
         setIsSendDialogOpen(false)
         void triggerTripletexSyncInBackground()
         toast.success("Tilbud sendt til kunde på e-post")
+        track("tilbud_sendt")
         void refreshActivity()
       } catch (error) {
         reportClientError(error, { context: { action: "send offer to customer", offerId: offer.id } })
@@ -903,18 +905,18 @@ export function OfferDetailClient({
         </TabsContent>
       </ResponsiveTabs>
 
-      <Dialog
+      <ResponsiveDialog
         open={isSendDialogOpen}
         onOpenChange={(open) => {
           if (isPending) return
           setIsSendDialogOpen(open)
         }}
       >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Send tilbudet?</DialogTitle>
-            <DialogDescription>Kunden får en e-post med lenke til tilbudet.</DialogDescription>
-          </DialogHeader>
+        <ResponsiveDialogContent className="px-4 md:p-4 sm:max-w-md">
+          <ResponsiveDialogHeader className="px-0">
+            <ResponsiveDialogTitle>Send tilbudet?</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>Kunden får en e-post med lenke til tilbudet.</ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
           <div className="space-y-2">
             <Label htmlFor="send-offer-email">Kundens e-postadresse</Label>
             <Input
@@ -937,7 +939,7 @@ export function OfferDetailClient({
             ) : null}
             {sendDialogError ? <p className="theme-text-danger text-sm">{sendDialogError}</p> : null}
           </div>
-          <DialogFooter>
+          <ResponsiveDialogFooter className="px-0">
             <Button variant="outline" onClick={() => setIsSendDialogOpen(false)} disabled={isPending}>
               Avbryt
             </Button>
@@ -951,9 +953,9 @@ export function OfferDetailClient({
                 </>
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
 
       <Sheet open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
         <SheetContent className="theme-preview-shell !max-w-[min(1100px,96vw)] w-[96vw] overflow-y-auto p-4 sm:!max-w-[min(1100px,96vw)]">

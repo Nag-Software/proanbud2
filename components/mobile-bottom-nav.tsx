@@ -10,9 +10,11 @@ import {
   MenuIcon,
   MapIcon,
   CalendarDays,
+  CarIcon,
   ClockIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useSidebar } from "@/components/ui/sidebar"
 import { useUnreadMessages } from "@/hooks/use-unread-messages"
 import { useUserRole } from "@/hooks/use-user-role"
@@ -27,11 +29,13 @@ const fullNavItems = [
   { href: "/meldinger", icon: InboxIcon, label: "Meldinger", exact: false },
 ]
 
-// Workers only have Projects, Timer, Kart (read-only locator) + Calendar.
+// Workers only have Projects, Timer, Kart (read-only locator), Kjørebok
+// (own trips across projects) + Calendar.
 const workerNavItems = [
   { href: "/prosjekter", icon: FolderIcon, label: "Prosjekter", exact: false },
   { href: "/timeforing", icon: ClockIcon, label: "Timer", exact: false },
   { href: "/kart", icon: MapIcon, label: "Kart", exact: false },
+  { href: "/kjorebok", icon: CarIcon, label: "Kjørebok", exact: false },
   { href: "/kalender", icon: CalendarDays, label: "Kalender", exact: false },
 ]
 
@@ -40,7 +44,7 @@ export function MobileBottomNav() {
   const { toggleSidebar } = useSidebar()
   const unreadCount = useUnreadMessages()
   const { hasActiveSession } = useActiveWorkSession()
-  const { isWorker, hasFeature, loadingRole } = useUserRole()
+  const { isWorker, roleKnown, hasFeature, loadingRole } = useUserRole()
   // While the plan context loads, keep items visible to avoid flicker.
   const featureEnabled = (feature: Parameters<typeof hasFeature>[0]) =>
     loadingRole || hasFeature(feature)
@@ -57,7 +61,8 @@ export function MobileBottomNav() {
   // Med 5 nav-punkter + Meny blir det 6 kolonner — stram inn padding og
   // skriftstørrelse litt så «Prosjekter»/«Meldinger» ikke kolliderer på smale
   // skjermer. Fire eller færre punkter beholder dagens romslige layout.
-  const isCompact = navItems.length >= 5
+  // Skeleton-tilstanden har 5 plasser og bruker derfor også kompakt layout.
+  const isCompact = !roleKnown || navItems.length >= 5
 
   return (
     <nav
@@ -76,7 +81,23 @@ export function MobileBottomNav() {
           className="pointer-events-none absolute inset-0 rounded-[1.25rem] bg-gradient-to-b from-white/25 to-transparent opacity-70 dark:from-white/10"
         />
 
-        {navItems.map(({ href, icon: Icon, label, exact }) => {
+        {/* Rollen er ukjent ved aller første besøk (ingen cache ennå) — hold
+            plassene med nøytrale skeletons i stedet for å blinke admin-fanene
+            for en håndverker. Begge rollevariantene har 5 faner + Meny, så
+            layouten står i ro når rollen lander. */}
+        {!roleKnown &&
+          Array.from({ length: 5 }).map((_, i) => (
+            <div
+              key={i}
+              aria-hidden
+              className="relative flex flex-1 flex-col items-center justify-center gap-1.5"
+            >
+              <Skeleton className="size-[22px] rounded-md" />
+              <Skeleton className="h-2 w-9 rounded-full" />
+            </div>
+          ))}
+
+        {roleKnown && navItems.map(({ href, icon: Icon, label, exact }) => {
           const isActive = exact ? pathname === href : pathname === href || pathname.startsWith(href + "/")
           return (
             <Link

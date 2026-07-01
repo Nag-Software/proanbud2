@@ -12,6 +12,8 @@ import { PwaRegister } from "@/components/pwa-register"
 import { NativeAuthBridge } from "@/components/native-auth-bridge"
 import { NativeTrackingBridge } from "@/components/native-tracking-bridge"
 import { MockRoleBanner } from "@/components/dev/mock-role-banner"
+import { AnalyticsProvider } from "@/components/analytics/analytics-provider"
+import { AnalyticsIdentify } from "@/components/analytics/analytics-identify"
 import { Analytics } from "@vercel/analytics/next"
 
 const satoshi = localFont({
@@ -66,17 +68,20 @@ export default function RootLayout({
         className={`${satoshi.className} ${satoshi.variable} antialiased`}
         suppressHydrationWarning
       >
-        <TooltipProvider>
-          <AuthProvider>
-            <RoleProvider>
-              <BillingSummaryProvider>
-                <ConfirmProvider>
-                  <AppShellLayout>{children}</AppShellLayout>
-                </ConfirmProvider>
-              </BillingSummaryProvider>
-            </RoleProvider>
-          </AuthProvider>
-        </TooltipProvider>
+        <AnalyticsProvider>
+          <TooltipProvider>
+            <AuthProvider>
+              <RoleProvider>
+                <BillingSummaryProvider>
+                  <ConfirmProvider>
+                    <AppShellLayout>{children}</AppShellLayout>
+                    <AnalyticsIdentify />
+                  </ConfirmProvider>
+                </BillingSummaryProvider>
+              </RoleProvider>
+            </AuthProvider>
+          </TooltipProvider>
+        </AnalyticsProvider>
         <Toaster richColors closeButton />
         <PwaRegister />
         <NativeAuthBridge />

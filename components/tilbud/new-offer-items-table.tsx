@@ -17,13 +17,13 @@ import { ChevronDown, ExternalLink, GripVertical, Info, Pencil, Trash2 } from "l
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogTrigger,
+} from "@/components/ui/responsive-dialog"
 import {
   Sheet,
   SheetContent,
@@ -33,6 +33,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { cn } from "@/lib/utils"
 import { calculateLineItemTotal, formatNok, type OfferLineItem } from "@/lib/tilbud/types"
@@ -257,8 +258,8 @@ function LineItemInfoButton({ item }: { item: OfferLineItem }) {
   if (!hasContent) return null
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>
+    <ResponsiveDialog>
+      <ResponsiveDialogTrigger asChild>
         <Button
           type="button"
           variant="ghost"
@@ -269,13 +270,13 @@ function LineItemInfoButton({ item }: { item: OfferLineItem }) {
         >
           <Info className="h-3.5 w-3.5" />
         </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{item.title}</DialogTitle>
-          <DialogDescription>Begrunnelse for valg av produkt, pris og mengde.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3 text-sm">
+      </ResponsiveDialogTrigger>
+      <ResponsiveDialogContent className="px-4 md:p-4 sm:max-w-md">
+        <ResponsiveDialogHeader className="px-0">
+          <ResponsiveDialogTitle>{item.title}</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>Begrunnelse for valg av produkt, pris og mengde.</ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
+        <div className="space-y-3 pb-4 text-sm md:pb-0">
           {reasoning ? (
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Begrunnelse</p>
@@ -289,8 +290,8 @@ function LineItemInfoButton({ item }: { item: OfferLineItem }) {
             </div>
           ) : null}
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }
 
@@ -529,8 +530,28 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Enhetspris</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Antall</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Enhet</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Påslag</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rabatt</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex cursor-help items-center gap-1">
+                      Påslag
+                      <Info className="h-3 w-3" aria-hidden="true" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Prosent lagt på innkjøpsprisen — dette er fortjenesten din på varen.</TooltipContent>
+                </Tooltip>
+              </TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex cursor-help items-center gap-1">
+                      Rabatt
+                      <Info className="h-3 w-3" aria-hidden="true" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Prosent trukket fra prisen kunden ser.</TooltipContent>
+                </Tooltip>
+              </TableHead>
               <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Linjesum
               </TableHead>
@@ -927,6 +948,9 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                 />
               </div>
             </div>
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Rabatt: prosent trukket fra prisen kunden ser.
+            </p>
             <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
               <span className="text-muted-foreground">Linjesum</span>
               <span className="font-semibold tabular-nums">{formatNok(calculateLineItemTotal(editingItem))}</span>

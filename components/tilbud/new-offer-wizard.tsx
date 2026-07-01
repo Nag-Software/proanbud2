@@ -15,6 +15,7 @@ import {
   Calculator,
   Check,
   CheckCircle2,
+  Info,
   LoaderCircle,
   Plus,
   Save,
@@ -29,6 +30,7 @@ import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-me
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table-lazy"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
 import {
   DEFAULT_PAYMENT_SCHEDULE,
@@ -668,6 +670,20 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
               {/* Compact markup + add row toolbar */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="theme-text-label text-sm font-medium">Påslag</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label="Hva er påslag?"
+                    >
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent side="top" className="w-64 text-xs">
+                    Prosent lagt på innkjøpsprisen — dette er fortjenesten din på varen.
+                  </PopoverContent>
+                </Popover>
                 <Input
                   type="number"
                   min={0}

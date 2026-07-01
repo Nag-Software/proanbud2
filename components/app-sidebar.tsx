@@ -11,11 +11,15 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
   SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, FrameIcon, PieChartIcon, MapIcon, CalendarDays, ClockIcon, FolderIcon, FilesIcon, FileTextIcon, ShieldCheckIcon } from "lucide-react"
+import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, CarIcon, FrameIcon, PieChartIcon, MapIcon, CalendarDays, ClockIcon, FolderIcon, FilesIcon, FileTextIcon, ShieldCheckIcon } from "lucide-react"
 import { useUserRole } from "@/hooks/use-user-role"
 import { canInviteEmployees, canManageSubscription } from "@/lib/roles"
 import { useAuth } from "@/components/auth-provider"
@@ -97,6 +101,14 @@ const data: {
       title: "Kart",
       url: "/kart",
       icon: <MapIcon className="size-4" />,
+    },
+    {
+      // Samlet kjørebok for håndverkere (egne turer på tvers av prosjekter).
+      // Admin/prosjektleder har bedriftsoversikten under «Min bedrift» og får
+      // derfor ikke dette punktet — se rollefilteret lenger ned.
+      title: "Kjørebok",
+      url: "/kjorebok",
+      icon: <CarIcon className="size-4" />,
     },
     {
       title: "Kalender",
@@ -289,7 +301,10 @@ function AppSidebarHeader({
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { role, canonicalRole, hasFeature, loadingRole } = useUserRole();
+  // isWorker/roleKnown er cache-seedet (per-bruker localStorage i
+  // useUserRole), så gjenbesøk får riktig menysett fra første klientframe i
+  // stedet for at admin-settet blinker før worker-allowlisten slår inn.
+  const { role, hasFeature, loadingRole, isWorker, roleKnown } = useUserRole();
   const { user } = useAuth();
   const {
     notifications,
@@ -301,7 +316,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const openDeviationCount = useOpenDeviationCount();
   const { hasActiveSession } = useActiveWorkSession();
   const [activeProjects, setActiveProjects] = React.useState<SidebarProject[]>([]);
-  const isWorker = canonicalRole === "worker";
   const canManageBilling = canManageSubscription(role);
   // While the plan context is still loading, treat features as available so
   // Proff items do not flicker out and then back in (matches how the rest of
@@ -400,10 +414,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     if (item.title === "Meldinger" && !featureEnabled("meldinger")) return false;
     if (item.title === "HMS" && !featureEnabled("hms")) return false;
     // Workers have a deliberately small surface: Projects, Timeføring, Kart
-    // (read-only locator) and Calendar.
+    // (read-only locator), Kjørebok (own trips) and Calendar.
     if (isWorker) {
-      return ["Prosjekter", "Timeføring", "Kart", "Kalender"].includes(item.title);
+      return ["Prosjekter", "Timeføring", "Kart", "Kjørebok", "Kalender"].includes(item.title);
     }
+    // Kjørebok-punktet er worker-varianten; admin/prosjektleder når kjørebok
+    // via «Min bedrift» og skal ikke se en duplisert inngang.
+    if (item.title === "Kjørebok") return false;
     return true;
   });
 
@@ -416,10 +433,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         onMarkAllRead={markAllRead}
         onMarkThreadRead={markThreadRead}
         canCreateProject={!isWorker}
-        roleLoading={loadingRole}
+        roleLoading={!roleKnown}
       />
       <SidebarContent>
-        <NavMain items={filteredNavMain} />
+        {roleKnown ? (
+          <NavMain items={filteredNavMain} />
+        ) : (
+          // Rollen er ukjent (aller første besøk uten cache) — vis nøytrale
+          // skeleton-rader i stedet for å blinke hele admin-menyen for en
+          // håndverker. Samme mønster som CreateProjectDrawer-skeletonen over.
+          <SidebarGroup>
+            <SidebarMenu className="gap-0.5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SidebarMenuItem key={i}>
+                  <SidebarMenuSkeleton showIcon />
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
         <NavProjects projects={activeProjects} />
       </SidebarContent>
       <SidebarFooter>

@@ -580,6 +580,38 @@
   box-shadow: 0 2px 12px rgba(56, 189, 248, 0.55);
 }
 
+/* Touch devices (phones/tablets): guarantee minimum touch-target sizes on the
+   shared primitives without changing desktop density. min-height (not height)
+   so explicitly larger buttons (h-12/h-14) still win, and smaller explicit
+   heights are floored up to a tappable size only where a finger is the pointer. */
+@media (pointer: coarse) {
+  [data-slot="button"][data-size="default"],
+  [data-slot="button"][data-size="lg"] {
+    min-height: 2.75rem; /* 44px — Apple HIG */
+  }
+  [data-slot="button"][data-size="sm"] {
+    min-height: 2.5rem;
+  }
+  [data-slot="button"][data-size="icon"],
+  [data-slot="button"][data-size="icon-lg"] {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+  [data-slot="button"][data-size="icon-sm"] {
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+  }
+  [data-slot="input"] {
+    min-height: 2.75rem;
+  }
+  [data-slot="select-trigger"] {
+    min-height: 2.75rem;
+  }
+  [data-slot="tabs-list"] {
+    min-height: 2.5rem;
+  }
+}
+
 /* Respect users who prefer reduced motion: neutralize non-essential animation. */
 @media (prefers-reduced-motion: reduce) {
   *,

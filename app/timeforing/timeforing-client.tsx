@@ -45,6 +45,7 @@ import {
   type ActionResult,
   type MyTimeTrackingOverview,
 } from "@/app/timeforing/actions"
+import { track } from "@/lib/analytics/track"
 import { entryDateToDay } from "@/lib/time-tracking"
 import { WORK_SESSION_CHANGED_EVENT } from "@/hooks/use-active-work-session"
 import { reportClientError } from "@/lib/errors/client"
@@ -218,6 +219,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
             prev ? { ...prev, activeSession: { ...result.data, projectName } } : prev
           )
           notifyWorkSessionChanged()
+          track("stemplet_inn", { metode: "gps" })
         } catch (checkInError) {
           reportClientError(checkInError, {
             context: { action: "stemple inn (geofence)", projectId: selectedProjectId },
@@ -251,6 +253,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
         prev ? { ...prev, activeSession: { ...result.data, projectName } } : prev
       )
       notifyWorkSessionChanged()
+      track("stemplet_inn", { metode: "uten_gps" })
     } catch (startError) {
       reportClientError(startError, {
         context: { action: "starte arbeidsøkt", projectId: selectedProjectId },
@@ -277,6 +280,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
       )
       setOverview((prev) => (prev ? { ...prev, activeSession: null } : prev))
       notifyWorkSessionChanged()
+      track("stemplet_ut")
       await refresh()
     } catch (stopError) {
       reportClientError(stopError, {
@@ -482,8 +486,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
             </div>
           ) : (
             <Select value={selectedProjectId ?? ""} onValueChange={selectProject}>
-              {/* h-12! trengs: basisklassen setter h-9! med important */}
-              <SelectTrigger className="h-12! w-full text-base">
+              <SelectTrigger className="h-12 w-full text-base">
                 <SelectValue placeholder="Velg prosjekt" />
               </SelectTrigger>
               <SelectContent>

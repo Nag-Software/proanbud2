@@ -17,6 +17,7 @@ import {
   PencilLine,
 } from "lucide-react"
 import { toast } from "sonner"
+import { track } from "@/lib/analytics/track"
 import { reportClientError } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import { useConfirm } from "@/components/ui/confirm-dialog"
@@ -607,6 +608,7 @@ export function PrisfilerPage() {
         return
       }
       toast.success(`Prisfil fra ${supplierName} er klar til bruk`)
+      track("prisfil_lastet_opp", { antall_rader: rows.length })
       setOpen(false)
       resetWizard()
       loadFiles()

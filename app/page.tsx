@@ -36,14 +36,6 @@ function isUp(curr: number, prev: number) {
   return curr >= prev
 }
 
-function greeting(): string {
-  const h = new Date().getHours()
-  if (h >= 5 && h < 12) return "God morgen"
-  if (h >= 12 && h < 17) return "God dag"
-  if (h >= 17 && h < 23) return "God kveld"
-  return "God kveld"
-}
-
 const statusColor: Record<string, string> = {
   draft: "theme-badge-status-draft",
   sent: "theme-badge-status-sent",
@@ -55,22 +47,6 @@ const statusLabel: Record<string, string> = {
   sent: "Sendt",
   accepted: "Godkjent",
   rejected: "Avvist",
-}
-
-const companyStatusCfg = {
-  aktiv:       { label: "Aktiv",       badge: "theme-badge-company-active", dot: "theme-progress-fill-completed" },
-  feil:        { label: "Feil",        badge: "theme-badge-company-error", dot: "theme-progress-fill-danger" },
-  vedlikehold: { label: "Vedlikehold", badge: "theme-badge-company-maintenance", dot: "theme-progress-fill-warning" },
-} as const
-
-function StatusBadge({ status }: { status: "aktiv" | "feil" | "vedlikehold" }) {
-  const cfg = companyStatusCfg[status]
-  return (
-    <span className={`inline-flex items-center gap-2 border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.22em] ${cfg.badge}`}>
-      <span className={`h-2 w-2 ${cfg.dot}`} />
-      {cfg.label}
-    </span>
-  )
 }
 
 function OfferRowActions({ offerId }: { offerId: string }) {
@@ -509,39 +485,6 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
           <div className="flex flex-col gap-4">
-            {/* Welcome banner */}
-            <Card className="hidden! border-border theme-surface-hero">
-              <CardContent className="flex items-center gap-6 px-6 py-2">
-                {/* Col 1: greeting + company name */}
-                <div className="flex-1 min-w-0">
-                  <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
-                    Prosjektstyring for byggebransjen
-                  </p>
-                  <h1 className="max-w-xl text-2xl font-medium leading-none text-foreground md:text-3xl">
-                    {greeting()}{data?.userName ? `, ${data.userName}.` : "."}
-                    <span className="mt-2 block text-muted-foreground">
-                      {data?.companyName || "Proanbud"}.
-                    </span>
-                  </h1>
-                </div>
-                {/* Col 2: status chip + action */}
-                <div className="flex flex-col items-end gap-2 shrink-0">
-                  {data ? (
-                    <StatusBadge status={data.companyStatus} />
-                  ) : (
-                    <span className="h-6 w-20 bg-secondary animate-pulse" />
-                  )}
-                </div>
-                {/* Col 3: company logo (only if available) */}
-                {data?.companyLogo && (
-                  <div className="h-12 w-12 shrink-0 overflow-hidden border border-border bg-white">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={data.companyLogo} alt="Firmalogo" className="h-full w-full object-contain p-1" />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
             {/* KPI row */}
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
               {loading
@@ -579,7 +522,7 @@ export default function DashboardPage() {
                             {k.change}
                           </div>
                         </div>
-                        <span className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Denne måneden</span>
+                        <span className="hidden text-[10px] uppercase tracking-[0.16em] text-muted-foreground sm:inline">Denne måneden</span>
                       </div>
                     </CardContent>
                   </Card>
