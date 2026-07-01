@@ -256,6 +256,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   isWorker,
                   isProjectAdmin,
                   hasTimeforing,
+                  hasKs,
                 }}
               />
             </ProjectTabPanel>

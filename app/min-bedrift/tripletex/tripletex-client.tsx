@@ -75,17 +75,37 @@ type ActivityItem = {
   timestamp: string
 }
 
-const SCOPE_ITEMS: Array<{ key: keyof ScopeConfig; label: string; hint?: string }> = [
-  { key: "customers", label: "Kunder", hint: "Synkroniserer kunder" },
-  { key: "projects", label: "Prosjekter", hint: "Utførelsesprosjekter (isOffer=false)" },
-  { key: "offers", label: "Tilbud", hint: "Tilbudsoversikt som prosjekttilbud (isOffer=true)" },
-  { key: "invoices", label: "Fakturaer" },
-  { key: "calendar", label: "Kalender" },
-  { key: "documents", label: "Dokumenter" },
+const SCOPE_ITEMS: Array<{ key: keyof ScopeConfig; label: string; hint: string }> = [
+  { key: "customers", label: "Kunder", hint: "Holder kundelisten lik i Proanbud og Tripletex" },
+  {
+    key: "projects",
+    label: "Prosjekter",
+    hint: "Oppretter prosjektet i Tripletex når et tilbud blir til en ordre",
+  },
+  {
+    key: "offers",
+    label: "Tilbud",
+    hint: "Sender tilbud til tilbudsoversikten i Tripletex, og oppretter ordre når tilbudet aksepteres",
+  },
+  {
+    key: "invoices",
+    label: "Fakturaer",
+    hint: "Oppretter faktura i Tripletex når et tilbud er akseptert",
+  },
+  {
+    key: "calendar",
+    label: "Kalender",
+    hint: "Overfører kalenderhendelser på prosjekter til Tripletex",
+  },
+  {
+    key: "documents",
+    label: "Dokumenter",
+    hint: "Laster opp prosjektdokumenter til Tripletex",
+  },
   {
     key: "travelExpenses",
     label: "Kjørebok / reiseregning",
-    hint: "Overfører kjøreturer som kjøregodtgjørelse per ansatt",
+    hint: "Overfører kjøreturer som kjøregodtgjørelse for hver ansatt",
   },
 ]
 
@@ -571,9 +591,15 @@ export function TripletexClient({
               <p className="text-sm font-medium">Synkroniser</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 {SCOPE_ITEMS.map((item) => (
-                  <label key={item.key} className="flex items-center justify-between text-sm">
-                    {item.label}
+                  <label key={item.key} className="flex items-start justify-between gap-3 text-sm">
+                    <span className="min-w-0">
+                      <span className="block leading-tight">{item.label}</span>
+                      <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+                        {item.hint}
+                      </span>
+                    </span>
                     <Switch
+                      className="mt-0.5 shrink-0"
                       checked={scopes[item.key]}
                       onCheckedChange={(checked) => setScopes((current) => ({ ...current, [item.key]: checked }))}
                       disabled={!canManage}

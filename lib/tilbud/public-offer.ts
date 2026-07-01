@@ -1,13 +1,27 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import {
   COMPANY_BASIC_SELECT,
+  COMPANY_PROFILE_SELECT,
   mapCompanyRowToOfferContext,
   normalizeRelatedCompanyRow,
   type CompanyProfileRow,
 } from "@/lib/tilbud/company-profile"
-import { computeValidityDays, formatOfferReference } from "@/lib/tilbud/offer-document"
+import {
+  computeValidityDays,
+  formatOfferReference,
+  type OfferDocumentAcceptance,
+  type OfferDocumentData,
+} from "@/lib/tilbud/offer-document"
 import { readProjectSummaryFromAnalysis } from "@/lib/tilbud/project-summary"
-import { type OfferCompanyContext, type OfferLineItem } from "@/lib/tilbud/types"
+import {
+  toContractBasis,
+  toPricingModel,
+  type OfferCompanyContext,
+  type OfferContractBasis,
+  type OfferLineItem,
+  type OfferPaymentScheduleEntry,
+  type OfferPricingModel,
+} from "@/lib/tilbud/types"
 import { APP_BASE_URL } from "@/lib/constants"
 
 export function generatePublicOfferSlug() {
@@ -74,6 +88,7 @@ export type PublicOfferRecord = {
     email: string | null
     phone: string | null
     address: string | null
+    postalCode: string | null
     city: string | null
     orgNumber: string | null
   }
@@ -81,6 +96,23 @@ export type PublicOfferRecord = {
   offerReference: string
   isExpired: boolean
   canRespond: boolean
+  paymentSchedule: OfferPaymentScheduleEntry[]
+  pricingModel: OfferPricingModel | null
+  contractBasis: OfferContractBasis | null
+  /** Digital acceptance evidence — set when the customer accepted with a one-time code. */
+  acceptance: OfferDocumentAcceptance | null
+  /** Frozen document content captured at acceptance time; render from this when present. */
+  acceptedSnapshot: OfferDocumentData | null
+}
+
+type RawCustomerRow = {
+  name: string | null
+  email: string | null
+  phone: string | null
+  address: string | null
+  postal_code?: string | null
+  city: string | null
+  org_number: string | null
 }
 
 type RawOfferRow = {
@@ -100,24 +132,16 @@ type RawOfferRow = {
   recipient_email: string | null
   line_items: unknown
   analysis_result: unknown
-  customers?:
-    | {
-        name: string | null
-        email: string | null
-        phone: string | null
-        address: string | null
-        city: string | null
-        org_number: string | null
-      }
-    | {
-        name: string | null
-        email: string | null
-        phone: string | null
-        address: string | null
-        city: string | null
-        org_number: string | null
-      }[]
-    | null
+  pricing_model?: string | null
+  contract_basis?: string | null
+  payment_schedule?: unknown
+  accepted_at?: string | null
+  accepted_by_name?: string | null
+  accepted_email?: string | null
+  accepted_method?: string | null
+  accepted_document_sha256?: string | null
+  accepted_snapshot?: unknown
+  customers?: RawCustomerRow | RawCustomerRow[] | null
   projects?:
     | { name: string | null }
     | { name: string | null }[]
@@ -172,6 +196,7 @@ export function mapPublicOfferRow(row: RawOfferRow): PublicOfferRecord | null {
       email: customer?.email || row.recipient_email || null,
       phone: customer?.phone || null,
       address: customer?.address || null,
+      postalCode: customer?.postal_code || null,
       city: customer?.city || null,
       orgNumber: customer?.org_number || null,
     },
@@ -179,27 +204,73 @@ export function mapPublicOfferRow(row: RawOfferRow): PublicOfferRecord | null {
     offerReference: formatOfferReference(row.id),
     isExpired,
     canRespond: status === "sent" && !isExpired,
+    paymentSchedule: Array.isArray(row.payment_schedule)
+      ? (row.payment_schedule as OfferPaymentScheduleEntry[])
+      : [],
+    pricingModel: toPricingModel(row.pricing_model),
+    contractBasis: toContractBasis(row.contract_basis),
+    acceptance:
+      status === "accepted" && row.accepted_at && row.accepted_by_name && row.accepted_method === "email_otp"
+        ? {
+            name: row.accepted_by_name,
+            email: row.accepted_email || "",
+            acceptedAt: row.accepted_at,
+            method: "email_otp",
+            documentSha256: row.accepted_document_sha256 || "",
+          }
+        : null,
+    acceptedSnapshot: isValidAcceptedSnapshot(row.accepted_snapshot) ? row.accepted_snapshot : null,
   }
 }
+
+/** Minimal shape check before trusting a stored snapshot for rendering. */
+function isValidAcceptedSnapshot(value: unknown): value is OfferDocumentData {
+  if (!value || typeof value !== "object") return false
+  const snapshot = value as Partial<OfferDocumentData>
+  return typeof snapshot.title === "string" && Array.isArray(snapshot.lineItems)
+}
+
+const PUBLIC_OFFER_BASE_SELECT =
+  "id, company_id, customer_id, public_slug, title, description, source_summary, status, amount_nok, quote_valid_until, created_at, sent_at, recipient_name, recipient_email, line_items, analysis_result"
 
 export async function fetchPublicOfferBySlug(slug: string) {
   const admin = createAdminClient()
 
+  // Full company profile (logo, contact, address) + contract/payment fields so
+  // the customer-facing document carries the sender's branding and terms.
   const { data, error } = await admin
     .from("offers")
     .select(
-      "id, company_id, customer_id, public_slug, title, description, source_summary, status, amount_nok, quote_valid_until, created_at, sent_at, recipient_name, recipient_email, line_items, analysis_result, customers(name, email, phone, address, city, org_number), projects(name), companies(" +
+      PUBLIC_OFFER_BASE_SELECT +
+        ", pricing_model, contract_basis, payment_schedule, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, accepted_snapshot, customers(name, email, phone, address, postal_code, city, org_number), projects(name), companies(" +
+        COMPANY_PROFILE_SELECT +
+        ")"
+    )
+    .eq("public_slug", slug)
+    .maybeSingle()
+
+  if (!error && data) {
+    return mapPublicOfferRow(data as unknown as RawOfferRow)
+  }
+
+  // Fallback for databases where the profile (db/16) or contract (db/23)
+  // migrations have not been applied yet.
+  const { data: basicData, error: basicError } = await admin
+    .from("offers")
+    .select(
+      PUBLIC_OFFER_BASE_SELECT +
+        ", customers(name, email, phone, address, city, org_number), projects(name), companies(" +
         COMPANY_BASIC_SELECT +
         ")"
     )
     .eq("public_slug", slug)
     .maybeSingle()
 
-  if (error || !data) {
+  if (basicError || !basicData) {
     return null
   }
 
-  return mapPublicOfferRow(data as unknown as RawOfferRow)
+  return mapPublicOfferRow(basicData as unknown as RawOfferRow)
 }
 
 export async function ensureOfferPublicSlug(offerId: string, companyId: string) {

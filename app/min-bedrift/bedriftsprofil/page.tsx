@@ -33,7 +33,7 @@ export default async function Page() {
   const initialProfile = mapCompanyRowToProfile({ ...companyResult.row, id: companyResult.companyId })
 
   return (
-    <AppPageShell segments={["Min Bedrift", "Bedriftsprofil"]}>
+    <AppPageShell segments={["Min bedrift", "Bedriftsprofil"]}>
       <div className="w-full max-w-3xl">
         <BedriftsprofilClient
           initialProfile={initialProfile}

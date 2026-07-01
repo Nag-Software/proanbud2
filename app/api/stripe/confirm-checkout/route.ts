@@ -51,7 +51,7 @@ export async function POST(request: Request) {
       route: "/api/stripe/confirm-checkout",
     })
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Kunne ikke bekrefte checkout." },
+      { error: "Kunne ikke bekrefte betalingen. Prøv igjen om litt, eller ta kontakt hvis det fortsatt ikke virker." },
       { status: 500 }
     )
   }

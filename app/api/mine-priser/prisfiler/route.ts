@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { logServerError } from "@/lib/errors/log"
+import { zodValidationMessage } from "@/lib/errors/user-message"
 import { createClient } from "@/lib/supabase/server"
 
 const rowSchema = z.object({
@@ -18,9 +19,12 @@ const rowSchema = z.object({
 })
 
 const saveSchema = z.object({
-  supplierName: z.string().trim().min(1),
+  supplierName: z.string().trim().min(1, "Oppgi navn på leverandøren"),
   fileName: z.string().trim().default(""),
-  rows: z.array(rowSchema).min(1).max(50000),
+  rows: z
+    .array(rowSchema)
+    .min(1, "Fila må inneholde minst én prisrad")
+    .max(50000, "Fila kan ha maks 50 000 prisrader"),
 })
 
 export async function GET() {
@@ -36,7 +40,13 @@ export async function GET() {
 
     if (error) {
       console.error("[prisfiler GET]", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      await logServerError({
+        message: "Henting av prisfiler feilet",
+        error,
+        source: "api",
+        route: "/api/mine-priser/prisfiler GET",
+      })
+      return NextResponse.json({ error: "Kunne ikke hente prisfilene dine. Prøv igjen." }, { status: 500 })
     }
     return NextResponse.json({ files: data ?? [] })
   } catch (err) {
@@ -47,7 +57,7 @@ export async function GET() {
       source: "api",
       route: "/api/mine-priser/prisfiler GET",
     })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke hente prisfilene dine. Prøv igjen." }, { status: 500 })
   }
 }
 
@@ -69,7 +79,17 @@ export async function POST(request: Request) {
     const body = await request.json()
     const parsed = saveSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: "Ugyldig data", details: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json(
+        {
+          error: zodValidationMessage(parsed.error.flatten(), {
+            supplierName: "Leverandørnavn",
+            fileName: "Filnavn",
+            rows: "Prisrader",
+          }),
+          details: parsed.error.flatten(),
+        },
+        { status: 400 }
+      )
     }
 
     const { supplierName, fileName, rows } = parsed.data
@@ -90,7 +110,13 @@ export async function POST(request: Request) {
 
     if (fileError || !fileRecord) {
       console.error("[prisfiler POST] file insert error", fileError)
-      return NextResponse.json({ error: fileError?.message ?? "Kunne ikke opprette prisfil" }, { status: 500 })
+      await logServerError({
+        message: "Prisfil: kunne ikke opprette filoppføring",
+        error: fileError,
+        source: "api",
+        route: "/api/mine-priser/prisfiler POST",
+      })
+      return NextResponse.json({ error: "Kunne ikke lagre prisfilen. Prøv igjen." }, { status: 500 })
     }
 
     // Batch insert rows in chunks of 500
@@ -128,7 +154,13 @@ export async function POST(request: Request) {
         console.error("[prisfiler POST] row insert error", rowError)
         // Best-effort cleanup
         await supabase.from("supplier_price_files").delete().eq("id", fileRecord.id)
-        return NextResponse.json({ error: rowError.message }, { status: 500 })
+        await logServerError({
+          message: "Prisfil: kunne ikke lagre prisrader",
+          error: rowError,
+          source: "api",
+          route: "/api/mine-priser/prisfiler POST",
+        })
+        return NextResponse.json({ error: "Kunne ikke lagre prisradene. Prøv igjen." }, { status: 500 })
       }
     }
 
@@ -141,6 +173,6 @@ export async function POST(request: Request) {
       source: "api",
       route: "/api/mine-priser/prisfiler POST",
     })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke lagre prisfilen. Prøv igjen." }, { status: 500 })
   }
 }

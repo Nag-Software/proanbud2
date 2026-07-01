@@ -22,6 +22,10 @@ export const SUBSCRIPTION_EXEMPT_ROUTE_PREFIXES = [
   // lapsed (they cannot pay — only the admin can). Must be exempt so it doesn't
   // redirect-loop on the subscription gate.
   '/abonnement-utlopt',
+  // Shown to deactivated users (users.is_active = false) by getCurrentUserRole.
+  // Must be exempt so a deactivated user in a lapsed-subscription company still
+  // lands here instead of on the payment pages.
+  '/konto-deaktivert',
 ] as const
 
 export const ADMIN_ONBOARDING_ROUTE_PREFIXES = [

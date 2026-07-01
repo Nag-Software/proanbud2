@@ -94,6 +94,43 @@ function formatDate(value: string | null) {
   return d.toLocaleString("no-NO", { dateStyle: "short", timeStyle: "short" })
 }
 
+// Norske etiketter for rå systemverdier (samme mønster som Tripletex-siden).
+function formatSyncState(state: string | null | undefined) {
+  const labels: Record<string, string> = {
+    connected: "Tilkoblet",
+    degraded: "Ustabil",
+    disconnected: "Frakoblet",
+  }
+  const key = String(state || "")
+  return labels[key] || key || "—"
+}
+
+function formatJobType(jobType: string) {
+  const labels: Record<string, string> = {
+    "contact.upsert": "Synkroniserte kunde",
+    "project.upsert": "Synkroniserte prosjekt",
+    "offer.create_from_offer": "Opprettet tilbud i Fiken",
+    "invoice.create_from_offer": "Opprettet faktura",
+    "invoice.send": "Sendte faktura",
+    "document.upload": "Lastet opp dokument",
+    "reconcile.full": "Avstemming",
+    poll_payments: "Sjekket betalinger",
+  }
+  return labels[jobType] || jobType
+}
+
+function formatJobStatus(status: string) {
+  const labels: Record<string, string> = {
+    pending: "Venter",
+    processing: "Behandles",
+    retry: "Nytt forsøk",
+    completed: "Fullført",
+    failed: "Feilet",
+    dead_letter: "Avbrutt",
+  }
+  return labels[status] || status
+}
+
 export function FikenClient({
   initialConnection,
   initialJobs,
@@ -294,7 +331,7 @@ export function FikenClient({
               <div>Sist vellykket synk: {formatDate(connection?.last_success_at || null)}</div>
               <div>Token utløper: {formatDate(connection?.token_expires_at || null)}</div>
               <div>Siste betalingssjekk: {connection?.last_payment_poll_date || "—"}</div>
-              <div>Status: {connection?.sync_state}</div>
+              <div>Status: {formatSyncState(connection?.sync_state)}</div>
             </div>
           ) : null}
 
@@ -408,10 +445,10 @@ export function FikenClient({
             <ul className="flex flex-col gap-2">
               {jobs.map((job) => (
                 <li key={job.id} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="font-mono text-xs text-muted-foreground">{job.job_type}</span>
+                  <span className="text-sm">{formatJobType(job.job_type)}</span>
                   <span className="flex items-center gap-2">
                     <Badge variant={job.status === "failed" || job.status === "dead_letter" ? "destructive" : "secondary"}>
-                      {job.status}
+                      {formatJobStatus(job.status)}
                     </Badge>
                     <span className="text-xs text-muted-foreground">{formatDate(job.created_at)}</span>
                   </span>

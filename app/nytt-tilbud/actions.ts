@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
+import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 import { calculateOfferTotals } from "@/lib/tilbud/types"
 import { canSendOffers } from "@/lib/roles"
@@ -76,56 +77,90 @@ function normalizeAnalysisResult(value: z.infer<typeof analysisSchema>) {
   }
 }
 
-const saveOfferSchema = z
-  .object({
-    id: z.string().uuid().optional(),
-    title: z.string().trim().min(2, "Tittel mangler"),
-    description: z.string().trim().min(20, "Beskrivelse må være minst 20 tegn"),
-    projectId: z.string().uuid("Prosjekt må velges"),
-    sourceSummary: z.string().trim().default(""),
-    sourceDocuments: z.array(sourceDocumentSchema).default([]),
-    lineItems: z.array(lineItemSchema).min(1, "Tilbudet må inneholde minst ett produkt"),
-    analysisResult: analysisSchema.default(null),
-    sendDirectlyToCustomer: z.boolean().default(false),
-    recipientName: z.string().trim().default(""),
-    recipientEmail: z.string().trim().default(""),
-    recipientPhone: z.string().trim().default(""),
-    validityDays: z.number().int().min(1).max(365).default(30),
-    pricingModel: z.enum(["fixed", "time_materials", "unit_price", "mixed"]).optional(),
-    contractBasis: z.enum(["ns8405", "ns8407", "custom", "none"]).optional(),
-    markupPercent: z.number().min(0).max(200).optional(),
-    paymentSchedule: z
-      .array(
-        z.object({
-          label: z.string().trim().min(1),
-          percent: z.number().min(0).max(100),
-          dueDescription: z.string().trim().optional(),
-        })
-      )
-      .optional(),
-  })
-  .superRefine((value, ctx) => {
-    if (value.sendDirectlyToCustomer && !value.recipientEmail) {
-      ctx.addIssue({
-        code: "custom",
+const offerFieldsSchema = z.object({
+  id: z.string().uuid().optional(),
+  title: z.string().trim().min(2, "Gi tilbudet en tittel"),
+  description: z.string().trim().default(""),
+  projectId: z.string().uuid("Prosjekt må velges"),
+  sourceSummary: z.string().trim().default(""),
+  sourceDocuments: z.array(sourceDocumentSchema).default([]),
+  lineItems: z.array(lineItemSchema).default([]),
+  analysisResult: analysisSchema.default(null),
+  sendDirectlyToCustomer: z.boolean().default(false),
+  recipientName: z.string().trim().default(""),
+  recipientEmail: z.string().trim().default(""),
+  recipientPhone: z.string().trim().default(""),
+  validityDays: z.number().int().min(1).max(365).default(30),
+  pricingModel: z.enum(["fixed", "time_materials", "unit_price", "mixed"]).optional(),
+  contractBasis: z.enum(["ns8405", "ns8407", "custom", "none"]).optional(),
+  markupPercent: z.number().min(0).max(200).optional(),
+  paymentSchedule: z
+    .array(
+      z.object({
+        label: z.string().trim().min(1),
+        percent: z.number().min(0).max(100),
+        dueDescription: z.string().trim().optional(),
+      })
+    )
+    .optional(),
+})
+
+type SaveOfferInput = z.infer<typeof offerFieldsSchema>
+
+function recipientIssues(value: SaveOfferInput) {
+  const issues: Array<{ path: string[]; message: string }> = []
+
+  if (value.sendDirectlyToCustomer && !value.recipientEmail) {
+    issues.push({
+      path: ["recipientEmail"],
+      message: "Mottaker e-post må fylles ut ved direkte sending",
+    })
+  }
+
+  if (value.recipientEmail) {
+    const emailCheck = z.string().email().safeParse(value.recipientEmail)
+    if (!emailCheck.success) {
+      issues.push({
         path: ["recipientEmail"],
-        message: "Mottaker e-post må fylles ut ved direkte sending",
+        message: "Mottaker e-post er ugyldig",
       })
     }
+  }
 
-    if (value.recipientEmail) {
-      const emailCheck = z.string().email().safeParse(value.recipientEmail)
-      if (!emailCheck.success) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["recipientEmail"],
-          message: "Mottaker e-post er ugyldig",
-        })
-      }
-    }
-  })
+  return issues
+}
 
-type SaveOfferInput = z.infer<typeof saveOfferSchema>
+// Utkast kan lagres halvveis: tittel + prosjekt er nok, prislinjer og full
+// beskrivelse kan komme senere. Tomme line_items er trygt nedstrøms (totals
+// blir 0, tilbudssiden håndterer tomme lister, og send/PDF er sperret der).
+const draftOfferSchema = offerFieldsSchema.superRefine((value, ctx) => {
+  for (const issue of recipientIssues(value)) {
+    ctx.addIssue({ code: "custom", ...issue })
+  }
+})
+
+// Ferdigstilling/sending krever komplett innhold.
+const completeOfferSchema = offerFieldsSchema.superRefine((value, ctx) => {
+  for (const issue of recipientIssues(value)) {
+    ctx.addIssue({ code: "custom", ...issue })
+  }
+
+  if (value.description.length < 20) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["description"],
+      message: "Beskriv jobben med minst 20 tegn før tilbudet sendes",
+    })
+  }
+
+  if (value.lineItems.length === 0) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["lineItems"],
+      message: "Tilbudet må ha minst én prislinje før det kan sendes",
+    })
+  }
+})
 
 type PersistedOfferResult = {
   id: string
@@ -328,45 +363,76 @@ async function persistOffer(input: SaveOfferInput, status: "draft" | "sent"): Pr
   }
 }
 
-export async function saveOfferDraftAction(input: unknown) {
-  const parsed = saveOfferSchema.safeParse(input)
+export type OfferActionResult = { ok: true; data: PersistedOfferResult } | { ok: false; error: string }
+
+export async function saveOfferDraftAction(input: unknown): Promise<OfferActionResult> {
+  const parsed = draftOfferSchema.safeParse(input)
 
   if (!parsed.success) {
-    throw new Error(parsed.error.issues[0]?.message || "Ugyldige tilbudsdata")
+    return { ok: false, error: parsed.error.issues[0]?.message || "Ugyldige tilbudsdata" }
   }
 
-  return persistOffer(parsed.data, "draft")
+  try {
+    const data = await persistOffer(parsed.data, "draft")
+    return { ok: true, data }
+  } catch (error) {
+    void logServerError({
+      message: "Failed to save offer draft",
+      error,
+      source: "action",
+      route: "app/nytt-tilbud/actions.ts#saveOfferDraftAction",
+      context: { offerId: parsed.data.id || null, projectId: parsed.data.projectId },
+    })
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Kunne ikke lagre utkastet. Prøv igjen.",
+    }
+  }
 }
 
-export async function sendOfferAction(input: unknown) {
-  const parsed = saveOfferSchema.safeParse(input)
+export async function sendOfferAction(input: unknown): Promise<OfferActionResult> {
+  const parsed = completeOfferSchema.safeParse(input)
 
   if (!parsed.success) {
-    throw new Error(parsed.error.issues[0]?.message || "Ugyldige tilbudsdata")
+    return { ok: false, error: parsed.error.issues[0]?.message || "Ugyldige tilbudsdata" }
   }
 
-  const result = await persistOffer(parsed.data, "draft")
-  const context = await resolveOfferSendCompany()
+  try {
+    const result = await persistOffer(parsed.data, "draft")
+    const context = await resolveOfferSendCompany()
 
-  if (!context) {
-    throw new Error("Du må være logget inn for å sende tilbud")
+    if (!context) {
+      return { ok: false, error: "Du må være logget inn for å sende tilbud" }
+    }
+
+    await sendOfferToCustomer({
+      offerId: result.id,
+      companyId: context.companyId,
+      company: context.company,
+      recipientName: parsed.data.recipientName,
+      recipientEmail: parsed.data.recipientEmail,
+      recipientPhone: parsed.data.recipientPhone,
+      message: parsed.data.sourceSummary,
+      actorUserId: context.userId,
+    })
+
+    revalidatePath(`/tilbud/${result.id}`)
+    if (result.projectId) {
+      revalidatePath(`/prosjekter/${result.projectId}`)
+    }
+
+    return { ok: true, data: result }
+  } catch (error) {
+    void logServerError({
+      message: "Failed to send offer",
+      error,
+      source: "action",
+      route: "app/nytt-tilbud/actions.ts#sendOfferAction",
+      context: { offerId: parsed.data.id || null, projectId: parsed.data.projectId },
+    })
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Kunne ikke sende tilbudet. Prøv igjen.",
+    }
   }
-
-  await sendOfferToCustomer({
-    offerId: result.id,
-    companyId: context.companyId,
-    company: context.company,
-    recipientName: parsed.data.recipientName,
-    recipientEmail: parsed.data.recipientEmail,
-    recipientPhone: parsed.data.recipientPhone,
-    message: parsed.data.sourceSummary,
-    actorUserId: context.userId,
-  })
-
-  revalidatePath(`/tilbud/${result.id}`)
-  if (result.projectId) {
-    revalidatePath(`/prosjekter/${result.projectId}`)
-  }
-
-  return result
 }

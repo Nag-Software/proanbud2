@@ -398,7 +398,11 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
                     )
                   }
                 />
-                <Kpi label="Godtgjørelse" value={kmNum > 0 ? kr(amount.amountNok) : "—"} />
+                <Kpi
+                  label="Godtgjørelse"
+                  value={kmNum > 0 ? kr(amount.amountNok) : "—"}
+                  hint={`Beregnet etter statens sats (${amount.rateNokPerKm.toLocaleString("nb-NO", { minimumFractionDigits: 2 })} kr/km)`}
+                />
                 <Kpi
                   label="Drivstoff"
                   value={fuel.costNok > 0 ? kr(fuel.costNok) : "—"}

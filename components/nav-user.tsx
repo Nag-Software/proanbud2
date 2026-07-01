@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
-import { canManageSubscription } from "@/lib/roles"
+import { canManageSubscription, getRoleDisplayName } from "@/lib/roles"
 import { reportClientError } from "@/lib/errors/client"
 
 import {
@@ -51,6 +51,8 @@ import {
   ChevronsUpDownIcon,
   CreditCardIcon,
   ExternalLinkIcon,
+  HelpCircleIcon,
+  LifeBuoyIcon,
   Loader2Icon,
   LogOutIcon,
   ShieldCheckIcon,
@@ -226,12 +228,6 @@ export function NavUser() {
     }
   }
 
-  const roleLabel = {
-    admin: "Admin",
-    manager: "Leder",
-    worker: "Bruker",
-  } as const
-
   if (isLoading) {
     return (
       <SidebarMenu>
@@ -260,9 +256,7 @@ export function NavUser() {
     .toUpperCase() || "PR"
   const subscriptionConfigured = Boolean(stripePublishableKey)
   const canManageBilling = canManageSubscription(profile?.role)
-  const currentRole = profile?.role && profile.role in roleLabel
-    ? roleLabel[profile.role as keyof typeof roleLabel]
-    : "Bruker"
+  const currentRole = getRoleDisplayName(profile?.role)
   const companyName = profile?.company_name?.trim() || "Ikke satt"
   const companyOrgNumber = profile?.company_org_number?.trim() || "Ikke satt"
   const bioPreview = profile?.bio?.trim() || "Ingen kort beskrivelse lagt til ennå."
@@ -323,6 +317,25 @@ export function NavUser() {
                     Abonnement
                   </DropdownMenuItem>
                 )}
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem asChild>
+                  <a
+                    href="https://proanbud.no/hjelpesenter"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <HelpCircleIcon className="mr-2 h-4 w-4" />
+                    Hjelpesenter
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <a href="mailto:post@proanbud.no">
+                    <LifeBuoyIcon className="mr-2 h-4 w-4" />
+                    Kontakt oss
+                  </a>
+                </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout}>

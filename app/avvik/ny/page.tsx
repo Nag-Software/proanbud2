@@ -17,7 +17,7 @@ export default async function NewAvvikPage() {
       <AppPageShell segments={["Avvik", "Meld avvik"]}>
         <PlanGate
           featureName="Avvik"
-          description="Registrer, følg opp og lukk avvik (RUH, HMS og KS) for hele bedriften."
+          description="Registrer, følg opp og lukk avvik – RUH (rapport om uønsket hendelse), HMS og KS – for hele bedriften."
         />
       </AppPageShell>
     )
@@ -29,7 +29,7 @@ export default async function NewAvvikPage() {
         <div>
           <h1 className="text-2xl font-semibold">Meld avvik</h1>
           <p className="text-sm text-muted-foreground">
-            Registrer RUH, HMS- eller KS-avvik med bilde og tekst
+            Registrer RUH (rapport om uønsket hendelse), HMS- eller KS-avvik med bilde og tekst
           </p>
         </div>
         <Suspense>

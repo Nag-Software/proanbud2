@@ -114,7 +114,13 @@ export async function GET(request: Request) {
 
       if (error) {
         console.error("[mine-priser/sok GET] price rows", error)
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        await logServerError({
+          message: "Søk i mine priser feilet (prisrader)",
+          error,
+          source: "api",
+          route: "/api/mine-priser/sok GET",
+        })
+        return NextResponse.json({ error: "Søket i prisene dine feilet. Prøv igjen." }, { status: 500 })
       }
 
       const enrichedRows = ((priceRows ?? []) as Array<CompanyPriceRow & { id: string; file_id?: string | null }>).map(
@@ -153,7 +159,13 @@ export async function GET(request: Request) {
 
       if (error) {
         console.error("[mine-priser/sok GET] saved jobs", error)
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        await logServerError({
+          message: "Søk i mine priser feilet (lagrede jobber)",
+          error,
+          source: "api",
+          route: "/api/mine-priser/sok GET",
+        })
+        return NextResponse.json({ error: "Søket i prisene dine feilet. Prøv igjen." }, { status: 500 })
       }
 
       const mappedJobs = mapSavedJobRows((savedJobRows ?? []) as unknown[])
@@ -178,6 +190,6 @@ export async function GET(request: Request) {
       source: "api",
       route: "/api/mine-priser/sok GET",
     })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: "Søket i prisene dine feilet. Prøv igjen." }, { status: 500 })
   }
 }

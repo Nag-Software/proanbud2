@@ -136,7 +136,7 @@ export function HmsPageClient({
         <KpiCard
           label="RUH siste 30 dager"
           value={stats.ruhLast30Days}
-          hint="Rapporterte uønskede hendelser"
+          hint="RUH = rapport om uønsket hendelse"
           icon={<TrendingUp className="size-4" />}
         />
         <KpiCard

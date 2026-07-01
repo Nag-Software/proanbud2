@@ -39,7 +39,7 @@ export async function GET(request: Request) {
 
     if (!startParam || !endParam) {
       return NextResponse.json(
-        { error: "Missing start and end query parameters" },
+        { error: "Mangler tidsrom for kalenderen. Last siden på nytt." },
         { status: 400 }
       )
     }
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "Du er ikke logget inn. Logg inn på nytt." }, { status: 401 })
     }
 
     const plan = await requirePlanFeature("kalender")
@@ -65,8 +65,14 @@ export async function GET(request: Request) {
       .eq("user_id", user.id)
 
     if (error) {
+      await logServerError({
+        message: "Henting av kalenderkoblinger feilet",
+        error,
+        source: "api",
+        route: "GET /api/calendar/events",
+      })
       return NextResponse.json(
-        { error: "Failed to fetch integrations" },
+        { error: "Kunne ikke hente kalenderkoblingene dine. Prøv igjen." },
         { status: 500 }
       )
     }
@@ -130,7 +136,7 @@ export async function GET(request: Request) {
       route: "GET /api/calendar/events",
     })
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Kunne ikke hente kalenderavtalene. Prøv igjen." },
       { status: 500 }
     )
   }
@@ -276,7 +282,7 @@ export async function POST(request: Request) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "Du er ikke logget inn. Logg inn på nytt." }, { status: 401 })
     }
 
     const plan = await requirePlanFeature("kalender")
@@ -286,7 +292,7 @@ export async function POST(request: Request) {
     const { title, start, end, description, targetProvider, projectId } = body
 
     if (!title || !start || !end) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+      return NextResponse.json({ error: "Fyll inn tittel, start og slutt." }, { status: 400 })
     }
 
     // Try to find the requested provider, or just pick the first available one if none specified
@@ -302,7 +308,10 @@ export async function POST(request: Request) {
     const { data: integrations, error } = await query
 
     if (error || !integrations || integrations.length === 0) {
-      return NextResponse.json({ error: "No calendar integration found to create event" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Ingen kalender er koblet til. Koble til Google- eller Microsoft-kalenderen din først." },
+        { status: 400 }
+      )
     }
 
     // Use the first available integration if targetProvider was not specified
@@ -310,7 +319,10 @@ export async function POST(request: Request) {
     const validIntegration = await ensureValidToken(user.id, integration.provider)
 
     if (!validIntegration || !validIntegration.access_token) {
-      return NextResponse.json({ error: "Invalid calendar integration" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Kalenderkoblingen virker ikke lenger. Koble til kalenderen på nytt." },
+        { status: 400 }
+      )
     }
 
     if (validIntegration.provider === "google") {
@@ -383,7 +395,7 @@ export async function POST(request: Request) {
       return NextResponse.json(created)
     }
 
-    return NextResponse.json({ error: "Unsupported provider" }, { status: 400 })
+    return NextResponse.json({ error: "Denne kalendertypen støttes ikke." }, { status: 400 })
   } catch (error: any) {
     console.error("Error creating event:", error)
     await logServerError({
@@ -392,7 +404,10 @@ export async function POST(request: Request) {
       source: "api",
       route: "POST /api/calendar/events",
     })
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(
+      { error: "Kunne ikke opprette avtalen i kalenderen. Prøv igjen." },
+      { status: 500 }
+    )
   }
 }
 
@@ -400,14 +415,14 @@ export async function PATCH(request: Request) {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!user) return NextResponse.json({ error: "Du er ikke logget inn. Logg inn på nytt." }, { status: 401 })
 
     const plan = await requirePlanFeature("kalender")
     if (!plan.ok) return plan.response
 
     const body = await request.json()
     const { eventId, start, end, title, description, color, projectId } = body
-    if (!eventId || !start || !end) return NextResponse.json({ error: "Missing fields" }, { status: 400 })
+    if (!eventId || !start || !end) return NextResponse.json({ error: "Mangler informasjon om avtalen. Prøv igjen." }, { status: 400 })
 
     // eventId is custom prefixed, e.g. "google-12345" or "ms-67890"
     const isGoogle = eventId.startsWith("google-")
@@ -415,11 +430,11 @@ export async function PATCH(request: Request) {
     const provider = isGoogle ? "google" : isMicrosoft ? "microsoft" : null
     const realEventId = eventId.replace(/^(google-|ms-)/, "")
 
-    if (!provider) return NextResponse.json({error: "Unknown event provider"}, {status: 400})
+    if (!provider) return NextResponse.json({ error: "Fant ikke kalenderen denne avtalen hører til." }, { status: 400 })
 
     const validIntegration = await ensureValidToken(user.id, provider)
 
-    if (!validIntegration?.access_token) return NextResponse.json({ error: "No matching integration found or token expired" }, { status: 400 })
+    if (!validIntegration?.access_token) return NextResponse.json({ error: "Kalenderkoblingen er utløpt. Koble til kalenderen på nytt." }, { status: 400 })
 
     if (isGoogle) {
       const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${realEventId}`
@@ -498,7 +513,10 @@ export async function PATCH(request: Request) {
       source: "api",
       route: "PATCH /api/calendar/events",
     })
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(
+      { error: "Kunne ikke lagre endringen i kalenderavtalen. Prøv igjen." },
+      { status: 500 }
+    )
   }
 }
 
@@ -506,7 +524,7 @@ export async function DELETE(request: Request) {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!user) return NextResponse.json({ error: "Du er ikke logget inn. Logg inn på nytt." }, { status: 401 })
 
     const plan = await requirePlanFeature("kalender")
     if (!plan.ok) return plan.response
@@ -514,18 +532,18 @@ export async function DELETE(request: Request) {
     const { searchParams } = new URL(request.url)
     const eventId = searchParams.get("eventId")
     
-    if (!eventId) return NextResponse.json({ error: "Missing eventId" }, { status: 400 })
+    if (!eventId) return NextResponse.json({ error: "Fant ikke avtalen som skulle slettes." }, { status: 400 })
 
     const isGoogle = eventId.startsWith("google-")
     const isMicrosoft = eventId.startsWith("ms-")
     const provider = isGoogle ? "google" : isMicrosoft ? "microsoft" : null
     const realEventId = eventId.replace(/^(google-|ms-)/, "")
 
-    if (!provider) return NextResponse.json({error: "Unknown event provider"}, {status: 400})
+    if (!provider) return NextResponse.json({ error: "Fant ikke kalenderen denne avtalen hører til." }, { status: 400 })
 
     const validIntegration = await ensureValidToken(user.id, provider)
 
-    if (!validIntegration?.access_token) return NextResponse.json({ error: "No matching integration found or token expired" }, { status: 400 })
+    if (!validIntegration?.access_token) return NextResponse.json({ error: "Kalenderkoblingen er utløpt. Koble til kalenderen på nytt." }, { status: 400 })
 
     if (isGoogle) {
       const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${realEventId}`
@@ -559,6 +577,9 @@ export async function DELETE(request: Request) {
       source: "api",
       route: "DELETE /api/calendar/events",
     })
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(
+      { error: "Kunne ikke slette avtalen fra kalenderen. Prøv igjen." },
+      { status: 500 }
+    )
   }
 }

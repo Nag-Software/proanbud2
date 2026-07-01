@@ -37,12 +37,12 @@ export const SELLER_EMAIL_TEMPLATES: SellerEmailTemplate[] = [
         bullets: [
           "Opprett og send tilbud til kunder på få minutter",
           "Hold styr på prosjekter, kunder og dokumentasjon",
-          "Inviter kollegaer og samarbeid i samme workspace",
+          "Inviter kollegaer og samarbeid i samme bedriftskonto",
         ],
         customMessage: input.customMessage,
         ctaLabel: "Logg inn på Proanbud",
         ctaUrl: `${appUrl()}/login`,
-        secondaryText: "Trenger du hjelp med onboarding? Svar på denne e-posten eller ta kontakt på post@proanbud.no.",
+        secondaryText: "Trenger du hjelp med å komme i gang? Svar på denne e-posten eller ta kontakt på post@proanbud.no.",
       }),
   },
   {
@@ -89,7 +89,7 @@ export const SELLER_EMAIL_TEMPLATES: SellerEmailTemplate[] = [
           "I Proanbud kan du opprette, tilpasse og sende tilbud direkte til kunden — uten ekstra verktøy eller manuell PDF-eksport.",
         ],
         bullets: [
-          "Gå til «Nytt tilbud» for å starte et nytt tilbud fra scratch",
+          "Gå til «Nytt tilbud» for å starte et nytt tilbud fra bunnen av",
           "Lagre utkast under «Tilbud» og fortsett når det passer deg",
           "Send tilbudet til kunden med én klikk — de får en profesjonell tilbudsside",
           "Følg opp status og kommuniser med kunden direkte i plattformen",
@@ -110,7 +110,7 @@ export const SELLER_EMAIL_TEMPLATES: SellerEmailTemplate[] = [
         recipientName: input.recipientName,
         headline: "Ditt abonnement",
         paragraphs: [
-          "Du kan når som helst se og administrere abonnementet ditt under Innstillinger i Proanbud.",
+          "Du kan når som helst se og administrere abonnementet ditt under Min bedrift → Betaling i Proanbud.",
           "Der finner du informasjon om plan, fakturering og neste fornyelse. Endringer i abonnement kan gjøres direkte fra kontoen din.",
         ],
         bullets: [
@@ -128,7 +128,7 @@ export const SELLER_EMAIL_TEMPLATES: SellerEmailTemplate[] = [
     id: "invitasjon",
     label: "Invitasjon",
     subject: "Du er invitert til Proanbud",
-    description: "Invitasjon til ansatt som skal bli med i bedriftens workspace.",
+    description: "Invitasjon til ansatt som skal bli med i bedriftens konto.",
     buildHtml: (input) => {
       const inviteUrl = input.invitationUrl?.trim() || `${appUrl()}/signup`
 
@@ -137,8 +137,8 @@ export const SELLER_EMAIL_TEMPLATES: SellerEmailTemplate[] = [
         headline: "Du er invitert til Proanbud",
         paragraphs: [
           input.companyName
-            ? `Du er invitert til å bli med i ${input.companyName} sitt workspace i Proanbud.`
-            : "Du er invitert til å bli med i et bedriftsworkspace hos Proanbud.",
+            ? `Du er invitert til å bli med i ${input.companyName} i Proanbud.`
+            : "Du er invitert til å bli med i en bedrift hos Proanbud.",
           "Med Proanbud kan du samarbeide med kollegaer om tilbud, prosjekter og kunder — alt samlet på ett sted.",
         ],
         steps: [
@@ -148,7 +148,7 @@ export const SELLER_EMAIL_TEMPLATES: SellerEmailTemplate[] = [
           },
           {
             title: "Opprett bruker",
-            body: "Registrer deg med e-post og passord for å få tilgang til workspace.",
+            body: "Registrer deg med e-post og passord for å få tilgang.",
           },
           {
             title: "Begynn å samarbeide",
@@ -178,7 +178,7 @@ export const SELLER_EMAIL_TEMPLATES: SellerEmailTemplate[] = [
         headline: "Du har en ventende invitasjon",
         paragraphs: [
           input.companyName
-            ? `Dette er en vennlig påminnelse om invitasjonen din til ${input.companyName} sitt workspace i Proanbud.`
+            ? `Dette er en vennlig påminnelse om invitasjonen din til ${input.companyName} i Proanbud.`
             : "Dette er en vennlig påminnelse om invitasjonen din til Proanbud.",
           "Når du aksepterer invitasjonen og oppretter bruker, får du tilgang til tilbud, prosjekter og samarbeid med resten av teamet.",
         ],

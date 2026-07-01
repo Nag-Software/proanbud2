@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { logServerError } from "@/lib/errors/log"
+import { zodValidationMessage } from "@/lib/errors/user-message"
 import { createClient } from "@/lib/supabase/server"
 
 // Columns returned to the client so a freshly added/edited manual row renders
@@ -9,18 +10,38 @@ import { createClient } from "@/lib/supabase/server"
 const ROW_SELECT = "id, product, nobb, ean, category, unit, list_price, min_price, discount_percent"
 
 const createSchema = z.object({
-  produkt: z.string().trim().min(1, "Produktnavn er påkrevd").max(300),
+  produkt: z
+    .string()
+    .trim()
+    .min(1, "Produktnavn er påkrevd")
+    .max(300, "Produktnavnet er for langt (maks 300 tegn)"),
   enhetspris: z.coerce.number().refine((n) => Number.isFinite(n) && n >= 0, "Oppgi en gyldig enhetspris"),
-  enhet: z.string().trim().max(40).optional().default(""),
-  leverandor: z.string().trim().min(1, "Leverandør er påkrevd").max(120),
+  enhet: z.string().trim().max(40, "Enheten er for lang (maks 40 tegn)").optional().default(""),
+  leverandor: z
+    .string()
+    .trim()
+    .min(1, "Leverandør er påkrevd")
+    .max(120, "Leverandørnavnet er for langt (maks 120 tegn)"),
 })
 
 const patchSchema = z.object({
-  rowId: z.string().uuid(),
-  produkt: z.string().trim().min(1, "Produktnavn er påkrevd").max(300),
+  rowId: z.string().uuid("Fant ikke prisen som skulle endres. Last siden på nytt og prøv igjen."),
+  produkt: z
+    .string()
+    .trim()
+    .min(1, "Produktnavn er påkrevd")
+    .max(300, "Produktnavnet er for langt (maks 300 tegn)"),
   enhetspris: z.coerce.number().refine((n) => Number.isFinite(n) && n >= 0, "Oppgi en gyldig enhetspris"),
-  enhet: z.string().trim().max(40).optional().default(""),
+  enhet: z.string().trim().max(40, "Enheten er for lang (maks 40 tegn)").optional().default(""),
 })
+
+const FIELD_LABELS = {
+  produkt: "Produkt",
+  enhetspris: "Enhetspris",
+  enhet: "Enhet",
+  leverandor: "Leverandør",
+  rowId: "Pris",
+}
 
 type Ctx = { supabase: SupabaseClient; userId: string; companyId: string }
 
@@ -138,7 +159,7 @@ export async function POST(request: Request) {
     const parsed = createSchema.safeParse(await request.json().catch(() => null))
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.issues[0]?.message ?? "Ugyldig data" },
+        { error: zodValidationMessage(parsed.error.flatten(), FIELD_LABELS), details: parsed.error.flatten() },
         { status: 400 }
       )
     }
@@ -164,7 +185,13 @@ export async function POST(request: Request) {
 
     if (rowError || !row) {
       console.error("[prisfiler/manual POST]", rowError)
-      return NextResponse.json({ error: rowError?.message ?? "Kunne ikke lagre pris" }, { status: 500 })
+      await logServerError({
+        message: "Lagring av manuell pris feilet",
+        error: rowError,
+        source: "api",
+        route: "/api/mine-priser/prisfiler/manual POST",
+      })
+      return NextResponse.json({ error: "Kunne ikke lagre prisen. Prøv igjen." }, { status: 500 })
     }
 
     const rowCount = await syncRowCount(supabase, fileId)
@@ -177,7 +204,7 @@ export async function POST(request: Request) {
       source: "api",
       route: "/api/mine-priser/prisfiler/manual POST",
     })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke lagre prisen. Prøv igjen." }, { status: 500 })
   }
 }
 
@@ -191,7 +218,7 @@ export async function PATCH(request: Request) {
     const parsed = patchSchema.safeParse(await request.json().catch(() => null))
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.issues[0]?.message ?? "Ugyldig data" },
+        { error: zodValidationMessage(parsed.error.flatten(), FIELD_LABELS), details: parsed.error.flatten() },
         { status: 400 }
       )
     }
@@ -218,7 +245,13 @@ export async function PATCH(request: Request) {
 
     if (error || !row) {
       console.error("[prisfiler/manual PATCH]", error)
-      return NextResponse.json({ error: error?.message ?? "Kunne ikke lagre endring" }, { status: 500 })
+      await logServerError({
+        message: "Endring av manuell pris feilet",
+        error,
+        source: "api",
+        route: "/api/mine-priser/prisfiler/manual PATCH",
+      })
+      return NextResponse.json({ error: "Kunne ikke lagre endringen. Prøv igjen." }, { status: 500 })
     }
 
     return NextResponse.json({ row })
@@ -230,7 +263,7 @@ export async function PATCH(request: Request) {
       source: "api",
       route: "/api/mine-priser/prisfiler/manual PATCH",
     })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke lagre endringen. Prøv igjen." }, { status: 500 })
   }
 }
 
@@ -258,7 +291,13 @@ export async function DELETE(request: Request) {
 
     if (error) {
       console.error("[prisfiler/manual DELETE]", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      await logServerError({
+        message: "Sletting av manuell pris feilet",
+        error,
+        source: "api",
+        route: "/api/mine-priser/prisfiler/manual DELETE",
+      })
+      return NextResponse.json({ error: "Kunne ikke slette prisen. Prøv igjen." }, { status: 500 })
     }
 
     if (!fileId) return NextResponse.json({ ok: true, fileDeleted: false })
@@ -294,6 +333,6 @@ export async function DELETE(request: Request) {
       source: "api",
       route: "/api/mine-priser/prisfiler/manual DELETE",
     })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke slette prisen. Prøv igjen." }, { status: 500 })
   }
 }

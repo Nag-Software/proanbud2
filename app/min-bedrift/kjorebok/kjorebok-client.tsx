@@ -44,6 +44,7 @@ import { deleteTripAction, getCompanyTripsOverviewAction } from "@/app/kjorebok/
 import { TripFormDialog } from "@/components/kjorebok/trip-form-dialog"
 import { LiveTracker } from "@/components/kjorebok/live-tracker"
 import { VehiclesManager } from "@/components/kjorebok/vehicles-manager"
+import { getStatensSats } from "@/lib/kjorebok/rates"
 import { NEW_TRIP_DRAFT_KEY } from "@/lib/kjorebok/types"
 import type { TripFilter, TripsOverview, TripWithRefs } from "@/lib/kjorebok/types"
 
@@ -54,11 +55,15 @@ function km(n: number) {
   return `${n.toLocaleString("nb-NO", { maximumFractionDigits: 1 })} km`
 }
 
-function StatTile({ value, label }: { value: string; label: string }) {
+// Hjelpetekst for godtgjørelse — henter satsen fra samme konstant som beregningen bruker.
+const SATS_HINT = `Beregnet etter statens sats (${getStatensSats().baseNokPerKm.toLocaleString("nb-NO", { minimumFractionDigits: 2 })} kr/km)`
+
+function StatTile({ value, label, hint }: { value: string; label: string; hint?: string }) {
   return (
     <div className="bg-card px-4 py-3.5">
       <p className="text-2xl font-semibold tabular-nums tracking-tight">{value}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
+      {hint && <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80">{hint}</p>}
     </div>
   )
 }
@@ -184,9 +189,9 @@ export function KjorebokClient({ initialOverview, currentUserId }: Props) {
     }
   }
 
-  const stats = [
+  const stats: Array<{ value: string; label: string; hint?: string }> = [
     { value: km(totals.km), label: "Distanse totalt" },
-    { value: kr(totals.amountNok), label: "Godtgjørelse (yrke)" },
+    { value: kr(totals.amountNok), label: "Godtgjørelse (yrke)", hint: SATS_HINT },
     { value: kr(totals.fuelCostNok), label: "Drivstoff (yrke)" },
     { value: String(totals.tripCount), label: "Turer" }
   ]
@@ -234,7 +239,7 @@ export function KjorebokClient({ initialOverview, currentUserId }: Props) {
           style={{ borderRadius: 5 }}
         >
           {stats.map((s) => (
-            <StatTile key={s.label} value={s.value} label={s.label} />
+            <StatTile key={s.label} value={s.value} label={s.label} hint={s.hint} />
           ))}
         </div>
 

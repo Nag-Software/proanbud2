@@ -25,6 +25,16 @@ import {
   type TimeEntryRow,
 } from "@/lib/time-tracking"
 import { reportClientError } from "@/lib/errors/client"
+import { WORK_SESSION_CHANGED_EVENT } from "@/hooks/use-active-work-session"
+
+/** Vises når selve kallet til serveren feiler (typisk dårlig dekning på plassen). */
+const OFFLINE_ERROR_MESSAGE =
+  "Fikk ikke kontakt med serveren. Sjekk internettforbindelsen og prøv igjen."
+
+/** Sier fra til nav-indikatoren (grønn dot på «Timeføring») om at øktstatus endret seg. */
+function notifyWorkSessionChanged() {
+  window.dispatchEvent(new Event(WORK_SESSION_CHANGED_EVENT))
+}
 
 type ActiveSession = {
   id: string
@@ -83,15 +93,33 @@ export default function TimeforingTab({
   const [manualSubmitting, setManualSubmitting] = useState(false)
 
   const loadData = useCallback(async () => {
-    const [session, completedEntries] = await Promise.all([
-      getActiveWorkSessionAction(projectId),
-      getProjectTimeEntriesAction(projectId, canViewAllEntries),
-    ])
+    try {
+      const [sessionResult, entriesResult] = await Promise.all([
+        getActiveWorkSessionAction(projectId),
+        getProjectTimeEntriesAction(projectId, canViewAllEntries),
+      ])
 
-    setActiveSession(session as ActiveSession | null)
-    setEntries((completedEntries || []) as TimeEntryRow[])
-    if (session?.description) {
-      setDescription(session.description)
+      if (sessionResult.ok) {
+        setActiveSession(sessionResult.data as ActiveSession | null)
+        if (sessionResult.data?.description) {
+          setDescription(sessionResult.data.description)
+        }
+      }
+      if (entriesResult.ok) {
+        setEntries(entriesResult.data as TimeEntryRow[])
+      }
+
+      const loadError = !sessionResult.ok
+        ? sessionResult.error
+        : !entriesResult.ok
+          ? entriesResult.error
+          : null
+      if (loadError) {
+        setError(loadError)
+      }
+    } catch (loadDataError) {
+      reportClientError(loadDataError, { context: { action: "hente timeføringer", projectId } })
+      setError(OFFLINE_ERROR_MESSAGE)
     }
   }, [projectId, canViewAllEntries])
 
@@ -128,11 +156,16 @@ export default function TimeforingTab({
     setIsSubmitting(true)
 
     try {
-      const session = await startWorkSessionAction(projectId, description)
-      setActiveSession(session as ActiveSession)
+      const result = await startWorkSessionAction(projectId, description)
+      if (!result.ok) {
+        setError(result.error)
+        return
+      }
+      setActiveSession(result.data as ActiveSession)
+      notifyWorkSessionChanged()
     } catch (startError) {
       reportClientError(startError, { context: { action: "starte arbeidsøkt", projectId } })
-      setError(startError instanceof Error ? startError.message : "Kunne ikke starte arbeid")
+      setError(OFFLINE_ERROR_MESSAGE)
     } finally {
       setIsSubmitting(false)
     }
@@ -143,14 +176,19 @@ export default function TimeforingTab({
     setIsSubmitting(true)
 
     try {
-      const saved = await stopWorkSessionAction(projectId)
+      const result = await stopWorkSessionAction(projectId)
+      if (!result.ok) {
+        setError(result.error)
+        return
+      }
       setActiveSession(null)
       setDescription("")
-      setLastSavedHours(Number(saved.hours || 0))
+      setLastSavedHours(Number(result.data.hours || 0))
+      notifyWorkSessionChanged()
       await loadData()
     } catch (stopError) {
       reportClientError(stopError, { context: { action: "avslutte arbeidsøkt", projectId } })
-      setError(stopError instanceof Error ? stopError.message : "Kunne ikke avslutte arbeid")
+      setError(OFFLINE_ERROR_MESSAGE)
     } finally {
       setIsSubmitting(false)
     }
@@ -168,11 +206,16 @@ export default function TimeforingTab({
       async (pos) => {
         try {
           const { latitude, longitude, accuracy } = pos.coords
-          const session = await geofenceCheckInAction(projectId, latitude, longitude, accuracy, description)
-          setActiveSession(session as ActiveSession)
+          const result = await geofenceCheckInAction(projectId, latitude, longitude, accuracy, description)
+          if (!result.ok) {
+            setError(result.error)
+            return
+          }
+          setActiveSession(result.data as ActiveSession)
+          notifyWorkSessionChanged()
         } catch (checkInError) {
           reportClientError(checkInError, { context: { action: "stemple inn (geofence)", projectId } })
-          setError(checkInError instanceof Error ? checkInError.message : "Kunne ikke stemple inn")
+          setError(OFFLINE_ERROR_MESSAGE)
         } finally {
           setCheckingIn(false)
         }
@@ -219,19 +262,23 @@ export default function TimeforingTab({
 
     setManualSubmitting(true)
     try {
-      const saved = await addManualTimeEntryAction(projectId, {
+      const result = await addManualTimeEntryAction(projectId, {
         entryDate: manualDate,
         startedAt: start.toISOString(),
         endedAt: end.toISOString(),
         description: manualNote,
       })
-      setLastSavedHours(Number(saved.hours || 0))
+      if (!result.ok) {
+        setManualError(result.error)
+        return
+      }
+      setLastSavedHours(Number(result.data.hours || 0))
       setManualNote("")
       setShowManual(false)
       await loadData()
     } catch (saveError) {
       reportClientError(saveError, { context: { action: "lagre manuell timeføring", projectId } })
-      setManualError(saveError instanceof Error ? saveError.message : "Kunne ikke lagre timeføring")
+      setManualError(OFFLINE_ERROR_MESSAGE)
     } finally {
       setManualSubmitting(false)
     }
@@ -437,7 +484,7 @@ export default function TimeforingTab({
                     colSpan={canViewAllEntries ? 5 : 4}
                     className="px-4 py-8 text-center text-muted-foreground"
                   >
-                    Ingen fullførte arbeidsøkter ennå. Trykk «Start arbeid» for å begynne.
+                    Ingen fullførte arbeidsøkter ennå. Trykk «Stemple inn på plassen» eller «Start uten GPS» for å begynne.
                   </td>
                 </tr>
               ) : (
@@ -471,7 +518,7 @@ export default function TimeforingTab({
         <div className="divide-y md:hidden">
           {entries.length === 0 ? (
             <div className="px-4 py-8 text-center text-muted-foreground">
-              Ingen fullførte arbeidsøkter ennå. Trykk «Start arbeid» for å begynne.
+              Ingen fullførte arbeidsøkter ennå. Trykk «Stemple inn på plassen» eller «Start uten GPS» for å begynne.
             </div>
           ) : (
             entries.map((entry) => {

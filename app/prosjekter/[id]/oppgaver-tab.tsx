@@ -266,8 +266,8 @@ export default function OppgaverTab({
         <Tabs defaultValue="liste" onValueChange={(v) => setView(v as any)} className="w-full max-w-md">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="liste" className="gap-2"><List className="h-4 w-4"/> Liste</TabsTrigger>
-            <TabsTrigger value="kanban" className="gap-2"><LayoutGrid className="h-4 w-4"/> Kanban</TabsTrigger>
-            <TabsTrigger value="gantt" className="gap-2"><CalendarDays className="h-4 w-4"/> Gantt</TabsTrigger>
+            <TabsTrigger value="kanban" className="gap-2"><LayoutGrid className="h-4 w-4"/> Tavle</TabsTrigger>
+            <TabsTrigger value="gantt" className="gap-2"><CalendarDays className="h-4 w-4"/> Tidslinje</TabsTrigger>
           </TabsList>
         </Tabs>
         
@@ -383,7 +383,7 @@ export default function OppgaverTab({
 
         {view === "gantt" && (
           <div className="flex h-full items-center justify-center text-muted-foreground p-12 border border-dashed rounded-lg">
-            [Gantt Tidslinje Kommer Snart - Avansert view for Proanbud2]
+            Tidslinjen kommer snart. Bruk Liste eller Tavle så lenge.
           </div>
         )}
       </div>

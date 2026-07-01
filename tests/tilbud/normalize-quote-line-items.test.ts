@@ -50,6 +50,7 @@ describe("normalizeQuoteLineItems", () => {
           supplier_name: "Optimera",
           supplier_sku: "SKU-1",
           nobb: null,
+          category: null,
         },
       ],
     })

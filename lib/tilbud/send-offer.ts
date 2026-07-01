@@ -7,7 +7,13 @@ import { calculateOfferTotals, type OfferCompanyContext, type OfferLineItem } fr
 import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 import { createClient } from "@/lib/supabase/server"
 import { canSendOffers } from "@/lib/roles"
-import { formatOfferReference } from "@/lib/tilbud/offer-document"
+import {
+  computeValidUntilDate,
+  formatDocumentCurrency,
+  formatOfferDate,
+  formatOfferReference,
+  getOfferDocumentTotals,
+} from "@/lib/tilbud/offer-document"
 
 const resend = new Resend(process.env.RESEND_API_KEY || "re_defaultkey")
 
@@ -126,12 +132,19 @@ export async function sendOfferToCustomer(input: SendOfferInput) {
   const offerReference = formatOfferReference(offerRecord.id)
   const publicSlug = await ensureOfferPublicSlug(input.offerId, input.companyId)
 
+  const totals = calculateOfferTotals(lineItems)
+  const { totalInclVatNok } = getOfferDocumentTotals(lineItems)
+  const validUntil = computeValidUntilDate(offerRecord.created_at, offerRecord.quote_valid_until)
+
   const emailHtml = buildOfferSentCustomerEmail({
     recipientName,
     companyName,
     projectName: project?.name,
     quoteMessage,
     publicSlug,
+    offerReference,
+    totalInclVatText: formatDocumentCurrency(totalInclVatNok),
+    validUntilText: validUntil ? formatOfferDate(validUntil) : null,
   })
 
   const { error: sendError } = await resend.emails.send({
@@ -146,7 +159,6 @@ export async function sendOfferToCustomer(input: SendOfferInput) {
     throw new Error(`Kunne ikke sende tilbud på e-post: ${sendError.message ?? JSON.stringify(sendError)}`)
   }
 
-  const totals = calculateOfferTotals(lineItems)
   const { error: updateError } = await supabase
     .from("offers")
     .update({

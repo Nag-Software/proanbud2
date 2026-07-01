@@ -3,26 +3,49 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { format } from "date-fns"
 import { nb } from "date-fns/locale"
-import { Check, Loader2, MessageSquare, Send, X } from "lucide-react"
+import { Check, Download, Loader2, MessageSquare, Send, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { reportClientError } from "@/lib/errors/client"
 import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  CONTRACT_BASIS_LABELS,
+  PRICING_MODEL_LABELS,
+  calculateGroupTotal,
   computeValidityDays,
+  computeValidUntilDate,
+  formatDocumentAmount,
+  formatDocumentCurrency,
+  formatDocumentQuantity,
+  formatDocumentUnit,
   formatOfferDate,
+  formatOfferDateTime,
   getOfferDocumentTotals,
   groupLineItemsBySubproject,
+  normalizePaymentSchedule,
+  type OfferDocumentAcceptance,
 } from "@/lib/tilbud/offer-document"
 import {
   calculateLineItemTotal,
-  calculateLineItemUnitPriceWithMarkup,
-  formatNok,
+  calculateLineItemUnitPriceWithMarkupBeforeDiscount,
   type OfferCompanyContext,
+  type OfferContractBasis,
   type OfferLineItem,
+  type OfferPaymentScheduleEntry,
+  type OfferPricingModel,
 } from "@/lib/tilbud/types"
 
 type PublicOfferPayload = {
@@ -46,9 +69,14 @@ type PublicOfferPayload = {
     email: string | null
     phone: string | null
     address: string | null
+    postalCode?: string | null
     city: string | null
     orgNumber: string | null
   }
+  paymentSchedule?: OfferPaymentScheduleEntry[]
+  pricingModel?: OfferPricingModel | null
+  contractBasis?: OfferContractBasis | null
+  acceptance?: OfferDocumentAcceptance | null
 }
 
 type PublicMessage = {
@@ -151,6 +179,12 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
   const { totals, vatAmountNok } = useMemo(() => getOfferDocumentTotals(offer.lineItems), [offer.lineItems])
   const validityDays =
     offer.validityDays ?? computeValidityDays(String(offer.createdAt || ""), offer.quoteValidUntil)
+  const validUntil = computeValidUntilDate(offer.createdAt, offer.quoteValidUntil, validityDays)
+  const preDiscountSubtotal = Math.round((totals.subtotalNok + totals.discountNok) * 100) / 100
+  const paymentSchedule = useMemo(() => normalizePaymentSchedule(offer.paymentSchedule), [offer.paymentSchedule])
+  const pricingModelLabel = offer.pricingModel ? PRICING_MODEL_LABELS[offer.pricingModel] : ""
+  const contractBasisLabel =
+    offer.contractBasis && offer.contractBasis !== "none" ? CONTRACT_BASIS_LABELS[offer.contractBasis] : ""
 
   return (
     <div className="space-y-3 lg:hidden">
@@ -159,10 +193,7 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
           {offer.company.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={offer.company.logoUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg object-contain" />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src="/favicon.ico" alt="" className="h-10 w-10 shrink-0 rounded-lg object-contain" />
-          )}
+          ) : null}
           <div className="min-w-0">
             <p className="truncate font-semibold text-neutral-900">{offer.company.name || "Tilbud"}</p>
             {offer.company.orgNumber ? (
@@ -186,15 +217,19 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
         </div>
 
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
+          <span>Tilbudsnr. {offer.offerReference}</span>
           <span>Dato: {formatOfferDate(offer.createdAt || new Date())}</span>
-          <span>Gyldig {validityDays} dager</span>
+          {validUntil ? <span>Gyldig til {formatOfferDate(validUntil)}</span> : <span>Gyldig {validityDays} dager</span>}
         </div>
       </div>
 
       {Object.entries(grouped).map(([groupName, items]) => (
         <div key={groupName} className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-          <div className="border-b border-neutral-100 bg-neutral-50 px-4 py-2">
+          <div className="flex items-center justify-between gap-3 border-b border-neutral-100 bg-neutral-50 px-4 py-2">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{groupName}</p>
+            <p className="text-[11px] font-medium tabular-nums text-neutral-400">
+              {formatDocumentAmount(calculateGroupTotal(items))}
+            </p>
           </div>
           <div className="divide-y divide-neutral-100">
             {items.map((item) => (
@@ -202,15 +237,16 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-sm font-medium leading-snug text-neutral-900">{item.title}</p>
                   <p className="shrink-0 text-sm font-semibold tabular-nums text-neutral-900">
-                    {formatNok(calculateLineItemTotal(item))}
+                    {formatDocumentAmount(calculateLineItemTotal(item))}
                   </p>
                 </div>
                 {item.description ? (
                   <p className="mt-1 text-xs leading-relaxed text-neutral-500">{item.description}</p>
                 ) : null}
                 <p className="mt-1.5 text-xs text-neutral-500">
-                  {item.quantity} {item.unit} × {formatNok(calculateLineItemUnitPriceWithMarkup(item))}
-                  {item.discountPercent > 0 ? ` (−${item.discountPercent}%)` : ""}
+                  {formatDocumentQuantity(item.quantity)} {formatDocumentUnit(item.unit)} ×{" "}
+                  {formatDocumentAmount(calculateLineItemUnitPriceWithMarkupBeforeDiscount(item))}
+                  {item.discountPercent > 0 ? ` (−${formatDocumentQuantity(item.discountPercent)} %)` : ""}
                 </p>
               </div>
             ))}
@@ -218,31 +254,74 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
         </div>
       ))}
 
+      {paymentSchedule.length ? (
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm shadow-sm">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Betalingsplan</p>
+          <div className="mt-2 space-y-1.5">
+            {paymentSchedule.map((entry, index) => (
+              <div key={`${entry.label}-${index}`} className="flex justify-between gap-3 text-neutral-600">
+                <span>
+                  {entry.label}
+                  {entry.dueDescription ? <span className="text-neutral-400"> — {entry.dueDescription}</span> : null}
+                </span>
+                <span className="shrink-0 tabular-nums">
+                  {formatDocumentQuantity(entry.percent)} % · {formatDocumentCurrency(Math.round(totalInclVat * entry.percent) / 100)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm shadow-sm">
         <div className="space-y-1.5">
           <div className="flex justify-between text-neutral-600">
-            <span>Subtotal eks. mva</span>
-            <span className="tabular-nums">{formatNok(totals.subtotalNok)}</span>
+            <span>Sum eks. mva</span>
+            <span className="tabular-nums">{formatDocumentCurrency(preDiscountSubtotal)}</span>
           </div>
           {totals.discountNok > 0 ? (
-            <div className="flex justify-between text-neutral-600">
-              <span>Rabatt</span>
-              <span className="tabular-nums">− {formatNok(totals.discountNok)}</span>
-            </div>
+            <>
+              <div className="flex justify-between text-neutral-600">
+                <span>Rabatt</span>
+                <span className="tabular-nums">− {formatDocumentCurrency(totals.discountNok)}</span>
+              </div>
+              <div className="flex justify-between text-neutral-600">
+                <span>Nettosum eks. mva</span>
+                <span className="tabular-nums">{formatDocumentCurrency(totals.subtotalNok)}</span>
+              </div>
+            </>
           ) : null}
           <div className="flex justify-between text-neutral-600">
-            <span>Mva 25%</span>
-            <span className="tabular-nums">{formatNok(vatAmountNok)}</span>
+            <span>Mva (25 %)</span>
+            <span className="tabular-nums">{formatDocumentCurrency(vatAmountNok)}</span>
           </div>
-          <div className="flex justify-between border-t border-neutral-200 pt-2 font-semibold text-neutral-900">
+          <div className="mt-1 flex items-baseline justify-between border-t border-neutral-900 pt-2 font-semibold text-neutral-900">
             <span>Totalt inkl. mva</span>
-            <span className="tabular-nums">{formatNok(totalInclVat)}</span>
+            <span className="tabular-nums">{formatDocumentCurrency(totalInclVat)}</span>
           </div>
         </div>
         <p className="mt-3 text-[11px] leading-relaxed text-neutral-400">
-          Tilbudet er gyldig i {validityDays} dager fra utstedelsesdato. Alle priser er i NOK.
+          {validUntil
+            ? `Tilbudet er gyldig til ${formatOfferDate(validUntil)} (${validityDays} dager fra utstedelsesdato).`
+            : `Tilbudet er gyldig i ${validityDays} dager fra utstedelsesdato.`}
+          {pricingModelLabel ? ` Prismodell: ${pricingModelLabel}.` : ""}
+          {contractBasisLabel ? ` Kontraktsgrunnlag: ${contractBasisLabel}.` : ""}
+          {" Alle priser er i NOK."}
         </p>
       </div>
+
+      {offer.acceptance ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm shadow-sm">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Aksept av tilbud</p>
+          <p className="mt-1.5 text-[13px] font-medium leading-relaxed text-neutral-900">
+            Akseptert digitalt {formatOfferDateTime(offer.acceptance.acceptedAt)} av {offer.acceptance.name}.
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-neutral-600">
+            Bekreftet med engangskode til {offer.acceptance.email}. Dokument-ID:{" "}
+            <span className="break-all font-mono text-[10px]">{offer.acceptance.documentSha256}</span>
+          </p>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -330,23 +409,113 @@ export function CustomerOfferView({
     return () => mediaQuery.removeEventListener("change", closeOnDesktop)
   }, [])
 
-  const respond = async (action: "accept" | "reject") => {
+  const reject = async () => {
     setIsResponding(true)
     try {
       const response = await fetch(`/api/public/tilbud/${slug}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action: "reject" }),
       })
       const payload = await response.json()
       if (!response.ok) {
         throw new Error(payload.error || "Kunne ikke sende svaret")
       }
       setOffer((prev) => (prev ? { ...prev, status: payload.status, canRespond: false } : prev))
-      toast.success(action === "accept" ? "Tilbudet er godkjent" : "Tilbudet er avslått")
+      toast.success("Tilbudet er avslått")
     } catch (error) {
-      reportClientError(error, { context: { action: "respond to public offer", slug, response: action } })
+      reportClientError(error, { context: { action: "respond to public offer", slug, response: "reject" } })
       toast.error(error instanceof Error ? error.message : "Noe gikk galt")
+    } finally {
+      setIsResponding(false)
+    }
+  }
+
+  // --- Digital acceptance with one-time e-mail code ---
+  const [acceptOpen, setAcceptOpen] = useState(false)
+  const [acceptStep, setAcceptStep] = useState<"name" | "code">("name")
+  const [acceptName, setAcceptName] = useState("")
+  const [acceptCode, setAcceptCode] = useState("")
+  const [acceptError, setAcceptError] = useState<string | null>(null)
+  const [maskedEmail, setMaskedEmail] = useState("")
+  const [isRequestingCode, setIsRequestingCode] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const timeout = window.setTimeout(() => setResendCooldown((value) => value - 1), 1000)
+    return () => window.clearTimeout(timeout)
+  }, [resendCooldown])
+
+  const openAcceptDialog = () => {
+    setAcceptStep("name")
+    setAcceptCode("")
+    setAcceptError(null)
+    if (!acceptName && offer?.customer.name && offer.customer.name !== "—") {
+      setAcceptName(offer.customer.name)
+    }
+    setAcceptOpen(true)
+  }
+
+  const requestCode = async () => {
+    if (acceptName.trim().length < 2 || isRequestingCode) return
+    setIsRequestingCode(true)
+    setAcceptError(null)
+    try {
+      const response = await fetch(`/api/public/tilbud/${slug}/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request_code" }),
+      })
+      const payload = await response.json()
+      if (!response.ok) {
+        if (response.status === 429 && payload.retryInSeconds) {
+          setResendCooldown(payload.retryInSeconds)
+          setAcceptStep("code")
+          return
+        }
+        throw new Error(payload.error || "Kunne ikke sende engangskode")
+      }
+      setMaskedEmail(payload.maskedEmail || "")
+      setAcceptStep("code")
+      setAcceptCode("")
+      setResendCooldown(60)
+    } catch (error) {
+      reportClientError(error, { context: { action: "request offer accept code", slug } })
+      setAcceptError(error instanceof Error ? error.message : "Kunne ikke sende engangskode")
+    } finally {
+      setIsRequestingCode(false)
+    }
+  }
+
+  const confirmAccept = async () => {
+    if (!/^\d{6}$/.test(acceptCode.trim()) || isResponding) return
+    setIsResponding(true)
+    setAcceptError(null)
+    try {
+      const response = await fetch(`/api/public/tilbud/${slug}/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "accept", name: acceptName.trim(), code: acceptCode.trim() }),
+      })
+      const payload = await response.json()
+      if (!response.ok) {
+        if (payload.code === "expired" || payload.code === "too_many_attempts" || payload.code === "no_code") {
+          setAcceptCode("")
+        }
+        setAcceptError(payload.error || "Kunne ikke godta tilbudet")
+        return
+      }
+      setOffer((prev) =>
+        prev
+          ? { ...prev, status: "accepted", canRespond: false, acceptance: payload.acceptance || prev.acceptance }
+          : prev
+      )
+      setAcceptOpen(false)
+      toast.success("Tilbudet er godtatt — avtale inngått")
+    } catch (error) {
+      reportClientError(error, { context: { action: "accept public offer", slug } })
+      setAcceptError("Noe gikk galt. Prøv igjen.")
     } finally {
       setIsResponding(false)
     }
@@ -438,6 +607,12 @@ export function CustomerOfferView({
             >
               {statusText}
             </span>
+            <Button asChild variant="outline" size="sm" className="h-9 px-2.5 sm:px-3">
+              <a href={`/api/public/tilbud/${slug}/pdf`} target="_blank" rel="noopener noreferrer">
+                <Download className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Last ned PDF</span>
+              </a>
+            </Button>
             {chatEnabled ? (
               <Button
                 variant="outline"
@@ -472,11 +647,11 @@ export function CustomerOfferView({
               </div>
               {offer.canRespond ? (
                 <div className="flex flex-wrap gap-3">
-                  <Button onClick={() => respond("accept")} disabled={isResponding} className="min-w-[140px]">
+                  <Button onClick={openAcceptDialog} disabled={isResponding} className="min-w-[140px]">
                     <Check className="mr-2 h-4 w-4" />
                     Godta tilbud
                   </Button>
-                  <Button variant="outline" onClick={() => respond("reject")} disabled={isResponding} className="min-w-[140px]">
+                  <Button variant="outline" onClick={() => void reject()} disabled={isResponding} className="min-w-[140px]">
                     <X className="mr-2 h-4 w-4" />
                     Avslå
                   </Button>
@@ -501,9 +676,16 @@ export function CustomerOfferView({
             ) : null}
 
             {offer.status === "accepted" ? (
-              <p className="mt-4 text-sm text-emerald-700">
-                Du har godtatt dette tilbudet. Det er bindende og gjelder som avtale mellom partene.
-              </p>
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                <p className="font-medium">Tilbudet er godtatt — bindende avtale er inngått.</p>
+                {offer.acceptance ? (
+                  <p className="mt-1 text-xs text-emerald-700">
+                    Akseptert av {offer.acceptance.name} {formatOfferDateTime(offer.acceptance.acceptedAt)}, bekreftet
+                    med engangskode til {offer.acceptance.email}. Last ned PDF-en for avtaledokumentet med full
+                    bevisinformasjon.
+                  </p>
+                ) : null}
+              </div>
             ) : null}
             {offer.status === "rejected" ? (
               <p className="mt-4 text-sm text-neutral-600">Du har avslått dette tilbudet.</p>
@@ -539,12 +721,17 @@ export function CustomerOfferView({
               projectSummary={offer.projectSummary}
               quoteMessage={offer.sourceSummary}
               projectName={offer.projectName}
+              offerReference={offer.offerReference}
               customer={offer.customer}
               lineItems={offer.lineItems}
               company={offer.company}
               issuedDate={offer.createdAt}
               quoteValidUntil={offer.quoteValidUntil}
               validityDays={offer.validityDays}
+              paymentSchedule={offer.paymentSchedule}
+              pricingModel={offer.pricingModel}
+              contractBasis={offer.contractBasis}
+              acceptance={offer.acceptance}
             />
           </div>
         </section>
@@ -561,7 +748,7 @@ export function CustomerOfferView({
       {offer.canRespond ? (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_24px_rgba(0,0,0,0.06)] backdrop-blur supports-[backdrop-filter]:bg-white/90 lg:hidden">
           <div className="mx-auto flex max-w-lg gap-2">
-            <Button className="h-11 flex-1" onClick={() => respond("accept")} disabled={isResponding}>
+            <Button className="h-11 flex-1" onClick={openAcceptDialog} disabled={isResponding}>
               {isResponding ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -569,7 +756,7 @@ export function CustomerOfferView({
               )}
               Godta
             </Button>
-            <Button variant="outline" className="h-11 flex-1" onClick={() => respond("reject")} disabled={isResponding}>
+            <Button variant="outline" className="h-11 flex-1" onClick={() => void reject()} disabled={isResponding}>
               <X className="mr-2 h-4 w-4" />
               Avslå
             </Button>
@@ -590,6 +777,97 @@ export function CustomerOfferView({
           </SheetContent>
         </Sheet>
       ) : null}
+
+      <Dialog open={acceptOpen} onOpenChange={setAcceptOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Godta tilbud</DialogTitle>
+            <DialogDescription>
+              {acceptStep === "name"
+                ? `Ved å godta inngår du en bindende avtale med ${offer.company.name || "bedriften"} om leveransen i tilbud ${offer.offerReference}.`
+                : `Vi har sendt en 6-sifret kode til ${maskedEmail || "e-posten tilbudet ble sendt til"}. Tast koden for å bekrefte avtalen.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {acceptStep === "name" ? (
+            <div className="space-y-2">
+              <Label htmlFor="accept-name">Fullt navn</Label>
+              <Input
+                id="accept-name"
+                value={acceptName}
+                onChange={(event) => setAcceptName(event.target.value)}
+                placeholder="Ola Nordmann"
+                autoComplete="name"
+                autoFocus
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    void requestCode()
+                  }
+                }}
+              />
+              <p className="text-xs text-neutral-500">
+                For å bekrefte identiteten din sender vi en engangskode til e-postadressen tilbudet ble sendt til.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="accept-code">Engangskode</Label>
+              <Input
+                id="accept-code"
+                value={acceptCode}
+                onChange={(event) => setAcceptCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="000000"
+                className="text-center text-lg tracking-[0.5em]"
+                autoFocus
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    void confirmAccept()
+                  }
+                }}
+              />
+              <div className="flex items-center justify-between text-xs text-neutral-500">
+                <span>Koden er gyldig i 10 minutter.</span>
+                <button
+                  type="button"
+                  className="underline underline-offset-2 disabled:no-underline disabled:opacity-50"
+                  onClick={() => void requestCode()}
+                  disabled={isRequestingCode || resendCooldown > 0}
+                >
+                  {resendCooldown > 0 ? `Send ny kode (${resendCooldown}s)` : "Send ny kode"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {acceptError ? <p className="text-sm text-red-600">{acceptError}</p> : null}
+
+          <DialogFooter>
+            {acceptStep === "name" ? (
+              <Button
+                onClick={() => void requestCode()}
+                disabled={acceptName.trim().length < 2 || isRequestingCode}
+                className="w-full sm:w-auto"
+              >
+                {isRequestingCode ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                Send engangskode
+              </Button>
+            ) : (
+              <Button
+                onClick={() => void confirmAccept()}
+                disabled={!/^\d{6}$/.test(acceptCode) || isResponding}
+                className="w-full sm:w-auto"
+              >
+                {isResponding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                Bekreft og godta
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <footer className="border-t border-neutral-200 bg-white">
         <div className="mx-auto max-w-6xl px-4 py-5 text-center text-xs leading-relaxed text-neutral-500 sm:px-6 sm:py-6">

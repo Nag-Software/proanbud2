@@ -10,7 +10,9 @@ export default async function NewProjectPage({
   searchParams: Promise<{ customerId?: string }>
 }) {
   const params = await searchParams
-  const { user } = await checkRoleAccess(["admin", "manager", "worker"])
+  // Workers kan ikke opprette prosjekter — checkRoleAccess sender dem til
+  // /prosjekter i stedet for å la veiviseren feile på siste steg.
+  const { user } = await checkRoleAccess(["admin", "manager"])
   const supabase = await createClient()
 
   const [{ data: customers }, { data: users }] = await Promise.all([

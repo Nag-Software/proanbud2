@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import {
   Building2,
   Check,
+  ChevronUp,
   Clock,
   Crosshair,
   Flame,
@@ -17,6 +18,7 @@ import {
   Pencil,
   Route,
   Search,
+  SlidersHorizontal,
   Users,
   X,
 } from "lucide-react"
@@ -139,6 +141,10 @@ export function KartClient({
   const [tripsLoading, setTripsLoading] = useState(false)
   const [basemap, setBasemap] = useState<Basemap>("standard")
   const [filter, setFilter] = useState<Filter>("alle")
+  // Mobile-only disclosure: the basemap/layer controls and the project list are
+  // collapsed by default so the map gets the screen. (Ignored at md+.)
+  const [mobileControlsOpen, setMobileControlsOpen] = useState(false)
+  const [mobileListOpen, setMobileListOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [geocoding, setGeocoding] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -314,6 +320,16 @@ export function KartClient({
     }
   }
 
+  // Selecting a project (pin or list) collapses the mobile overlays so the map +
+  // bottom sheet get the screen.
+  function selectProject(id: string | null) {
+    setSelectedId(id)
+    if (id) {
+      setMobileListOpen(false)
+      setMobileControlsOpen(false)
+    }
+  }
+
   function startGeoEdit() {
     if (!selected) return
     const fence = geofences.find((g) => g.projectId === selected.id)
@@ -377,6 +393,9 @@ export function KartClient({
 
   const hasAnyPlottable = plottable.length > 0
   const deadline = selected ? deadlineLabel(selected.endDate) : null
+  // On mobile the list reveals itself when the user is actively searching/filtering
+  // (or taps the count). Always shown at md+.
+  const mobileListVisible = mobileListOpen || query.trim() !== "" || filter !== "alle"
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -387,7 +406,7 @@ export function KartClient({
         trips={trips}
         badges={badges}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={selectProject}
         showCustomers={showCustomers}
         showGeofences={showGeofences}
         showHeatmap={showHeatmap}
@@ -397,9 +416,9 @@ export function KartClient({
         onGeoEditCenter={(lat, lng) => setGeoCenter({ lat, lng })}
       />
 
-      {/* Left: filters + searchable project list */}
-      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 flex max-w-[88vw] flex-col p-3">
-        <div className="pointer-events-auto flex max-h-full w-72 flex-col overflow-hidden rounded-xl border bg-background/95 shadow-lg backdrop-blur">
+      {/* Top (mobile) / left (desktop): search, filters, controls, list */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 p-2 md:inset-y-0 md:right-auto md:w-auto md:p-3">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-md flex-col overflow-hidden rounded-xl border bg-background/95 shadow-lg backdrop-blur md:mx-0 md:max-h-full md:w-72">
           <div className="flex items-center gap-2 border-b px-3 py-2">
             <Search className="size-4 shrink-0 text-muted-foreground" />
             <input
@@ -408,8 +427,22 @@ export function KartClient({
               placeholder="Søk prosjekt eller adresse"
               className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
+            {/* Mobile: open the basemap/layer controls. */}
+            <button
+              type="button"
+              onClick={() => setMobileControlsOpen((v) => !v)}
+              aria-label="Kartlag og bakgrunn"
+              aria-pressed={mobileControlsOpen}
+              className={cn(
+                "-mr-1 shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted md:hidden",
+                mobileControlsOpen && "bg-muted text-foreground"
+              )}
+            >
+              <SlidersHorizontal className="size-4" />
+            </button>
           </div>
-          <div className="flex items-center gap-1 border-b px-2 py-1.5">
+
+          <div className="flex items-center gap-1 overflow-x-auto border-b px-2 py-1.5">
             <FilterChip active={filter === "alle"} onClick={() => setFilter("alle")}>
               Alle
             </FilterChip>
@@ -423,7 +456,57 @@ export function KartClient({
               Avvik{totals.avvik > 0 ? ` ${totals.avvik}` : ""}
             </FilterChip>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto py-1">
+
+          {/* Mobile-only: basemap + layers + geocode (desktop has the right rail). */}
+          {mobileControlsOpen && (
+            <div className="flex flex-col gap-2 border-b p-2 md:hidden">
+              <div className="flex overflow-hidden rounded-lg border text-xs">
+                <BasemapButton active={basemap === "standard"} onClick={() => setBasemap("standard")}>
+                  Kart
+                </BasemapButton>
+                <BasemapButton active={basemap === "satellite"} onClick={() => setBasemap("satellite")}>
+                  Satellitt
+                </BasemapButton>
+                <BasemapButton active={basemap === "hybrid"} onClick={() => setBasemap("hybrid")}>
+                  Hybrid
+                </BasemapButton>
+              </div>
+              <div className="flex items-center gap-1">
+                <ToggleButton active={showCustomers} onClick={() => setShowCustomers((v) => !v)} title="Kunder">
+                  <Users className="size-4" />
+                </ToggleButton>
+                <ToggleButton active={showGeofences} onClick={() => setShowGeofences((v) => !v)} title="Geofencer">
+                  <Layers className="size-4" />
+                </ToggleButton>
+                <ToggleButton active={showHeatmap} onClick={() => setShowHeatmap((v) => !v)} title="Verdi-heatmap">
+                  <Flame className="size-4" />
+                </ToggleButton>
+                <ToggleButton active={showTrips} onClick={() => setShowTrips((v) => !v)} title="Kjørebok-ruter">
+                  {tripsLoading ? <Loader2 className="size-4 animate-spin" /> : <Route className="size-4" />}
+                </ToggleButton>
+                {missing > 0 && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="ml-auto"
+                    onClick={handleGeocode}
+                    disabled={geocoding}
+                  >
+                    {geocoding ? <Loader2 className="size-4 animate-spin" /> : <Crosshair className="size-4" />}
+                    Oppdater ({missing})
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div
+            className={cn(
+              "min-h-0 overflow-y-auto py-1",
+              mobileListVisible ? "max-h-[40vh]" : "hidden",
+              "md:block md:max-h-none md:flex-1"
+            )}
+          >
             {filtered.length === 0 ? (
               <p className="px-3 py-6 text-center text-sm text-muted-foreground">Ingen prosjekter</p>
             ) : (
@@ -434,7 +517,7 @@ export function KartClient({
                 return (
                   <button
                     key={p.id}
-                    onClick={() => setSelectedId(p.id)}
+                    onClick={() => selectProject(p.id)}
                     className={cn(
                       "flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-muted/60",
                       selectedId === p.id && "bg-muted"
@@ -461,10 +544,16 @@ export function KartClient({
               })
             )}
           </div>
+
           <div className="flex items-center justify-between border-t px-3 py-2 text-xs text-muted-foreground">
-            <span>
+            <button
+              type="button"
+              onClick={() => setMobileListOpen((v) => !v)}
+              className="flex items-center gap-1 md:pointer-events-none"
+            >
               {plottable.length} av {projects.length} på kartet
-            </span>
+              <ChevronUp className={cn("size-3 transition-transform md:hidden", !mobileListVisible && "rotate-180")} />
+            </button>
             <span className="flex items-center gap-1.5">
               <span className="size-2 rounded-full bg-green-500 animate-pulse" />
               Live{liveAt ? ` ${clockHHMM(liveAt.toISOString())}` : ""}
@@ -473,8 +562,8 @@ export function KartClient({
         </div>
       </div>
 
-      {/* Right: basemap + layer toggles + geocode */}
-      <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
+      {/* Right rail (desktop only): basemap + layer toggles + geocode */}
+      <div className="absolute right-3 top-3 z-10 hidden flex-col items-end gap-2 md:flex">
         <div className="flex overflow-hidden rounded-xl border bg-background/95 text-xs shadow-lg backdrop-blur">
           <BasemapButton active={basemap === "standard"} onClick={() => setBasemap("standard")}>
             Kart
@@ -527,17 +616,20 @@ export function KartClient({
         </div>
       )}
 
-      {/* Bottom: selected project — live operations panel */}
+      {/* Bottom: selected project — live operations panel (bottom sheet on mobile) */}
       {selected && !geoEditing && (
-        <div className="absolute bottom-3 left-1/2 z-10 w-[min(360px,92vw)] -translate-x-1/2 sm:left-auto sm:right-3 sm:translate-x-0">
-          <div className="rounded-xl border bg-background/95 p-4 shadow-lg backdrop-blur">
-            <div className="flex items-start justify-between gap-3">
+        <div className="absolute inset-x-0 bottom-0 z-20 md:inset-x-auto md:bottom-3 md:right-3 md:left-auto">
+          <div className="pointer-events-auto flex max-h-[80vh] w-full flex-col rounded-t-2xl border-t bg-background/95 p-4 pb-[calc(env(safe-area-inset-bottom)+5rem)] shadow-2xl backdrop-blur md:max-h-[calc(100dvh-6rem)] md:w-[360px] md:rounded-xl md:border md:pb-4 md:shadow-lg">
+            <div className="mx-auto mb-2 h-1 w-9 shrink-0 rounded-full bg-muted-foreground/30 md:hidden" />
+            <div className="flex shrink-0 items-start justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="truncate text-base font-medium text-foreground">{selected.name}</h3>
                 <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className={cn("size-2 rounded-full", statusDot(selected.status))} />
-                  {statusLabel(selected.status)}
-                  {selected.address ? ` · ${selected.address}` : ""}
+                  <span className={cn("size-2 shrink-0 rounded-full", statusDot(selected.status))} />
+                  <span className="truncate">
+                    {statusLabel(selected.status)}
+                    {selected.address ? ` · ${selected.address}` : ""}
+                  </span>
                 </p>
               </div>
               <button
@@ -549,6 +641,7 @@ export function KartClient({
               </button>
             </div>
 
+            <div className="min-h-0 flex-1 overflow-y-auto">
             {selected.lat == null ? (
               <p className="mt-3 rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
                 Ingen posisjon ennå. Sett byggeplassadressen for å plassere prosjektet på kartet.
@@ -615,8 +708,9 @@ export function KartClient({
                 </button>
               </>
             )}
+            </div>
 
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 flex shrink-0 flex-wrap gap-2 border-t pt-3">
               <Button size="sm" variant="secondary" className="flex-1" onClick={openEditor}>
                 <Pencil className="size-4" />
                 {selected.lat == null ? "Sett adresse" : "Endre adresse"}
@@ -644,10 +738,11 @@ export function KartClient({
         </div>
       )}
 
-      {/* Bottom: geofence editor (replaces the detail panel while editing) */}
+      {/* Bottom: geofence editor (bottom sheet on mobile, replaces the detail panel) */}
       {selected && geoEditing && (
-        <div className="absolute bottom-3 left-1/2 z-10 w-[min(360px,92vw)] -translate-x-1/2 sm:left-auto sm:right-3 sm:translate-x-0">
-          <div className="rounded-xl border bg-background/95 p-4 shadow-lg backdrop-blur">
+        <div className="absolute inset-x-0 bottom-0 z-20 md:inset-x-auto md:bottom-3 md:right-3 md:left-auto">
+          <div className="pointer-events-auto w-full rounded-t-2xl border-t bg-background/95 p-4 pb-[calc(env(safe-area-inset-bottom)+5rem)] shadow-2xl backdrop-blur md:w-[360px] md:rounded-xl md:border md:pb-4 md:shadow-lg">
+            <div className="mx-auto mb-2 h-1 w-9 rounded-full bg-muted-foreground/30 md:hidden" />
             <div className="flex items-center justify-between gap-3">
               <h3 className="flex items-center gap-2 text-base font-medium text-foreground">
                 <Layers className="size-4 text-amber-500" /> Juster geofence
@@ -699,7 +794,7 @@ export function KartClient({
 
       {/* Edit site address (centered so the autocomplete has room) */}
       {editing && selected && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
+        <div className="absolute inset-0 z-30 flex items-center justify-center p-4">
           <button
             type="button"
             aria-label="Lukk"

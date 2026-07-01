@@ -24,7 +24,7 @@ export default async function AvvikPage() {
       <AppPageShell segments={["Avvik"]}>
         <PlanGate
           featureName="Avvik"
-          description="Registrer, følg opp og lukk avvik (RUH, HMS og KS) for hele bedriften."
+          description="Registrer, følg opp og lukk avvik – RUH (rapport om uønsket hendelse), HMS og KS – for hele bedriften."
         />
       </AppPageShell>
     )

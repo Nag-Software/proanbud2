@@ -141,12 +141,7 @@ export async function POST(request: Request) {
       route: "/api/stripe/customer-portal",
     })
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Kunne ikke opprette Stripe-portalen.",
-      },
+      { error: "Kunne ikke åpne betalingsoversikten. Prøv igjen om litt." },
       { status: 500 }
     )
   }

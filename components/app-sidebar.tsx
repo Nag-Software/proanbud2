@@ -15,15 +15,17 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, Settings2Icon, FrameIcon, PieChartIcon, MapIcon, CalendarDays, FolderIcon, FilesIcon, ShieldCheckIcon } from "lucide-react"
+import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, FrameIcon, PieChartIcon, MapIcon, CalendarDays, ClockIcon, FolderIcon, FilesIcon, FileTextIcon, ShieldCheckIcon } from "lucide-react"
 import { useUserRole } from "@/hooks/use-user-role"
-import { canManageSubscription } from "@/lib/roles"
+import { canInviteEmployees, canManageSubscription } from "@/lib/roles"
 import { useAuth } from "@/components/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { CreateProjectDrawer } from "@/app/prosjekter/create-project-dialog"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useNotifications, type NotificationItem } from "@/hooks/use-notifications"
 import { NotificationsPopover } from "@/components/notifications-popover"
 import { useOpenDeviationCount } from "@/hooks/use-open-deviation-count"
+import { useActiveWorkSession } from "@/hooks/use-active-work-session"
 
 type SidebarProject = {
   name: string
@@ -72,6 +74,19 @@ const data: {
       title: "Prosjekter",
       url: "/prosjekter",
       icon: <FolderIcon className="size-4" />,
+    },
+    {
+      title: "Tilbud",
+      url: "/tilbud",
+      icon: <FileTextIcon className="size-4" />,
+    },
+    {
+      // Timeføring er en modul (ikke en plan-feature) — nav-konvensjonen er at
+      // modulbaserte sider (jf. Dokumenter) alltid vises; siden selv håndterer
+      // manglende modul med en oppgraderingsflate.
+      title: "Timeføring",
+      url: "/timeforing",
+      icon: <ClockIcon className="size-4" />,
     },
     {
       title: "Kunder",
@@ -133,6 +148,10 @@ const data: {
       ]
     },
     {
+      // Én samlet inngang for alt som gjelder bedriften — tidligere delt i
+      // «Min bedrift» og «Innstillinger», men det var to konkurrerende
+      // grupper for det samme. Integrasjoner/Betaling beholder rutene sine
+      // under /innstillinger (middleware og lenker avhenger av dem).
       title: "Min bedrift",
       url: "/min-bedrift",
       icon: <Building2Icon className="size-4" />,
@@ -146,7 +165,17 @@ const data: {
           url: "/min-bedrift/ansatte-og-roller",
         },
         {
-          title: "Timeføring",
+          title: "Integrasjoner",
+          url: "/innstillinger/integrasjoner",
+        },
+        {
+          title: "Betaling",
+          url: "/innstillinger/betaling",
+        },
+        {
+          // Godkjennings-/oversiktssiden for ledere — «Godkjenn timer» skiller
+          // den fra arbeiderens egen «Timeføring» på toppnivå.
+          title: "Godkjenn timer",
           url: "/min-bedrift/timeforing",
         },
         {
@@ -158,31 +187,6 @@ const data: {
           url: "/min-bedrift/ks",
         },
       ]
-    },
-    {
-      title: "Innstillinger",
-      url: "/innstillinger",
-      icon: <Settings2Icon className="size-4" />,
-      items: [
-        {
-          title: "Generelt",
-          url: "/innstillinger/generelt",
-          hidden: true,
-        },
-        {
-          title: "Brukere",
-          url: "/innstillinger/brukere",
-          hidden: true,
-        },
-        {
-          title: "Betaling",
-          url: "/innstillinger/betaling",
-        },
-        {
-          title: "Integrasjoner",
-          url: "/innstillinger/integrasjoner",
-        },
-      ],
     },
   ] satisfies NavMainItem[],
   projects: [
@@ -220,12 +224,16 @@ function AppSidebarHeader({
   notificationsLoading,
   onMarkAllRead,
   onMarkThreadRead,
+  canCreateProject,
+  roleLoading,
 }: {
   unreadCount: number
   notifications: NotificationItem[]
   notificationsLoading: boolean
   onMarkAllRead: () => void
   onMarkThreadRead: (customerId: string) => void
+  canCreateProject: boolean
+  roleLoading: boolean
 }) {
   const { state } = useSidebar()
   const router = useRouter();
@@ -262,13 +270,20 @@ function AppSidebarHeader({
           </div>
         )}
       </div>
-      <CreateProjectDrawer
-        variant="outline"
-        size="sm"
-        className="w-full mt-1 hover:shadow-sm"
-        label={isCollapsed ? "" : "Nytt prosjekt"}
-        showIcon
-      />
+      {/* Workers kan ikke opprette prosjekter — vis aldri knappen for dem.
+          Rollen lastes async, så vi holder plassen med en skeleton til den er
+          kjent i stedet for å la knappen blinke inn og ut. */}
+      {roleLoading ? (
+        <Skeleton className="mt-1 h-8 w-full" />
+      ) : canCreateProject ? (
+        <CreateProjectDrawer
+          variant="outline"
+          size="sm"
+          className="w-full mt-1 hover:shadow-sm"
+          label={isCollapsed ? "" : "Nytt prosjekt"}
+          showIcon
+        />
+      ) : null}
     </SidebarHeader>
   )
 }
@@ -284,6 +299,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     markThreadRead,
   } = useNotifications({ enabled: loadingRole || hasFeature("meldinger") });
   const openDeviationCount = useOpenDeviationCount();
+  const { hasActiveSession } = useActiveWorkSession();
   const [activeProjects, setActiveProjects] = React.useState<SidebarProject[]>([]);
   const isWorker = canonicalRole === "worker";
   const canManageBilling = canManageSubscription(role);
@@ -327,6 +343,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       if (item.title === "Meldinger" && visibleUnreadCount > 0) {
         return { ...item, badge: visibleUnreadCount };
       }
+      // Pulserende grønn dot på Timeføring-ikonet når brukeren er stemplet
+      // inn — samme visuelle språk som unread-dotten på den kollapsede logoen.
+      if (item.title === "Timeføring" && hasActiveSession) {
+        return {
+          ...item,
+          icon: (
+            <span className="relative flex size-4 shrink-0 items-center justify-center">
+              <ClockIcon className="size-4" />
+              <span
+                aria-hidden
+                className="absolute -right-1 -top-1 size-2 animate-pulse rounded-full bg-emerald-500 ring-2 ring-sidebar"
+              />
+              <span className="sr-only">Stemplet inn</span>
+            </span>
+          ),
+        };
+      }
       if (item.title === "HMS" && item.items) {
         return {
           ...item,
@@ -343,18 +376,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       if (item.title === "Min bedrift" && item.items) {
         return {
           ...item,
-          // Hide the KS-maler subitem when the plan lacks the KS feature.
-          items: item.items.filter(
-            (subItem) => subItem.title !== "KS-maler" || featureEnabled("ks")
-          ),
-        };
-      }
-      if (item.title === "Innstillinger" && item.items) {
-        return {
-          ...item,
-          items: item.items.filter(
-            (subItem) => subItem.title !== "Betaling" || canManageBilling
-          ),
+          items: item.items.filter((subItem) => {
+            // KS-maler er en Proff-feature — skjul når planen mangler den.
+            if (subItem.title === "KS-maler") return featureEnabled("ks")
+            // Betaling kan bare administreres av admin.
+            if (subItem.title === "Betaling") return canManageBilling
+            // Ansatte og roller slipper kun inn admin (layouten redirecter
+            // alle andre) — skjul punktet så prosjektledere ikke ser en død
+            // lenke. Integrasjoner tillater admin + prosjektleder og vises
+            // derfor for begge.
+            if (subItem.title === "Ansatte og roller") return canInviteEmployees(role)
+            return true
+          }),
         };
       }
       return item;
@@ -366,13 +399,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     if (item.title === "Kalender" && !featureEnabled("kalender")) return false;
     if (item.title === "Meldinger" && !featureEnabled("meldinger")) return false;
     if (item.title === "HMS" && !featureEnabled("hms")) return false;
-    // Workers have a deliberately small surface: Projects, Kart (read-only
-    // locator) and Calendar.
+    // Workers have a deliberately small surface: Projects, Timeføring, Kart
+    // (read-only locator) and Calendar.
     if (isWorker) {
-      return ["Prosjekter", "Kart", "Kalender"].includes(item.title);
-    }
-    if (item.title === "Innstillinger" && !canManageBilling) {
-      return false;
+      return ["Prosjekter", "Timeføring", "Kart", "Kalender"].includes(item.title);
     }
     return true;
   });
@@ -385,6 +415,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         notificationsLoading={notificationsLoading}
         onMarkAllRead={markAllRead}
         onMarkThreadRead={markThreadRead}
+        canCreateProject={!isWorker}
+        roleLoading={loadingRole}
       />
       <SidebarContent>
         <NavMain items={filteredNavMain} />

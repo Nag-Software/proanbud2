@@ -11,13 +11,19 @@ import {
 
 type ArchiveProjectsTableProps = {
   projects: ProjectRow[]
+  /** Om søk/statusfilter er aktivt — styrer om tomteksten sier «ingen treff». */
+  hasFilters?: boolean
 }
 
-export function ArchiveProjectsTable({ projects }: ArchiveProjectsTableProps) {
+export function ArchiveProjectsTable({ projects, hasFilters = false }: ArchiveProjectsTableProps) {
   if (projects.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border/70 bg-card/40 px-6 py-12 text-center" style={{ borderRadius: 5 }}>
-        <p className="text-sm text-muted-foreground">Ingen tidligere prosjekter.</p>
+        <p className="text-sm text-muted-foreground">
+          {hasFilters
+            ? "Ingen tidligere prosjekter passer søket eller filteret."
+            : "Ingen tidligere prosjekter."}
+        </p>
       </div>
     )
   }

@@ -7,6 +7,7 @@ import { Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { reportClientError } from "@/lib/errors/client"
+import { authErrorMessage } from "@/lib/errors/user-message"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -56,7 +57,14 @@ export function ResetPasswordForm({
       const { error: updateError } = await supabase.auth.updateUser({ password })
 
       if (updateError) {
-        setError(updateError.message)
+        // Manglende/utløpt økt her betyr at tilbakestillingslenken ikke lenger
+        // er gyldig — «logg inn på nytt» ville vært forvirrende for en som har
+        // glemt passordet, så vi peker dem til Glemt passord i stedet.
+        setError(
+          /session/i.test(updateError.message ?? "")
+            ? "Lenken for tilbakestilling er utløpt eller allerede brukt. Gå til «Glemt passordet?» og be om en ny."
+            : authErrorMessage(updateError)
+        )
         return
       }
 
@@ -64,7 +72,7 @@ export function ResetPasswordForm({
       router.push("/login?message=password-updated")
     } catch (error) {
       reportClientError(error, { context: { action: "reset-password" } })
-      setError("Uventet feil. Prøv igjen.")
+      setError(authErrorMessage(error))
     } finally {
       setLoading(false)
     }

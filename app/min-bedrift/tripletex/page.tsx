@@ -31,7 +31,7 @@ export default async function TripletexPage() {
 
   if (!companyId || !(await companyHasFeature(companyId, "integrasjoner"))) {
     return (
-      <AppPageShell segments={["Min Bedrift", "Tripletex"]}>
+      <AppPageShell segments={["Min bedrift", "Tripletex"]}>
         <PlanGate
           featureName="Integrasjoner"
           title="Integrasjoner er inkludert i Proff — eller som modul"
@@ -70,7 +70,7 @@ export default async function TripletexPage() {
       ]
 
   return (
-    <AppPageShell segments={["Min Bedrift", "Tripletex"]}>
+    <AppPageShell segments={["Min bedrift", "Tripletex"]}>
       <div className="flex flex-col gap-6 pb-8">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Tripletex</h1>

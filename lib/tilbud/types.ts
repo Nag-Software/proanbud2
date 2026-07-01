@@ -124,6 +124,17 @@ export type SaveOfferPayload = {
   paymentSchedule?: OfferPaymentScheduleEntry[]
 }
 
+const PRICING_MODELS: OfferPricingModel[] = ["fixed", "time_materials", "unit_price", "mixed"]
+const CONTRACT_BASES: OfferContractBasis[] = ["ns8405", "ns8407", "custom", "none"]
+
+export function toPricingModel(value: string | null | undefined): OfferPricingModel | null {
+  return PRICING_MODELS.includes(value as OfferPricingModel) ? (value as OfferPricingModel) : null
+}
+
+export function toContractBasis(value: string | null | undefined): OfferContractBasis | null {
+  return CONTRACT_BASES.includes(value as OfferContractBasis) ? (value as OfferContractBasis) : null
+}
+
 function roundCurrency(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100
 }

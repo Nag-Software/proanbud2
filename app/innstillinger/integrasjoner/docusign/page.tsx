@@ -27,7 +27,7 @@ export default async function DocusignPage() {
   }
 
   return (
-    <AppPageShell segments={["Min Bedrift", "Integrasjoner", "DocuSign"]}>
+    <AppPageShell segments={["Min bedrift", "Integrasjoner", "DocuSign"]}>
       <div className="flex flex-col gap-6 pb-8">
         <div className="space-y-1">
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Integrasjoner</p>

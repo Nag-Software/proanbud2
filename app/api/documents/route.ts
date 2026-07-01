@@ -112,6 +112,16 @@ async function getAuthenticatedUser() {
   return { supabase, user }
 }
 
+/**
+ * Kort norsk melding til brukeren — klienten toaster `error`-feltet ordrett,
+ * så det skal aldri inneholde rå Supabase-tekst. Den tekniske detaljen går
+ * til den sentrale feilloggen i stedet.
+ */
+async function errorResponse(userMessage: string, logMessage: string, error: unknown, route: string, status = 500) {
+  await logServerError({ message: logMessage, error, source: "api", route })
+  return NextResponse.json({ error: userMessage }, { status })
+}
+
 export async function GET(request: Request) {
   const { supabase, user } = await getAuthenticatedUser()
   if (!user) {
@@ -141,7 +151,7 @@ export async function GET(request: Request) {
         .limit(100)
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        return errorResponse("Søket feilet. Prøv igjen.", "Dokumenter: søk feilet", error, "GET /api/documents")
       }
 
       const hitRows = (data ?? []) as SupabaseDocumentRow[]
@@ -199,7 +209,12 @@ export async function GET(request: Request) {
     const { data, error } = await query
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return errorResponse(
+        "Kunne ikke laste mappen. Prøv igjen.",
+        "Dokumenter: henting av mappeinnhold feilet",
+        error,
+        "GET /api/documents"
+      )
     }
 
     const rows = (data ?? []) as SupabaseDocumentRow[]
@@ -407,7 +422,12 @@ export async function POST(request: Request) {
       .single()
 
     if (insertError || !inserted) {
-      return NextResponse.json({ error: insertError?.message ?? "create_folder_failed" }, { status: 500 })
+      return errorResponse(
+        "Kunne ikke opprette mappen. Prøv igjen.",
+        "Dokumenter: oppretting av mappe feilet",
+        insertError,
+        "POST /api/documents"
+      )
     }
 
     const fullFolderPath = parentPath ? `${parentPath}/${inserted.name}` : inserted.name
@@ -466,7 +486,12 @@ export async function POST(request: Request) {
   })
 
   if (upload.error) {
-    return NextResponse.json({ error: upload.error.message }, { status: 500 })
+    return errorResponse(
+      "Kunne ikke laste opp filen. Prøv igjen.",
+      "Dokumenter: opplasting til lagring feilet",
+      upload.error,
+      "POST /api/documents"
+    )
   }
 
   const { data: signed } = await supabase.storage.from("documents").createSignedUrl(storagePath, 60 * 60)
@@ -493,7 +518,12 @@ export async function POST(request: Request) {
     .single()
 
   if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 })
+    return errorResponse(
+      "Kunne ikke laste opp filen. Prøv igjen.",
+      "Dokumenter: lagring av filoppføring feilet",
+      insertError,
+      "POST /api/documents"
+    )
   }
 
   const projectId = parseProjectIdFromDocumentPath(parentPath)
@@ -602,7 +632,12 @@ export async function PATCH(request: Request) {
 
     const moved = await supabase.storage.from(row.storage_bucket).move(row.storage_path, newPath)
     if (moved.error) {
-      return NextResponse.json({ error: moved.error.message }, { status: 500 })
+      return errorResponse(
+        "Kunne ikke flytte filen. Prøv igjen.",
+        "Dokumenter: flytting av fil feilet",
+        moved.error,
+        "PATCH /api/documents"
+      )
     }
 
     // URLs are minted lazily/batched on the next GET — no need to sign here.
@@ -619,7 +654,12 @@ export async function PATCH(request: Request) {
       .eq("user_id", user.id)
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 })
+      return errorResponse(
+        "Kunne ikke flytte filen. Prøv igjen.",
+        "Dokumenter: oppdatering etter flytting feilet",
+        updateError,
+        "PATCH /api/documents"
+      )
     }
 
     return NextResponse.json({ ok: true })
@@ -670,7 +710,12 @@ export async function PATCH(request: Request) {
 
       const { data: duplicateRows, error: duplicateError } = await duplicateQuery
       if (duplicateError) {
-        return NextResponse.json({ error: duplicateError.message }, { status: 500 })
+        return errorResponse(
+          "Kunne ikke endre navn på mappen. Prøv igjen.",
+          "Dokumenter: navnesjekk ved mappe-omdøping feilet",
+          duplicateError,
+          "PATCH /api/documents"
+        )
       }
       if ((duplicateRows?.length ?? 0) > 0) {
         return NextResponse.json({ error: "folder_exists" }, { status: 409 })
@@ -684,7 +729,12 @@ export async function PATCH(request: Request) {
         .eq("user_id", user.id)
 
       if (renameFolderError) {
-        return NextResponse.json({ error: renameFolderError.message }, { status: 500 })
+        return errorResponse(
+          "Kunne ikke endre navn på mappen. Prøv igjen.",
+          "Dokumenter: omdøping av mappe feilet",
+          renameFolderError,
+          "PATCH /api/documents"
+        )
       }
 
       // Two parameterized queries (the folder itself + its subtree) instead of a raw
@@ -708,9 +758,11 @@ export async function PATCH(request: Request) {
         ])
 
       if (exactChildError || deepChildrenError) {
-        return NextResponse.json(
-          { error: (exactChildError ?? deepChildrenError)?.message ?? "rename_failed" },
-          { status: 500 }
+        return errorResponse(
+          "Kunne ikke endre navn på mappen. Prøv igjen.",
+          "Dokumenter: henting av undermapper ved omdøping feilet",
+          exactChildError ?? deepChildrenError,
+          "PATCH /api/documents"
         )
       }
 
@@ -732,7 +784,12 @@ export async function PATCH(request: Request) {
           .eq("user_id", user.id)
 
         if (updateChildFolderError) {
-          return NextResponse.json({ error: updateChildFolderError.message }, { status: 500 })
+          return errorResponse(
+            "Kunne ikke endre navn på mappen. Prøv igjen.",
+            "Dokumenter: oppdatering av undermappe ved omdøping feilet",
+            updateChildFolderError,
+            "PATCH /api/documents"
+          )
         }
       }
 
@@ -748,7 +805,12 @@ export async function PATCH(request: Request) {
         .like("storage_path", `${oldStoragePrefix}%`)
 
       if (fileDescendantsError) {
-        return NextResponse.json({ error: fileDescendantsError.message }, { status: 500 })
+        return errorResponse(
+          "Kunne ikke endre navn på mappen. Prøv igjen.",
+          "Dokumenter: henting av filer ved mappe-omdøping feilet",
+          fileDescendantsError,
+          "PATCH /api/documents"
+        )
       }
 
       for (const fileRow of fileDescendants ?? []) {
@@ -757,7 +819,12 @@ export async function PATCH(request: Request) {
         const newPath = fileRow.storage_path.replace(oldStoragePrefix, newStoragePrefix)
         const moved = await supabase.storage.from(fileRow.storage_bucket).move(fileRow.storage_path, newPath)
         if (moved.error) {
-          return NextResponse.json({ error: moved.error.message }, { status: 500 })
+          return errorResponse(
+            "Kunne ikke endre navn på mappen. Prøv igjen.",
+            "Dokumenter: flytting av fil ved mappe-omdøping feilet",
+            moved.error,
+            "PATCH /api/documents"
+          )
         }
 
         const newRelative = stripUserPrefix(newPath, user.id)
@@ -778,7 +845,12 @@ export async function PATCH(request: Request) {
           .eq("user_id", user.id)
 
         if (updateFileError) {
-          return NextResponse.json({ error: updateFileError.message }, { status: 500 })
+          return errorResponse(
+            "Kunne ikke endre navn på mappen. Prøv igjen.",
+            "Dokumenter: oppdatering av fil ved mappe-omdøping feilet",
+            updateFileError,
+            "PATCH /api/documents"
+          )
         }
       }
 
@@ -795,7 +867,12 @@ export async function PATCH(request: Request) {
 
     const moved = await supabase.storage.from(row.storage_bucket).move(row.storage_path, newPath)
     if (moved.error) {
-      return NextResponse.json({ error: moved.error.message }, { status: 500 })
+      return errorResponse(
+        "Kunne ikke endre navn på filen. Prøv igjen.",
+        "Dokumenter: omdøping av fil feilet",
+        moved.error,
+        "PATCH /api/documents"
+      )
     }
 
     // URLs are minted lazily/batched on the next GET — no need to sign here.
@@ -813,7 +890,12 @@ export async function PATCH(request: Request) {
       .eq("user_id", user.id)
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 })
+      return errorResponse(
+        "Kunne ikke endre navn på filen. Prøv igjen.",
+        "Dokumenter: oppdatering etter omdøping feilet",
+        updateError,
+        "PATCH /api/documents"
+      )
     }
 
     return NextResponse.json({ ok: true })
@@ -888,7 +970,12 @@ export async function DELETE(request: Request) {
         .limit(1)
 
       if (fileChildrenError) {
-        return NextResponse.json({ error: fileChildrenError.message }, { status: 500 })
+        return errorResponse(
+          "Kunne ikke slette mappen. Prøv igjen.",
+          "Dokumenter: sjekk av mappeinnhold ved sletting feilet",
+          fileChildrenError,
+          "DELETE /api/documents"
+        )
       }
 
       const { data: folderChildren, error: folderChildrenError } = await supabase
@@ -901,7 +988,12 @@ export async function DELETE(request: Request) {
         .limit(1)
 
       if (folderChildrenError) {
-        return NextResponse.json({ error: folderChildrenError.message }, { status: 500 })
+        return errorResponse(
+          "Kunne ikke slette mappen. Prøv igjen.",
+          "Dokumenter: sjekk av undermapper ved sletting feilet",
+          folderChildrenError,
+          "DELETE /api/documents"
+        )
       }
 
       if ((fileChildren?.length ?? 0) > 0 || (folderChildren?.length ?? 0) > 0) {
@@ -915,7 +1007,12 @@ export async function DELETE(request: Request) {
     if (row.storage_bucket && row.storage_path) {
       const removed = await supabase.storage.from(row.storage_bucket).remove([row.storage_path])
       if (removed.error) {
-        return NextResponse.json({ error: removed.error.message }, { status: 500 })
+        return errorResponse(
+          "Kunne ikke slette filen. Prøv igjen.",
+          "Dokumenter: sletting fra lagring feilet",
+          removed.error,
+          "DELETE /api/documents"
+        )
       }
     }
 

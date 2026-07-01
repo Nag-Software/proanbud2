@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
 
 export default function Page() {
-  redirect("/min-bedrift/integrasjoner")
+  redirect("/min-bedrift/bedriftsprofil")
 }

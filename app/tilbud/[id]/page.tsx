@@ -46,6 +46,11 @@ type OfferRecord = {
   contract_basis: string | null
   markup_percent: number | null
   payment_schedule: unknown
+  accepted_at: string | null
+  accepted_by_name: string | null
+  accepted_email: string | null
+  accepted_method: string | null
+  accepted_document_sha256: string | null
   customers?:
     | {
         name: string | null
@@ -251,7 +256,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
     supabase
       .from("offers")
       .select(
-        "id, title, description, status, amount_nok, subtotal_nok, discount_nok, quote_valid_until, created_at, updated_at, sent_at, recipient_name, recipient_email, recipient_phone, source_summary, source_documents, line_items, analysis_result, pricing_model, contract_basis, markup_percent, payment_schedule, customer_id, project_id, customers(id, name, email, phone, address, postal_code, city, org_number), projects(id, name, customer_id, customers(id, name, email, phone, address, postal_code, city, org_number))"
+        "id, title, description, status, amount_nok, subtotal_nok, discount_nok, quote_valid_until, created_at, updated_at, sent_at, recipient_name, recipient_email, recipient_phone, source_summary, source_documents, line_items, analysis_result, pricing_model, contract_basis, markup_percent, payment_schedule, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, customer_id, project_id, customers(id, name, email, phone, address, postal_code, city, org_number), projects(id, name, customer_id, customers(id, name, email, phone, address, postal_code, city, org_number))"
       )
       .eq("id", id)
       .eq("company_id", companyId)
@@ -325,6 +330,16 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
           contractBasis: (offer.contract_basis as OfferContractBasis) || "none",
           markupPercent: Number(offer.markup_percent || 0),
           paymentSchedule: toPaymentSchedule(offer.payment_schedule),
+          acceptance:
+            offer.status === "accepted" && offer.accepted_at && offer.accepted_by_name && offer.accepted_method === "email_otp"
+              ? {
+                  name: offer.accepted_by_name,
+                  email: offer.accepted_email || "",
+                  acceptedAt: offer.accepted_at,
+                  method: "email_otp",
+                  documentSha256: offer.accepted_document_sha256 || "",
+                }
+              : null,
         }}
         activity={activityRows}
         company={company}

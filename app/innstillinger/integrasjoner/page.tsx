@@ -21,8 +21,10 @@ export const integrations = [
     {
         name: "DocuSign",
         description: "Send og signer kontrakter elektronisk via DocuSign.",
-        url: "/min-bedrift/integrasjoner/docusign",
-        status: "active",
+        url: "/innstillinger/integrasjoner/docusign",
+        // Siden bak lenken er foreløpig en intern testside — vis kortet som
+        // «Kommer senere» til det finnes et kundevendt oppsett.
+        status: "coming",
         logo: "https://brandlogos.net/wp-content/uploads/2024/04/docusign-logo_brandlogos.net_5wujv.png"
     },
     {
@@ -50,7 +52,7 @@ export default async function IntegrasjonerPage() {
 
   if (!hasIntegrasjoner) {
     return (
-      <AppPageShell segments={["Min Bedrift", "Integrasjoner"]}>
+      <AppPageShell segments={["Min bedrift", "Integrasjoner"]}>
         <PlanGate
           featureName="Integrasjoner"
           title="Integrasjoner er inkludert i Proff — eller som modul"
@@ -89,13 +91,13 @@ export default async function IntegrasjonerPage() {
   }
 
   return (
-    <AppPageShell segments={["Min Bedrift", "Integrasjoner"]}>
+    <AppPageShell segments={["Min bedrift", "Integrasjoner"]}>
       <div className="flex flex-col gap-6 pb-8">
         <div className="space-y-1">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Min side</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Min bedrift</p>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Integrasjoner</h1>
           <p className="text-sm text-muted-foreground">
-            Her vises alle tilgjengelige integrasjoner. Nye integrasjoner legges til fortlopende.
+            Her vises alle tilgjengelige integrasjoner. Nye integrasjoner legges til fortløpende.
           </p>
         </div>
 

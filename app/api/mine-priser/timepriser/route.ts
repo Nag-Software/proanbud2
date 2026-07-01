@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { logServerError } from "@/lib/errors/log"
+import { zodValidationMessage } from "@/lib/errors/user-message"
 import { createClient } from "@/lib/supabase/server"
 
 const saveSchema = z.object({
-  jobType: z.string().trim().min(1).max(200),
-  hourlyRateNok: z.number().finite().min(0).max(1_000_000),
+  jobType: z.string().trim().min(1, "Oppgi type jobb").max(200, "Navnet er for langt (maks 200 tegn)"),
+  hourlyRateNok: z
+    .number()
+    .finite()
+    .min(0, "Timeprisen kan ikke være negativ")
+    .max(1_000_000, "Timeprisen er for høy"),
 })
+
+const FIELD_LABELS = { jobType: "Type jobb", hourlyRateNok: "Timepris" }
 
 export async function GET() {
   try {
@@ -24,7 +31,13 @@ export async function GET() {
 
     if (error) {
       console.error("[timepriser GET]", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      await logServerError({
+        message: "Henting av timepriser feilet",
+        error,
+        source: "api",
+        route: "/api/mine-priser/timepriser GET",
+      })
+      return NextResponse.json({ error: "Kunne ikke hente timeprisene. Prøv igjen." }, { status: 500 })
     }
 
     return NextResponse.json({ rates: data ?? [] })
@@ -36,7 +49,7 @@ export async function GET() {
       source: "api",
       route: "/api/mine-priser/timepriser GET",
     })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke hente timeprisene. Prøv igjen." }, { status: 500 })
   }
 }
 
@@ -55,7 +68,10 @@ export async function POST(request: Request) {
     const body = await request.json()
     const parsed = saveSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: "Ugyldig data", details: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json(
+        { error: zodValidationMessage(parsed.error.flatten(), FIELD_LABELS), details: parsed.error.flatten() },
+        { status: 400 }
+      )
     }
 
     const { data, error } = await supabase
@@ -71,7 +87,13 @@ export async function POST(request: Request) {
 
     if (error || !data) {
       console.error("[timepriser POST]", error)
-      return NextResponse.json({ error: error?.message ?? "Kunne ikke opprette timepris" }, { status: 500 })
+      await logServerError({
+        message: "Lagring av timepris feilet",
+        error,
+        source: "api",
+        route: "/api/mine-priser/timepriser POST",
+      })
+      return NextResponse.json({ error: "Kunne ikke lagre timeprisen. Prøv igjen." }, { status: 500 })
     }
 
     return NextResponse.json({ rate: data })
@@ -83,6 +105,6 @@ export async function POST(request: Request) {
       source: "api",
       route: "/api/mine-priser/timepriser POST",
     })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke lagre timeprisen. Prøv igjen." }, { status: 500 })
   }
 }

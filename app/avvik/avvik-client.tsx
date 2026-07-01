@@ -109,7 +109,7 @@ export function AvvikClient({ deviations, stats, projects }: Props) {
     <div className="space-y-4">
       <PageHeader
         title="Avvik"
-        subtitle="Meld og følg opp avvik på prosjektene dine"
+        subtitle="Meld og følg opp RUH (rapport om uønsket hendelse) og andre avvik på prosjektene dine"
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Button variant="outline" size="lg" className="w-full sm:w-auto" asChild>

@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { logServerError } from "@/lib/errors/log"
+import { zodValidationMessage } from "@/lib/errors/user-message"
 import { createClient } from "@/lib/supabase/server"
 
 const updateSchema = z.object({
-  name: z.string().trim().min(1).max(200),
-  priceNok: z.number().finite().min(0).max(100_000_000),
+  name: z.string().trim().min(1, "Oppgi navn på jobben").max(200, "Navnet er for langt (maks 200 tegn)"),
+  priceNok: z
+    .number()
+    .finite()
+    .min(0, "Prisen kan ikke være negativ")
+    .max(100_000_000, "Prisen er for høy"),
 })
+
+const FIELD_LABELS = { name: "Navn", priceNok: "Pris" }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -20,7 +27,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const body = await request.json()
     const parsed = updateSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: "Ugyldig data", details: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json(
+        { error: zodValidationMessage(parsed.error.flatten(), FIELD_LABELS), details: parsed.error.flatten() },
+        { status: 400 }
+      )
     }
 
     const { data, error } = await supabase
@@ -36,7 +46,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     if (error) {
       console.error("[lagrede-jobber PATCH]", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      await logServerError({
+        message: "Endring av lagret jobb feilet",
+        error,
+        source: "api",
+        route: "/api/mine-priser/lagrede-jobber/[id] PATCH",
+      })
+      return NextResponse.json({ error: "Kunne ikke lagre jobben. Prøv igjen." }, { status: 500 })
     }
     if (!data) return NextResponse.json({ error: "Ikke funnet" }, { status: 404 })
 
@@ -49,7 +65,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       source: "api",
       route: "/api/mine-priser/lagrede-jobber/[id] PATCH",
     })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke lagre jobben. Prøv igjen." }, { status: 500 })
   }
 }
 
@@ -66,7 +82,13 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
     if (error) {
       console.error("[lagrede-jobber DELETE]", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      await logServerError({
+        message: "Sletting av lagret jobb feilet",
+        error,
+        source: "api",
+        route: "/api/mine-priser/lagrede-jobber/[id] DELETE",
+      })
+      return NextResponse.json({ error: "Kunne ikke slette jobben. Prøv igjen." }, { status: 500 })
     }
 
     return NextResponse.json({ ok: true })
@@ -78,6 +100,6 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       source: "api",
       route: "/api/mine-priser/lagrede-jobber/[id] DELETE",
     })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke slette jobben. Prøv igjen." }, { status: 500 })
   }
 }

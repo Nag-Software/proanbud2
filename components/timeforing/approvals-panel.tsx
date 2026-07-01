@@ -11,6 +11,7 @@ import { formatHours } from "@/lib/time-tracking"
 import {
   approveTimeEntryAction,
   rejectTimeEntryAction,
+  type ActionResult,
   type PendingApproval,
 } from "@/app/timeforing/actions"
 
@@ -27,14 +28,22 @@ export function ApprovalsPanel({ initialPending }: { initialPending: PendingAppr
 
   if (pending.length === 0) return null
 
-  async function act(id: string, action: (entryId: string) => Promise<void>, approved: boolean) {
+  async function act(
+    id: string,
+    action: (entryId: string) => Promise<ActionResult<null>>,
+    approved: boolean
+  ) {
     setBusyId(id)
     try {
-      await action(id)
+      const result = await action(id)
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
       setPending((prev) => prev.filter((p) => p.id !== id))
       toast.success(approved ? "Time godkjent" : "Time avvist")
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Noe gikk galt")
+    } catch {
+      toast.error("Fikk ikke kontakt med serveren. Sjekk internettforbindelsen og prøv igjen.")
     } finally {
       setBusyId(null)
     }

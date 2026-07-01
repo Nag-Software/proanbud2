@@ -2,14 +2,31 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { createAdminClient } from "@/lib/supabase/admin"
-import { logServerError } from "@/lib/errors/log"
-import { handleOfferAccepted } from "@/lib/tilbud/on-offer-accepted"
+import { acceptOfferWithCode, requestOfferAcceptCode } from "@/lib/tilbud/accept-offer"
 import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 import { fetchPublicOfferBySlug } from "@/lib/tilbud/public-offer"
 
-const respondSchema = z.object({
-  action: z.enum(["accept", "reject"]),
-})
+const respondSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("request_code") }),
+  z.object({
+    action: z.literal("accept"),
+    name: z.string().trim().min(2, "Skriv fullt navn").max(120),
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, "Koden er 6 sifre"),
+  }),
+  z.object({ action: z.literal("reject") }),
+])
+
+const ACCEPT_ERROR_MESSAGES: Record<string, string> = {
+  no_code: "Be om en engangskode først.",
+  expired: "Engangskoden er utløpt. Be om en ny kode.",
+  wrong_code: "Feil kode. Prøv igjen.",
+  too_many_attempts: "For mange forsøk. Be om en ny kode.",
+  not_respondable: "Tilbudet kan ikke besvares.",
+  server_error: "Noe gikk galt. Prøv igjen.",
+}
 
 export async function POST(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
@@ -29,14 +46,59 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     return NextResponse.json({ error: "Ugyldig forespørsel" }, { status: 400 })
   }
 
-  const nextStatus = parsed.data.action === "accept" ? "accepted" : "rejected"
+  if (parsed.data.action === "request_code") {
+    const result = await requestOfferAcceptCode(offer)
+    if (!result.ok) {
+      if (result.error === "cooldown") {
+        return NextResponse.json(
+          { error: `Vent ${result.retryInSeconds} sekunder før du ber om ny kode`, retryInSeconds: result.retryInSeconds },
+          { status: 429 }
+        )
+      }
+      if (result.error === "missing_email") {
+        return NextResponse.json({ error: "Tilbudet mangler mottaker-e-post" }, { status: 400 })
+      }
+      return NextResponse.json({ error: "Kunne ikke sende engangskode" }, { status: 500 })
+    }
+    return NextResponse.json({ ok: true, maskedEmail: result.maskedEmail })
+  }
+
+  if (parsed.data.action === "accept") {
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null
+    const userAgent = request.headers.get("user-agent") || null
+
+    const result = await acceptOfferWithCode({
+      record: offer,
+      name: parsed.data.name,
+      code: parsed.data.code,
+      ip,
+      userAgent,
+    })
+
+    if (!result.ok) {
+      const message = ACCEPT_ERROR_MESSAGES[result.error] || ACCEPT_ERROR_MESSAGES.server_error
+      const status = result.error === "server_error" ? 500 : 400
+      return NextResponse.json(
+        { error: message, code: result.error, attemptsLeft: "attemptsLeft" in result ? result.attemptsLeft : undefined },
+        { status }
+      )
+    }
+
+    if (result.alreadyResponded) {
+      return NextResponse.json({ ok: true, status: "accepted", alreadyResponded: true })
+    }
+
+    return NextResponse.json({ ok: true, status: "accepted", acceptance: result.acceptance })
+  }
+
+  // action === "reject" — unchanged flow: atomic flip guarded on status='sent'.
   const respondedAt = new Date().toISOString()
   const admin = createAdminClient()
 
   const { data: updated, error } = await admin
     .from("offers")
     .update({
-      status: nextStatus,
+      status: "rejected",
       customer_responded_at: respondedAt,
       updated_at: respondedAt,
     })
@@ -48,41 +110,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     return NextResponse.json({ error: "Kunne ikke lagre svaret ditt" }, { status: 500 })
   }
 
-  // Only run side-effects when THIS call actually flipped the status (it was still
-  // "sent") — prevents duplicate activity logs / admin e-poster on race/double-click.
   if (!updated || updated.length === 0) {
-    return NextResponse.json({ ok: true, status: nextStatus, alreadyResponded: true })
+    return NextResponse.json({ ok: true, status: "rejected", alreadyResponded: true })
   }
 
   await logOfferActivity(
     {
       offerId: offer.id,
       companyId: offer.companyId,
-      eventType: parsed.data.action === "accept" ? OFFER_ACTIVITY.ACCEPTED : OFFER_ACTIVITY.REJECTED,
-      title: parsed.data.action === "accept" ? "Kunde godtok tilbudet" : "Kunde avslo tilbudet",
+      eventType: OFFER_ACTIVITY.REJECTED,
+      title: "Kunde avslo tilbudet",
       description: offer.recipientEmail || offer.customer.email || undefined,
       metadata: { publicSlug: slug },
     },
     { admin: true }
   )
 
-  if (parsed.data.action === "accept") {
-    void handleOfferAccepted({
-      offerId: offer.id,
-      companyId: offer.companyId,
-      source: "public_accept",
-    }).catch((error) => {
-      console.error("Failed to sync Tripletex order after public accept:", error)
-      void logServerError({
-        message: "Tripletex-synk feilet etter offentlig godkjenning av tilbud",
-        error,
-        source: "api",
-        route: "app/api/public/tilbud/[slug]/respond/route.ts",
-        level: "warning",
-        context: { offerId: offer.id, companyId: offer.companyId },
-      })
-    })
-  }
-
-  return NextResponse.json({ ok: true, status: nextStatus })
+  return NextResponse.json({ ok: true, status: "rejected" })
 }

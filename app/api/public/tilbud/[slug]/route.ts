@@ -34,24 +34,32 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
     )
   }
 
+  // After acceptance the page shows the frozen snapshot — what was agreed,
+  // not whatever the offer rows contain later.
+  const snapshot = offer.acceptedSnapshot
+
   return NextResponse.json({
     offer: {
-      title: offer.title,
-      description: offer.description,
-      projectSummary: offer.projectSummary,
-      sourceSummary: offer.sourceSummary,
+      title: snapshot?.title ?? offer.title,
+      description: snapshot?.description ?? offer.description,
+      projectSummary: snapshot?.projectSummary ?? offer.projectSummary,
+      sourceSummary: snapshot?.quoteMessage ?? offer.sourceSummary,
       status: offer.status,
       amountNok: offer.amountNok,
-      quoteValidUntil: offer.quoteValidUntil,
+      quoteValidUntil: snapshot?.quoteValidUntil ?? offer.quoteValidUntil,
       createdAt: offer.createdAt,
-      validityDays: offer.validityDays,
+      validityDays: snapshot?.validityDays ?? offer.validityDays,
       offerReference: offer.offerReference,
       isExpired: offer.isExpired,
       canRespond: offer.canRespond,
-      projectName: offer.projectName,
-      lineItems: offer.lineItems,
-      company: offer.company,
-      customer: offer.customer,
+      projectName: snapshot?.projectName ?? offer.projectName,
+      lineItems: snapshot?.lineItems ?? offer.lineItems,
+      company: snapshot?.company ?? offer.company,
+      customer: snapshot?.customer ?? offer.customer,
+      paymentSchedule: snapshot?.paymentSchedule ?? offer.paymentSchedule,
+      pricingModel: snapshot?.pricingModel ?? offer.pricingModel,
+      contractBasis: snapshot?.contractBasis ?? offer.contractBasis,
+      acceptance: offer.acceptance,
     },
   })
 }

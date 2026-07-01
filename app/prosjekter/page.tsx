@@ -5,6 +5,7 @@ import { ProsjekterFilters } from "./prosjekter-filters"
 import { CreateProjectDrawer } from "./create-project-dialog"
 import { ArchiveProjectsTable } from "./archive-projects-table"
 import { ActiveProjects } from "./active-projects"
+import { ProjectsEmptyState, ProjectsNoMatches } from "./projects-empty-states"
 import { ProjectsViewProvider } from "./projects-view"
 import {
   ACTIVE_PROJECT_STATUSES,
@@ -22,7 +23,10 @@ export default async function Page({
   const params = await searchParams
   const initialView = params.view === "kanban" ? "kanban" : "kort"
   const supabase = await createClient()
-  await checkRoleAccess(["admin", "manager", "worker"])
+  const { canonicalRole } = await checkRoleAccess(["admin", "manager", "worker"])
+  // Workers har ikke lov til å opprette prosjekter — ikke vis en knapp som
+  // først feiler etter at hele veiviseren er fylt ut.
+  const canCreateProject = canonicalRole !== "worker"
 
   let queryBuilder = supabase
     .from("projects")
@@ -70,6 +74,14 @@ export default async function Page({
   const activeProjects = allProjects.filter((project) => isActiveProject(project.status))
   const archiveProjects = allProjects.filter((project) => isArchiveProject(project.status))
 
+  // Skiller «helt tom» fra «null treff»: onboarding-tilstanden skal bare vises
+  // når det faktisk ikke finnes prosjekter — ikke når søk/filter gir null treff.
+  const hasListFilters = Boolean(
+    (params.status && params.status !== "all") || params.search?.trim()
+  )
+  const isCompletelyEmpty = allProjects.length === 0 && !hasListFilters
+  const isNoMatches = allProjects.length === 0 && hasListFilters
+
   const showActiveSection =
     !params.status ||
     params.status === "all" ||
@@ -88,28 +100,43 @@ export default async function Page({
           <div className="space-y-0">
             <h1 className="text-2xl font-semibold text-foreground">Prosjektoversikt</h1>
           </div>
-          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-            <CreateProjectDrawer variant="outline" />
-          </div>
+          {canCreateProject && (
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <CreateProjectDrawer variant="outline" />
+            </div>
+          )}
         </div>
 
-        <ProsjekterFilters />
+        {/* Søk/filter skjules når det ikke finnes noe å filtrere i det hele tatt. */}
+        {!isCompletelyEmpty && <ProsjekterFilters />}
 
-        {showActiveSection && (
-          <ActiveProjects projects={activeProjects} customers={customerOptions} />
-        )}
+        {isCompletelyEmpty ? (
+          <ProjectsEmptyState canCreate={canCreateProject} />
+        ) : isNoMatches ? (
+          <ProjectsNoMatches />
+        ) : (
+          <>
+            {showActiveSection && (
+              <ActiveProjects
+                projects={activeProjects}
+                customers={customerOptions}
+                hasFilters={hasListFilters}
+              />
+            )}
 
-        {showArchiveSection && (
-          <div className="space-y-2 sm:space-y-4">
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                Tidligere prosjekter
-              </h2>
-              <span className="text-xs text-muted-foreground">{archiveProjects.length} prosjekter</span>
-            </div>
+            {showArchiveSection && (
+              <div className="space-y-2 sm:space-y-4">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+                    Tidligere prosjekter
+                  </h2>
+                  <span className="text-xs text-muted-foreground">{archiveProjects.length} prosjekter</span>
+                </div>
 
-            <ArchiveProjectsTable projects={archiveProjects} />
-          </div>
+                <ArchiveProjectsTable projects={archiveProjects} hasFilters={hasListFilters} />
+              </div>
+            )}
+          </>
         )}
       </section>
       </ProjectsViewProvider>

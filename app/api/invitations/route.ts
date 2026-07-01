@@ -2,12 +2,10 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { Resend } from 'resend';
 import { canInviteEmployees, normalizeRole } from '@/lib/roles';
 import { ensureCompanyRoles, resolveRoleNamesForCompany } from '@/lib/company-roles';
+import { sendInvitationEmail } from '@/lib/invitations/email';
 import { logServerError } from '@/lib/errors/log';
-
-const resend = new Resend(process.env.RESEND_API_KEY || 're_defaultkey');
 
 export async function POST(request: Request) {
   try {
@@ -143,51 +141,19 @@ export async function POST(request: Request) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || new URL(request.url).origin;
     const invitationUrl = `${baseUrl}/signup?invite=${rawToken}`;
 
-    try {
-      const { error: sendError } = await resend.emails.send({
-        from: 'Proanbud <post@proanbud.no>',
-        to: normalizedEmail,
-        subject: 'Du er invitert til Proanbud',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-            <h2 style="color: #2563eb;">Velkommen til Proanbud!</h2>
-            <p>Du har blitt invitert til å delta i et bedriftsworkspace hos Proanbud.</p>
-            <p>Klikk på knappen nedenfor for å akseptere invitasjonen og opprette en brukerprofil.</p>
-            <div style="margin: 30px 0;">
-              <a href="${invitationUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Aksepter invitasjon</a>
-            </div>
-            <p style="font-size: 14px; color: #666;">Hvis knappen ikke fungerer, kan du kopiere og lime inn denne lenken i nettleseren din:</p>
-            <p style="font-size: 14px; word-break: break-all; color: #666;"><a href="${invitationUrl}">${invitationUrl}</a></p>
-            <p style="margin-top: 40px; font-size: 12px; color: #999;">Dette er en automatisk generert e-post. Vennligst ikke svar på den.</p>
-          </div>
-        `,
-      });
-      if (sendError) {
-        console.error('Invitation email rejected by Resend:', sendError);
-        await logServerError({
-          message: 'Invitasjons-e-post avvist av Resend',
-          error: sendError,
-          source: 'api',
-          route: 'POST /api/invitations',
-          level: 'warning',
-          context: { companyId, userId: user.id, email: normalizedEmail },
-        });
-      }
-    } catch (emailError) {
-      console.error('Failed to send email:', emailError);
-      await logServerError({
-        message: 'Kunne ikke sende invitasjons-e-post',
-        error: emailError,
-        source: 'api',
-        route: 'POST /api/invitations',
-        level: 'warning',
-        context: { companyId, userId: user.id, email: normalizedEmail },
-      });
-    }
+    const emailSent = await sendInvitationEmail({
+      email: normalizedEmail,
+      invitationUrl,
+      context: { companyId, userId: user.id },
+    });
 
     return NextResponse.json({
       success: true,
-      message: 'Invitation sent successfully',
+      emailSent,
+      invitationId: invitation.id,
+      message: emailSent
+        ? 'Invitasjonen er sendt på e-post.'
+        : 'Invitasjonen ble opprettet, men e-posten kunne ikke sendes. Del invitasjonslenken manuelt.',
       invitationUrl,
       expiresAt,
       invitedRole: requestedRoles.map((role: string) => normalizeRole(role) || role),

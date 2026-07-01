@@ -5,27 +5,32 @@ import { usePathname } from "next/navigation"
 import {
   LayoutDashboardIcon,
   FolderIcon,
-  ShieldCheckIcon,
+  FileTextIcon,
   InboxIcon,
   MenuIcon,
   MapIcon,
   CalendarDays,
+  ClockIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useSidebar } from "@/components/ui/sidebar"
 import { useUnreadMessages } from "@/hooks/use-unread-messages"
 import { useUserRole } from "@/hooks/use-user-role"
+import { useActiveWorkSession } from "@/hooks/use-active-work-session"
 
+// Bunn-naven speiler de daglige kjerneoppgavene — HMS nås via sidebaren/Meny.
 const fullNavItems = [
   { href: "/", icon: LayoutDashboardIcon, label: "Dashbord", exact: true },
   { href: "/prosjekter", icon: FolderIcon, label: "Prosjekter", exact: false },
-  { href: "/hms", icon: ShieldCheckIcon, label: "HMS", exact: false },
+  { href: "/tilbud", icon: FileTextIcon, label: "Tilbud", exact: false },
+  { href: "/timeforing", icon: ClockIcon, label: "Timer", exact: false },
   { href: "/meldinger", icon: InboxIcon, label: "Meldinger", exact: false },
 ]
 
-// Workers only have Projects, Kart (read-only locator) + Calendar.
+// Workers only have Projects, Timer, Kart (read-only locator) + Calendar.
 const workerNavItems = [
   { href: "/prosjekter", icon: FolderIcon, label: "Prosjekter", exact: false },
+  { href: "/timeforing", icon: ClockIcon, label: "Timer", exact: false },
   { href: "/kart", icon: MapIcon, label: "Kart", exact: false },
   { href: "/kalender", icon: CalendarDays, label: "Kalender", exact: false },
 ]
@@ -34,13 +39,14 @@ export function MobileBottomNav() {
   const pathname = usePathname()
   const { toggleSidebar } = useSidebar()
   const unreadCount = useUnreadMessages()
+  const { hasActiveSession } = useActiveWorkSession()
   const { isWorker, hasFeature, loadingRole } = useUserRole()
   // While the plan context loads, keep items visible to avoid flicker.
   const featureEnabled = (feature: Parameters<typeof hasFeature>[0]) =>
     loadingRole || hasFeature(feature)
   // Hide Proff-only destinations when the plan lacks the feature.
+  // (/tilbud gates ikke — tilbud er kjernefunksjon i alle planer.)
   const FEATURE_BY_HREF: Record<string, Parameters<typeof hasFeature>[0]> = {
-    "/hms": "hms",
     "/meldinger": "meldinger",
     "/kalender": "kalender",
   }
@@ -48,6 +54,10 @@ export function MobileBottomNav() {
     const feature = FEATURE_BY_HREF[item.href]
     return !feature || featureEnabled(feature)
   })
+  // Med 5 nav-punkter + Meny blir det 6 kolonner — stram inn padding og
+  // skriftstørrelse litt så «Prosjekter»/«Meldinger» ikke kolliderer på smale
+  // skjermer. Fire eller færre punkter beholder dagens romslige layout.
+  const isCompact = navItems.length >= 5
 
   return (
     <nav
@@ -72,9 +82,14 @@ export function MobileBottomNav() {
             <Link
               key={href}
               href={href}
-              aria-label={label}
+              aria-label={
+                href === "/timeforing" && hasActiveSession ? `${label} – stemplet inn` : label
+              }
               aria-current={isActive ? "page" : undefined}
-              className="relative flex flex-1 flex-col items-center justify-center px-3! gap-1 rounded-[1.4rem] text-[11px] font-medium transition active:scale-90"
+              className={cn(
+                "relative flex flex-1 flex-col items-center justify-center gap-1 rounded-[1.4rem] font-medium transition active:scale-90",
+                isCompact ? "px-1! text-[10px]" : "px-3! text-[11px]"
+              )}
             >
               {isActive && (
                 <span
@@ -92,6 +107,14 @@ export function MobileBottomNav() {
                     {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
                 )}
+                {/* Pulserende grønn dot når brukeren er stemplet inn — samme
+                    visuelle språk som unread-badgen på Meldinger. */}
+                {href === "/timeforing" && hasActiveSession && (
+                  <span
+                    aria-hidden
+                    className="absolute -right-1 -top-0.5 size-2 animate-pulse rounded-full bg-emerald-500 ring-2 ring-background"
+                  />
+                )}
               </span>
               <span className={cn("relative leading-none", isActive ? "text-primary" : "text-muted-foreground")}>
                 {label}
@@ -104,7 +127,10 @@ export function MobileBottomNav() {
           type="button"
           onClick={toggleSidebar}
           aria-label="Åpne meny"
-          className="relative flex flex-1 flex-col items-center justify-center gap-1 rounded-[1.4rem] text-[11px] font-medium text-muted-foreground transition active:scale-90"
+          className={cn(
+            "relative flex flex-1 flex-col items-center justify-center gap-1 rounded-[1.4rem] font-medium text-muted-foreground transition active:scale-90",
+            isCompact ? "px-1 text-[10px]" : "text-[11px]"
+          )}
         >
           <span className="relative flex items-center justify-center">
             <MenuIcon className="size-[22px]" strokeWidth={1.8} />

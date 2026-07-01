@@ -6,7 +6,7 @@ import Link from "next/link"
 import { AppPageShell } from "@/components/app-page-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import dynamic from "next/dynamic"
-import { TrendingUp, FileText, FolderKanban, Users, MoreHorizontal } from "lucide-react"
+import { TrendingUp, FileText, FolderKanban, Users, MoreHorizontal, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,6 +21,7 @@ import { reportClientError } from "@/lib/errors/client"
 import { useRouter } from "next/navigation"
 import { useUserRole } from "@/hooks/use-user-role"
 import { useAuth } from "@/components/auth-provider"
+import { KomIGangChecklist, type KomIGangStep } from "@/components/onboarding/kom-i-gang-checklist"
 
 const formatNok = (val: number) =>
   new Intl.NumberFormat("no-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(val)
@@ -143,6 +144,9 @@ export default function DashboardPage() {
   const { user: authUser, loading: authLoading } = useAuth()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  // Kom-i-gang-sjekkliste: settes først når alle done-flaggene er beregnet,
+  // så kortet aldri vises halvlastet.
+  const [checklist, setChecklist] = useState<{ companyId: string; steps: KomIGangStep[] } | null>(null)
   // Feeds (recent/active offers, top projects) need extra name-lookup queries
   // after the KPIs are ready — tracked separately so the KPIs can paint first.
   const [feedsLoading, setFeedsLoading] = useState(true)
@@ -256,6 +260,7 @@ export default function DashboardPage() {
         todayRes, yesterdayRes,
         chartOffersRes, recentOffersRes, tableOffersRes,
         topProjectsRes, companyRes,
+        usersCountRes, pendingInvitesRes, priceFilesRes, offersTotalRes,
       ] = await Promise.all([
         supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").gte("created_at", startOfMonth),
         supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").gte("created_at", startOfPrevMonth).lte("created_at", endOfPrevMonth),
@@ -271,7 +276,14 @@ export default function DashboardPage() {
         supabase.from("offers").select("id, title, status, created_at, amount_nok, project_id").eq("company_id", companyId).neq("status", "draft").order("created_at", { ascending: false }).limit(5),
         supabase.from("offers").select("id, title, status, amount_nok, created_at, project_id").eq("company_id", companyId).order("created_at", { ascending: false }).limit(6),
         supabase.from("projects").select("id, name, customer_id").eq("company_id", companyId).eq("status", "active").limit(6),
-        supabase.from("companies").select("name, logo_url").eq("id", companyId).single(),
+        supabase.from("companies").select("name, logo_url, address, postal_code, city").eq("id", companyId).single(),
+        // Kom-i-gang-sjekklisten: billige head-count-spørringer i samme batch.
+        supabase.from("users").select("id", { count: "exact", head: true }).eq("company_id", companyId),
+        // Kun invitasjoner som fortsatt kan aksepteres — en utløpt invitasjon
+        // betyr at ingen ble med, og da skal steget vises som ugjort igjen.
+        supabase.from("invitations").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "pending").gt("expires_at", now.toISOString()),
+        supabase.from("supplier_price_files").select("id", { count: "exact", head: true }).eq("company_id", companyId),
+        supabase.from("offers").select("id", { count: "exact", head: true }).eq("company_id", companyId),
       ])
 
       // KPI values
@@ -319,6 +331,26 @@ export default function DashboardPage() {
       const companyLogo = companyRes.data?.logo_url?.trim() || null
       const companyStatus = "aktiv" as const
 
+      // Kom-i-gang-sjekklisten: fire done-flagg fra batchen over.
+      // Bedriftsprofil regnes som utfylt når adresse (gate/postnr/sted) eller
+      // logo er lagt inn — org.nr. og telefon settes allerede ved registrering
+      // og sier ingenting om at profilen faktisk er fylt ut.
+      const profileDone = Boolean(
+        companyRes.data?.address?.trim() ||
+        companyRes.data?.postal_code?.trim() ||
+        companyRes.data?.city?.trim() ||
+        companyLogo
+      )
+      const teamDone = (usersCountRes.count || 0) > 1 || (pendingInvitesRes.count || 0) > 0
+      const pricesDone = (priceFilesRes.count || 0) > 0
+      const offerDone = (offersTotalRes.count || 0) > 0
+      const checklistSteps: KomIGangStep[] = [
+        { key: "profil", label: "Fyll ut bedriftsprofilen", href: "/min-bedrift/bedriftsprofil", done: profileDone },
+        { key: "ansatte", label: "Inviter de ansatte", href: "/min-bedrift/ansatte-og-roller", done: teamDone },
+        { key: "priser", label: "Legg inn prisene dine", href: "/mine-priser/prisfiler", done: pricesDone },
+        { key: "tilbud", label: "Lag ditt første tilbud", href: "/nytt-tilbud", done: offerDone },
+      ]
+
       // PHASE 1 — paint KPIs / chart / gauge / company the moment the aggregates
       // resolve, with empty feeds. The feed name-lookups below add 1-2 more
       // serial round-trips; gating the whole dashboard on them kept every number
@@ -334,6 +366,7 @@ export default function DashboardPage() {
         recentOffers: [], tableOffers: [], topProjects: [],
         userName, companyName, companyLogo, companyStatus,
       })
+      setChecklist({ companyId, steps: checklistSteps })
       setLoading(false)
 
       if (uniqueProjectIds.length) {
@@ -467,6 +500,12 @@ export default function DashboardPage() {
   return (
     <AppPageShell segments={["Dashbord"]}>
       <div className="flex flex-col max-w-[2000px] w-full mx-auto gap-5 pb-10">
+
+        {/* Kom-i-gang-sjekkliste — kun for admin/manager, og først når alle
+            done-flaggene er beregnet (aldri et halvlastet kort). */}
+        {checklist && (canonicalRole === "admin" || canonicalRole === "manager") && (
+          <KomIGangChecklist key={checklist.companyId} steps={checklist.steps} companyId={checklist.companyId} />
+        )}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
           <div className="flex flex-col gap-4">
@@ -622,10 +661,11 @@ export default function DashboardPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Siste tilbud</CardTitle>
               <Link
-                href="/prosjekter"
-                className="text-[10px] font-medium uppercase tracking-[0.18em] text-primary hover:underline"
+                href="/tilbud"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
               >
-                Vis alle
+                Se alle
+                <ArrowRight className="h-3 w-3" />
               </Link>
             </CardHeader>
             <CardContent className="px-5 pb-5">
@@ -676,7 +716,13 @@ export default function DashboardPage() {
                   </tbody>
                 </table>
                 {!feedsLoading && data?.tableOffers.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-6">Ingen tilbud ennå</p>
+                  <div className="py-6 text-center">
+                    <p className="text-xs text-muted-foreground">Ingen tilbud ennå</p>
+                    <Link href="/nytt-tilbud" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                      Lag ditt første tilbud
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  </div>
                 )}
               </div>
               <div className="divide-y md:hidden">
@@ -712,7 +758,13 @@ export default function DashboardPage() {
                       </Link>
                     ))}
                 {!feedsLoading && data?.tableOffers.length === 0 && (
-                  <p className="py-6 text-center text-xs text-muted-foreground">Ingen tilbud ennå</p>
+                  <div className="py-6 text-center">
+                    <p className="text-xs text-muted-foreground">Ingen tilbud ennå</p>
+                    <Link href="/nytt-tilbud" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                      Lag ditt første tilbud
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  </div>
                 )}
               </div>
             </CardContent>
@@ -734,7 +786,13 @@ export default function DashboardPage() {
                   ))}
                 </div>
               ) : data?.recentOffers.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-8">Ingen aktive tilbud</p>
+                <div className="py-8 text-center">
+                  <p className="text-xs text-muted-foreground">Ingen aktive tilbud</p>
+                  <Link href="/nytt-tilbud" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                    Lag ditt første tilbud
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </div>
               ) : (
                 <div className="divide-y">
                   {data?.recentOffers.map((t) => (
@@ -780,7 +838,15 @@ export default function DashboardPage() {
                   </div>
                 ))
                 : data?.topProjects.length === 0
-                  ? <p className="text-xs text-muted-foreground text-center py-4">Ingen aktive prosjekter</p>
+                  ? (
+                    <div className="py-4 text-center">
+                      <p className="text-xs text-muted-foreground">Ingen aktive prosjekter</p>
+                      <Link href="/prosjekter/ny" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                        Opprett prosjekt
+                        <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    </div>
+                  )
                   : data?.topProjects.map((p) => (
                     <div key={p.id} className="space-y-1.5">
                       <div className="flex justify-between items-center">

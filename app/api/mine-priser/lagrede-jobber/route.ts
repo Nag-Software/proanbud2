@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { logServerError } from "@/lib/errors/log"
+import { zodValidationMessage } from "@/lib/errors/user-message"
 import { createClient } from "@/lib/supabase/server"
 
 const saveSchema = z.object({
-  name: z.string().trim().min(1).max(200),
-  priceNok: z.number().finite().min(0).max(100_000_000),
+  name: z.string().trim().min(1, "Oppgi navn på jobben").max(200, "Navnet er for langt (maks 200 tegn)"),
+  priceNok: z
+    .number()
+    .finite()
+    .min(0, "Prisen kan ikke være negativ")
+    .max(100_000_000, "Prisen er for høy"),
 })
+
+const FIELD_LABELS = { name: "Navn", priceNok: "Pris" }
 
 export async function GET() {
   try {
@@ -24,7 +31,13 @@ export async function GET() {
 
     if (error) {
       console.error("[lagrede-jobber GET]", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      await logServerError({
+        message: "Henting av lagrede jobber feilet",
+        error,
+        source: "api",
+        route: "/api/mine-priser/lagrede-jobber GET",
+      })
+      return NextResponse.json({ error: "Kunne ikke hente de lagrede jobbene. Prøv igjen." }, { status: 500 })
     }
 
     return NextResponse.json({ jobs: data ?? [] })
@@ -36,7 +49,7 @@ export async function GET() {
       source: "api",
       route: "/api/mine-priser/lagrede-jobber GET",
     })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke hente de lagrede jobbene. Prøv igjen." }, { status: 500 })
   }
 }
 
@@ -55,7 +68,10 @@ export async function POST(request: Request) {
     const body = await request.json()
     const parsed = saveSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: "Ugyldig data", details: parsed.error.flatten() }, { status: 400 })
+      return NextResponse.json(
+        { error: zodValidationMessage(parsed.error.flatten(), FIELD_LABELS), details: parsed.error.flatten() },
+        { status: 400 }
+      )
     }
 
     const { data, error } = await supabase
@@ -71,7 +87,13 @@ export async function POST(request: Request) {
 
     if (error || !data) {
       console.error("[lagrede-jobber POST]", error)
-      return NextResponse.json({ error: error?.message ?? "Kunne ikke opprette jobb" }, { status: 500 })
+      await logServerError({
+        message: "Lagring av jobb feilet",
+        error,
+        source: "api",
+        route: "/api/mine-priser/lagrede-jobber POST",
+      })
+      return NextResponse.json({ error: "Kunne ikke lagre jobben. Prøv igjen." }, { status: 500 })
     }
 
     return NextResponse.json({ job: data })
@@ -83,6 +105,6 @@ export async function POST(request: Request) {
       source: "api",
       route: "/api/mine-priser/lagrede-jobber POST",
     })
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke lagre jobben. Prøv igjen." }, { status: 500 })
   }
 }

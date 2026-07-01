@@ -17,6 +17,13 @@ const A4_HEIGHT = 1123
 type OfferDocumentViewerProps = OfferDocumentData & {
   showSupplier?: boolean
   className?: string
+  /**
+   * Server PDF endpoint for this offer. When provided, the download button
+   * opens the properly typeset server-generated PDF (same renderer as the
+   * customer download). Without it (e.g. unsaved drafts in the wizard) the
+   * browser print dialog is used as fallback.
+   */
+  pdfUrl?: string
   /** Called when the user triggers a PDF download (e.g. to log the export). */
   onDownload?: () => void
 }
@@ -24,6 +31,7 @@ type OfferDocumentViewerProps = OfferDocumentData & {
 export function OfferDocumentViewer({
   showSupplier = true,
   className,
+  pdfUrl,
   onDownload,
   ...data
 }: OfferDocumentViewerProps) {
@@ -64,6 +72,12 @@ export function OfferDocumentViewer({
 
   const downloadPdf = useCallback(() => {
     onDownload?.()
+
+    if (pdfUrl) {
+      window.open(pdfUrl, "_blank")
+      return
+    }
+
     const printHtml = buildOfferDocumentPage({ ...data }, { showSupplier, autoPrint: true })
     const printWindow = window.open("", "_blank")
     if (!printWindow) {
@@ -74,7 +88,7 @@ export function OfferDocumentViewer({
     }
     printWindow.document.write(printHtml)
     printWindow.document.close()
-  }, [data, showSupplier, onDownload, openInNewTab])
+  }, [data, showSupplier, pdfUrl, onDownload, openInNewTab])
 
   return (
     <div className={cn("flex flex-col gap-3", className)}>

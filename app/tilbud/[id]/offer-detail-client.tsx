@@ -17,6 +17,14 @@ import { reportClientError } from "@/lib/errors/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -27,7 +35,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
-import { formatOfferReference, type OfferDocumentData } from "@/lib/tilbud/offer-document"
+import {
+  formatOfferReference,
+  type OfferDocumentAcceptance,
+  type OfferDocumentData,
+} from "@/lib/tilbud/offer-document"
 import { getOfferActivityTone, type OfferActivityEvent } from "@/lib/tilbud/offer-activity.shared"
 import {
   type OfferCompanyContext,
@@ -95,6 +107,7 @@ type OfferPageModel = {
   contractBasis: OfferContractBasis
   markupPercent: number
   paymentSchedule: OfferPaymentScheduleEntry[]
+  acceptance: OfferDocumentAcceptance | null
 }
 
 type OfferSaveSnapshot = {
@@ -112,6 +125,8 @@ type OfferSaveSnapshot = {
   markupPercent: number
   paymentSchedule: OfferPaymentScheduleEntry[]
 }
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function customerField(value: string) {
   return value.trim() || "—"
@@ -229,6 +244,9 @@ export function OfferDetailClient({
   const [tripletexSync, setTripletexSync] = useState<TripletexSyncState>(initialTripletexSync)
   const [activityLog, setActivityLog] = useState<OfferActivityItem[]>(activity)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [isSendDialogOpen, setIsSendDialogOpen] = useState(false)
+  const [sendEmail, setSendEmail] = useState("")
+  const [sendDialogError, setSendDialogError] = useState<string | null>(null)
   const [isAutoSaving, setIsAutoSaving] = useState(false)
   const itemsTableRef = useRef<NewOfferItemsTableHandle>(null)
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false)
@@ -278,6 +296,7 @@ export function OfferDetailClient({
       email: offer.recipientEmail.trim() || linkedCustomer.email,
       phone: offer.recipientPhone.trim() || linkedCustomer.phone,
       address: linkedCustomer.address,
+      postalCode: linkedCustomer.postalCode,
       city: linkedCustomer.city,
       orgNumber: linkedCustomer.orgNumber,
     }),
@@ -291,13 +310,19 @@ export function OfferDetailClient({
       projectSummary: offer.projectSummary,
       quoteMessage: offer.sourceSummary,
       projectName: offer.projectName,
+      offerReference: formatOfferReference(offer.id),
       customer: previewCustomer,
       lineItems,
       company,
       issuedDate: offer.createdAt,
       quoteValidUntil: offer.quoteValidUntil,
+      paymentSchedule: offer.paymentSchedule,
+      pricingModel: offer.pricingModel,
+      contractBasis: offer.contractBasis,
+      acceptance: offer.acceptance,
     }),
     [
+      offer.id,
       offer.title,
       offer.description,
       offer.projectSummary,
@@ -305,6 +330,10 @@ export function OfferDetailClient({
       offer.projectName,
       offer.createdAt,
       offer.quoteValidUntil,
+      offer.paymentSchedule,
+      offer.pricingModel,
+      offer.contractBasis,
+      offer.acceptance,
       previewCustomer,
       lineItems,
       company,
@@ -420,18 +449,30 @@ export function OfferDetailClient({
     }
   }, [offer.id])
 
-  const sendOffer = async () => {
-    const recipientEmail = offer.recipientEmail.trim() || linkedCustomer.email.trim()
+  const openSendDialog = () => {
+    setSendEmail(offer.recipientEmail.trim() || linkedCustomer.email.trim())
+    setSendDialogError(null)
+    setIsSendDialogOpen(true)
+  }
+
+  const confirmSendOffer = () => {
+    const recipientEmail = sendEmail.trim()
     if (!recipientEmail) {
-      toast.error("Kunden mangler e-post. Oppdater kunden før du sender tilbud.")
+      setSendDialogError("Skriv inn e-postadressen tilbudet skal sendes til.")
       return
     }
+    if (!EMAIL_PATTERN.test(recipientEmail)) {
+      setSendDialogError("E-postadressen ser ikke riktig ut. Sjekk at den er skrevet som navn@firma.no.")
+      return
+    }
+    setSendDialogError(null)
 
     startTransition(async () => {
       try {
         const saved = await saveOfferSnapshot(saveSnapshot, { silent: true })
         if (!saved) {
-          throw new Error("Kunne ikke lagre endringer før sending")
+          setSendDialogError("Fikk ikke lagret de siste endringene. Prøv å sende igjen.")
+          return
         }
 
         const response = await fetch(`/api/offers/${offer.id}/send`, {
@@ -456,12 +497,13 @@ export function OfferDetailClient({
           recipientEmail: payload.offer.recipientEmail,
           recipientName: payload.offer.recipientName,
         }))
+        setIsSendDialogOpen(false)
         void triggerTripletexSyncInBackground()
         toast.success("Tilbud sendt til kunde på e-post")
         void refreshActivity()
       } catch (error) {
         reportClientError(error, { context: { action: "send offer to customer", offerId: offer.id } })
-        toast.error(error instanceof Error ? error.message : "Kunne ikke sende tilbud")
+        setSendDialogError("Kunne ikke sende tilbudet akkurat nå. Sjekk at e-postadressen stemmer, og prøv igjen om litt.")
       }
     })
   }
@@ -566,7 +608,7 @@ export function OfferDetailClient({
             </div>
 
             <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-              <Button onClick={sendOffer} disabled={isPending || isAutoSaving || lineItems.length === 0} className="h-11 sm:h-9">
+              <Button onClick={openSendDialog} disabled={isPending || isAutoSaving || lineItems.length === 0} className="h-11 sm:h-9">
                 <Send className="mr-2 h-4 w-4" />
                 Send tilbud
               </Button>
@@ -732,7 +774,7 @@ export function OfferDetailClient({
             <div className="bg-muted/5 p-5">
               <div className="ml-auto flex w-full max-w-sm flex-col gap-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="text-muted-foreground">Delsum</span>
                   <span className="font-medium tabular-nums">{formatNok(totals.subtotalNok)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
@@ -861,6 +903,58 @@ export function OfferDetailClient({
         </TabsContent>
       </ResponsiveTabs>
 
+      <Dialog
+        open={isSendDialogOpen}
+        onOpenChange={(open) => {
+          if (isPending) return
+          setIsSendDialogOpen(open)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send tilbudet?</DialogTitle>
+            <DialogDescription>Kunden får en e-post med lenke til tilbudet.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="send-offer-email">Kundens e-postadresse</Label>
+            <Input
+              id="send-offer-email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              placeholder="navn@firma.no"
+              value={sendEmail}
+              disabled={isPending}
+              onChange={(event) => {
+                setSendEmail(event.target.value)
+                if (sendDialogError) setSendDialogError(null)
+              }}
+            />
+            {!sendEmail.trim() && !sendDialogError ? (
+              <p className="text-xs text-muted-foreground">
+                Vi fant ingen e-postadresse på kunden. Skriv den inn her for å sende tilbudet.
+              </p>
+            ) : null}
+            {sendDialogError ? <p className="theme-text-danger text-sm">{sendDialogError}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSendDialogOpen(false)} disabled={isPending}>
+              Avbryt
+            </Button>
+            <Button onClick={confirmSendOffer} disabled={isPending}>
+              {isPending ? (
+                "Sender..."
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  Send tilbud
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Sheet open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
         <SheetContent className="theme-preview-shell !max-w-[min(1100px,96vw)] w-[96vw] overflow-y-auto p-4 sm:!max-w-[min(1100px,96vw)]">
           <SheetHeader className="space-y-1">
@@ -871,6 +965,7 @@ export function OfferDetailClient({
           <div className="mt-4">
             <OfferDocumentViewer
               {...documentData}
+              pdfUrl={`/api/tilbud/${offer.id}/pdf`}
               onDownload={() => void logPdfExport()}
             />
           </div>

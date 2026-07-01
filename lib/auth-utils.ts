@@ -35,10 +35,15 @@ export const getCurrentUserRole = cache(async function getCurrentUserRole(): Pro
       .maybeSingle(),
     supabase
       .from("users")
-      .select("role")
+      .select("role, is_active")
       .eq("id", user.id)
       .maybeSingle(),
   ])
+
+  // Deaktiverte kontoer skal ikke inn i appen i det hele tatt.
+  if (userTableData?.is_active === false) {
+    redirect("/konto-deaktivert")
+  }
 
   // @ts-expect-error Supabase nested relation typing
   const userRole = userRoleData?.roles?.name || userTableData?.role || null

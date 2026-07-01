@@ -1,18 +1,21 @@
-import { existsSync } from "node:fs"
-
-import chromium from "@sparticuz/chromium"
-import puppeteer from "puppeteer-core"
-
 import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 import { fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
 import { readProjectSummaryFromAnalysis } from "@/lib/tilbud/project-summary"
 import {
   buildOfferDocumentPage,
+  buildOfferFooterParts,
   formatOfferReference,
+  type OfferDocumentAcceptance,
   type OfferDocumentData,
 } from "@/lib/tilbud/offer-document"
-import { type OfferLineItem } from "@/lib/tilbud/types"
+import { getOfferPdfFontCss, renderOfferPdf } from "@/lib/tilbud/offer-pdf"
+import {
+  toContractBasis,
+  toPricingModel,
+  type OfferLineItem,
+  type OfferPaymentScheduleEntry,
+} from "@/lib/tilbud/types"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -38,6 +41,16 @@ type OfferRow = {
   source_summary: string | null
   analysis_result: unknown
   line_items: unknown
+  pricing_model: string | null
+  contract_basis: string | null
+  payment_schedule: unknown
+  status: string | null
+  accepted_at: string | null
+  accepted_by_name: string | null
+  accepted_email: string | null
+  accepted_method: string | null
+  accepted_document_sha256: string | null
+  accepted_snapshot: unknown
   customers?: CustomerRow | CustomerRow[] | null
   projects?: ProjectRow | ProjectRow[] | null
 }
@@ -45,6 +58,14 @@ type OfferRow = {
 function normalizeRelatedRow<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] || null
   return value || null
+}
+
+/** Minimal shape check before trusting a stored acceptance snapshot for rendering. */
+function toAcceptedSnapshot(value: unknown): OfferDocumentData | null {
+  if (!value || typeof value !== "object") return null
+  const snapshot = value as Partial<OfferDocumentData>
+  if (typeof snapshot.title !== "string" || !Array.isArray(snapshot.lineItems)) return null
+  return snapshot as OfferDocumentData
 }
 
 function normalizeLineItems(input: unknown): OfferLineItem[] {
@@ -71,54 +92,6 @@ function normalizeLineItems(input: unknown): OfferLineItem[] {
     .filter((item) => item.title.trim().length > 0)
 }
 
-// Common local Chrome/Chromium install locations, used as a fallback during dev
-// so the bundled (Linux-only) @sparticuz/chromium binary isn't spawned on macOS/
-// Windows — which fails with ENOEXEC.
-const LOCAL_CHROME_PATHS = [
-  // macOS
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  // Linux
-  "/usr/bin/google-chrome",
-  "/usr/bin/chromium",
-  "/usr/bin/chromium-browser",
-  // Windows
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-]
-
-function findLocalChrome() {
-  const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH?.trim()
-  if (fromEnv) return fromEnv
-  return LOCAL_CHROME_PATHS.find((candidate) => existsSync(candidate)) ?? null
-}
-
-/**
- * Launch Chromium. On serverless (Vercel) the bundled @sparticuz/chromium binary
- * is used. Locally we use a real Chrome/Chromium install — either from
- * PUPPETEER_EXECUTABLE_PATH or auto-detected — so dev works without the
- * serverless binary (which is Linux-only and fails with ENOEXEC elsewhere).
- */
-async function launchBrowser() {
-  const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
-  if (!isServerless) {
-    const localExecutable = findLocalChrome()
-    if (localExecutable) {
-      return puppeteer.launch({
-        executablePath: localExecutable,
-        headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      })
-    }
-  }
-  return puppeteer.launch({
-    args: chromium.args,
-    executablePath: await chromium.executablePath(),
-    headless: true,
-  })
-}
-
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
@@ -134,7 +107,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { data: offerData } = await supabase
     .from("offers")
     .select(
-      "id, title, description, created_at, quote_valid_until, source_summary, analysis_result, line_items, customers(name, email, phone, address, postal_code, city, org_number), projects(name, customers(name, email, phone, address, postal_code, city, org_number))"
+      "id, title, description, created_at, quote_valid_until, source_summary, analysis_result, line_items, pricing_model, contract_basis, payment_schedule, status, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, accepted_snapshot, customers(name, email, phone, address, postal_code, city, org_number), projects(name, customers(name, email, phone, address, postal_code, city, org_number))"
     )
     .eq("id", id)
     .eq("company_id", company.id)
@@ -146,37 +119,66 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const project = normalizeRelatedRow(offer.projects)
   const customer = normalizeRelatedRow(offer.customers) || normalizeRelatedRow(project?.customers)
 
-  const documentData: OfferDocumentData = {
-    title: offer.title || "Tilbud",
-    description: offer.description || "",
-    projectSummary: readProjectSummaryFromAnalysis(offer.analysis_result),
-    quoteMessage: offer.source_summary || "",
-    projectName: project?.name || "",
-    customer: {
-      name: customer?.name || "Kunde",
-      email: customer?.email,
-      phone: customer?.phone,
-      address: customer?.address,
-      city: customer?.city,
-      orgNumber: customer?.org_number,
-    },
-    lineItems: normalizeLineItems(offer.line_items),
-    company,
-    issuedDate: offer.created_at,
-    quoteValidUntil: offer.quote_valid_until,
-  }
+  const acceptance: OfferDocumentAcceptance | null =
+    offer.status === "accepted" && offer.accepted_at && offer.accepted_by_name && offer.accepted_method === "email_otp"
+      ? {
+          name: offer.accepted_by_name,
+          email: offer.accepted_email || "",
+          acceptedAt: offer.accepted_at,
+          method: "email_otp",
+          documentSha256: offer.accepted_document_sha256 || "",
+        }
+      : null
+
+  const snapshot = toAcceptedSnapshot(offer.accepted_snapshot)
+
+  // Accepted offers render from the frozen snapshot — the PDF is the binding
+  // agreement document and must not change with later edits.
+  const documentData: OfferDocumentData = snapshot
+    ? { ...snapshot, acceptance }
+    : {
+        title: offer.title || "Tilbud",
+        description: offer.description || "",
+        projectSummary: readProjectSummaryFromAnalysis(offer.analysis_result),
+        quoteMessage: offer.source_summary || "",
+        projectName: project?.name || "",
+        offerReference: formatOfferReference(offer.id),
+        customer: {
+          name: customer?.name || "Kunde",
+          email: customer?.email,
+          phone: customer?.phone,
+          address: customer?.address,
+          postalCode: customer?.postal_code,
+          city: customer?.city,
+          orgNumber: customer?.org_number,
+        },
+        lineItems: normalizeLineItems(offer.line_items),
+        company,
+        issuedDate: offer.created_at,
+        quoteValidUntil: offer.quote_valid_until,
+        paymentSchedule: Array.isArray(offer.payment_schedule)
+          ? (offer.payment_schedule as OfferPaymentScheduleEntry[])
+          : [],
+        pricingModel: toPricingModel(offer.pricing_model),
+        contractBasis: toContractBasis(offer.contract_basis),
+        acceptance,
+      }
 
   // Only show the logo when it is an absolute URL — a relative favicon fallback
   // would render as a broken image in the headless browser.
-  const showLogo = Boolean(company.logoUrl && /^https?:\/\//.test(company.logoUrl))
-  const html = buildOfferDocumentPage(documentData, { autoPrint: false, showLogo })
+  const logoUrl = documentData.company?.logoUrl
+  const showLogo = Boolean(logoUrl && /^https?:\/\//.test(logoUrl))
+  const html = buildOfferDocumentPage(documentData, {
+    autoPrint: false,
+    showLogo,
+    fontFaceCss: await getOfferPdfFontCss(),
+    printMarginMode: "external",
+  })
 
-  let browser
   try {
-    browser = await launchBrowser()
-    const page = await browser.newPage()
-    await page.setContent(html, { waitUntil: "load", timeout: 30000 })
-    const pdf = await page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true })
+    const pdf = await renderOfferPdf(html, {
+      footerText: buildOfferFooterParts(documentData.company).join("  ·  "),
+    })
     const filename = `Tilbud-${formatOfferReference(offer.id)}.pdf`
     return new Response(new Uint8Array(pdf), {
       headers: {
@@ -198,7 +200,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       context: { offerId: id },
     })
     return new Response("Kunne ikke generere PDF", { status: 500 })
-  } finally {
-    if (browser) await browser.close()
   }
 }

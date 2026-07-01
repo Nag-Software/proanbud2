@@ -21,15 +21,6 @@ import {
 } from "@/components/reui/stepper"
 import { ArrowLeft, ArrowRight, CheckIcon, LoaderCircleIcon, Search } from "lucide-react"
 import Image from "next/image"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { createClient } from "@/lib/supabase/client"
 
 const steps = [
@@ -59,9 +50,6 @@ export default function CreateCompanyClient() {
   // Step 1
   const [companyName, setCompanyName] = useState("")
   const [orgNumber, setOrgNumber] = useState("")
-  const [employees, setEmployees] = useState("")
-  const [turnover, setTurnover] = useState("")
-  const [supplier, setSupplier] = useState("")
 
   const [brregResults, setBrregResults] = useState<any[]>([])
   const [searchingBrreg, setSearchingBrreg] = useState(false)
@@ -75,9 +63,6 @@ export default function CreateCompanyClient() {
 
   const phoneValid = isValidNorwegianPhone(phone)
   const showPhoneError = phoneTouched && phone.trim().length > 0 && !phoneValid
-
-  // Step 3
-  const [source, setSource] = useState("")
 
   const handleCompanyNameChange = (val: string) => {
     setCompanyName(val)
@@ -113,7 +98,6 @@ export default function CreateCompanyClient() {
   const selectCompany = (company: any) => {
     setCompanyName(company.navn)
     setOrgNumber(company.organisasjonsnummer)
-    setEmployees(company.antallAnsatte ? company.antallAnsatte.toString() : "0")
     setShowDropdown(false)
     setBrregResults([])
   }
@@ -215,7 +199,7 @@ export default function CreateCompanyClient() {
             <StepperContent value={1} className="space-y-4">
               <div className="space-y-4 pt-4 relative">
                 <div className="space-y-2 relative">
-                  <Label>Bedriftsnavn</Label>
+                  <Label>Bedriftsnavn <span className="text-destructive">*</span></Label>
                   <div className="relative">
                     <Input 
                       value={companyName} 
@@ -229,7 +213,11 @@ export default function CreateCompanyClient() {
                     />
                     <Search className="absolute right-3 top-2.5 size-4 text-muted-foreground" />
                   </div>
-                  
+                  <p className="text-xs text-muted-foreground">
+                    Søk, så finner vi bedriften din i Brønnøysundregistrene og fyller ut
+                    organisasjonsnummeret for deg.
+                  </p>
+
                   {showDropdown && companyName.length >= 3 && (
                     <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-60 overflow-auto rounded-md border bg-background text-sm shadow-md">
                       {searchingBrreg ? (
@@ -257,8 +245,8 @@ export default function CreateCompanyClient() {
                         <div className="p-3 text-xs text-muted-foreground">
                           <p className="font-medium text-foreground">Fant ikke bedriften?</p>
                           <p className="mt-1">
-                            Prøv å søke på organisasjonsnummer, eller skriv inn navnet manuelt og gå
-                            videre med «Neste».
+                            Ingen fare — skriv inn navnet slik du vil ha det, fyll gjerne inn
+                            organisasjonsnummeret nedenfor, og gå videre med «Neste».
                           </p>
                         </div>
                       )}
@@ -266,51 +254,26 @@ export default function CreateCompanyClient() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Organisasjonsnummer</Label>
-                    <Input
-                      inputMode="numeric"
-                      autoComplete="organization"
-                      value={orgNumber}
-                      onChange={(e) => setOrgNumber(e.target.value)}
-                      placeholder="9-sifret orgnr..."
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Antall ansatte</Label>
-                    <Input 
-                      value={employees} 
-                      onChange={(e) => setEmployees(e.target.value)} 
-                      placeholder="F.eks. 5"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Årlig omsetning (Valgfritt)</Label>
-                    <Input 
-                      value={turnover} 
-                      onChange={(e) => setTurnover(e.target.value)} 
-                      placeholder="F.eks. 1 000 000"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Hovedleverandør (Valgfritt)</Label>
-                    <Input 
-                      value={supplier} 
-                      onChange={(e) => setSupplier(e.target.value)} 
-                      placeholder="F.eks. Byggmakker"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label>Organisasjonsnummer (valgfritt)</Label>
+                  <Input
+                    inputMode="numeric"
+                    autoComplete="organization"
+                    value={orgNumber}
+                    onChange={(e) => setOrgNumber(e.target.value)}
+                    placeholder="9 sifre, f.eks. 987 654 321"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Vises på tilbudene dine, så kundene ser hvem de handler med. Kan legges til
+                    senere.
+                  </p>
                 </div>
               </div>
 
               <div className="flex justify-end pt-4">
                 <Button onClick={() => setActiveStep(2)} disabled={!companyName}>
                   Neste
-                  <ArrowRight className="mr-2 size-4" />
+                  <ArrowRight className="ml-2 size-4" />
                 </Button>
               </div>
             </StepperContent>
@@ -318,7 +281,7 @@ export default function CreateCompanyClient() {
             {/* Trinn 2 */}
             <StepperContent value={2} className="space-y-4">
               <div className="space-y-2 pt-4">
-                <Label htmlFor="phone">Telefonnummer</Label>
+                <Label htmlFor="phone">Telefonnummer <span className="text-destructive">*</span></Label>
                 <Input
                   id="phone"
                   type="tel"
@@ -330,14 +293,18 @@ export default function CreateCompanyClient() {
                   placeholder="+47 123 45 678"
                   aria-invalid={showPhoneError}
                 />
-                {showPhoneError && (
+                {showPhoneError ? (
                   <p className="text-xs text-destructive">
                     Ugyldig telefonnummer. Skriv inn 8 sifre, gjerne med +47 foran.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Vises på tilbudene dine, så kundene enkelt kan ringe deg.
                   </p>
                 )}
               </div>
               <div className="space-y-2">
-                <Label>Nettside</Label>
+                <Label>Nettside (valgfritt)</Label>
                 <Input
                   type="url"
                   inputMode="url"
@@ -345,6 +312,9 @@ export default function CreateCompanyClient() {
                   onChange={(e) => setWebsite(e.target.value)}
                   placeholder="https://..."
                 />
+                <p className="text-xs text-muted-foreground">
+                  Har du en nettside, tar vi den med på tilbudene dine.
+                </p>
               </div>
               <div className="flex justify-between pt-4">
                 <Button variant="outline" onClick={() => setActiveStep(1)}>
@@ -364,44 +334,27 @@ export default function CreateCompanyClient() {
 
             {/* Trinn 3 */}
             <StepperContent value={3} className="space-y-4">
-              <div className="pt-4 space-y-6">
+              <div className="pt-4 space-y-4">
                 <div className="rounded-lg bg-muted/50 border p-4 space-y-3">
                   <div className="grid grid-cols-2 gap-y-2 text-sm">
                     <p className="text-muted-foreground">Bedrift:</p>
                     <p className="font-medium text-right">{companyName || "-"}</p>
-                    
+
                     <p className="text-muted-foreground">Orgnr:</p>
                     <p className="font-medium text-right">{orgNumber || "-"}</p>
-                    
-                    <p className="text-muted-foreground">Ansatte:</p>
-                    <p className="font-medium text-right">{employees || "-"}</p>
-                    
-                    <p className="text-muted-foreground">Tlf:</p>
+
+                    <p className="text-muted-foreground">Telefon:</p>
                     <p className="font-medium text-right">{phone || "-"}</p>
-                    
-                    <p className="text-muted-foreground">Web:</p>
+
+                    <p className="text-muted-foreground">Nettside:</p>
                     <p className="font-medium text-right">{website || "-"}</p>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Hvordan hørte du om oss?</Label>
-                  <Select value={source} onValueChange={setSource}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Velg et alternativ" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectLabel>Velg et alternativ</SelectLabel>
-                        <SelectItem value="sosiale-medier">Sosiale medier</SelectItem>
-                        <SelectItem value="sokemotor">Søkemotor (Google, etc.)</SelectItem>
-                        <SelectItem value="venn-kollega">Venn eller kollega</SelectItem>
-                        <SelectItem value="annonse">Annonse</SelectItem>
-                        <SelectItem value="annet">Annet</SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  Sjekk at alt stemmer. Du kan endre alt senere under Min bedrift →
+                  Bedriftsprofil.
+                </p>
               </div>
               <div className="flex justify-between pt-4">
                 <Button variant="outline" onClick={() => setActiveStep(2)} disabled={loading}>
@@ -422,7 +375,7 @@ export default function CreateCompanyClient() {
         href="/login"
         className="mt-4 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
       >
-        tilbake til login
+        Tilbake til innlogging
       </Link>
     </div>
   )

@@ -35,7 +35,15 @@ export async function GET(
     if (search) query = query.ilike("product", `%${search}%`)
 
     const { data: rows, error: rowsError } = await query
-    if (rowsError) return NextResponse.json({ error: rowsError.message }, { status: 500 })
+    if (rowsError) {
+      await logServerError({
+        message: "Henting av prisfil-rader feilet",
+        error: rowsError,
+        source: "api",
+        route: "/api/mine-priser/prisfiler/[id] GET",
+      })
+      return NextResponse.json({ error: "Kunne ikke hente prisene i fila. Prøv igjen." }, { status: 500 })
+    }
 
     return NextResponse.json({ file, rows: rows ?? [], page, limit: LIMIT })
   } catch (err) {
@@ -45,7 +53,7 @@ export async function GET(
       source: "api",
       route: "/api/mine-priser/prisfiler/[id] GET",
     })
-    return NextResponse.json({ error: "Serverfeil" }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke hente prisene i fila. Prøv igjen." }, { status: 500 })
   }
 }
 
@@ -66,7 +74,15 @@ export async function DELETE(
       .delete()
       .eq("id", id)
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      await logServerError({
+        message: "Sletting av prisfil feilet",
+        error,
+        source: "api",
+        route: "/api/mine-priser/prisfiler/[id] DELETE",
+      })
+      return NextResponse.json({ error: "Kunne ikke slette prisfilen. Prøv igjen." }, { status: 500 })
+    }
     return NextResponse.json({ ok: true })
   } catch (err) {
     await logServerError({
@@ -75,6 +91,6 @@ export async function DELETE(
       source: "api",
       route: "/api/mine-priser/prisfiler/[id] DELETE",
     })
-    return NextResponse.json({ error: "Serverfeil" }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke slette prisfilen. Prøv igjen." }, { status: 500 })
   }
 }

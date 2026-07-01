@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { completeClientLogin } from "@/lib/auth/client-login"
 import { reportClientError } from "@/lib/errors/client"
+import { authErrorMessage } from "@/lib/errors/user-message"
 import { startGoogleLogin } from "@/lib/native-bridge"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,6 +33,9 @@ function LoginFormInner({
   const router = useRouter()
   const searchParams = useSearchParams()
   const passwordUpdated = searchParams.get("message") === "password-updated"
+  // /auth/callback sender brukeren hit når en e-postlenke (reset/bekreftelse)
+  // er ugyldig eller utløpt — uten forklaring blir det bare et stille /login.
+  const callbackFailed = searchParams.get("error") === "auth-callback"
   const supabase = createClient()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -47,7 +51,7 @@ function LoginFormInner({
     try {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
       if (signInError) {
-        setError(signInError.message)
+        setError(authErrorMessage(signInError))
         emailRef.current?.focus()
         return
       }
@@ -61,7 +65,7 @@ function LoginFormInner({
       completeClientLogin(router)
     } catch (error) {
       reportClientError(error, { context: { action: "login" } })
-      setError('Uventet feil ved innlogging')
+      setError(authErrorMessage(error))
       emailRef.current?.focus()
     } finally {
       setLoading(false)
@@ -148,6 +152,12 @@ function LoginFormInner({
                 {passwordUpdated ? (
                   <FieldDescription className="text-center text-green-600 dark:text-green-500">
                     Passordet ditt er oppdatert. Du kan nå logge inn.
+                  </FieldDescription>
+                ) : null}
+                {callbackFailed && !error ? (
+                  <FieldDescription className="text-center text-destructive">
+                    Lenken du brukte er ugyldig eller utløpt. Logg inn her, eller be
+                    om en ny lenke via «Glemt passordet?».
                   </FieldDescription>
                 ) : null}
                 {error ? <FieldDescription className="text-center text-destructive">{error}</FieldDescription> : (

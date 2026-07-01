@@ -24,9 +24,11 @@ const ProjectKanbanBoard = dynamic(() => import("./project-kanban-board"), {
 type ActiveProjectsProps = {
   projects: ProjectRow[]
   customers: ClientOption[]
+  /** Om søk/statusfilter er aktivt — styrer om tomteksten sier «ingen treff». */
+  hasFilters?: boolean
 }
 
-export function ActiveProjects({ projects, customers }: ActiveProjectsProps) {
+export function ActiveProjects({ projects, customers, hasFilters = false }: ActiveProjectsProps) {
   const view = useProjectsView()?.view ?? "kort"
 
   return (
@@ -43,7 +45,11 @@ export function ActiveProjects({ projects, customers }: ActiveProjectsProps) {
           className="rounded-xl border border-dashed border-border/70 bg-card/40 px-6 py-14 text-center"
           style={{ borderRadius: 5 }}
         >
-          <p className="text-sm text-muted-foreground">Ingen aktive prosjekter funnet.</p>
+          <p className="text-sm text-muted-foreground">
+            {hasFilters
+              ? "Ingen aktive prosjekter passer søket eller filteret."
+              : "Ingen aktive prosjekter akkurat nå."}
+          </p>
         </div>
       ) : view === "kanban" ? (
         <ProjectKanbanBoard projects={projects} />

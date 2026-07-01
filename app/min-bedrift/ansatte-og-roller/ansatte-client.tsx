@@ -5,17 +5,49 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, MoreHorizontal, Shield, Mail, X } from "lucide-react";
+import { Search, Plus, MoreHorizontal, Shield, Mail, X, Copy, UserCheck, AlertTriangle } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuPortal } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { reportClientError } from "@/lib/errors/client";
-import { updateUserRole } from "./actions";
+import { updateUserRole, resendInvitation, revokeInvitation, setEmployeeActiveState } from "./actions";
 
-const fallbackEmployees: any[] = [];
+type Employee = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  /** "Aktiv" | "Invitert" | "Deaktivert" */
+  status: string;
+};
 
-export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }) {
+const fallbackEmployees: Employee[] = [];
+
+const ROLE_OPTIONS = [
+  { value: "Administrator", description: "Full tilgang, inkludert innstillinger og betaling" },
+  { value: "Prosjektleder", description: "Oppretter og styrer prosjekter og tilbud" },
+  { value: "Håndverker", description: "Ser sine prosjekter, fører timer og HMS" },
+];
+
+function StatusBadge({ status }: { status: string }) {
+  const styles =
+    status === "Aktiv"
+      ? { badge: "bg-green-100 text-green-800", dot: "bg-green-500" }
+      : status === "Deaktivert"
+        ? { badge: "bg-muted text-muted-foreground", dot: "bg-muted-foreground/50" }
+        : { badge: "bg-amber-100 text-amber-800", dot: "bg-amber-500" };
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${styles.badge}`}>
+      <span className={`size-1.5 rounded-full ${styles.dot}`} aria-hidden />
+      {status}
+    </span>
+  );
+}
+
+export function AnsatteClient({ initialEmployees }: { initialEmployees?: Employee[] }) {
+  const confirm = useConfirm();
   const [employees, setEmployees] = useState(initialEmployees ?? fallbackEmployees);
   const [search, setSearch] = useState("");
   const [isInviteOpen, setIsInviteOpen] = useState(false);
@@ -23,16 +55,17 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
   const [inviteRole, setInviteRole] = useState("Håndverker");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteEmailSent, setInviteEmailSent] = useState(false);
 
-  const filteredEmployees = employees.filter(e => 
-    e.name.toLowerCase().includes(search.toLowerCase()) || 
+  const filteredEmployees = employees.filter(e =>
+    e.name.toLowerCase().includes(search.toLowerCase()) ||
     e.email.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleInvite = async () => {
     if (!inviteEmail) return;
     setIsSubmitting(true);
-    
+
     try {
       const resp = await fetch('/api/invitations', {
         method: 'POST',
@@ -48,13 +81,14 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
       }
 
       setEmployees([...employees, {
-        id: Math.random().toString(),
+        id: data.invitationId ?? Math.random().toString(),
         name: "Avventer Registrering",
         email: inviteEmail,
         role: inviteRole,
         status: "Invitert"
       }]);
-      
+
+      setInviteEmailSent(Boolean(data.emailSent));
       setInviteLink(data.invitationUrl);
     } catch (error) {
       console.error(error);
@@ -80,24 +114,147 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
     }
   };
 
+  const handleResendInvitation = async (employee: Employee) => {
+    try {
+      const result = await resendInvitation(employee.id);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      if (result.emailSent) {
+        toast.success(`Invitasjonen ble sendt på nytt til ${employee.email}.`);
+      } else {
+        toast.warning("Invitasjonen ble fornyet, men e-posten kunne ikke sendes. Del invitasjonslenken manuelt.");
+      }
+    } catch (error) {
+      console.error(error);
+      reportClientError(error, { context: { action: "resend invitation" } });
+      toast.error("Kunne ikke sende invitasjonen på nytt.");
+    }
+  };
+
+  const handleRevokeInvitation = async (employee: Employee) => {
+    const ok = await confirm({
+      title: "Trekke tilbake invitasjonen?",
+      description: `Invitasjonen til ${employee.email} slutter å virke med en gang. Du kan sende en ny invitasjon senere hvis du ombestemmer deg.`,
+      confirmText: "Trekk tilbake",
+      variant: "destructive",
+    });
+    if (!ok) return;
+
+    try {
+      const result = await revokeInvitation(employee.id);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      setEmployees(prev => prev.filter(e => e.id !== employee.id));
+      toast.success(`Invitasjonen til ${employee.email} er trukket tilbake.`);
+    } catch (error) {
+      console.error(error);
+      reportClientError(error, { context: { action: "revoke invitation" } });
+      toast.error("Kunne ikke trekke tilbake invitasjonen.");
+    }
+  };
+
+  const handleSetActiveState = async (employee: Employee, active: boolean) => {
+    if (!active) {
+      const ok = await confirm({
+        title: `Deaktivere ${employee.name}?`,
+        description: "Den ansatte mister tilgangen til bedriften med en gang. Ingen data slettes, og du kan aktivere kontoen igjen når som helst.",
+        confirmText: "Deaktiver",
+        variant: "destructive",
+      });
+      if (!ok) return;
+    }
+
+    try {
+      const result = await setEmployeeActiveState(employee.id, active);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      setEmployees(prev => prev.map(e => e.id === employee.id ? { ...e, status: active ? "Aktiv" : "Deaktivert" } : e));
+      toast.success(active ? `${employee.name} har fått tilgang igjen.` : `${employee.name} er deaktivert.`);
+    } catch (error) {
+      console.error(error);
+      reportClientError(error, { context: { action: active ? "activate employee" : "deactivate employee" } });
+      toast.error(active ? "Kunne ikke aktivere den ansatte." : "Kunne ikke deaktivere den ansatte.");
+    }
+  };
+
+  const copyInviteLink = async () => {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      toast.success("Lenken er kopiert.");
+    } catch {
+      toast.error("Kunne ikke kopiere lenken. Marker teksten og kopier den manuelt.");
+    }
+  };
+
   const closeDialog = () => {
     setIsInviteOpen(false);
     setTimeout(() => {
       setInviteLink(null);
+      setInviteEmailSent(false);
       setInviteEmail("");
       setInviteRole("Håndverker");
     }, 300);
   };
+
+  // Delt meny for både desktop-tabellen og mobil-listen.
+  const renderRowActions = (e: Employee) => (
+    e.status === "Invitert" ? (
+      <>
+        <DropdownMenuItem onClick={() => handleResendInvitation(e)}>
+          <Mail className="mr-2 h-4 w-4" /> Send invitasjonen på nytt
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-destructive" onClick={() => handleRevokeInvitation(e)}>
+          <X className="mr-2 h-4 w-4" /> Trekk tilbake
+        </DropdownMenuItem>
+      </>
+    ) : (
+      <>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <Shield className="mr-2 h-4 w-4" />
+            <span>Endre rolle</span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuPortal>
+            <DropdownMenuSubContent>
+              {ROLE_OPTIONS.map((role) => (
+                <DropdownMenuItem key={role.value} onClick={() => handleRoleChange(e.id, role.value)}>
+                  {role.value}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuPortal>
+        </DropdownMenuSub>
+        <DropdownMenuSeparator />
+        {e.status === "Deaktivert" ? (
+          <DropdownMenuItem onClick={() => handleSetActiveState(e, true)}>
+            <UserCheck className="mr-2 h-4 w-4" /> Aktiver ansatt
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem className="text-destructive" onClick={() => handleSetActiveState(e, false)}>
+            <X className="mr-2 h-4 w-4" /> Deaktiver ansatt
+          </DropdownMenuItem>
+        )}
+      </>
+    )
+  );
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="relative w-full sm:w-72">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input 
-            type="search" 
-            placeholder="Søk i ansatte..." 
-            className="pl-9" 
+          <Input
+            type="search"
+            placeholder="Søk i ansatte..."
+            className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -129,12 +286,7 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
                     <td className="px-3 py-2 text-muted-foreground">{e.email}</td>
                     <td className="px-3 py-2">{e.role}</td>
                     <td className="px-3 py-2">
-                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                          e.status === "Aktiv" ? "bg-green-100 text-green-800" :
-                          "bg-amber-100 text-amber-800"
-                        }`}>
-                          {e.status === "Aktiv" ? "🟢 " : "🟡 "}{e.status}
-                        </span>
+                      <StatusBadge status={e.status} />
                     </td>
                     <td className="px-3 py-2 text-right">
                       <DropdownMenu>
@@ -144,37 +296,7 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {e.status === "Invitert" ? (
-                             <>
-                               <DropdownMenuItem><Mail className="mr-2 h-4 w-4" /> Gjensend invitasjon</DropdownMenuItem>
-                               <DropdownMenuSeparator />
-                               <DropdownMenuItem className="text-destructive"><X className="mr-2 h-4 w-4" /> Trekk tilbake</DropdownMenuItem>
-                             </>
-                          ) : (
-                             <>
-                              <DropdownMenuSub>
-                                <DropdownMenuSubTrigger>
-                                  <Shield className="mr-2 h-4 w-4" />
-                                  <span>Endre rolle</span>
-                                </DropdownMenuSubTrigger>
-                                <DropdownMenuPortal>
-                                  <DropdownMenuSubContent>
-                                    <DropdownMenuItem onClick={() => handleRoleChange(e.id, "Administrator")}>
-                                      <span>Administrator</span>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleRoleChange(e.id, "Prosjektleder")}>
-                                      <span>Prosjektleder</span>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleRoleChange(e.id, "Håndverker")}>
-                                      <span>Håndverker</span>
-                                    </DropdownMenuItem>
-                                  </DropdownMenuSubContent>
-                                </DropdownMenuPortal>
-                              </DropdownMenuSub>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-destructive"><X className="mr-2 h-4 w-4" /> Deaktiver ansatt</DropdownMenuItem>
-                             </>
-                          )}
+                          {renderRowActions(e)}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -194,9 +316,10 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
               <div className="min-w-0">
                 <p className="font-medium">{e.name}</p>
                 <p className="mt-1 truncate text-sm text-muted-foreground">{e.email}</p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {e.role} · {e.status}
-                </p>
+                <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{e.role}</span>
+                  <StatusBadge status={e.status} />
+                </div>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -205,37 +328,7 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  {e.status === "Invitert" ? (
-                    <>
-                      <DropdownMenuItem><Mail className="mr-2 h-4 w-4" /> Gjensend invitasjon</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive"><X className="mr-2 h-4 w-4" /> Trekk tilbake</DropdownMenuItem>
-                    </>
-                  ) : (
-                    <>
-                      <DropdownMenuSub>
-                        <DropdownMenuSubTrigger>
-                          <Shield className="mr-2 h-4 w-4" />
-                          <span>Endre rolle</span>
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuPortal>
-                          <DropdownMenuSubContent>
-                            <DropdownMenuItem onClick={() => handleRoleChange(e.id, "Administrator")}>
-                              Administrator
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleRoleChange(e.id, "Prosjektleder")}>
-                              Prosjektleder
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleRoleChange(e.id, "Håndverker")}>
-                              Håndverker
-                            </DropdownMenuItem>
-                          </DropdownMenuSubContent>
-                        </DropdownMenuPortal>
-                      </DropdownMenuSub>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive"><X className="mr-2 h-4 w-4" /> Deaktiver ansatt</DropdownMenuItem>
-                    </>
-                  )}
+                  {renderRowActions(e)}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -246,36 +339,69 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
       <Dialog open={isInviteOpen} onOpenChange={closeDialog}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>{inviteLink ? "Invitasjon Sendt!" : "Inviter ny ansatt"}</DialogTitle>
+            <DialogTitle>
+              {inviteLink
+                ? inviteEmailSent ? "Invitasjonen er sendt" : "Invitasjonen er klar"
+                : "Inviter ny ansatt"}
+            </DialogTitle>
             <DialogDescription>
-              {inviteLink 
-                ? "E-post med invitasjon ble sendt av gårde (via Resend)." 
-                : "Send en invitasjon for å gi noen tilgang til bedriftens workspace."}
+              {inviteLink
+                ? inviteEmailSent
+                  ? "Den ansatte kan opprette en bruker via lenken i e-posten."
+                  : "Vi klarte ikke å sende e-posten automatisk."
+                : "Send en invitasjon for å gi noen tilgang til bedriften din i Proanbud."}
             </DialogDescription>
           </DialogHeader>
-          
+
           {inviteLink ? (
             <div className="grid gap-4 py-4">
-               <div className="space-y-4 text-center">
-                 <Mail className="h-12 w-12 mx-auto text-green-500" />
-                 <p className="text-sm">En invitasjons-epost ble sendt til <b>{inviteEmail}</b>.</p>
-                 <div className="mt-4 p-4 border rounded-md text-left text-xs text-muted-foreground bg-muted">
-                    <p className="font-semibold mb-2">Fallback for lokal testing (dersom mail ikke kommer frem):</p>
-                    <Input readOnly value={inviteLink} className="bg-background cursor-copy" onClick={e => {
-                        (e.target as HTMLInputElement).select();
-                        navigator.clipboard.writeText(inviteLink);
-                    }}/>
-                 </div>
-               </div>
+              {inviteEmailSent ? (
+                <div className="space-y-4 text-center">
+                  <Mail className="h-12 w-12 mx-auto text-green-500" />
+                  <p className="text-sm">En invitasjon er sendt på e-post til <b>{inviteEmail}</b>.</p>
+                  <div className="space-y-2 rounded-md border bg-muted p-4 text-left">
+                    <p className="text-xs font-medium text-muted-foreground">Du kan også dele invitasjonslenken direkte:</p>
+                    <div className="flex gap-2">
+                      <Input
+                        readOnly
+                        value={inviteLink}
+                        className="bg-background text-xs"
+                        onFocus={(e) => e.target.select()}
+                      />
+                      <Button type="button" variant="outline" size="icon" className="shrink-0" onClick={copyInviteLink} aria-label="Kopier invitasjonslenken">
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p>Vi klarte ikke å sende e-posten. Del denne invitasjonslenken med den ansatte i stedet:</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      readOnly
+                      value={inviteLink}
+                      className="text-xs"
+                      onFocus={(e) => e.target.select()}
+                    />
+                    <Button type="button" variant="outline" size="icon" className="shrink-0" onClick={copyInviteLink} aria-label="Kopier invitasjonslenken">
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="grid gap-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="email">E-postadresse</Label>
-                <Input 
-                  id="email" 
-                  type="email" 
-                  placeholder="ansatt@domene.no" 
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="ansatt@domene.no"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                 />
@@ -283,19 +409,24 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: any[] }
               <div className="space-y-2">
                 <Label htmlFor="role">Velg Rolle</Label>
                 <Select value={inviteRole} onValueChange={setInviteRole}>
-                  <SelectTrigger id="role">
-                    <SelectValue placeholder="Velg en rolle" />
+                  <SelectTrigger id="role" className="w-full">
+                    <SelectValue placeholder="Velg en rolle">{inviteRole}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Administrator">Administrator (Full tilgang)</SelectItem>
-                    <SelectItem value="Prosjektleder">Prosjektleder</SelectItem>
-                    <SelectItem value="Håndverker">Håndverker (Begrenset)</SelectItem>
+                    {ROLE_OPTIONS.map((role) => (
+                      <SelectItem key={role.value} value={role.value}>
+                        <span className="flex flex-col items-start gap-0.5">
+                          <span>{role.value}</span>
+                          <span className="text-xs text-muted-foreground">{role.description}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
           )}
-          
+
           <DialogFooter>
             {inviteLink ? (
               <Button onClick={() => {

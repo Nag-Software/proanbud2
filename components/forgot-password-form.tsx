@@ -5,6 +5,7 @@ import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { reportClientError } from "@/lib/errors/client"
+import { authErrorMessage } from "@/lib/errors/user-message"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -43,14 +44,14 @@ export function ForgotPasswordForm({
       })
 
       if (resetError) {
-        setError(resetError.message)
+        setError(authErrorMessage(resetError))
         return
       }
 
       setSent(true)
     } catch (error) {
       reportClientError(error, { context: { action: "forgot-password" } })
-      setError("Uventet feil. Prøv igjen.")
+      setError(authErrorMessage(error))
     } finally {
       setLoading(false)
     }

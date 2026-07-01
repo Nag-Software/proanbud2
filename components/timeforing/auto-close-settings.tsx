@@ -20,14 +20,18 @@ export function AutoCloseSettings({ initial }: { initial: CompanyTrackingSetting
   async function save() {
     setSaving(true)
     try {
-      await saveCompanyTrackingSettingsAction({
+      const result = await saveCompanyTrackingSettingsAction({
         autoCloseEnabled: enabled,
         defaultShiftEnd: shiftEnd || null,
         maxSessionHours: Number(maxHours) || 10,
       })
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
       toast.success("Innstillinger lagret")
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Kunne ikke lagre")
+    } catch {
+      toast.error("Fikk ikke kontakt med serveren. Sjekk internettforbindelsen og prøv igjen.")
     } finally {
       setSaving(false)
     }

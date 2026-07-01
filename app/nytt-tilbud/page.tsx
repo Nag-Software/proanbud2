@@ -1,11 +1,16 @@
+import Link from "next/link"
 import { redirect } from "next/navigation"
+import { FolderPlus } from "lucide-react"
 
 import { AppPageShell } from "@/components/app-page-shell"
+import { Button } from "@/components/ui/button"
 import { NyttTilbudClient } from "@/components/tilbud/nytt-tilbud-client"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
 import { type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
+import { ACTIVE_PROJECT_STATUSES } from "@/app/prosjekter/project-utils"
+import { ProjectPicker, type PickerProject } from "./project-picker"
 
 type ProjectRow = {
   id: string
@@ -41,17 +46,95 @@ type Props = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
+type PickerProjectRow = {
+  id: string
+  name: string
+  status: string | null
+  customers?: { name: string | null } | { name: string | null }[] | null
+}
+
 export default async function NyttTilbudPage({ searchParams }: Props) {
   await checkRoleAccess(["admin", "manager"])
 
   const resolved = (await searchParams) || {}
   const projectIdParam = Array.isArray(resolved.projectId) ? resolved.projectId[0] : resolved.projectId
 
-  if (!projectIdParam) {
-    redirect("/prosjekter")
-  }
-
   const supabase = await createClient()
+
+  // Uten ?projectId: ikke stille-redirect til /prosjekter, men forklar at
+  // tilbud alltid hører til et prosjekt — og la brukeren velge det her.
+  if (!projectIdParam) {
+    const { data: activeProjectRows } = await supabase
+      .from("projects")
+      .select("id, name, status, updated_at, customers(name)")
+      .in("status", [...ACTIVE_PROJECT_STATUSES])
+      .order("updated_at", { ascending: false })
+
+    const pickerProjects: PickerProject[] = ((activeProjectRows || []) as PickerProjectRow[]).map(
+      (row) => {
+        const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers
+        return {
+          id: row.id,
+          name: row.name,
+          status: row.status,
+          customerName: customer?.name || null,
+        }
+      }
+    )
+
+    return (
+      <AppPageShell segments={["Nytt tilbud"]}>
+        <section className="mx-auto w-full max-w-2xl space-y-6">
+          <div className="space-y-1.5">
+            <h1 className="text-2xl font-semibold text-foreground">
+              Hvilket prosjekt gjelder tilbudet?
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Tilbud knyttes alltid til et prosjekt — da havner dokumenter, timer og fakturering
+              på rett sted.
+            </p>
+          </div>
+
+          {pickerProjects.length === 0 ? (
+            <div
+              className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-card/40 px-6 py-16 text-center"
+              style={{ borderRadius: 5 }}
+            >
+              <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <FolderPlus className="size-5" />
+              </div>
+              <p className="mt-1 text-base font-semibold text-foreground">
+                Du trenger et prosjekt først
+              </p>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                Opprett et prosjekt, så kan du lage tilbudet med én gang.
+              </p>
+              <Button asChild className="mt-3">
+                <Link href="/prosjekter/ny">
+                  <FolderPlus />
+                  Opprett prosjekt først
+                </Link>
+              </Button>
+              <p className="text-xs text-muted-foreground">Det tar under ett minutt.</p>
+            </div>
+          ) : (
+            <>
+              <ProjectPicker projects={pickerProjects} />
+              <p className="text-center text-xs text-muted-foreground">
+                Finner du ikke prosjektet?{" "}
+                <Link
+                  href="/prosjekter/ny"
+                  className="font-medium text-foreground underline underline-offset-4"
+                >
+                  Opprett et nytt prosjekt
+                </Link>
+              </p>
+            </>
+          )}
+        </section>
+      </AppPageShell>
+    )
+  }
 
   const {
     data: { user },

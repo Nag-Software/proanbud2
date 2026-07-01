@@ -59,7 +59,7 @@ export function ProjectsViewToggle({ className }: { className?: string }) {
     >
       {([
         ["kort", "Kort", LayoutGrid],
-        ["kanban", "Kanban", Columns3],
+        ["kanban", "Tavle", Columns3],
       ] as const).map(([val, label, Icon]) => (
         <button
           key={val}

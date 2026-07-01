@@ -116,6 +116,7 @@ export type ProjectOverviewProps = {
     isWorker: boolean
     isProjectAdmin: boolean
     hasTimeforing: boolean
+    hasKs: boolean
   }
 }
 
@@ -270,10 +271,14 @@ export function ProjectOverviewTab({
       {/* Quick actions */}
       <Card className="rounded-sm lg:col-span-12">
         <CardContent className="flex flex-wrap gap-2 px-4 py-3">
-          <Button size="sm" variant="outline" onClick={() => navigateToTab("ks")}>
-            <ClipboardCheck className="mr-2 h-4 w-4" />
-            KS sjekklister
-          </Button>
+          {/* KS-fanen er skjult for workers og uten KS-modul — ikke vis en
+              knapp som bare gir en tom fane. */}
+          {!flags.isWorker && flags.hasKs && (
+            <Button size="sm" variant="outline" onClick={() => navigateToTab("ks")}>
+              <ClipboardCheck className="mr-2 h-4 w-4" />
+              KS sjekklister
+            </Button>
+          )}
           <Button size="sm" variant="outline" asChild>
             <Link href={`/avvik/ny?projectId=${projectId}`}>
               <AlertTriangle className="mr-2 h-4 w-4" />

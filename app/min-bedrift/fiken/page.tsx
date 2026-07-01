@@ -3,9 +3,12 @@ import { PlanGate } from "@/components/billing/plan-gate"
 import { companyHasFeature } from "@/lib/billing/server-modules"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
-import { FIKEN_HELP_URL } from "@/lib/integrations/fiken/config"
 
 import { FikenClient } from "./fiken-client"
+
+// Fikens vanlige hjelpesider (ikke API-/utviklerdokumentasjonen fra
+// FIKEN_HELP_URL i lib/integrations/fiken/config — den er for utviklere).
+const FIKEN_HJELPESIDER_URL = "https://hjelp.fiken.no"
 
 export default async function FikenPage() {
   await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
@@ -30,7 +33,7 @@ export default async function FikenPage() {
 
   if (!companyId || !(await companyHasFeature(companyId, "integrasjoner"))) {
     return (
-      <AppPageShell segments={["Min Bedrift", "Fiken"]}>
+      <AppPageShell segments={["Min bedrift", "Fiken"]}>
         <PlanGate
           featureName="Integrasjoner"
           title="Integrasjoner er inkludert i Proff — eller som modul"
@@ -69,7 +72,7 @@ export default async function FikenPage() {
   )
 
   return (
-    <AppPageShell segments={["Min Bedrift", "Fiken"]}>
+    <AppPageShell segments={["Min bedrift", "Fiken"]}>
       <div className="flex flex-col gap-6 pb-8">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Fiken</h1>
@@ -88,7 +91,7 @@ export default async function FikenPage() {
           initialJobs={jobsResult.data || []}
           canManage={canManageIntegration}
           tripletexConnected={tripletexConnected && !connectionResult.data}
-          helpUrl={FIKEN_HELP_URL}
+          helpUrl={FIKEN_HJELPESIDER_URL}
         />
       </div>
     </AppPageShell>

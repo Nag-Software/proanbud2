@@ -25,7 +25,7 @@ export default async function Page() {
 
   if (!hasTimeforing) {
     return (
-      <AppPageShell segments={["Min bedrift", "Timeføring"]}>
+      <AppPageShell segments={["Min bedrift", "Godkjenn timer"]}>
         <ModuleGate
           moduleName="Timeføring"
           monthlyPriceNok={MODULE_PRICING.timeforing}
@@ -49,7 +49,7 @@ export default async function Page() {
             Arbeidstimer
           </p>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            Timeføring
+            Godkjenn timer
           </h1>
           <p className="text-sm text-muted-foreground">
             Timer registreres automatisk når ansatte avslutter arbeid på et prosjekt.

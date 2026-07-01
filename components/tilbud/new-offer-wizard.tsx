@@ -309,8 +309,8 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
   }
 
   const validateStepOne = () => {
-    if (!title.trim()) return "Legg inn en tittel på tilbudet"
-    if (description.trim().length < 20) return "Beskriv prosjektet med minst 20 tegn"
+    if (title.trim().length < 2) return "Legg inn en tittel på tilbudet"
+    if (description.trim().length < 20) return "Beskriv jobben med minst 20 tegn"
     if (!projectId) return "Prosjekt mangler"
     if (!customerId) return "Prosjektet mangler kunde"
     return null
@@ -319,6 +319,20 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
   const validateBeforeSave = () => {
     if (lineItems.length === 0) return "Tilbudet må inneholde minst ett element"
     return null
+  }
+
+  // Valider steg 1 idet brukeren går videre — ikke først ved lagring til slutt.
+  const goToStep = (targetStep: (typeof steps)[number]["id"]) => {
+    if (step === 1 && targetStep > 1) {
+      const validationError = validateStepOne()
+      if (validationError) {
+        setAnalysisError(validationError)
+        return false
+      }
+      setAnalysisError(null)
+    }
+    setStep(targetStep)
+    return true
   }
 
   const handleAnalyze = () => {
@@ -360,16 +374,18 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     )
   }
 
+  // Utkast kan lagres fra hvilket som helst steg — tittel er nok. Prislinjer
+  // og beskrivelse kan fylles ut senere fra tilbudssiden.
   const handleSaveDraft = () => {
-    const validationError = validateStepOne()
-    if (validationError) {
-      setFeedback(validationError)
-      toast.error(validationError)
+    if (title.trim().length < 2) {
+      const message = "Gi tilbudet en tittel før du lagrer utkastet"
+      setFeedback(message)
+      toast.error(message)
       return
     }
 
-    if (lineItems.length === 0) {
-      const message = "Kjør analyse eller legg til minst én rad før lagring"
+    if (!projectId) {
+      const message = "Prosjekt mangler"
       setFeedback(message)
       toast.error(message)
       return
@@ -378,9 +394,15 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     startPersisting(async () => {
       try {
         const result = await saveOfferDraftAction(buildPayload())
-        setOfferId(result.id)
+        if (!result.ok) {
+          setFeedback(result.error)
+          toast.error(result.error)
+          return
+        }
+
+        setOfferId(result.data.id)
         setFeedback(null)
-        toast.success("Utkast lagret")
+        toast.success("Utkast lagret — du finner det igjen under Tilbud.")
         onCompleted?.()
       } catch (error) {
         reportClientError(error, { context: { action: "save offer draft", projectId } })
@@ -392,6 +414,17 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
   }
 
   const handleOpenOffer = () => {
+    // Mangler noe fra steg 1 (f.eks. via «Fortsett manuelt»)? Ta brukeren
+    // tilbake til feltet som må fylles ut i stedet for å feile til slutt.
+    const stepOneError = validateStepOne()
+    if (stepOneError) {
+      setAnalysisError(stepOneError)
+      setFeedback(stepOneError)
+      toast.error(stepOneError)
+      setStep(1)
+      return
+    }
+
     const validationError = validateBeforeSave()
     if (validationError) {
       setFeedback(validationError)
@@ -403,11 +436,17 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
       const toastId = toast.loading("Lagrer tilbud...")
       try {
         const result = await saveOfferDraftAction(buildPayload())
-        setOfferId(result.id)
+        if (!result.ok) {
+          setFeedback(result.error)
+          toast.error(result.error, { id: toastId })
+          return
+        }
+
+        setOfferId(result.data.id)
         setFeedback("Tilbud lagret. Åpner tilbudssiden...")
         toast.success("Tilbud lagret. Åpner tilbudssiden...", { id: toastId })
         onCompleted?.()
-        router.push(`/tilbud/${result.id}`)
+        router.push(`/tilbud/${result.data.id}`)
       } catch (error) {
         reportClientError(error, { context: { action: "save and open offer", projectId } })
         const message = error instanceof Error ? error.message : "Kunne ikke lagre tilbud"
@@ -449,7 +488,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   <div key={item.id} className="flex items-center">
                     <button
                       type="button"
-                      onClick={() => clickable && setStep(item.id)}
+                      onClick={() => clickable && goToStep(item.id)}
                       disabled={!clickable}
                       className="group flex flex-col items-center gap-1.5 focus:outline-none"
                     >
@@ -572,6 +611,14 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   variant="outline"
                   className="h-9 flex-1 text-sm"
                   onClick={() => {
+                    // Samme validering som «Foreslå pris automatisk» — feilen
+                    // vises her, ikke først ved lagring på siste steg.
+                    const validationError = validateStepOne()
+                    if (validationError) {
+                      setAnalysisError(validationError)
+                      return
+                    }
+                    setAnalysisError(null)
                     if (lineItems.length === 0) {
                       addLineItems([
                         {
@@ -716,6 +763,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                     email: selectedCustomer?.email || recipientEmail,
                     phone: selectedCustomer?.phone || recipientPhone,
                     address: selectedCustomer?.address,
+                    postalCode: selectedCustomer?.postalCode,
                     city: selectedCustomer?.city,
                     orgNumber: selectedCustomer?.orgNumber,
                   }}
@@ -723,6 +771,9 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   company={company}
                   issuedDate={new Date()}
                   validityDays={validityDays}
+                  paymentSchedule={paymentSchedule}
+                  pricingModel={pricingModel}
+                  contractBasis={contractBasis}
                 />
               </div>
 

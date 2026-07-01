@@ -28,7 +28,7 @@ export async function generateMetadata({
   const trade = BRANSJE_TRADE[bransje]
   const label = BRANSJE_LABELS[bransje]
   const title = `Eksempel-tilbud for ${trade.toLowerCase()} | Proanbud`
-  const description = `Se et ekte KI-generert tilbud for ${label}, laget på minutter med Proanbud. Slik kan ditt neste tilbud se ut.`
+  const description = `Se et ferdig tilbud for ${label}, laget på minutter med Proanbud. Slik kan ditt neste tilbud se ut.`
   return {
     title,
     description,
@@ -52,11 +52,17 @@ export default async function ExampleOfferPage({
   const { totalInclVatNok } = getOfferDocumentTotals(example.lineItems)
   const issuedDate = new Date().toISOString()
 
+  // Clearly fictitious sender details so the example shows the full document
+  // layout (address block, org number, contact line).
   const company: OfferCompanyContext = {
     id: `example-${bransje}`,
     name: example.companyName,
-    orgNumber: null,
+    orgNumber: "999 999 999",
     logoUrl: null,
+    address: "Byggveien 12",
+    postalCode: "0560",
+    city: "Oslo",
+    phone: "400 00 000",
   }
 
   return (
@@ -83,7 +89,7 @@ export default async function ExampleOfferPage({
             Eksempel-tilbud · {BRANSJE_TRADE[bransje]}
           </span>
           <h1 className="mx-auto mt-4 max-w-2xl text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
-            Her er et tilbud vi lagde for {label} på ~30 sekunder med KI
+            Her er et tilbud laget for {label} på noen minutter i Proanbud
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-pretty text-sm leading-relaxed text-neutral-600 sm:text-base">
             Slik ville ditt sett ut. Proanbud bygger komplette tilbud med mengder, priser fra dine egne
@@ -104,6 +110,7 @@ export default async function ExampleOfferPage({
             description={example.description}
             projectName={example.projectName}
             quoteMessage={example.sourceSummary}
+            offerReference="DEMO2026"
             customer={{ name: example.customerName, city: example.customerCity }}
             lineItems={example.lineItems}
             company={company}
@@ -133,7 +140,7 @@ export default async function ExampleOfferPage({
       <footer className="border-t border-neutral-200 bg-white">
         <div className="mx-auto max-w-5xl px-4 py-6 text-center text-xs leading-relaxed text-neutral-500 sm:px-6">
           <p>Dette er et eksempel laget av Proanbud. Tall og produkter er illustrerende.</p>
-          <p className="mt-1">Levert via Proanbud — KI-tilbud for bygg og anlegg.</p>
+          <p className="mt-1">Levert via Proanbud — tilbud og drift for bygg og anlegg.</p>
         </div>
       </footer>
     </div>

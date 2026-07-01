@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/field"
 import { completeClientLogin } from "@/lib/auth/client-login"
 import { reportClientError } from "@/lib/errors/client"
+import { authErrorMessage, GENERIC_ERROR_MESSAGE } from "@/lib/errors/user-message"
 import { Input } from "@/components/ui/input"
 
 function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
@@ -54,7 +55,10 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
         const data = await res.json().catch(() => ({}))
         if (cancelled) return
         if (!res.ok || !data?.valid) {
-          setInviteInvalid(data?.error || "Invitasjonen er ugyldig eller utløpt. Be om en ny invitasjon.")
+          // API-et svarer med norske meldinger på 4xx; ved serverfeil (5xx)
+          // kan rå engelsk tekst lekke gjennom, så da bruker vi vår egen.
+          const serverMsg = res.status < 500 && typeof data?.error === "string" ? data.error : null
+          setInviteInvalid(serverMsg || "Invitasjonen er ugyldig eller utløpt. Be om en ny invitasjon.")
           return
         }
         if (data.email) setEmail(data.email)
@@ -89,7 +93,18 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
         const resData = await res.json();
         
         if (!res.ok) {
-           setError(resData.error || 'Feil ved registrering via invitasjon');
+           // API-et svarer på norsk, men kan lekke rå Supabase-tekst (f.eks.
+           // «...already been registered»). Oversett kjente engelske meldinger,
+           // vis norske servermeldinger som de er, ellers en trygg fallback.
+           const serverMsg = typeof resData?.error === 'string' ? resData.error : '';
+           const mapped = authErrorMessage({ message: serverMsg });
+           if (mapped !== GENERIC_ERROR_MESSAGE) {
+             setError(mapped);
+           } else if (serverMsg && res.status < 500) {
+             setError(serverMsg);
+           } else {
+             setError('Kunne ikke fullføre registreringen. Prøv igjen om litt, eller be om en ny invitasjon.');
+           }
            setLoading(false);
            return;
         }
@@ -121,7 +136,7 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
       })
       if (error) {
         console.error('SignupForm: signUp error', error)
-        setError(error.message)
+        setError(authErrorMessage(error))
         return
       }
 
@@ -137,7 +152,7 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
     } catch (e) {
       console.error('SignupForm: unexpected error', e)
       reportClientError(e, { context: { action: "signup", inviteToken } })
-      setError('Unexpected error')
+      setError(authErrorMessage(e))
     } finally {
       setLoading(false)
     }

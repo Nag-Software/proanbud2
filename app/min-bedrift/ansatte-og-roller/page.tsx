@@ -55,7 +55,7 @@ export default async function Page() {
         name: u.full_name || "Ukjent",
         email: u.email,
         role: roleName,
-        status: u.is_active ? "Aktiv" : "Deaktivert"
+        status: u.is_active === false ? "Deaktivert" : "Aktiv"
       });
     });
   }
@@ -77,7 +77,7 @@ export default async function Page() {
   }
 
   return (
-    <AppPageShell segments={["Min Bedrift", "Ansatte og Roller"]}>
+    <AppPageShell segments={["Min bedrift", "Ansatte og roller"]}>
       <div className="w-full mx-auto">
         <div className="flex flex-col mb-6 sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">

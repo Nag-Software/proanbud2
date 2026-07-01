@@ -13,7 +13,7 @@ export default async function Page() {
   }
 
   return (
-    <AppPageShell segments={["Innstillinger", "Betaling"]}>
+    <AppPageShell segments={["Min bedrift", "Betaling"]}>
       <BillingPageClient />
     </AppPageShell>
   )

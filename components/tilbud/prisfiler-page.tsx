@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
-import { useDropzone } from "react-dropzone"
+import { useDropzone, type FileRejection } from "react-dropzone"
 import {
   Upload,
   FileText,
@@ -181,6 +181,19 @@ const COLUMN_FIELDS: { value: ColumnField; label: string }[] = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Deduplicate headers so keys are always unique (e.g. "" → "_1", "_2"; "Pris" x2 → "Pris", "Pris_2")
+function dedupeHeaders(raw: string[]): string[] {
+  const seen = new Map<string, number>()
+  return raw.map((h) => {
+    const base = h || "_"
+    const count = (seen.get(base) ?? 0) + 1
+    seen.set(base, count)
+    return count === 1 ? base : `${base}_${count}`
+  })
+}
+
+const MAX_ROWS = 50000
+
 function parseCSV(text: string): ParsedData {
   const lines = text
     .replace(/\r\n/g, "\n")
@@ -219,20 +232,62 @@ function parseCSV(text: string): ParsedData {
     return out
   }
 
-  // Deduplicate headers so keys are always unique (e.g. "" → "_1", "_2"; "Pris" x2 → "Pris", "Pris_2")
-  function dedupeHeaders(raw: string[]): string[] {
-    const seen = new Map<string, number>()
-    return raw.map((h) => {
-      const base = h || "_"
-      const count = (seen.get(base) ?? 0) + 1
-      seen.set(base, count)
-      return count === 1 ? base : `${base}_${count}`
-    })
-  }
-
   return {
     headers: dedupeHeaders(parseLine(lines[0])),
-    rows: lines.slice(1, 50001).map(parseLine),
+    rows: lines.slice(1, MAX_ROWS + 1).map(parseLine),
+  }
+}
+
+// ── Excel (.xlsx / .xls) ─────────────────────────────────────────────────────
+// Parses the FIRST sheet into the same ParsedData shape as parseCSV, so the
+// rest of the wizard (auto-detect, mapping, applyMapping) is reused unchanged.
+// xlsx is imported dynamically so CSV users never download the library.
+
+const EXCEL_EXT = /\.(xlsx|xls)$/i
+
+async function parseExcel(buffer: ArrayBuffer): Promise<{ parsed: ParsedData; sheetNames: string[] }> {
+  const XLSX = await import("xlsx")
+  const workbook = XLSX.read(buffer, { type: "array" })
+  const sheetNames = workbook.SheetNames
+  const sheet = sheetNames.length > 0 ? workbook.Sheets[sheetNames[0]] : undefined
+  if (!sheet) return { parsed: { headers: [], rows: [] }, sheetNames }
+
+  // Prosent-formaterte celler lagres som brøk i Excel («25 %» = 0.25). Skaler
+  // dem opp til prosenttall, slik at en rabattkolonne tolkes likt som i CSV
+  // (der cellen kommer som teksten «25 %»). Formatert tekst (cell.w) er den
+  // eneste pålitelige indikatoren; mangler den, brukes råverdien uendret.
+  for (const [address, cell] of Object.entries(sheet)) {
+    if (address.startsWith("!")) continue
+    const c = cell as { t?: string; v?: unknown; w?: unknown }
+    if (c.t === "n" && typeof c.v === "number" && typeof c.w === "string" && c.w.includes("%")) {
+      // Rund av for å unngå flyttallsstøy (0.253 * 100 = 25.300000000000004)
+      c.v = Math.round(c.v * 100 * 1e8) / 1e8
+    }
+  }
+
+  // raw: true → numeric cells come back as real numbers (dot-decimal, no
+  // thousands separators), which is exactly what applyMapping's number
+  // normalization expects. Formula cells yield their cached computed value.
+  const matrix = XLSX.utils.sheet_to_json<(string | number | boolean | Date | null)[]>(sheet, {
+    header: 1,
+    raw: true,
+    defval: "",
+    blankrows: false,
+  })
+
+  const toText = (cell: string | number | boolean | Date | null): string => {
+    if (cell == null) return ""
+    if (cell instanceof Date) return cell.toISOString().slice(0, 10)
+    if (typeof cell === "number") return String(cell)
+    return String(cell).trim()
+  }
+
+  const rows = matrix.map((r) => r.map(toText)).filter((r) => r.some((c) => c !== ""))
+  if (rows.length === 0) return { parsed: { headers: [], rows: [] }, sheetNames }
+
+  return {
+    parsed: { headers: dedupeHeaders(rows[0]), rows: rows.slice(1, MAX_ROWS + 1) },
+    sheetNames,
   }
 }
 
@@ -434,25 +489,19 @@ export function PrisfilerPage() {
       setCustomSupplierMode(false)
     } else {
       const guessName = file.name
-        .replace(/\.(csv|txt|tsv)$/i, "")
+        .replace(/\.(csv|txt|tsv|xlsx|xls)$/i, "")
         .replace(/[-_]/g, " ")
         .replace(/\b\w/g, (c) => c.toUpperCase())
       setSupplierName(guessName)
       setCustomSupplierMode(true)
     }
 
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const buffer = e.target?.result as ArrayBuffer
-      // Try UTF-8 first; if replacement chars (U+FFFD) appear, fall back to Windows-1252
-      // which is the encoding used by most Norwegian Excel / ERP CSV exports
-      let text = new TextDecoder("utf-8", { fatal: false }).decode(buffer)
-      if (text.includes("\uFFFD")) {
-        text = new TextDecoder("windows-1252", { fatal: false }).decode(buffer)
-      }
-      const parsed = parseCSV(text)
+    const isExcel = EXCEL_EXT.test(file.name)
+
+    // Shared tail of both parse paths: validate, auto-detect columns, go to step 2
+    const finishParsing = (parsed: ParsedData, emptyMessage: string) => {
       if (parsed.headers.length === 0) {
-        toast.error("Kunne ikke lese filen. Sjekk at den er i CSV-format.")
+        toast.error(emptyMessage)
         setParsing(false)
         return
       }
@@ -465,6 +514,40 @@ export function PrisfilerPage() {
       setStep(2)
       setParsing(false)
     }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const buffer = e.target?.result as ArrayBuffer
+
+      if (isExcel) {
+        parseExcel(buffer)
+          .then(({ parsed, sheetNames }) => {
+            if (sheetNames.length > 1 && parsed.headers.length > 0) {
+              toast.info(
+                `Filen har ${sheetNames.length} ark \u2013 vi bruker det f\u00F8rste (\u00AB${sheetNames[0]}\u00BB).`
+              )
+            }
+            finishParsing(
+              parsed,
+              "Fant ingen data i Excel-filen. Sjekk at det f\u00F8rste arket inneholder en tabell."
+            )
+          })
+          .catch((error) => {
+            reportClientError(error, { context: { action: "parse excel price file", fileName: file.name } })
+            toast.error("Kunne ikke lese Excel-filen. Pr\u00F8v \u00E5 lagre den p\u00E5 nytt som .xlsx, eller eksporter som CSV.")
+            setParsing(false)
+          })
+        return
+      }
+
+      // Try UTF-8 first; if replacement chars (U+FFFD) appear, fall back to Windows-1252
+      // which is the encoding used by most Norwegian Excel / ERP CSV exports
+      let text = new TextDecoder("utf-8", { fatal: false }).decode(buffer)
+      if (text.includes("\uFFFD")) {
+        text = new TextDecoder("windows-1252", { fatal: false }).decode(buffer)
+      }
+      finishParsing(parseCSV(text), "Kunne ikke lese filen. Sjekk at den er i CSV-format.")
+    }
     reader.onerror = () => {
       toast.error("Kunne ikke lese filen. Prøv igjen.")
       setParsing(false)
@@ -472,12 +555,33 @@ export function PrisfilerPage() {
     reader.readAsArrayBuffer(file)
   }, [])
 
+  const onDropRejected = useCallback((rejections: FileRejection[]) => {
+    const rejection = rejections[0]
+    if (!rejection) return
+    if (rejections.length > 1 || rejection.errors.some((err) => err.code === "too-many-files")) {
+      toast.error("Last opp én fil om gangen.")
+      return
+    }
+    const name = rejection.file?.name ?? ""
+    const dot = name.lastIndexOf(".")
+    const ext = dot > 0 ? name.slice(dot).toLowerCase() : ""
+    toast.error(
+      ext
+        ? `Filtypen ${ext} støttes ikke. Last opp Excel- eller CSV-fil.`
+        : "Filtypen støttes ikke. Last opp Excel- eller CSV-fil."
+    )
+  }, [])
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    onDropRejected,
     accept: {
       "text/csv": [".csv"],
       "text/plain": [".txt"],
       "text/tab-separated-values": [".tsv"],
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+      "application/vnd.ms-excel": [".xls"],
+      "application/vnd.ms-excel.sheet.macroEnabled.12": [".xlsm"],
     },
     maxFiles: 1,
     multiple: false,
@@ -1088,11 +1192,11 @@ export function PrisfilerPage() {
                         : "Slipp filen her, eller klikk for å velge"}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    CSV, TSV eller TXT · maks 50 000 rader
+                    Excel (.xlsx), CSV, TSV eller TXT · maks 50 000 rader
                   </p>
                 </div>
                 <p className="text-center text-xs text-muted-foreground">
-                  Eksporter prisfilen som CSV fra Excel, Google Sheets eller leverandørens portal.
+                  Last opp prisfilen fra leverandøren – Excel (.xlsx) eller CSV.
                 </p>
               </div>
             )}
