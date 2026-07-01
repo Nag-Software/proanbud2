@@ -56,7 +56,7 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
         </header>
         <div
           className={cn(
-            "flex min-h-0 w-full max-w-[2000px] min-w-0 flex-1 flex-col overflow-y-auto @apply [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;",
+            "flex min-h-0 w-full max-w-[2000px] min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             noPadding ? "overflow-hidden" : "gap-4 p-4 pt-0 pb-4 md:pb-4"
           )}
         >

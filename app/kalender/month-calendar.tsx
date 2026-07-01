@@ -118,7 +118,9 @@ export function MonthCalendar({
                             e.stopPropagation()
                             onEventClick(event)
                           }}
-                          className="pointer-events-auto truncate border px-1.5 py-0.5 text-left text-[11px] leading-tight"
+                          // Mobil: chipsene er for små å treffe — la trykket gå til
+                          // dagcellen (som åpner dagsarket). Fra md er chips klikkbare.
+                          className="pointer-events-none truncate rounded-sm border px-1.5 py-0.5 text-left text-[11px] leading-tight md:pointer-events-auto"
                           style={{
                             backgroundColor: event.backgroundColor ?? "var(--primary)",
                             color: event.textColor ?? "var(--primary-foreground)",

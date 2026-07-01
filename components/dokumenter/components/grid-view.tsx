@@ -107,7 +107,9 @@ const Tile = memo(function Tile({
         <div
           className={cn(
             "absolute left-1.5 top-1.5 z-10",
-            !selected && "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+            // Touch har ingen hover — sjekkboksen må være synlig på mobil for at
+            // multi-velg i det hele tatt skal være mulig der.
+            !selected && "transition-opacity focus-within:opacity-100 md:opacity-0 md:group-hover:opacity-100"
           )}
           onClick={(e) => e.stopPropagation()}
         >

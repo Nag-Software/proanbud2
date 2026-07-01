@@ -274,7 +274,7 @@ export default function OppgaverTab({
 
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input 
               type="search" 
               placeholder="Søk i oppgaver..." 
@@ -288,7 +288,7 @@ export default function OppgaverTab({
           </Button>
           {canManageTasks && (
             <Button className="shrink-0 gap-2" onClick={() => setIsDialogOpen(true)}>
-              <Plus className="h-4 w-4" /> Ny Oppgave
+              <Plus className="h-4 w-4" /> Ny oppgave
             </Button>
           )}
         </div>

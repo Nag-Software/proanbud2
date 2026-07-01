@@ -90,14 +90,14 @@ export function CalendarToolbar({
         <Button
           variant="outline"
           size="sm"
-          className="rounded-none"
           onClick={() => onDateChange(new Date())}
         >
           I dag
         </Button>
 
+        {/* Mobil tvinges til månedsvisning (se KalenderPage-effekten) — velgeren er kun støy der. */}
         <Select value={view} onValueChange={(v) => onViewChange(v as CalendarView)}>
-          <SelectTrigger className="h-8 w-[110px] rounded-none">
+          <SelectTrigger className="hidden h-8 w-[110px] md:flex">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -118,7 +118,7 @@ export function CalendarToolbar({
           <Button
             variant="ghost"
             size="icon-sm"
-            className="rounded-none"
+           
             onClick={() => navigate(-1)}
             aria-label="Forrige periode"
           >
@@ -127,7 +127,7 @@ export function CalendarToolbar({
           <Button
             variant="ghost"
             size="icon-sm"
-            className="rounded-none"
+           
             onClick={() => navigate(1)}
             aria-label="Neste periode"
           >
@@ -148,7 +148,7 @@ export function CalendarToolbar({
               onVisibleProviderChange(v as "all" | "google" | "microsoft")
             }
           >
-            <SelectTrigger className="hidden h-8 w-[150px] rounded-none md:flex">
+            <SelectTrigger className="hidden h-8 w-[150px] md:flex">
               <SlidersHorizontal className="mr-1 size-3.5" />
               <SelectValue />
             </SelectTrigger>
@@ -165,11 +165,11 @@ export function CalendarToolbar({
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className="rounded-none" aria-label="Innstillinger">
+            <Button variant="ghost" size="icon-sm" aria-label="Innstillinger">
               <Settings2 />
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-72 rounded-none">
+          <PopoverContent align="end" className="w-72">
             <div className="space-y-4">
               {hasBothIntegrations && (
                 <div className="space-y-2 md:hidden">
@@ -182,7 +182,7 @@ export function CalendarToolbar({
                       onVisibleProviderChange(v as "all" | "google" | "microsoft")
                     }
                   >
-                    <SelectTrigger className="rounded-none">
+                    <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -199,7 +199,7 @@ export function CalendarToolbar({
                   Visningsperiode
                 </p>
                 <Select value={timeRange} onValueChange={(v) => onTimeRangeChange(v as "work" | "full")}>
-                  <SelectTrigger className="rounded-none">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -218,7 +218,7 @@ export function CalendarToolbar({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="justify-start rounded-none"
+                      className="justify-start"
                       onClick={onGoogleAuth}
                     >
                       <img
@@ -233,7 +233,7 @@ export function CalendarToolbar({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="justify-start rounded-none"
+                      className="justify-start"
                       onClick={onOutlookAuth}
                     >
                       <img
@@ -248,7 +248,7 @@ export function CalendarToolbar({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="justify-start rounded-none font-bold"
+                      className="justify-start font-bold"
                       disabled={isDisconnecting}
                       onClick={() => onDisconnect?.("google")}
                     >
@@ -264,7 +264,7 @@ export function CalendarToolbar({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="justify-start rounded-none font-bold"
+                      className="justify-start font-bold"
                       disabled={isDisconnecting}
                       onClick={() => onDisconnect?.("microsoft")}
                     >
@@ -288,7 +288,7 @@ export function CalendarToolbar({
           </PopoverContent>
         </Popover>
 
-        <Button size="sm" className="rounded-none" onClick={onAddEvent}>
+        <Button size="sm" onClick={onAddEvent}>
           <Plus />
           <span className="hidden sm:inline">Ny hendelse</span>
         </Button>

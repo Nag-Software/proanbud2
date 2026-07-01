@@ -7,6 +7,12 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "attach-3000",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "sleep 86400"],
+      "port": 3000
     }
   ]
 }

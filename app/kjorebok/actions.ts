@@ -152,6 +152,7 @@ export async function createVehicleAction(input: VehicleInput): Promise<VehicleR
   }
 
   revalidatePath("/min-bedrift/kjorebok")
+  revalidatePath("/kjorebok")
   return data as VehicleRow
 }
 
@@ -200,6 +201,7 @@ export async function updateVehicleAction(id: string, patch: Partial<VehicleInpu
   }
 
   revalidatePath("/min-bedrift/kjorebok")
+  revalidatePath("/kjorebok")
   return data as VehicleRow
 }
 
@@ -231,6 +233,7 @@ export async function deleteVehicleAction(id: string): Promise<void> {
   }
 
   revalidatePath("/min-bedrift/kjorebok")
+  revalidatePath("/kjorebok")
 }
 
 // ---------------------------------------------------------------------------
@@ -583,6 +586,7 @@ export async function createTripAction(input: TripInput): Promise<TripWithRefs> 
   }
 
   revalidatePath("/min-bedrift/kjorebok")
+  revalidatePath("/kjorebok")
   if (input.projectId) revalidatePath(`/prosjekter/${input.projectId}`)
   return attachDriverNames([data as RawTripRow], new Map())[0]
 }
@@ -648,6 +652,7 @@ export async function updateTripAction(id: string, input: TripInput): Promise<Tr
   }
 
   revalidatePath("/min-bedrift/kjorebok")
+  revalidatePath("/kjorebok")
   if (existing.project_id) revalidatePath(`/prosjekter/${existing.project_id}`)
   if (input.projectId && input.projectId !== existing.project_id) {
     revalidatePath(`/prosjekter/${input.projectId}`)
@@ -694,6 +699,7 @@ export async function deleteTripAction(id: string): Promise<void> {
   }
 
   revalidatePath("/min-bedrift/kjorebok")
+  revalidatePath("/kjorebok")
   if (existing.project_id) revalidatePath(`/prosjekter/${existing.project_id}`)
 }
 
@@ -736,5 +742,6 @@ export async function recalcTripAmountAction(id: string): Promise<TripWithRefs> 
 
   if (error) throw new Error("Kunne ikke oppdatere beløp")
   revalidatePath("/min-bedrift/kjorebok")
+  revalidatePath("/kjorebok")
   return attachDriverNames([data as RawTripRow], new Map())[0]
 }

@@ -268,9 +268,9 @@ export function ProjectOverviewTab({
         </CardContent>
       </Card>
 
-      {/* Quick actions */}
+      {/* Quick actions — ryddig 2-kolonners grid på mobil, wrap-rad fra sm */}
       <Card className="rounded-sm lg:col-span-12">
-        <CardContent className="flex flex-wrap gap-2 px-4 py-3">
+        <CardContent className="grid grid-cols-2 gap-2 px-4 py-3 sm:flex sm:flex-wrap">
           {/* KS-fanen er skjult for workers og uten KS-modul — ikke vis en
               knapp som bare gir en tom fane. */}
           {!flags.isWorker && flags.hasKs && (

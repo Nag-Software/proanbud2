@@ -102,7 +102,7 @@ export function CustomerList({ data, onRowClick, tripletexEnabled = false }: Cus
               onClick={() => setTypeFilter(value)}
               aria-pressed={typeFilter === value}
               className={cn(
-                "cursor-pointer rounded-[4px] px-3 py-1.5 font-medium transition-colors",
+                "cursor-pointer rounded-[4px] px-3 py-2.5 font-medium transition-colors sm:py-1.5",
                 typeFilter === value
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"

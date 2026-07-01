@@ -2,7 +2,9 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Download, Plus, Search } from "lucide-react"
+import { ChevronDown, Download, Plus, Search, SlidersHorizontal } from "lucide-react"
+
+import { cn } from "@/lib/utils"
 
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -42,6 +44,28 @@ export function AvvikClient({ deviations, stats, projects }: Props) {
   const [dateTo, setDateTo] = React.useState("")
   const [sortBy, setSortBy] = React.useState<SortBy>("created_at")
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc")
+  /** Mobil: filtrene ligger bak en toggle så avvikslista kommer rett under søket. */
+  const [showFilters, setShowFilters] = React.useState(false)
+
+  // Antall filtre som avviker fra standardvisningen («Åpne», alle typer/kilder/prosjekter, ingen datoer).
+  const activeFilterCount =
+    (statusFilter !== "open" ? 1 : 0) +
+    (typeFilter !== "all" ? 1 : 0) +
+    (sourceFilter !== "all" ? 1 : 0) +
+    (projectFilter !== "all" ? 1 : 0) +
+    (dateFrom ? 1 : 0) +
+    (dateTo ? 1 : 0)
+
+  function resetFilters() {
+    setStatusFilter("open")
+    setTypeFilter("all")
+    setSourceFilter("all")
+    setProjectFilter("all")
+    setDateFrom("")
+    setDateTo("")
+    setSortBy("created_at")
+    setSortDir("desc")
+  }
 
   const filtered = React.useMemo(() => {
     let list = deviations.filter((d) => {
@@ -146,6 +170,28 @@ export function AvvikClient({ deviations, stats, projects }: Props) {
         />
       </div>
 
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full justify-between sm:hidden"
+        aria-expanded={showFilters}
+        onClick={() => setShowFilters((v) => !v)}
+      >
+        <span className="flex items-center gap-2">
+          <SlidersHorizontal className="size-4" />
+          Filtre og sortering
+          {activeFilterCount > 0 && (
+            <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
+              {activeFilterCount}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={cn("size-4 transition-transform", showFilters && "rotate-180")}
+        />
+      </Button>
+
+      <div className={cn("space-y-4", !showFilters && "hidden sm:block")}>
       <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="min-w-0">
@@ -236,6 +282,12 @@ export function AvvikClient({ deviations, stats, projects }: Props) {
             <SelectItem value="asc">Stigende</SelectItem>
           </SelectContent>
         </Select>
+        {activeFilterCount > 0 && (
+          <Button type="button" variant="ghost" size="sm" onClick={resetFilters}>
+            Nullstill filtre
+          </Button>
+        )}
+      </div>
       </div>
 
       <p className="text-sm text-muted-foreground">

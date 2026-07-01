@@ -47,18 +47,25 @@ export function ResponsiveTabs({
 
   return (
     <Tabs value={value} onValueChange={handleValueChange} className={cn("w-full", className)}>
-      <div className="-mx-4 mb-2 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <TabsList className="inline-flex h-auto w-max">
-          {visibleTabs.map((tab) => (
-            <TabsTrigger
-              key={tab.value}
-              value={tab.value}
-              className="shrink-0 flex-none px-3 sm:px-4"
-            >
-              {isMobile ? (tab.shortLabel ?? tab.label) : tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+      <div className="relative -mx-4 mb-2">
+        <div className="overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <TabsList className="inline-flex h-auto w-max">
+            {visibleTabs.map((tab) => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="shrink-0 flex-none px-3 sm:px-4"
+              >
+                {isMobile ? (tab.shortLabel ?? tab.label) : tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+        {/* Scrollbaren er skjult — fade-kanten hinter om at stripen kan rulles (kun mobil). */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent md:hidden"
+        />
       </div>
       {children}
     </Tabs>

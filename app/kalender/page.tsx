@@ -5,14 +5,30 @@ import { Button } from "@/components/ui/button"
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react"
 import dynamic from "next/dynamic"
 import { useSearchParams } from "next/navigation"
-import { addMonths, endOfMonth, startOfMonth, subMonths } from "date-fns"
+import {
+  addMonths,
+  endOfDay,
+  endOfMonth,
+  format,
+  startOfDay,
+  startOfMonth,
+  subMonths,
+} from "date-fns"
+import { nb } from "date-fns/locale"
+import { Plus } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { LOGIN_PATH } from '@/lib/constants'
 import { toast } from "sonner"
 import { reportClientError } from "@/lib/errors/client"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -73,6 +89,7 @@ function KalenderPage() {
   const confirm = useConfirm()
   const { loadingRole, hasFeature } = useUserRole()
   const [integrations, setIntegrations] = useState<{ provider: string }[]>([])
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
   const [loggedIn, setLoggedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -86,6 +103,8 @@ function KalenderPage() {
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  /** Mobil: dagen brukeren trykket på — åpner dagsarket med avtaler + «Ny avtale». */
+  const [daySheetDate, setDaySheetDate] = useState<Date | null>(null)
 
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const [activeEventProvider, setActiveEventProvider] = useState<string | null>(null)
@@ -169,6 +188,19 @@ function KalenderPage() {
   useEffect(() => {
     loadIntegrations()
   }, [loadIntegrations])
+
+  // Prosjektliste til «Koble til prosjekt» — RLS begrenser til brukerens egne prosjekter.
+  useEffect(() => {
+    if (!loggedIn) return
+    const supabase = createClient()
+    supabase
+      .from("projects")
+      .select("id, name")
+      .eq("status", "active")
+      .order("name")
+      .limit(100)
+      .then(({ data }) => setProjects(data ?? []))
+  }, [loggedIn])
 
   useEffect(() => {
     const connected = searchParams.get("calendar_connected")
@@ -277,9 +309,24 @@ function KalenderPage() {
   }
 
   const handleDayClick = (day: Date) => {
+    // På mobil er dagcellene små — hele cellen er trefflate og åpner et dagsark
+    // med dagens avtaler + «Ny avtale». På desktop åpner dagklikk ny avtale direkte.
+    if (isMobile) {
+      setDaySheetDate(day)
+      return
+    }
     const { start, end } = defaultSlotTimes(day)
     openCreateDialog(start, end)
   }
+
+  const daySheetEvents = useMemo(() => {
+    if (!daySheetDate) return []
+    const dayStart = startOfDay(daySheetDate)
+    const dayEnd = endOfDay(daySheetDate)
+    return filteredEvents
+      .filter((e) => e.start <= dayEnd && (e.end ?? e.start) >= dayStart)
+      .sort((a, b) => a.start.getTime() - b.start.getTime())
+  }, [daySheetDate, filteredEvents])
 
   const handleAddEvent = () => {
     const { start, end } = defaultSlotTimes(date)
@@ -353,7 +400,7 @@ function KalenderPage() {
           start: eventStart.toISOString(),
           end: eventEnd.toISOString(),
           color: eventColor,
-          projectId: linkedProject
+          projectId: linkedProject || undefined,
         })
       })
 
@@ -490,7 +537,8 @@ function KalenderPage() {
           isDisconnecting={isDisconnecting}
         />
 
-        <div className="min-h-0 flex-1 overflow-hidden">
+        {/* Mobil: månedsgrida kan bli høyere enn viewporten (min-h på dagceller) — la den scrolle. */}
+        <div className="min-h-0 flex-1 overflow-y-auto md:overflow-hidden">
           {isLoading ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               Laster inn...
@@ -501,10 +549,10 @@ function KalenderPage() {
                 Ingen kalender tilkoblet enda. Koble til Google eller Outlook for å se og administrere hendelsene dine.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2">
-                <Button variant="outline" className="rounded-none" onClick={handleGoogleAuth}>
+                <Button variant="outline" onClick={handleGoogleAuth}>
                   Koble til Google
                 </Button>
-                <Button variant="outline" className="rounded-none" onClick={handleOutlookAuth}>
+                <Button variant="outline" onClick={handleOutlookAuth}>
                   Koble til Outlook
                 </Button>
               </div>
@@ -535,12 +583,75 @@ function KalenderPage() {
         </div>
       </div>
 
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="rounded-none sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Ny hendelse</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
+      {/* Dagsark (mobil): dagens avtaler + «Ny avtale» — åpnes ved trykk på en dag. */}
+      <ResponsiveDialog
+        open={daySheetDate !== null}
+        onOpenChange={(open) => {
+          if (!open) setDaySheetDate(null)
+        }}
+      >
+        <ResponsiveDialogContent className="px-2 md:p-4 sm:max-w-md">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle className="capitalize">
+              {daySheetDate ? format(daySheetDate, "EEEE d. MMMM", { locale: nb }) : ""}
+            </ResponsiveDialogTitle>
+          </ResponsiveDialogHeader>
+          <div className="space-y-3 px-2 pb-4 md:px-0 md:pb-0">
+            {daySheetEvents.length === 0 ? (
+              <p className="py-3 text-center text-sm text-muted-foreground">
+                Ingen avtaler denne dagen.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {daySheetEvents.map((event) => (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => {
+                      setDaySheetDate(null)
+                      handleEventClick(event)
+                    }}
+                    className="flex min-h-12 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/50"
+                  >
+                    <span
+                      className="h-9 w-1 shrink-0 rounded-full"
+                      style={{ backgroundColor: event.backgroundColor || "var(--primary)" }}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">
+                        {event.title || "(Uten tittel)"}
+                      </span>
+                      <span className="block text-sm text-muted-foreground">
+                        {format(event.start, "HH:mm")}–{format(event.end ?? event.start, "HH:mm")}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <Button
+              type="button"
+              className="h-12 w-full gap-2"
+              onClick={() => {
+                if (!daySheetDate) return
+                const { start, end } = defaultSlotTimes(daySheetDate)
+                setDaySheetDate(null)
+                openCreateDialog(start, end)
+              }}
+            >
+              <Plus className="size-5" />
+              Ny avtale
+            </Button>
+          </div>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+
+      <ResponsiveDialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <ResponsiveDialogContent className="px-2 md:p-4 sm:max-w-md">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Ny avtale</ResponsiveDialogTitle>
+          </ResponsiveDialogHeader>
+          <div className="space-y-4 px-2 py-1 md:px-0">
             <div className="space-y-2">
               <Label htmlFor="title">Tittel</Label>
               <Input
@@ -549,37 +660,78 @@ function KalenderPage() {
                 value={eventTitle}
                 onChange={e => setEventTitle(e.target.value)}
                 autoFocus
-                className="rounded-none"
               />
               <Textarea
                 id="description"
                 placeholder="Beskrivelse (valgfritt)"
                 value={eventDescription}
                 onChange={e => setEventDescription(e.target.value)}
-                className="rounded-none"
               />
             </div>
 
-            <div className="space-y-2 border border-border p-3 text-sm text-muted-foreground">
-              <p><strong>Starter:</strong> {eventStart?.toLocaleString("no-NB")}</p>
-              <p><strong>Slutter:</strong> {eventEnd?.toLocaleString("no-NB")}</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="create-start">Starter</Label>
+                <Input
+                  id="create-start"
+                  type="datetime-local"
+                  value={formatLocalDatetimeInput(eventStart)}
+                  onChange={(e) => setEventStart(parseLocalDatetimeInput(e.target.value))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-end">Slutter</Label>
+                <Input
+                  id="create-end"
+                  type="datetime-local"
+                  value={formatLocalDatetimeInput(eventEnd)}
+                  onChange={(e) => setEventEnd(parseLocalDatetimeInput(e.target.value))}
+                />
+              </div>
             </div>
+
+            {projects.length > 0 && (
+              <div className="space-y-2">
+                <Label>Koble til prosjekt (valgfritt)</Label>
+                <Select
+                  value={linkedProject || "none"}
+                  onValueChange={(v) => setLinkedProject(v === "none" ? "" : v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Velg prosjekt" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Ingen</SelectItem>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-none" onClick={() => setIsCreateDialogOpen(false)}>Avbryt</Button>
-            <Button className="rounded-none" onClick={handleCreateEvent} disabled={!eventTitle.trim() || isSubmitting}>
+          <ResponsiveDialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+              Avbryt
+            </Button>
+            <Button
+              onClick={handleCreateEvent}
+              disabled={!eventTitle.trim() || !eventStart || !eventEnd || isSubmitting}
+            >
               {isSubmitting ? "Lagrer..." : "Lagre avtale"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
 
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="rounded-none sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Hendelsesdetaljer</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
+      <ResponsiveDialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <ResponsiveDialogContent className="px-2 md:p-4 sm:max-w-md">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Rediger avtale</ResponsiveDialogTitle>
+          </ResponsiveDialogHeader>
+          <div className="space-y-4 px-2 py-1 md:px-0">
             <div className="space-y-2">
               <Label htmlFor="edit-title">Tittel</Label>
               <Input
@@ -587,8 +739,6 @@ function KalenderPage() {
                 placeholder="Tittel"
                 value={eventTitle}
                 onChange={e => setEventTitle(e.target.value)}
-                autoFocus
-                className="rounded-none"
               />
             </div>
 
@@ -599,44 +749,52 @@ function KalenderPage() {
                 placeholder="Beskrivelse"
                 value={eventDescription}
                 onChange={e => setEventDescription(e.target.value)}
-                className="rounded-none"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Starttidspunkt</Label>
-                <Input type="datetime-local" className="rounded-none" value={formatLocalDatetimeInput(eventStart)} onChange={(e) => setEventStart(parseLocalDatetimeInput(e.target.value))} />
+                <Label htmlFor="edit-start">Starter</Label>
+                <Input id="edit-start" type="datetime-local" value={formatLocalDatetimeInput(eventStart)} onChange={(e) => setEventStart(parseLocalDatetimeInput(e.target.value))} />
               </div>
               <div className="space-y-2">
-                <Label>Sluttidspunkt</Label>
-                <Input type="datetime-local" className="rounded-none" value={formatLocalDatetimeInput(eventEnd)} onChange={(e) => setEventEnd(parseLocalDatetimeInput(e.target.value))} />
+                <Label htmlFor="edit-end">Slutter</Label>
+                <Input id="edit-end" type="datetime-local" value={formatLocalDatetimeInput(eventEnd)} onChange={(e) => setEventEnd(parseLocalDatetimeInput(e.target.value))} />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Koble til prosjekt</Label>
-              <Select value={linkedProject} onValueChange={setLinkedProject}>
-                <SelectTrigger className="rounded-none">
-                  <SelectValue placeholder="Velg et prosjekt (valgfritt)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Ingen</SelectItem>
-                  <SelectItem value="project-1">Prosjekt Alpha</SelectItem>
-                  <SelectItem value="project-2">Prosjekt Beta</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {projects.length > 0 && (
+              <div className="space-y-2">
+                <Label>Koble til prosjekt</Label>
+                <Select
+                  value={linkedProject || "none"}
+                  onValueChange={(v) => setLinkedProject(v === "none" ? "" : v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Velg et prosjekt (valgfritt)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Ingen</SelectItem>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Farge i kalender</Label>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {['#4285F4', '#EA4335', '#FBBC05', '#34A853', '#8E24AA', '#0078D4', '#7986CB'].map((color) => (
                   <button
                     key={color}
+                    type="button"
                     onClick={() => setEventColor(color)}
                     style={{ backgroundColor: color }}
-                    className={`size-8 border-2 ${eventColor === color ? 'border-foreground' : 'border-transparent'}`}
+                    className={`size-9 rounded-full border-2 ${eventColor === color ? 'border-foreground' : 'border-transparent'}`}
                     aria-label={`Velg farge ${color}`}
                   />
                 ))}
@@ -647,19 +805,22 @@ function KalenderPage() {
               Vises på: {activeEventProvider === 'google' ? 'Google Calendar' : activeEventProvider === 'microsoft' ? 'Outlook Calendar' : 'Ukjent kalender'}
             </div>
           </div>
-          <DialogFooter className="flex w-full items-center justify-between sm:justify-between">
-            <Button variant="destructive" className="rounded-none" onClick={handleDeleteEvent} disabled={isDeleting || isSubmitting}>
-              {isDeleting ? "Sletter..." : "Slett hendelse"}
+          <ResponsiveDialogFooter>
+            <Button
+              variant="destructive"
+              className="sm:order-first sm:mr-auto"
+              onClick={handleDeleteEvent}
+              disabled={isDeleting || isSubmitting}
+            >
+              {isDeleting ? "Sletter..." : "Slett avtale"}
             </Button>
-            <div className="flex gap-2">
-              <Button variant="outline" className="rounded-none" onClick={() => setIsEditDialogOpen(false)} disabled={isDeleting || isSubmitting}>Avbryt</Button>
-              <Button className="rounded-none" onClick={handleUpdateEventDetails} disabled={!eventTitle.trim() || isSubmitting || isDeleting}>
-                {isSubmitting ? "Lagrer..." : "Lagre endringer"}
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isDeleting || isSubmitting}>Avbryt</Button>
+            <Button onClick={handleUpdateEventDetails} disabled={!eventTitle.trim() || isSubmitting || isDeleting}>
+              {isSubmitting ? "Lagrer..." : "Lagre endringer"}
+            </Button>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
     </AppPageShell>
   )
 }
