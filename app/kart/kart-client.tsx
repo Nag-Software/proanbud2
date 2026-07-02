@@ -619,7 +619,7 @@ export function KartClient({
       {/* Bottom: selected project — live operations panel (bottom sheet on mobile) */}
       {selected && !geoEditing && (
         <div className="absolute inset-x-0 bottom-0 z-20 md:inset-x-auto md:bottom-3 md:right-3 md:left-auto">
-          <div className="pointer-events-auto flex max-h-[80vh] w-full flex-col rounded-t-2xl border-t bg-background/95 p-4 pb-[calc(env(safe-area-inset-bottom)+5rem)] shadow-2xl backdrop-blur md:max-h-[calc(100dvh-6rem)] md:w-[360px] md:rounded-xl md:border md:pb-4 md:shadow-lg">
+          <div className="pointer-events-auto flex max-h-[70vh] w-full flex-col rounded-t-2xl border-t bg-background/95 px-4 pt-2.5 pb-[calc(env(safe-area-inset-bottom)+4.5rem)] shadow-2xl backdrop-blur md:max-h-[calc(100dvh-6rem)] md:w-[360px] md:rounded-xl md:border md:p-4 md:shadow-lg">
             <div className="mx-auto mb-2 h-1 w-9 shrink-0 rounded-full bg-muted-foreground/30 md:hidden" />
             <div className="flex shrink-0 items-start justify-between gap-3">
               <div className="min-w-0">
@@ -649,16 +649,17 @@ export function KartClient({
             ) : (
               <>
                 {/* Live metric row */}
-                <div className="mt-3 grid grid-cols-4 gap-1.5">
+                <div className="mt-2.5 grid grid-cols-4 gap-1.5">
                   <Stat label="På plass" value={selectedOps.crew.length} tone={selectedOps.crew.length ? "green" : "muted"} />
                   <Stat label="Timer i dag" value={fmtHoursShort(selectedOps.hoursToday)} />
                   <Stat label="Avvik" value={selectedOps.openAvvik} tone={selectedOps.openAvvik ? "red" : "muted"} />
                   <Stat label="Forfalt" value={selectedOps.overdueTasks} tone={selectedOps.overdueTasks ? "amber" : "muted"} />
                 </div>
 
-                {/* Crew on site now */}
-                {selectedOps.crew.length > 0 ? (
-                  <div className="mt-3">
+                {/* Crew on site now — the "På plass 0"-stat already covers the
+                    empty case, so no redundant "ingen på plass"-line. */}
+                {selectedOps.crew.length > 0 && (
+                  <div className="mt-2.5">
                     <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                       På plass nå
                     </p>
@@ -685,32 +686,33 @@ export function KartClient({
                       )}
                     </div>
                   </div>
-                ) : (
-                  <p className="mt-3 text-xs text-muted-foreground">Ingen på plass akkurat nå.</p>
                 )}
 
-                {/* Budget + deadline */}
-                <div className="mt-3 flex items-center justify-between gap-2 text-xs">
-                  <span className="text-muted-foreground">Budsjett {fmtKr(selected.budgetNok)}</span>
-                  {deadline && (
-                    <span className={cn(deadline.danger ? "font-medium text-red-600" : "text-muted-foreground")}>
-                      {deadline.text}
-                    </span>
-                  )}
+                {/* One slim utility row: budget/frist (only when set) + geofence.
+                    Was two full-width rows — this is the mobile height budget. */}
+                <div className="mt-2.5 flex items-center justify-between gap-2 text-xs">
+                  <span className="min-w-0 truncate text-muted-foreground">
+                    {(selected.budgetNok ?? 0) > 0 && `Budsjett ${fmtKr(selected.budgetNok)}`}
+                    {(selected.budgetNok ?? 0) > 0 && deadline && " · "}
+                    {deadline && (
+                      <span className={cn(deadline.danger && "font-medium text-red-600")}>
+                        {deadline.text}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={startGeoEdit}
+                    className="flex shrink-0 items-center gap-1.5 rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+                  >
+                    <Layers className="size-3.5" /> Geofence
+                  </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={startGeoEdit}
-                  className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted"
-                >
-                  <Layers className="size-3.5" /> Juster geofence
-                </button>
               </>
             )}
             </div>
 
-            <div className="mt-3 flex shrink-0 flex-wrap gap-2 border-t pt-3">
+            <div className="mt-2.5 flex shrink-0 flex-wrap gap-2 border-t pt-2.5">
               <Button size="sm" variant="secondary" className="flex-1" onClick={openEditor}>
                 <Pencil className="size-4" />
                 {selected.lat == null ? "Sett adresse" : "Endre adresse"}
@@ -741,7 +743,7 @@ export function KartClient({
       {/* Bottom: geofence editor (bottom sheet on mobile, replaces the detail panel) */}
       {selected && geoEditing && (
         <div className="absolute inset-x-0 bottom-0 z-20 md:inset-x-auto md:bottom-3 md:right-3 md:left-auto">
-          <div className="pointer-events-auto w-full rounded-t-2xl border-t bg-background/95 p-4 pb-[calc(env(safe-area-inset-bottom)+5rem)] shadow-2xl backdrop-blur md:w-[360px] md:rounded-xl md:border md:pb-4 md:shadow-lg">
+          <div className="pointer-events-auto w-full rounded-t-2xl border-t bg-background/95 px-4 pt-2.5 pb-[calc(env(safe-area-inset-bottom)+4.5rem)] shadow-2xl backdrop-blur md:w-[360px] md:rounded-xl md:border md:p-4 md:shadow-lg">
             <div className="mx-auto mb-2 h-1 w-9 rounded-full bg-muted-foreground/30 md:hidden" />
             <div className="flex items-center justify-between gap-3">
               <h3 className="flex items-center gap-2 text-base font-medium text-foreground">
@@ -866,9 +868,9 @@ function Stat({
           ? "bg-amber-100 text-amber-800"
           : "bg-muted/60 text-foreground"
   return (
-    <div className={cn("rounded-md px-2 py-1.5", toneClass)}>
+    <div className={cn("rounded-md px-2 py-1", toneClass)}>
       <p className="text-[10px] leading-tight opacity-80">{label}</p>
-      <p className="text-base font-medium leading-tight">{value}</p>
+      <p className="text-sm font-medium leading-tight">{value}</p>
     </div>
   )
 }
