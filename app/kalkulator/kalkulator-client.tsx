@@ -26,8 +26,10 @@ type FagKey = (typeof FAG)[number]["key"]
 
 type Tilbud = {
   tittel: string
+  prosjektnavn: string
   innledning: string
   linjer: Array<{
+    kategori: string
     tittel: string
     beskrivelse: string
     mengde: number
@@ -65,6 +67,7 @@ export function KalkulatorClient() {
     return {
       title: tilbud.tittel,
       description: tilbud.innledning,
+      projectName: tilbud.prosjektnavn || undefined,
       offerReference: "UTKAST",
       customer: {
         name: "Kari Nordmann",
@@ -74,7 +77,7 @@ export function KalkulatorClient() {
       },
       lineItems: tilbud.linjer.map((linje, index) => ({
         id: `kalk-${index}`,
-        subproject: "Generelt",
+        subproject: linje.kategori || "Generelt",
         title: linje.tittel,
         description: linje.beskrivelse,
         quantity: linje.mengde,

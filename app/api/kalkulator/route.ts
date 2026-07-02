@@ -10,7 +10,7 @@ import { logServerError } from "@/lib/errors/log"
 // lavt, kostnaden per kall er øre, og målet er registreringer, ikke vanntett
 // kvotehåndhevelse. max_tokens + kort beskrivelse begrenser kostnadstaket.
 
-const DAILY_LIMIT = 3
+const DAILY_LIMIT = Math.max(1, Number(process.env.KALKULATOR_DAILY_LIMIT) || 3)
 const LIMIT_COOKIE = "pa_kalk"
 
 const bodySchema = z.object({
@@ -33,15 +33,17 @@ Basert på kundens beskrivelse av jobben lager du et komplett tilbudsutkast.
 Returner KUN gyldig JSON på denne formen:
 {
   "tittel": "Kort tittel på tilbudet, f.eks. «Utskifting av 12 vinduer»",
+  "prosjektnavn": "Kort prosjektnavn, f.eks. «Vinduer enebolig Holmestrand»",
   "innledning": "2–3 setninger rettet til kunden: hva som skal gjøres og hvordan arbeidet utføres. Profesjonell og tillitvekkende, uten superlativer.",
   "linjer": [
-    { "tittel": "Kort linjenavn (3–6 ord)", "beskrivelse": "Valgfri utdyping i én setning", "mengde": 1, "enhet": "stk", "enhetsprisNok": 1000 }
+    { "kategori": "…", "tittel": "Kort linjenavn (3–6 ord)", "beskrivelse": "Valgfri utdyping i én setning", "mengde": 1, "enhet": "stk", "enhetsprisNok": 1000 }
   ],
   "forbehold": ["…", "…"]
 }
 
 Regler:
 - 3–7 linjer som dekker hele jobben: arbeid, materialer, og stillas/avfall der det er naturlig.
+- Grupper linjene i 2–4 kategorier slik et proft tilbud gjør — kategorinavn tilpasset jobben, f.eks. «Riving og klargjøring», «Montering», «Materialer», «Rigg og drift». Linjer i samme kategori skal stå rett etter hverandre.
 - Enheter: stk, m2, lm, time eller RS (rund sum).
 - Realistiske norske priser (eks. mva): timepris håndverker 650–900 kr, materialer til innkjøpspris pluss normalt påslag. Runde tall.
 
@@ -76,6 +78,7 @@ function osloToday(): string {
 }
 
 type Linje = {
+  kategori: string
   tittel: string
   beskrivelse: string
   mengde: number
@@ -133,8 +136,10 @@ export async function POST(request: Request) {
     const raw = payload.choices?.[0]?.message?.content || "{}"
     const draft = JSON.parse(normalizeJsonFromModel(raw)) as {
       tittel?: string
+      prosjektnavn?: string
       innledning?: string
       linjer?: Array<{
+        kategori?: string
         tittel?: string
         beskrivelse?: string
         mengde?: number
@@ -152,6 +157,7 @@ export async function POST(request: Request) {
         const mengde = Math.max(0, Math.round((Number(l.mengde) || 1) * 100) / 100)
         const enhetsprisNok = Math.max(0, Math.round(Number(l.enhetsprisNok) || 0))
         return {
+          kategori: String(l.kategori || "Generelt").trim().slice(0, 60) || "Generelt",
           tittel: String(l.tittel || l.beskrivelse || "").trim().slice(0, 120),
           beskrivelse: l.tittel ? String(l.beskrivelse || "").trim().slice(0, 240) : "",
           mengde,
@@ -182,6 +188,7 @@ export async function POST(request: Request) {
     const res = NextResponse.json({
       tilbud: {
         tittel: String(draft.tittel).slice(0, 120),
+        prosjektnavn: String(draft.prosjektnavn || "").trim().slice(0, 80),
         innledning: String(draft.innledning || "").slice(0, 600),
         linjer,
         forbehold: (draft.forbehold ?? []).map((f) => String(f).slice(0, 200)).slice(0, 5),
