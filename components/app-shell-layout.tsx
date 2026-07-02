@@ -8,7 +8,7 @@ import { AppShellProvider, useAppShell } from "@/components/app-shell-context"
 import { MobileBottomNav } from "@/components/mobile-bottom-nav"
 import { NativeNavBridge, NativeNavState } from "@/components/native-nav-bridge"
 import { PresenceHeartbeat } from "@/components/presence-heartbeat"
-import { useIsNativeApp } from "@/hooks/use-is-native-app"
+import { useNativePlatform } from "@/hooks/use-is-native-app"
 import { TrialBanner } from "@/components/billing/trial-banner"
 import { ShellBreadcrumb } from "@/components/shell-breadcrumb"
 import { Separator } from "@/components/ui/separator"
@@ -37,9 +37,10 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
   const segments = shell?.pageMeta.segments ?? []
   const noPadding = shell?.pageMeta.noPadding ?? false
   const hideMobileTitle = shell?.pageMeta.hideMobileTitle ?? false
-  // In the native app the tab bar is native and sits BELOW the WebView in the
-  // app's own layout — the page must not reserve space for a fixed pill.
-  const isNative = useIsNativeApp()
+  // Native iOS floats a Liquid Glass pill OVER the page (keep the spacer so
+  // content clears it); native Android docks its bar BELOW the WebView (no
+  // spacer needed). Regular web keeps its own fixed pill + spacer.
+  const nativePlatform = useNativePlatform()
 
   return (
     <SidebarProvider>
@@ -69,7 +70,7 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
           {children}
         </div>
         {/* Spacer reserving room for the fixed mobile bottom nav (incl. safe area) */}
-        {!isNative && (
+        {nativePlatform !== "android" && (
           <div
             className="shrink-0 md:hidden"
             style={{ height: "calc(4rem + env(safe-area-inset-bottom))" }}
