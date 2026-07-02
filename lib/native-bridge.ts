@@ -18,6 +18,20 @@ export function isNativeApp(): boolean {
   return getReactNativeWebView() !== null
 }
 
+/**
+ * True inside the native app on Android specifically. Android runs ONE
+ * WebView whose docked bar navigates with router.push — iOS gives every tab
+ * its own WebView, so Android-only optimizations (like prefetching the other
+ * tabs' routes) would be wasted requests there.
+ */
+export function isNativeAndroid(): boolean {
+  return (
+    isNativeApp() &&
+    typeof navigator !== "undefined" &&
+    /android/i.test(navigator.userAgent)
+  )
+}
+
 /** Post a structured message to the native shell. No-op on the regular web. */
 export function postToNative(message: Record<string, unknown>): boolean {
   const rn = getReactNativeWebView()

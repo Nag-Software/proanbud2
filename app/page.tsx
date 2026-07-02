@@ -345,16 +345,24 @@ export default function DashboardPage() {
       setChecklist({ companyId, steps: checklistSteps })
       setLoading(false)
 
-      if (uniqueProjectIds.length) {
-        const { data: projRows } = await supabase.from("projects").select("id, name, customer_id").in("id", uniqueProjectIds)
-        ;(projRows || []).forEach(p => {
-          projectNameById[p.id] = p.name
-          if (p.customer_id) projectCustomerById[p.id] = p.customer_id
-        })
-        const custIds = [...new Set(Object.values(projectCustomerById))]
-        if (custIds.length) {
-          const { data: custRows } = await supabase.from("customers").select("id, name").in("id", custIds)
-          ;(custRows || []).forEach(c => { customerNameById[c.id] = c.name })
+      // One parallel round-trip for everything the feeds still need: project
+      // names WITH their customer name (nested select over the customer FK)
+      // and the offer tally for top-projects — previously three serial queries.
+      const topProjectIds = (topProjectsRes.data || []).map(p => p.id)
+      const [projLookupRes, topOffersRes] = await Promise.all([
+        uniqueProjectIds.length
+          ? supabase.from("projects").select("id, name, customer_id, customers(name)").in("id", uniqueProjectIds)
+          : Promise.resolve({ data: null }),
+        topProjectIds.length
+          ? supabase.from("offers").select("project_id").in("project_id", topProjectIds)
+          : Promise.resolve({ data: null }),
+      ])
+      type ProjLookupRow = { id: string; name: string; customer_id: string | null; customers: { name: string } | null }
+      for (const p of (projLookupRes.data as ProjLookupRow[] | null) || []) {
+        projectNameById[p.id] = p.name
+        if (p.customer_id) {
+          projectCustomerById[p.id] = p.customer_id
+          if (p.customers?.name) customerNameById[p.customer_id] = p.customers.name
         }
       }
 
@@ -381,15 +389,11 @@ export default function DashboardPage() {
         status: o.status || "draft",
       }))
 
-      // Top projects by offer count — one .in() query + tally in JS instead of
-      // an offers count query per project (N+1). Uses idx_offers_project_id.
+      // Top projects by offer count — tally of the (already fetched) offer
+      // rows in JS instead of an offers count query per project (N+1).
       const topProjects: DashboardData["topProjects"] = []
       if (topProjectsRes.data?.length) {
-        const projectIds = topProjectsRes.data.map(p => p.id)
-        const { data: offerRows } = await supabase
-          .from("offers")
-          .select("project_id")
-          .in("project_id", projectIds)
+        const offerRows = topOffersRes.data as { project_id: string | null }[] | null
         const offerCountById = new Map<string, number>()
         for (const row of offerRows || []) {
           if (!row.project_id) continue

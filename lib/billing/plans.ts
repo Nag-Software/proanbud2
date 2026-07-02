@@ -84,7 +84,7 @@ export const MODULE_CATALOG: Array<{
   {
     key: "integrasjoner",
     label: "Integrasjoner",
-    description: "Koble til Tripletex, DocuSign m.m. Outlook og Google Drive er alltid gratis.",
+    description: "Koble til Tripletex, DocuSign m.m. Google Kalender og Outlook er alltid gratis.",
     monthlyNok: MODULE_PRICING.integrasjoner,
   },
   {
@@ -238,8 +238,11 @@ export function intervalFromPriceMetadata(metadata: PriceMetadata): BillingInter
 // Plan feature gating (Mini vs Proff)
 //
 // Mini = "vinn jobben": tilbud, KI-tilbud, kunder, prosjekt-kjerne, priser.
-// Proff = "lever jobben": adds the compliance bundle (HMS/KS/avvik), calendar,
+// Proff = "lever jobben": adds the compliance bundle (HMS/KS/avvik),
 // project tasks, messaging and integrations.
+//
+// `kalender` (the built-in Proanbud calendar) is included in EVERY plan, and
+// the optional Google/Outlook connection on top of it is free — no module.
 //
 // This is separate from the à-la-carte MODULE system (timeforing/dokumenter
 // stay independent add-ons on BOTH plans). `integrasjoner` is special: it is
@@ -257,7 +260,7 @@ export type FeatureKey =
   | "integrasjoner"
 
 export const PLAN_FEATURES: Record<PlanKey, FeatureKey[]> = {
-  mini: [],
+  mini: ["kalender"],
   proff: ["hms", "ks", "avvik", "kalender", "project_tasks", "meldinger", "meldinger_ki", "integrasjoner"],
 }
 
@@ -320,7 +323,6 @@ export const PROFF_INCLUDED_FEATURES: Array<{
   description: string
 }> = [
   { key: "hms", label: "HMS, KS og avvik", description: "HMS-håndbok, KS-sjekklister og avvikshåndtering." },
-  { key: "kalender", label: "Kalender", description: "Delt kalender med Google- og Outlook-synk." },
   {
     key: "project_tasks",
     label: "Oppgaver i prosjekter",

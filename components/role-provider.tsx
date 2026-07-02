@@ -47,6 +47,44 @@ type PlanContextRow = {
   status?: string | null
 }
 
+// Last resolved role/plan per user, so returning visits unblock the UI
+// instantly (loadingRole:false) while the real queries revalidate in the
+// background. Display/nav gating only — the server enforces actual access —
+// so a briefly stale role is no worse than the pre-navigation UI was.
+const ROLE_CACHE_PREFIX = "pa_role_ctx_v1:"
+
+function readRoleCache(userId: string): RoleContextValue | null {
+  try {
+    const raw = window.localStorage.getItem(ROLE_CACHE_PREFIX + userId)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<RoleContextValue>
+    if (typeof parsed !== "object" || parsed === null) return null
+    return {
+      role: parsed.role ?? null,
+      canonicalRole: normalizeRole(parsed.role ?? null),
+      loadingRole: false,
+      planKey: parsed.planKey ?? null,
+      enabledModules: Array.isArray(parsed.enabledModules) ? parsed.enabledModules : [],
+      status: parsed.status ?? null,
+      planKnown: parsed.planKnown === true,
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeRoleCache(userId: string, value: RoleContextValue): void {
+  try {
+    const { role, planKey, enabledModules, status, planKnown } = value
+    window.localStorage.setItem(
+      ROLE_CACHE_PREFIX + userId,
+      JSON.stringify({ role, planKey, enabledModules, status, planKnown })
+    )
+  } catch {
+    // Storage full/blocked — cache is best-effort only.
+  }
+}
+
 function readPlan(data: PlanContextRow | null | undefined): {
   planKey: PlanKey | null
   enabledModules: string[]
@@ -107,6 +145,14 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       // Dev role mock (?mock=worker|pm|admin) — UI-only role override. Plan is
       // still read from the real company so plan-gated UI reflects reality.
       const mockedRole = readMockRoleFromDocument()
+
+      // Returning visit: hydrate from the cached role/plan immediately so
+      // nothing downstream waits on the queries — they still run right after
+      // and correct the state (+ cache) if anything changed.
+      if (!mockedRole) {
+        const cached = readRoleCache(user.id)
+        if (cached && active) setState(cached)
+      }
       if (mockedRole) {
         const { data: planData, error: planError } = await planPromise
         if (planError) {
@@ -144,15 +190,17 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
 
       // @ts-expect-error Supabase nested relation typing
       const effectiveRole = userRoleData?.roles?.name || userTableData?.role || null
-      if (active) {
-        setState({
-          role: effectiveRole,
-          canonicalRole: normalizeRole(effectiveRole),
-          loadingRole: false,
-          planKnown: !planError,
-          ...readPlan(planData as PlanContextRow),
-        })
+      const fresh: RoleContextValue = {
+        role: effectiveRole,
+        canonicalRole: normalizeRole(effectiveRole),
+        loadingRole: false,
+        planKnown: !planError,
+        ...readPlan(planData as PlanContextRow),
       }
+      // Only cache trustworthy results: a transient RPC failure must not
+      // stick a plan-less context that every later visit hydrates from.
+      if (effectiveRole && !planError) writeRoleCache(user.id, fresh)
+      if (active) setState(fresh)
     }
 
     void loadRole()

@@ -34,7 +34,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-import { CalendarToolbar, type CalendarView } from "./calendar-toolbar"
+import { CalendarToolbar, type CalendarSource, type CalendarView } from "./calendar-toolbar"
 import { MonthCalendar } from "./month-calendar"
 import type { CalendarEvent } from "./types"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -99,10 +99,13 @@ function KalenderPage() {
   const [fetchRange, setFetchRange] = useState<{start: string, end: string} | null>(null)
 
   const [timeRange, setTimeRange] = useState<"work" | "full">("work")
-  const [visibleProvider, setVisibleProvider] = useState<"all" | "google" | "microsoft">("all")
+  const [visibleProvider, setVisibleProvider] = useState<CalendarSource>("all")
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  /** Import-valget i påkoblingsfasen: kopier Proanbud-avtaler til nytilkoblet kalender. */
+  const [importPromptProvider, setImportPromptProvider] = useState<"google" | "microsoft" | null>(null)
+  const [isImporting, setIsImporting] = useState(false)
   /** Mobil: dagen brukeren trykket på — åpner dagsarket med avtaler + «Ny avtale». */
   const [daySheetDate, setDaySheetDate] = useState<Date | null>(null)
 
@@ -208,17 +211,21 @@ function KalenderPage() {
 
     if (connected === "google") {
       setStatusMessage("Google Calendar er tilkoblet.")
+      setImportPromptProvider("google")
       loadIntegrations()
     } else if (connected === "microsoft") {
       setStatusMessage("Outlook Calendar er tilkoblet.")
+      setImportPromptProvider("microsoft")
       loadIntegrations()
     } else if (error) {
       setStatusMessage(`Kunne ikke koble til kalender: ${error}`)
     }
   }, [searchParams, loadIntegrations])
 
+  // Hentes uavhengig av tilkoblinger — den innebygde Proanbud-kalenderen
+  // finnes alltid; eksterne avtaler kommer i tillegg når noe er koblet til.
   useEffect(() => {
-    if (!loggedIn || integrations.length === 0) return
+    if (!loggedIn) return
 
     const startD = subMonths(startOfMonth(date), 1)
     const endD = addMonths(endOfMonth(date), 1)
@@ -257,6 +264,36 @@ function KalenderPage() {
     window.location.href = "/api/auth/microsoft/calendar/start"
   }
 
+  const handleImportToProvider = async () => {
+    if (!importPromptProvider) return
+    const providerName = importPromptProvider === "google" ? "Google" : "Outlook"
+    setIsImporting(true)
+    try {
+      const res = await fetch("/api/calendar/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: importPromptProvider }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        toast.success(
+          data.imported > 0
+            ? `${data.imported} avtaler ble kopiert til ${providerName}.`
+            : `Ingen nye avtaler å kopiere til ${providerName}.`
+        )
+        setImportPromptProvider(null)
+        triggerRefetch()
+      } else {
+        toast.error(data.error ?? "Kunne ikke kopiere avtalene.")
+      }
+    } catch (e) {
+      reportClientError(e, { context: { action: "Importere kalender til ekstern kalender" } })
+      toast.error("Kunne ikke kopiere avtalene.")
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
   const handleDisconnect = async (provider: "google" | "microsoft") => {
     const providerName = provider === "google" ? "Google" : "Outlook"
     const ok = await confirm({
@@ -275,7 +312,8 @@ function KalenderPage() {
       if (res.ok) {
         setStatusMessage(`${provider === "google" ? "Google" : "Outlook"} Calendar er frakoblet.`)
         await loadIntegrations()
-        setEvents([])
+        // Proanbud-avtalene skal fortsatt vises — hent på nytt i stedet for å tømme.
+        triggerRefetch()
       } else {
         const data = await res.json()
         setStatusMessage(data.error ?? "Kunne ikke koble fra kalender.")
@@ -288,11 +326,9 @@ function KalenderPage() {
     }
   }
 
-  const hasIntegration = integrations.length > 0;
-  const hasBothIntegrations = integrations.some(i => i.provider === 'google') && integrations.some(i => i.provider === 'microsoft');
-
   const filteredEvents = useMemo(() => {
     if (visibleProvider === "all") return events;
+    if (visibleProvider === "proanbud") return events.filter(e => e.id.startsWith("local-"));
     if (visibleProvider === "google") return events.filter(e => e.id.startsWith("google-"));
     if (visibleProvider === "microsoft") return events.filter(e => e.id.startsWith("ms-"));
     return events;
@@ -347,7 +383,8 @@ function KalenderPage() {
     setLinkedProject(event.extendedProps?.projectId || "")
 
     const provider = event.id.startsWith("google-") ? "google" :
-                    event.id.startsWith("ms-") ? "microsoft" : null
+                    event.id.startsWith("ms-") ? "microsoft" :
+                    event.id.startsWith("local-") ? "local" : null
     setActiveEventProvider(provider)
 
     setIsEditDialogOpen(true)
@@ -504,7 +541,7 @@ function KalenderPage() {
       <AppPageShell segments={["Kalender"]}>
         <PlanGate
           featureName="Kalender"
-          description="Koble til Google og Outlook for å se og administrere avtalene dine direkte i Proanbud."
+          description="Bedriftens delte kalender med prosjektkobling — følger med alle Proanbud-planer med aktivt abonnement."
         />
       </AppPageShell>
     )
@@ -529,7 +566,6 @@ function KalenderPage() {
           onTimeRangeChange={setTimeRange}
           visibleProvider={visibleProvider}
           onVisibleProviderChange={setVisibleProvider}
-          hasBothIntegrations={hasBothIntegrations}
           integrations={integrations}
           onGoogleAuth={handleGoogleAuth}
           onOutlookAuth={handleOutlookAuth}
@@ -542,20 +578,6 @@ function KalenderPage() {
           {isLoading ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               Laster inn...
-            </div>
-          ) : !hasIntegration ? (
-            <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-              <p className="max-w-md text-sm text-muted-foreground">
-                Ingen kalender tilkoblet enda. Koble til Google eller Outlook for å se og administrere hendelsene dine.
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <Button variant="outline" onClick={handleGoogleAuth}>
-                  Koble til Google
-                </Button>
-                <Button variant="outline" onClick={handleOutlookAuth}>
-                  Koble til Outlook
-                </Button>
-              </div>
             </div>
           ) : view === "month" ? (
             <MonthCalendar
@@ -785,24 +807,28 @@ function KalenderPage() {
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label>Farge i kalender</Label>
-              <div className="flex flex-wrap gap-2">
-                {['#4285F4', '#EA4335', '#FBBC05', '#34A853', '#8E24AA', '#0078D4', '#7986CB'].map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setEventColor(color)}
-                    style={{ backgroundColor: color }}
-                    className={`size-9 rounded-full border-2 ${eventColor === color ? 'border-foreground' : 'border-transparent'}`}
-                    aria-label={`Velg farge ${color}`}
-                  />
-                ))}
+            {/* Farge lagres kun for Proanbud-avtaler — Google/Outlook styrer
+                fargene sine selv (colorId-paletten deres matcher ikke hex). */}
+            {activeEventProvider === 'local' && (
+              <div className="space-y-2">
+                <Label>Farge i kalender</Label>
+                <div className="flex flex-wrap gap-2">
+                  {['#4285F4', '#EA4335', '#FBBC05', '#34A853', '#8E24AA', '#0078D4', '#7986CB'].map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setEventColor(color)}
+                      style={{ backgroundColor: color }}
+                      className={`size-9 rounded-full border-2 ${eventColor === color ? 'border-foreground' : 'border-transparent'}`}
+                      aria-label={`Velg farge ${color}`}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="pt-2 text-xs text-muted-foreground">
-              Vises på: {activeEventProvider === 'google' ? 'Google Calendar' : activeEventProvider === 'microsoft' ? 'Outlook Calendar' : 'Ukjent kalender'}
+              Vises på: {activeEventProvider === 'local' ? 'Proanbud-kalenderen' : activeEventProvider === 'google' ? 'Google Calendar' : activeEventProvider === 'microsoft' ? 'Outlook Calendar' : 'Ukjent kalender'}
             </div>
           </div>
           <ResponsiveDialogFooter>
@@ -821,6 +847,46 @@ function KalenderPage() {
           </ResponsiveDialogFooter>
         </ResponsiveDialogContent>
       </ResponsiveDialog>
+
+      {/* Påkoblingsfasen: valg om å kopiere Proanbud-kalenderen til den
+          nytilkoblede eksterne kalenderen. */}
+      <ResponsiveDialog
+        open={importPromptProvider !== null}
+        onOpenChange={(open) => {
+          if (!open) setImportPromptProvider(null)
+        }}
+      >
+        <ResponsiveDialogContent className="px-2 md:p-4 sm:max-w-md">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>
+              Kopiere avtalene til {importPromptProvider === "google" ? "Google" : "Outlook"}?
+            </ResponsiveDialogTitle>
+          </ResponsiveDialogHeader>
+          <div className="space-y-2 px-2 py-1 text-sm text-muted-foreground md:px-0">
+            <p>
+              Kommende avtaler fra Proanbud-kalenderen kan kopieres til{" "}
+              {importPromptProvider === "google" ? "Google Kalender" : "Outlook-kalenderen"} din nå.
+            </p>
+            <p>
+              Nye avtaler du oppretter i Proanbud legges automatisk inn i tilkoblede kalendere
+              fremover, så dette gjelder bare det som allerede ligger i kalenderen.
+            </p>
+          </div>
+          <ResponsiveDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setImportPromptProvider(null)}
+              disabled={isImporting}
+            >
+              Nei takk
+            </Button>
+            <Button onClick={handleImportToProvider} disabled={isImporting}>
+              {isImporting ? "Kopierer..." : "Kopier avtaler"}
+            </Button>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+
     </AppPageShell>
   )
 }

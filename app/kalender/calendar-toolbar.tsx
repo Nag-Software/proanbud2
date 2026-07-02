@@ -31,6 +31,8 @@ import {
 // runtime values of Views.MONTH/WEEK/DAY.
 export type CalendarView = "month" | "week" | "day"
 
+export type CalendarSource = "all" | "proanbud" | "google" | "microsoft"
+
 type CalendarToolbarProps = {
   date: Date
   view: CalendarView
@@ -39,9 +41,8 @@ type CalendarToolbarProps = {
   onAddEvent: () => void
   timeRange: "work" | "full"
   onTimeRangeChange: (range: "work" | "full") => void
-  visibleProvider: "all" | "google" | "microsoft"
-  onVisibleProviderChange: (provider: "all" | "google" | "microsoft") => void
-  hasBothIntegrations: boolean
+  visibleProvider: CalendarSource
+  onVisibleProviderChange: (provider: CalendarSource) => void
   integrations: { provider: string }[]
   onGoogleAuth: () => void
   onOutlookAuth: () => void
@@ -65,13 +66,18 @@ export function CalendarToolbar({
   onTimeRangeChange,
   visibleProvider,
   onVisibleProviderChange,
-  hasBothIntegrations,
   integrations,
   onGoogleAuth,
   onOutlookAuth,
   onDisconnect,
   isDisconnecting = false,
 }: CalendarToolbarProps) {
+  // Kildefilteret gir bare mening når minst én ekstern kalender er tilkoblet —
+  // uten tilkobling finnes kun Proanbud-avtaler.
+  const hasGoogle = integrations.some((i) => i.provider === "google")
+  const hasMicrosoft = integrations.some((i) => i.provider === "microsoft")
+  const showSourceFilter = hasGoogle || hasMicrosoft
+
   const navigate = (direction: -1 | 1) => {
     const next = new Date(date)
     if (view === "month") {
@@ -141,12 +147,10 @@ export function CalendarToolbar({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {hasBothIntegrations && (
+        {showSourceFilter && (
           <Select
             value={visibleProvider}
-            onValueChange={(v) =>
-              onVisibleProviderChange(v as "all" | "google" | "microsoft")
-            }
+            onValueChange={(v) => onVisibleProviderChange(v as CalendarSource)}
           >
             <SelectTrigger className="hidden h-8 w-[150px] md:flex">
               <SlidersHorizontal className="mr-1 size-3.5" />
@@ -156,8 +160,9 @@ export function CalendarToolbar({
               <SelectGroup>
                 <SelectLabel>Kilde</SelectLabel>
                 <SelectItem value="all">Alle kalendere</SelectItem>
-                <SelectItem value="google">Google</SelectItem>
-                <SelectItem value="microsoft">Outlook</SelectItem>
+                <SelectItem value="proanbud">Proanbud</SelectItem>
+                {hasGoogle && <SelectItem value="google">Google</SelectItem>}
+                {hasMicrosoft && <SelectItem value="microsoft">Outlook</SelectItem>}
               </SelectGroup>
             </SelectContent>
           </Select>
@@ -171,24 +176,23 @@ export function CalendarToolbar({
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72">
             <div className="space-y-4">
-              {hasBothIntegrations && (
+              {showSourceFilter && (
                 <div className="space-y-2 md:hidden">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Kalenderkilde
                   </p>
                   <Select
                     value={visibleProvider}
-                    onValueChange={(v) =>
-                      onVisibleProviderChange(v as "all" | "google" | "microsoft")
-                    }
+                    onValueChange={(v) => onVisibleProviderChange(v as CalendarSource)}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Alle kalendere</SelectItem>
-                      <SelectItem value="google">Google</SelectItem>
-                      <SelectItem value="microsoft">Outlook</SelectItem>
+                      <SelectItem value="proanbud">Proanbud</SelectItem>
+                      {hasGoogle && <SelectItem value="google">Google</SelectItem>}
+                      {hasMicrosoft && <SelectItem value="microsoft">Outlook</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>

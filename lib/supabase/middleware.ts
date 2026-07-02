@@ -17,11 +17,12 @@ import { MOCK_ROLE_COOKIE, isRoleMockEnabled, resolveMockRoleParam } from '@/lib
 // onboarding/subscription RPCs. Only ever skips the already-verified "pass"
 // case — it can never introduce a redirect, and re-verifies after TTL.
 const GATE_COOKIE = 'pa_gate_ok'
-// Short TTL bounds the window where a just-lapsed subscription could still pass
+// The TTL bounds the window where a just-lapsed subscription could still pass
 // the cached fast-path. The cookie is only ever written after a verified-active
 // status check (see below), and webhook/reconcile flip status promptly, so the
-// residual UI leak is at most this long. RLS + server guards remain the real boundary.
-const GATE_TTL_SECONDS = 60
+// residual UI leak is at most this long. RLS + server guards remain the real
+// boundary — 5 min buys noticeably snappier navigation for that bounded leak.
+const GATE_TTL_SECONDS = 300
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -52,12 +53,21 @@ export async function updateSession(request: NextRequest) {
   )
 
   // IMPORTANT: Avoid writing any logic between createServerClient and
-  // supabase.auth.getUser(). A simple mistake could make it very hard to debug
-  // issues with users being randomly logged out.
+  // supabase.auth.getClaims(). A simple mistake could make it very hard to
+  // debug issues with users being randomly logged out.
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // getClaims verifies the JWT locally (the project uses asymmetric ES256
+  // signing keys, checked against the cached JWKS) instead of getUser()'s
+  // auth-server round-trip — this runs on EVERY matched request, so that
+  // round-trip used to be a per-navigation tax. Expired tokens still refresh
+  // through the cookie plumbing above, exactly like before. Tradeoff: a
+  // server-side-revoked (not merely expired) session is only noticed on
+  // refresh, at most ~1h later — RLS still guards all data either way.
+  const { data: claimsData } = await supabase.auth.getClaims()
+  const claims = claimsData?.claims
+  const user = claims?.sub
+    ? { id: claims.sub, email: typeof claims.email === 'string' ? claims.email : undefined }
+    : null
 
   const pathname = request.nextUrl.pathname
   const isPublic = isPublicAuthRoute(pathname)

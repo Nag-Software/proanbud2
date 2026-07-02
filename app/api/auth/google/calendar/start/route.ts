@@ -22,6 +22,8 @@ export async function GET(request: Request) {
       return NextResponse.redirect(new URL(LOGIN_PATH, request.url))
     }
 
+    // Google/Outlook-tilkobling er gratis og følger kalenderen (alle planer) —
+    // featuresjekken gater kun på aktivt abonnement.
     const companyId = await getCurrentCompanyIdForUser(user.id)
     if (!(await companyHasFeature(companyId, "kalender"))) {
       return NextResponse.redirect(new URL("/innstillinger/betaling", request.url))

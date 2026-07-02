@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
-import { isNativeApp, postToNative } from "@/lib/native-bridge"
+import { isNativeApp, isNativeAndroid, postToNative } from "@/lib/native-bridge"
 import { useNavItems } from "@/hooks/use-nav-items"
 import { useSidebar } from "@/components/ui/sidebar"
 import { useUnreadMessages } from "@/hooks/use-unread-messages"
@@ -58,6 +58,7 @@ export function NativeNavBridge() {
   const { toggleSidebar } = useSidebar()
   const unreadCount = useUnreadMessages()
   const { hasActiveSession } = useActiveWorkSession()
+  const router = useRouter()
 
   const toggleRef = useRef(toggleSidebar)
   toggleRef.current = toggleSidebar
@@ -77,8 +78,15 @@ export function NativeNavBridge() {
   )
   useEffect(() => {
     if (!isNativeApp() || !roleKnown) return
-    postToNative({ type: "nav:config", items: JSON.parse(itemsJson) })
-  }, [roleKnown, itemsJson])
+    const items = JSON.parse(itemsJson) as Array<{ href: string }>
+    postToNative({ type: "nav:config", items })
+    // Android's docked bar navigates with router.push — prefetch every
+    // destination once the menu is known, so tab taps paint instantly.
+    // (iOS tabs are separate WebViews; prefetching there is wasted requests.)
+    if (isNativeAndroid()) {
+      for (const item of items) router.prefetch(item.href)
+    }
+  }, [roleKnown, itemsJson, router])
 
   useEffect(() => {
     if (!isNativeApp()) return
