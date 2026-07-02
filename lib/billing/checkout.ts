@@ -227,6 +227,98 @@ export async function createSubscriptionCheckoutSession(
   return stripe.checkout.sessions.create(sessionParams)
 }
 
+/** Thrown when a company tries to start a second free trial. */
+export class TrialAlreadyUsedError extends Error {
+  code = "trial_already_used" as const
+  constructor() {
+    super("Prøveperioden er allerede brukt for denne bedriften.")
+    this.name = "TrialAlreadyUsedError"
+  }
+}
+
+/**
+ * Start the 14-day Proff trial WITHOUT a payment method — no Checkout redirect.
+ *
+ * The subscription is created directly in Stripe (status "trialing"), so the
+ * rest of the billing machinery behaves exactly as for a card-backed trial:
+ * webhooks sync status/trial_ends_at, trial reminders pick the company up,
+ * reconcile verifies against Stripe, and when the trial ends without a card
+ * Stripe cancels the subscription itself (end_behavior missing_payment_method)
+ * → webhook downgrades the row → middleware locks the app. Adding a card via
+ * the customer portal mid-trial makes it convert automatically at trial end.
+ */
+export async function createTrialSubscription(input: {
+  companyId: string
+  email: string
+  companyName: string
+  fullName: string
+  orgNumber?: string | null
+}): Promise<{ status: string }> {
+  const stripe = getStripe()
+  await ensureCompanyBillingRow(input.companyId)
+
+  const admin = createAdminClient()
+  const { data: billing } = await admin
+    .from("company_billing")
+    .select("stripe_subscription_id, status, trial_ends_at")
+    .eq("company_id", input.companyId)
+    .maybeSingle()
+
+  // Same double-subscription safety net as checkout: never create a second
+  // live subscription. A genuinely live one makes this an idempotent success
+  // (retry after a lost response must not error the onboarding flow).
+  if (
+    billing?.stripe_subscription_id &&
+    isActiveSubscriptionStatus(billing.status)
+  ) {
+    const liveStatus = await verifyStoredSubscriptionLive(
+      input.companyId,
+      billing.stripe_subscription_id
+    )
+    if (liveStatus) return { status: liveStatus }
+  }
+
+  // One free trial per company: any historic trial_ends_at means the free
+  // period is spent — the caller must send the user to paid checkout instead.
+  if (billing?.trial_ends_at) {
+    throw new TrialAlreadyUsedError()
+  }
+
+  const customerId = await findOrCreateCustomer({
+    companyId: input.companyId,
+    email: input.email,
+    companyName: input.companyName,
+    fullName: input.fullName,
+    orgNumber: input.orgNumber,
+  })
+
+  // Base plan only — seat add-ons are added later via syncSeatQuantity when
+  // employees are invited (a brand-new company has 0 billable seats).
+  const subscription = await stripe.subscriptions.create({
+    customer: customerId,
+    items: [{ price: getStripePriceId("proff", "month"), quantity: 1 }],
+    trial_period_days: TRIAL_DAYS,
+    trial_settings: {
+      end_behavior: { missing_payment_method: "cancel" },
+    },
+    payment_settings: { save_default_payment_method: "on_subscription" },
+    metadata: {
+      company_id: input.companyId,
+      plan_key: "proff",
+      billing_interval: "month",
+    },
+    expand: ["items.data.price"],
+  })
+
+  await upsertCompanyBillingFromSubscription({
+    companyId: input.companyId,
+    customerId,
+    subscription,
+  })
+
+  return { status: subscription.status }
+}
+
 /**
  * Switch an existing subscription to a different plan/interval IN PLACE.
  *

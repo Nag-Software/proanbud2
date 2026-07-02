@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
 import { reportClientError } from "@/lib/errors/client"
+import { track } from "@/lib/analytics/track"
 import {
   MODULE_CATALOG,
   MODULES_INCLUDED_IN_PROFF,
@@ -97,6 +98,7 @@ export function BillingPageClient() {
   // { changed: true } (no redirect), avoiding a second/double-charged sub.
   async function submitPlanChange(opts: { trial?: boolean }) {
     setActionLoading("checkout")
+    track("betaling_startet", { kilde: "betaling" })
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
@@ -119,6 +121,25 @@ export function BillingPageClient() {
       await loadSummary()
     } catch (error) {
       reportClientError(error, { context: { action: "start checkout / planbytte" } })
+      toast.error(error instanceof Error ? error.message : "Noe gikk galt")
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  // Kortfri prøvestart — ingen Checkout-redirect; abonnementet opprettes
+  // server-side uten betalingsmetode og siden laster bare sammendraget på nytt.
+  async function startCardFreeTrial() {
+    setActionLoading("start-trial")
+    try {
+      const res = await fetch("/api/billing/start-trial", { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "Kunne ikke starte prøveperioden")
+      track("prove_startet")
+      toast.success("Prøveperioden er i gang — 14 dager Proff uten kort.")
+      await loadSummary()
+    } catch (error) {
+      reportClientError(error, { context: { action: "start kortfri prøveperiode" } })
       toast.error(error instanceof Error ? error.message : "Noe gikk galt")
     } finally {
       setActionLoading(null)
@@ -205,23 +226,28 @@ export function BillingPageClient() {
       : 0
 
   if (!isActive) {
+    // Én gratis prøve per bedrift: er trial_ends_at satt, er prøven brukt og
+    // eneste vei videre er betalt abonnement.
+    const trialUsed = Boolean(summary?.trial_ends_at)
     return (
       <div className="mx-auto w-full max-w-md px-4 py-10 md:px-6">
         <div className="space-y-2 text-center">
           <h1 className="text-xl font-semibold tracking-tight">Betaling</h1>
           <p className="text-sm text-muted-foreground">
-            14 dager Proff gratis · kort kreves · ingen belastning nå
+            {trialUsed
+              ? "Prøveperioden er brukt — velg Proff for å fortsette der du slapp."
+              : "14 dager Proff gratis · uten kort · ingen belastning"}
           </p>
         </div>
         <Button
           className="mt-8 h-11 w-full"
-          onClick={() => submitPlanChange({ trial: true })}
+          onClick={() => (trialUsed ? submitPlanChange({}) : startCardFreeTrial())}
           disabled={actionLoading !== null}
         >
-          {actionLoading === "checkout" && (
+          {(actionLoading === "checkout" || actionLoading === "start-trial") && (
             <Loader2Icon className="mr-2 size-4 animate-spin" />
           )}
-          Start gratis prøveperiode
+          {trialUsed ? "Start abonnement" : "Start gratis prøveperiode"}
         </Button>
       </div>
     )

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/field"
 import { completeClientLogin } from "@/lib/auth/client-login"
 import { reportClientError } from "@/lib/errors/client"
+import { track } from "@/lib/analytics/track"
 import { authErrorMessage, GENERIC_ERROR_MESSAGE } from "@/lib/errors/user-message"
 import { Input } from "@/components/ui/input"
 
@@ -109,6 +110,8 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
            return;
         }
 
+        track("signup_konto_opprettet", { via: "invitasjon" })
+
         // Logger inn automatisk etter at account + bedrift/rolle er satt opp.
         // Bruk e-posten serveren faktisk knyttet kontoen til (invitasjonens
         // e-post, ikke den innskrevne) slik at innloggingen ikke feiler dersom
@@ -141,6 +144,7 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
       }
 
       console.log('SignupForm: signUp result', data)
+      track("signup_konto_opprettet", { via: "direkte" })
       // If session exists, user is signed in immediately
       if (data?.session) {
         completeClientLogin(router, "/create-company")

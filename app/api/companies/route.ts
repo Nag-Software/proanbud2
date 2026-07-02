@@ -4,6 +4,8 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createClient as createServerSupabase } from '@/lib/supabase/server'
 import { assignUserRole, ensureCompanyRoles } from '@/lib/company-roles'
 import { ensureCompanyBillingRow } from '@/lib/billing/sync'
+import { createTrialSubscription } from '@/lib/billing/checkout'
+import { isStripeConfigured } from '@/lib/stripe/server'
 import { attributeCompanyToPartner, REF_COOKIE } from '@/lib/affiliate/attribution'
 import { logServerError } from '@/lib/errors/log'
 
@@ -134,6 +136,33 @@ export async function POST(request: Request) {
       })
     }
 
+    // Start den kortfrie 14-dagers prøven med en gang, så brukeren lander rett
+    // i produktet. Best-effort: feiler Stripe her forblir status 'incomplete',
+    // og middleware sender admin til /onboarding/abonnement som prøver igjen.
+    let trialStarted = false
+    if (isStripeConfigured()) {
+      try {
+        await createTrialSubscription({
+          companyId: companyData.id,
+          email: user.email || '',
+          companyName: name,
+          fullName: full_name || user.user_metadata?.full_name || '',
+          orgNumber: org_number || null,
+        })
+        trialStarted = true
+      } catch (trialError) {
+        console.error('Trial auto-start error:', trialError)
+        await logServerError({
+          message: 'Kunne ikke starte prøveperiode automatisk for ny bedrift',
+          error: trialError,
+          source: 'api',
+          route: 'POST /api/companies',
+          level: 'warning',
+          context: { companyId: companyData.id, userId: user.id },
+        })
+      }
+    }
+
     // Close the outbound loop: if this company was a prospect, mark it converted.
     if (org_number) {
       try {
@@ -159,7 +188,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, company: companyData }, { status: 201 })
+    return NextResponse.json({ success: true, company: companyData, trialStarted }, { status: 201 })
   } catch (err: any) {
     console.error('SERVER ROUTE ERROR:', err)
     await logServerError({

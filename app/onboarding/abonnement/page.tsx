@@ -8,6 +8,7 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { PROFF_INCLUDED_FEATURES } from "@/lib/billing/plans"
+import { track } from "@/lib/analytics/track"
 import { reportClientError } from "@/lib/errors/client"
 
 function OnboardingAbonnementContent() {
@@ -15,6 +16,9 @@ function OnboardingAbonnementContent() {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [checking, setChecking] = useState(true)
+  // Én gratis prøve per bedrift: er trial_ends_at satt, er prøven brukt og
+  // eneste vei videre er betalt Checkout.
+  const [trialUsed, setTrialUsed] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -45,6 +49,7 @@ function OnboardingAbonnementContent() {
             router.replace("/")
             return
           }
+          if (!cancelled) setTrialUsed(Boolean(data.trial_ends_at))
         }
       } catch (error) {
         // best-effort — fall through and show onboarding
@@ -63,13 +68,34 @@ function OnboardingAbonnementContent() {
   async function startTrial() {
     setLoading(true)
     try {
+      const res = await fetch("/api/billing/start-trial", { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (res.status === 409 && data.code === "trial_already_used") {
+        setTrialUsed(true)
+        setLoading(false)
+        return
+      }
+      if (!res.ok) throw new Error(data.error || "Kunne ikke starte prøveperioden")
+      track("prove_startet")
+      router.replace("/onboarding/velkommen")
+    } catch (error) {
+      track("prove_start_feilet")
+      reportClientError(error, { context: { action: "start card-free trial" } })
+      toast.error(error instanceof Error ? error.message : "Noe gikk galt")
+      setLoading(false)
+    }
+  }
+
+  async function startPaidCheckout() {
+    setLoading(true)
+    track("betaling_startet", { kilde: "onboarding" })
+    try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           plan: "proff",
           interval: "month",
-          trial: true,
           successPath: "/onboarding/velkommen",
           cancelPath: "/onboarding/abonnement",
         }),
@@ -80,9 +106,13 @@ function OnboardingAbonnementContent() {
         window.location.href = data.url
         return
       }
+      if (data.changed) {
+        router.replace("/")
+        return
+      }
       throw new Error("Manglende checkout-lenke")
     } catch (error) {
-      reportClientError(error, { context: { action: "start trial checkout" } })
+      reportClientError(error, { context: { action: "start paid checkout" } })
       toast.error(error instanceof Error ? error.message : "Noe gikk galt")
       setLoading(false)
     }
@@ -116,12 +146,14 @@ function OnboardingAbonnementContent() {
 
         <div className="space-y-2 mt-10 text-center">
           <h1 className="text-2xl font-semibold tracking-tight">
-            Start nå helt gratis
+            {trialUsed ? "Prøveperioden er over" : "Start nå helt gratis"}
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            14 dager Proff · kort kreves · ingen belastning nå
+            {trialUsed
+              ? "Velg Proff for å fortsette der du slapp — alt du la inn er tatt vare på."
+              : "14 dager Proff gratis · uten kort · ingen belastning"}
           </p>
-          {fromRedirect && (
+          {fromRedirect && !trialUsed && (
             <p className="text-sm text-muted-foreground">
               Fullfør aktivering for å bruke Proanbud.
             </p>
@@ -142,15 +174,17 @@ function OnboardingAbonnementContent() {
 
         <Button
           className="h-11 w-full text-base"
-          onClick={startTrial}
+          onClick={trialUsed ? startPaidCheckout : startTrial}
           disabled={loading}
         >
           {loading && <Loader2Icon className="mr-2 size-4 animate-spin" />}
-          Fortsett til prøveperioden
+          {trialUsed ? "Velg Proff og fortsett" : "Start prøveperioden"}
         </Button>
 
         <p className="text-center text-sm text-muted-foreground">
-          Du kan avslutte prøven når som helst.
+          {trialUsed
+            ? "Ingen binding — du kan si opp når som helst."
+            : "Ingen kortopplysninger nødvendig. Du kan avslutte prøven når som helst."}
         </p>
       </div>
     </div>

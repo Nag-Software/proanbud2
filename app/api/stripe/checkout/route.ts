@@ -69,9 +69,14 @@ export async function POST(request: Request) {
     const admin = createAdminClient()
     const { data: existingBilling } = await admin
       .from("company_billing")
-      .select("stripe_subscription_id, status")
+      .select("stripe_subscription_id, status, trial_ends_at")
       .eq("company_id", auth.context.companyId)
       .maybeSingle()
+
+    // One free trial per company: a historic trial_ends_at means the free
+    // period is spent — silently drop the trial flag so a canceled company
+    // re-subscribing goes straight to paid checkout instead of a fresh trial.
+    const trialRequested = parsed.data.trial === true && !existingBilling?.trial_ends_at
 
     // Whenever a subscription id is on file, reconcile against Stripe FIRST so the
     // decision reflects reality, not a possibly-stale DB status: a missed delete
@@ -102,7 +107,7 @@ export async function POST(request: Request) {
       orgNumber: company?.org_number,
       plan: parsed.data.plan as PlanKey,
       interval: parsed.data.interval as BillingInterval,
-      trial: parsed.data.trial,
+      trial: trialRequested,
       successPath: parsed.data.successPath,
       cancelPath: parsed.data.cancelPath,
       baseUrl: getBaseUrl(request),

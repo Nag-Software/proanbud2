@@ -31,6 +31,27 @@ export async function POST() {
     }
 
     const stripe = getStripe()
+
+    // Kortfri trial: å avslutte prøven uten betalingskort ville sendt
+    // abonnementet rett i past_due (som fortsatt gir tilgang — gratis).
+    // Krev derfor et kort på kunden før prøven kan avsluttes manuelt.
+    if (billing.stripe_customer_id) {
+      const paymentMethods = await stripe.customers.listPaymentMethods(
+        billing.stripe_customer_id,
+        { limit: 1 }
+      )
+      if (paymentMethods.data.length === 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Legg inn et betalingskort først: åpne «Administrer betaling», legg til kortet, og prøv igjen.",
+            code: "payment_method_required",
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     let updated
     try {
       updated = await stripe.subscriptions.update(billing.stripe_subscription_id, {
