@@ -24,6 +24,8 @@ type OfferDocumentPreviewProps = OfferDocumentData & {
   className?: string
   documentClassName?: string
   showSupplier?: boolean
+  /** Jobbspesifikke forbehold som legges til i vilkårslisten (f.eks. fra kalkulatoren). */
+  extraTerms?: string[]
 }
 
 function PartyLabel({ children }: { children: React.ReactNode }) {
@@ -51,6 +53,7 @@ export function OfferDocumentPreview({
   className,
   documentClassName,
   showSupplier = true,
+  extraTerms,
   ...data
 }: OfferDocumentPreviewProps) {
   const m = useMemo(() => buildOfferDocumentModel(data), [data])
@@ -76,8 +79,12 @@ export function OfferDocumentPreview({
     if (m.pricingModelLabel) items.push(`Prismodell: ${m.pricingModelLabel}.`)
     if (m.contractBasisLabel) items.push(`Kontraktsgrunnlag: ${m.contractBasisLabel}.`)
     items.push("Alle priser er oppgitt i norske kroner. Merverdiavgift (25 %) er spesifisert.")
+    for (const term of extraTerms ?? []) {
+      const trimmed = term.trim()
+      if (trimmed) items.push(trimmed)
+    }
     return items
-  }, [m.validUntil, m.validityDays, m.pricingModelLabel, m.contractBasisLabel])
+  }, [m.validUntil, m.validityDays, m.pricingModelLabel, m.contractBasisLabel, extraTerms])
 
   const footerParts = buildOfferFooterParts(company)
 

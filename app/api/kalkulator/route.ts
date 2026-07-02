@@ -32,18 +32,33 @@ Basert på kundens beskrivelse av jobben lager du et komplett tilbudsutkast.
 
 Returner KUN gyldig JSON på denne formen:
 {
-  "tittel": "Kort tittel på tilbudet, f.eks. «Tilbud: Utskifting av 12 vinduer»",
+  "tittel": "Kort tittel på tilbudet, f.eks. «Utskifting av 12 vinduer»",
   "innledning": "2–3 setninger rettet til kunden: hva som skal gjøres og hvordan arbeidet utføres. Profesjonell og tillitvekkende, uten superlativer.",
   "linjer": [
-    { "beskrivelse": "…", "mengde": 1, "enhet": "stk", "enhetsprisNok": 1000 }
+    { "tittel": "Kort linjenavn (3–6 ord)", "beskrivelse": "Valgfri utdyping i én setning", "mengde": 1, "enhet": "stk", "enhetsprisNok": 1000 }
   ],
   "forbehold": ["…", "…"]
 }
 
 Regler:
-- 4–10 linjer som dekker hele jobben: arbeid, materialer, og rigg/drift eller avfallshåndtering der det er naturlig.
+- 3–7 linjer som dekker hele jobben: arbeid, materialer, og stillas/avfall der det er naturlig.
 - Enheter: stk, m2, lm, time eller RS (rund sum).
-- Realistiske norske priser (eks. mva): timepris håndverker 650–950 kr, materialpriser på normalt nivå. Runde tall.
+- Realistiske norske priser (eks. mva): timepris håndverker 650–900 kr, materialer til innkjøpspris pluss normalt påslag. Runde tall.
+
+VIKTIG — kalibrering av pris og arbeidstid (dette er det vanligste avviket, følg det nøye):
+- Estimer som en EFFEKTIV, erfaren fagperson: tiden jobben faktisk tar, aldri buffer eller «for sikkerhets skyld»-timer. Usikkerhet håndteres i forbeholdene, ikke i prisen.
+- IKKE splitt arbeidet i mange småposter. Planlegging, oppmåling, tilrigging, tetting, rydding og sluttkontroll er INKLUDERT i hovedlinjene — aldri egne poster. Kun stillas/større rigg og avfallshåndtering kan stå separat.
+- Rimelighetssjekk før du svarer: samlet arbeidskostnad delt på timeprisen = antall timer. Er timetallet høyere enn en effektiv fagperson faktisk trenger, reduser prisene.
+- Tilbudet skal ligge på konkurransedyktig markedsnivå. Et tilbud som er 20 % for høyt taper jobben — heller stramt enn romslig.
+
+Prisreferanser (arbeid + materialer, eks. mva) — bruk som anker, avvik kun med god grunn:
+- Maling vegger/tak, to strøk: 150–250 kr per m² MALT FLATE — der ALT er inkludert (maling, materiell, tildekking, kantarbeid). Aldri egne linjer for materialer/tildekking på malerjobber. Er bare gulvareal oppgitt: veggflate ≈ 2,3 × gulvflate, takflate ≈ gulvflate.
+- Komplett vindusbytte: 2 000–2 700 kr arbeid per vindu (riving, montering, tetting, listing) + vinduets materialkost.
+- Parkett/laminat: 250–400 kr per m². Flislegging våtrom: 900–1 400 kr per m².
+- Elektrikerarbeid: 1 200–1 800 kr per punkt for standard punkter.
+- Rørleggerbytte av standard utstyr (servant, kran, toalett): utstyrspris + 2–4 timer arbeid.
+- Liten innvendig jobb (male et par rom, bytte servant): totalen ender typisk 15 000–40 000 kr inkl. mva — sjekk at du lander der.
+
 - Hold beskrivelsene generelle nok til at de stemmer — ikke dikt opp detaljer kunden ikke har oppgitt.
 - 2–4 nøkterne forbehold (f.eks. skjulte feil, tillegg ved råte, priser forutsetter fri tilkomst).
 - Skriv på norsk bokmål. Ingen tekst utenfor JSON-objektet.`
@@ -60,7 +75,14 @@ function osloToday(): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Oslo" }).format(new Date())
 }
 
-type Linje = { beskrivelse: string; mengde: number; enhet: string; enhetsprisNok: number; sumNok: number }
+type Linje = {
+  tittel: string
+  beskrivelse: string
+  mengde: number
+  enhet: string
+  enhetsprisNok: number
+  sumNok: number
+}
 
 export async function POST(request: Request) {
   try {
@@ -112,19 +134,26 @@ export async function POST(request: Request) {
     const draft = JSON.parse(normalizeJsonFromModel(raw)) as {
       tittel?: string
       innledning?: string
-      linjer?: Array<{ beskrivelse?: string; mengde?: number; enhet?: string; enhetsprisNok?: number }>
+      linjer?: Array<{
+        tittel?: string
+        beskrivelse?: string
+        mengde?: number
+        enhet?: string
+        enhetsprisNok?: number
+      }>
       forbehold?: string[]
     }
 
     // Aldri stol på modellens regning — alle summer regnes her.
     const linjer: Linje[] = (draft.linjer ?? [])
-      .filter((l) => l && typeof l.beskrivelse === "string" && l.beskrivelse.trim())
+      .filter((l) => l && typeof (l.tittel ?? l.beskrivelse) === "string" && (l.tittel ?? l.beskrivelse ?? "").trim())
       .slice(0, 12)
       .map((l) => {
         const mengde = Math.max(0, Math.round((Number(l.mengde) || 1) * 100) / 100)
         const enhetsprisNok = Math.max(0, Math.round(Number(l.enhetsprisNok) || 0))
         return {
-          beskrivelse: String(l.beskrivelse).trim().slice(0, 200),
+          tittel: String(l.tittel || l.beskrivelse || "").trim().slice(0, 120),
+          beskrivelse: l.tittel ? String(l.beskrivelse || "").trim().slice(0, 240) : "",
           mengde,
           enhet: String(l.enhet || "stk").slice(0, 10),
           enhetsprisNok,
@@ -138,6 +167,17 @@ export async function POST(request: Request) {
 
     const subtotalNok = linjer.reduce((acc, l) => acc + l.sumNok, 0)
     const mvaNok = Math.round(subtotalNok * 0.25)
+    const totalNok = subtotalNok + mvaNok
+
+    // Standard betalingsplan på større jobber — som i ekte Proanbud-tilbud.
+    const betalingsplan =
+      totalNok >= 100_000
+        ? [
+            { label: "Ved oppstart", percent: 30 },
+            { label: "Underveis i arbeidet", percent: 40 },
+            { label: "Ved ferdigstillelse", percent: 30 },
+          ]
+        : null
 
     const res = NextResponse.json({
       tilbud: {
@@ -145,9 +185,10 @@ export async function POST(request: Request) {
         innledning: String(draft.innledning || "").slice(0, 600),
         linjer,
         forbehold: (draft.forbehold ?? []).map((f) => String(f).slice(0, 200)).slice(0, 5),
+        betalingsplan,
         subtotalNok,
         mvaNok,
-        totalNok: subtotalNok + mvaNok,
+        totalNok,
       },
       remaining: DAILY_LIMIT - usedToday - 1,
     })

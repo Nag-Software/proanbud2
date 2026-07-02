@@ -1,10 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { ArrowRightIcon, Loader2Icon, SparklesIcon } from "lucide-react"
 
+import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
+import type { OfferDocumentData } from "@/lib/tilbud/offer-document"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
@@ -25,15 +27,20 @@ type FagKey = (typeof FAG)[number]["key"]
 type Tilbud = {
   tittel: string
   innledning: string
-  linjer: Array<{ beskrivelse: string; mengde: number; enhet: string; enhetsprisNok: number; sumNok: number }>
+  linjer: Array<{
+    tittel: string
+    beskrivelse: string
+    mengde: number
+    enhet: string
+    enhetsprisNok: number
+    sumNok: number
+  }>
   forbehold: string[]
+  betalingsplan: Array<{ label: string; percent: number }> | null
   subtotalNok: number
   mvaNok: number
   totalNok: number
 }
-
-const nok = new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 0 })
-const mengdeFmt = new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 2 })
 
 const SIGNUP_URL = "/signup?utm_source=kalkulator&utm_medium=produkt&utm_campaign=gratis-kalkulator"
 
@@ -48,6 +55,48 @@ export function KalkulatorClient() {
   const [error, setError] = useState<string | null>(null)
   const [limitHit, setLimitHit] = useState(false)
   const [tilbud, setTilbud] = useState<Tilbud | null>(null)
+
+  // Mater det EKTE tilbudsdokumentet (samme komponent som betalende kunder
+  // ser) med kalkulator-resultatet — placeholder-parter til brukeren har konto.
+  const documentData: OfferDocumentData | null = useMemo(() => {
+    if (!tilbud) return null
+    const issued = new Date()
+    const validUntil = new Date(issued.getTime() + 14 * 24 * 60 * 60 * 1000)
+    return {
+      title: tilbud.tittel,
+      description: tilbud.innledning,
+      offerReference: "UTKAST",
+      customer: {
+        name: "Kari Nordmann",
+        address: "Eksempelveien 12",
+        postalCode: "3084",
+        city: "Holmestrand",
+      },
+      lineItems: tilbud.linjer.map((linje, index) => ({
+        id: `kalk-${index}`,
+        subproject: "Generelt",
+        title: linje.tittel,
+        description: linje.beskrivelse,
+        quantity: linje.mengde,
+        unit: linje.enhet,
+        supplier: "",
+        unitPriceNok: linje.enhetsprisNok,
+        markupPercent: 0,
+        discountPercent: 0,
+      })),
+      company: {
+        id: "kalkulator-utkast",
+        name: "Ditt firma AS",
+        orgNumber: null,
+        logoUrl: null,
+      },
+      issuedDate: issued,
+      validityDays: 14,
+      quoteValidUntil: validUntil.toISOString(),
+      paymentSchedule: tilbud.betalingsplan ?? null,
+      pricingModel: "fixed",
+    }
+  }, [tilbud])
 
   async function generer() {
     if (beskrivelse.trim().length < 20 || loading) return
@@ -85,7 +134,7 @@ export function KalkulatorClient() {
     <div className="min-h-svh bg-muted/40">
       {/* Toppstripe */}
       <header className="border-b bg-background">
-        <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between px-4">
+        <div className="mx-auto flex h-14 w-full max-w-4xl items-center justify-between px-4">
           <a href="https://proanbud.no" aria-label="Proanbud">
             <Image src="/logo/light/logo-primary.svg" alt="Proanbud" width={110} height={36} priority />
           </a>
@@ -102,7 +151,7 @@ export function KalkulatorClient() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-3xl px-4 pb-20 pt-10">
+      <main className="mx-auto w-full max-w-4xl px-4 pb-20 pt-10">
         {/* Hero */}
         <div className="space-y-3 text-center">
           <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
@@ -113,12 +162,12 @@ export function KalkulatorClient() {
           </h1>
           <p className="mx-auto max-w-xl text-base leading-relaxed text-muted-foreground">
             Lim inn notatene fra befaringen, så bygger Proanbud et komplett pristilbud på
-            sekunder — med poster, mengder og priser du kan justere.
+            sekunder — som et ekte tilbudsdokument, klart til å justeres og sendes.
           </p>
         </div>
 
         {/* Skjema */}
-        <div className="mt-8 rounded-2xl border bg-background p-5 shadow-sm sm:p-6">
+        <div className="mx-auto mt-8 max-w-3xl rounded-2xl border bg-background p-5 shadow-sm sm:p-6">
           <p className="text-sm font-medium">Hva slags fag?</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {FAG.map((f) => (
@@ -189,97 +238,44 @@ export function KalkulatorClient() {
           </p>
         </div>
 
-        {/* Resultat */}
-        {tilbud && (
+        {/* Resultat: det ekte tilbudsdokumentet med vannmerke */}
+        {tilbud && documentData && (
           <div className="mt-10">
-            {/* Tilbudsdokumentet */}
-            <div className="relative overflow-hidden rounded-2xl border bg-background shadow-sm">
-              {/* Vannmerke */}
+            <div className="relative overflow-hidden rounded-2xl border shadow-sm">
+              {/* Vannmerke over dokumentet */}
               <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-                <p className="-rotate-[24deg] select-none whitespace-nowrap text-4xl font-bold uppercase tracking-[0.35em] text-foreground/[0.06] sm:text-5xl">
+                <p className="-rotate-[24deg] select-none whitespace-nowrap text-4xl font-bold uppercase tracking-[0.35em] text-gray-900/[0.05] sm:text-6xl">
                   Utkast · Proanbud
                 </p>
               </div>
 
-              <div className="p-6 sm:p-8">
-                <p className="text-xs uppercase tracking-widest text-muted-foreground">Pristilbud</p>
-                <h2 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">{tilbud.tittel}</h2>
-                {tilbud.innledning && (
-                  <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                    {tilbud.innledning}
-                  </p>
-                )}
-
-                <div className="mt-6 overflow-x-auto">
-                  <table className="w-full min-w-[560px] text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                        <th className="py-2 pr-3 font-medium">Beskrivelse</th>
-                        <th className="py-2 pr-3 text-right font-medium">Mengde</th>
-                        <th className="py-2 pr-3 font-medium">Enhet</th>
-                        <th className="py-2 pr-3 text-right font-medium">À-pris</th>
-                        <th className="py-2 text-right font-medium">Sum</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tilbud.linjer.map((linje, i) => (
-                        <tr key={i} className="border-b border-border/60">
-                          <td className="py-2.5 pr-3">{linje.beskrivelse}</td>
-                          <td className="py-2.5 pr-3 text-right tabular-nums">{mengdeFmt.format(linje.mengde)}</td>
-                          <td className="py-2.5 pr-3">{linje.enhet}</td>
-                          <td className="py-2.5 pr-3 text-right tabular-nums">{nok.format(linje.enhetsprisNok)}</td>
-                          <td className="py-2.5 text-right font-medium tabular-nums">{nok.format(linje.sumNok)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="ml-auto mt-4 w-full max-w-xs space-y-1.5 text-sm">
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Sum eks. mva</span>
-                    <span className="tabular-nums">{nok.format(tilbud.subtotalNok)} kr</span>
-                  </div>
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Mva 25 %</span>
-                    <span className="tabular-nums">{nok.format(tilbud.mvaNok)} kr</span>
-                  </div>
-                  <div className="flex justify-between border-t pt-1.5 text-base font-semibold">
-                    <span>Å betale</span>
-                    <span className="tabular-nums">{nok.format(tilbud.totalNok)} kr</span>
-                  </div>
-                </div>
-
-                {tilbud.forbehold.length > 0 && (
-                  <div className="mt-6">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Forbehold
-                    </p>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-relaxed text-muted-foreground">
-                      {tilbud.forbehold.map((f, i) => (
-                        <li key={i}>{f}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <p className="mt-6 text-xs text-muted-foreground">
-                  Prisene er automatiske estimater basert på beskrivelsen — juster mot dine egne
-                  priser før du sender tilbudet.
-                </p>
+              <div className="overflow-x-auto">
+                <OfferDocumentPreview
+                  {...documentData}
+                  extraTerms={tilbud.forbehold}
+                  showSupplier={false}
+                  className="bg-[#e8e6e1] p-3 sm:p-6"
+                  documentClassName="mx-auto w-full min-w-[660px] max-w-[794px] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)]"
+                />
               </div>
 
-              <div className="border-t bg-muted/50 px-6 py-3 text-center text-xs text-muted-foreground">
+              <div className="relative z-20 border-t bg-muted/60 px-6 py-3 text-center text-xs text-muted-foreground">
                 Laget med Proanbud · proanbud.no
               </div>
             </div>
 
+            <p className="mt-3 text-center text-xs text-muted-foreground">
+              Prisene er automatiske estimater basert på beskrivelsen — med konto justerer du
+              linjer, mengder og priser før du sender.
+            </p>
+
             {/* CTA */}
-            <div className="mt-6 rounded-2xl border border-primary/25 bg-primary/5 p-6 text-center sm:p-8">
+            <div className="mx-auto mt-6 max-w-3xl rounded-2xl border border-primary/25 bg-primary/5 p-6 text-center sm:p-8">
               <h3 className="text-lg font-semibold tracking-tight">Klar til å sende det til kunden?</h3>
               <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                Med gratis prøveperiode får du tilbudet med din logo og dine priser, sender det
-                digitalt, og kunden signerer med kode fra sofaen. 14 dager gratis — uten kort.
+                Med gratis prøveperiode får du tilbudet med din logo, ditt org.nr. og dine
+                priser — sender det digitalt, og kunden signerer med kode fra sofaen.
+                14 dager gratis — uten kort.
               </p>
               <Button className="mt-4 h-11 px-6 text-base" asChild>
                 <Link href={SIGNUP_URL} onClick={() => track("kalkulator_cta_klikket", { plassering: "resultat" })}>
