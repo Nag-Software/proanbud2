@@ -12,6 +12,8 @@ export const AUTH_PUBLIC_ROUTE_PREFIXES = [
   '/auth/callback',
   '/tilbudsvisning',
   '/eksempel-tilbud',
+  // Gratis KI-tilbudskalkulator — åpen lead-magnet, skal aldri kreve innlogging.
+  '/kalkulator',
 ] as const
 
 export const SUBSCRIPTION_EXEMPT_ROUTE_PREFIXES = [
