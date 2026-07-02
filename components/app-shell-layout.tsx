@@ -6,7 +6,9 @@ import { type ReactNode } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppShellProvider, useAppShell } from "@/components/app-shell-context"
 import { MobileBottomNav } from "@/components/mobile-bottom-nav"
+import { NativeNavBridge, NativeNavState } from "@/components/native-nav-bridge"
 import { PresenceHeartbeat } from "@/components/presence-heartbeat"
+import { useIsNativeApp } from "@/hooks/use-is-native-app"
 import { TrialBanner } from "@/components/billing/trial-banner"
 import { ShellBreadcrumb } from "@/components/shell-breadcrumb"
 import { Separator } from "@/components/ui/separator"
@@ -35,10 +37,14 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
   const segments = shell?.pageMeta.segments ?? []
   const noPadding = shell?.pageMeta.noPadding ?? false
   const hideMobileTitle = shell?.pageMeta.hideMobileTitle ?? false
+  // In the native app the tab bar is native and sits BELOW the WebView in the
+  // app's own layout — the page must not reserve space for a fixed pill.
+  const isNative = useIsNativeApp()
 
   return (
     <SidebarProvider>
       <PresenceHeartbeat />
+      <NativeNavBridge />
       <AppSidebar />
       <SidebarInset className="h-svh min-h-0 overflow-hidden">
         <TrialBanner />
@@ -63,11 +69,13 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
           {children}
         </div>
         {/* Spacer reserving room for the fixed mobile bottom nav (incl. safe area) */}
-        <div
-          className="shrink-0 md:hidden"
-          style={{ height: "calc(4rem + env(safe-area-inset-bottom))" }}
-          aria-hidden="true"
-        />
+        {!isNative && (
+          <div
+            className="shrink-0 md:hidden"
+            style={{ height: "calc(4rem + env(safe-area-inset-bottom))" }}
+            aria-hidden="true"
+          />
+        )}
       </SidebarInset>
       <MobileBottomNav />
     </SidebarProvider>
@@ -78,13 +86,18 @@ export function AppShellLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const useShell = shouldUsePersistentShell(pathname)
 
-  if (!useShell) {
-    return <>{children}</>
-  }
-
   return (
-    <AppShellProvider enabled>
-      <PersistentShellFrame>{children}</PersistentShellFrame>
-    </AppShellProvider>
+    <>
+      {/* Always mounted: the native tab bar needs pathname + shell-visibility
+          even on routes without the shell (login, onboarding, sjefen …). */}
+      <NativeNavState shell={useShell} />
+      {useShell ? (
+        <AppShellProvider enabled>
+          <PersistentShellFrame>{children}</PersistentShellFrame>
+        </AppShellProvider>
+      ) : (
+        children
+      )}
+    </>
   )
 }

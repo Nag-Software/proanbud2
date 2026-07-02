@@ -17,52 +17,40 @@ import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSidebar } from "@/components/ui/sidebar"
 import { useUnreadMessages } from "@/hooks/use-unread-messages"
-import { useUserRole } from "@/hooks/use-user-role"
+import { useNavItems } from "@/hooks/use-nav-items"
+import { useIsNativeApp } from "@/hooks/use-is-native-app"
 import { useActiveWorkSession } from "@/hooks/use-active-work-session"
+import type { NavIconKey } from "@/lib/nav-items"
 
-// Bunn-naven speiler de daglige kjerneoppgavene — HMS nås via sidebaren/Meny.
-const fullNavItems = [
-  { href: "/", icon: LayoutDashboardIcon, label: "Dashbord", exact: true },
-  { href: "/prosjekter", icon: FolderIcon, label: "Prosjekter", exact: false },
-  { href: "/tilbud", icon: FileTextIcon, label: "Tilbud", exact: false },
-  { href: "/timeforing", icon: ClockIcon, label: "Timer", exact: false },
-  { href: "/meldinger", icon: InboxIcon, label: "Meldinger", exact: false },
-]
-
-// Workers only have Projects, Timer, Kart (read-only locator), Kjørebok
-// (own trips across projects) + Calendar.
-const workerNavItems = [
-  { href: "/prosjekter", icon: FolderIcon, label: "Prosjekter", exact: false },
-  { href: "/timeforing", icon: ClockIcon, label: "Timer", exact: false },
-  { href: "/kart", icon: MapIcon, label: "Kart", exact: false },
-  { href: "/kjorebok", icon: CarIcon, label: "Kjørebok", exact: false },
-  { href: "/kalender", icon: CalendarDays, label: "Kalender", exact: false },
-]
+// Item definitions (roles, feature gates) live in lib/nav-items — shared with
+// the native-app bridge. Here we only map the stable icon keys to lucide.
+const NAV_ICONS: Record<NavIconKey, typeof LayoutDashboardIcon> = {
+  dashboard: LayoutDashboardIcon,
+  projects: FolderIcon,
+  offers: FileTextIcon,
+  hours: ClockIcon,
+  messages: InboxIcon,
+  map: MapIcon,
+  trips: CarIcon,
+  calendar: CalendarDays,
+}
 
 export function MobileBottomNav() {
   const pathname = usePathname()
   const { toggleSidebar } = useSidebar()
   const unreadCount = useUnreadMessages()
   const { hasActiveSession } = useActiveWorkSession()
-  const { isWorker, roleKnown, hasFeature, loadingRole } = useUserRole()
-  // While the plan context loads, keep items visible to avoid flicker.
-  const featureEnabled = (feature: Parameters<typeof hasFeature>[0]) =>
-    loadingRole || hasFeature(feature)
-  // Hide Proff-only destinations when the plan lacks the feature.
-  // (/tilbud gates ikke — tilbud er kjernefunksjon i alle planer.)
-  const FEATURE_BY_HREF: Record<string, Parameters<typeof hasFeature>[0]> = {
-    "/meldinger": "meldinger",
-    "/kalender": "kalender",
-  }
-  const navItems = (isWorker ? workerNavItems : fullNavItems).filter((item) => {
-    const feature = FEATURE_BY_HREF[item.href]
-    return !feature || featureEnabled(feature)
-  })
+  const { navItems, roleKnown } = useNavItems()
+  // Inside the native app the tab bar is native (fed via native-nav-bridge) —
+  // the web pill must not render a second menu.
+  const isNative = useIsNativeApp()
   // Med 5 nav-punkter + Meny blir det 6 kolonner — stram inn padding og
   // skriftstørrelse litt så «Prosjekter»/«Meldinger» ikke kolliderer på smale
   // skjermer. Fire eller færre punkter beholder dagens romslige layout.
   // Skeleton-tilstanden har 5 plasser og bruker derfor også kompakt layout.
   const isCompact = !roleKnown || navItems.length >= 5
+
+  if (isNative) return null
 
   return (
     <nav
@@ -97,7 +85,8 @@ export function MobileBottomNav() {
             </div>
           ))}
 
-        {roleKnown && navItems.map(({ href, icon: Icon, label, exact }) => {
+        {roleKnown && navItems.map(({ href, icon, label, exact }) => {
+          const Icon = NAV_ICONS[icon]
           const isActive = exact ? pathname === href : pathname === href || pathname.startsWith(href + "/")
           return (
             <Link
