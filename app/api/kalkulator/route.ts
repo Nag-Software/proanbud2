@@ -4,14 +4,38 @@ import { z } from "zod"
 
 import { openaiFetch } from "@/lib/llm/openai-fetch"
 import { logServerError } from "@/lib/errors/log"
+import { createAdminClient } from "@/lib/supabase/admin"
+import {
+  ANALYSIS_SYSTEM_PROMPT,
+  buildAnalysisUserPromptSections,
+} from "@/lib/tilbud/analysis-system-prompt"
+import { matchNorwegianSupplierPrices } from "@/lib/tilbud/supplier-prices"
+import {
+  formatMaterialSearchHitsForPrompt,
+  searchMaterialPricesForOffer,
+} from "@/lib/tilbud/material-web-search"
+import {
+  formatNormalPriceForPrompt,
+  mapNormalPriceRows,
+  pickBestNormalPrice,
+} from "@/lib/tilbud/normal-prices"
+import { finalizeGeneratedOfferLineItems } from "@/lib/tilbud/company-price-utils"
+import { calculateOfferTotals, type OfferLineItem } from "@/lib/tilbud/types"
 
 // Offentlig KI-tilbudskalkulator (lead-magnet, ingen innlogging).
-// Grensen på gratisbruk ligger i en cookie — bevisst lettvekts: volumet er
-// lavt, kostnaden per kall er øre, og målet er registreringer, ikke vanntett
-// kvotehåndhevelse. max_tokens + kort beskrivelse begrenser kostnadstaket.
+//
+// Bruker NØYAKTIG samme motor som det interne /api/tilbud/analyse:
+// ANALYSIS_SYSTEM_PROMPT + samme oppdragsgrunnlag med materialpriser fra
+// nettprissøk (Brave), innebygd norsk leverandørkatalog som fallback og
+// normalpris-indikator — bare uten bedriftens prisfiler/lagrede jobber
+// (anonym bruker har ingen). Grensen på gratisbruk ligger i en cookie —
+// bevisst lettvekts: volumet er lavt og målet er registreringer.
 
 const DAILY_LIMIT = Math.max(1, Number(process.env.KALKULATOR_DAILY_LIMIT) || 3)
 const LIMIT_COOKIE = "pa_kalk"
+
+// Nettprissøk + full analyse tar gjerne 20–40s — samme takhøyde som analyse-ruten.
+export const maxDuration = 60
 
 const bodySchema = z.object({
   beskrivelse: z.string().min(20, "Beskriv jobben litt mer utfyllende (minst 20 tegn).").max(2000),
@@ -27,43 +51,33 @@ const FAG_LABELS: Record<string, string> = {
   annet: "håndverksarbeid",
 }
 
-const SYSTEM_PROMPT = `Du er en erfaren norsk håndverksmester som setter opp profesjonelle pristilbud.
-Basert på kundens beskrivelse av jobben lager du et komplett tilbudsutkast.
+// Samme linje-/svarskjema som /api/tilbud/analyse.
+const aiLineItemSchema = z.object({
+  title: z.string().trim().min(1),
+  description: z.string().trim().default(""),
+  reasoning: z.string().trim().default(""),
+  quantity: z.number().min(0).default(1),
+  unit: z.string().trim().default("stk"),
+  subproject: z.string().trim().default("Generelt"),
+  supplier: z.string().trim().default(""),
+  nobb: z.string().trim().optional(),
+  supplierSku: z.string().trim().optional(),
+  // Modellen følger prompt-eksemplet og sender ofte "" — behandle som utelatt.
+  supplierUrl: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().url().optional()
+  ),
+  unitPriceNok: z.number().min(0),
+  markupPercent: z.number().min(0).max(100).default(15),
+  discountPercent: z.number().min(0).max(100).default(0),
+})
 
-Returner KUN gyldig JSON på denne formen:
-{
-  "tittel": "Kort tittel på tilbudet, f.eks. «Utskifting av 12 vinduer»",
-  "prosjektnavn": "Kort prosjektnavn, f.eks. «Vinduer enebolig Holmestrand»",
-  "innledning": "2–3 setninger rettet til kunden: hva som skal gjøres og hvordan arbeidet utføres. Profesjonell og tillitvekkende, uten superlativer.",
-  "linjer": [
-    { "kategori": "…", "tittel": "Kort linjenavn (3–6 ord)", "beskrivelse": "Valgfri utdyping i én setning", "mengde": 1, "enhet": "stk", "enhetsprisNok": 1000 }
-  ],
-  "forbehold": ["…", "…"]
-}
-
-Regler:
-- 3–7 linjer som dekker hele jobben: arbeid, materialer, og stillas/avfall der det er naturlig.
-- Grupper linjene i 2–4 kategorier slik et proft tilbud gjør — kategorinavn tilpasset jobben, f.eks. «Riving og klargjøring», «Montering», «Materialer», «Rigg og drift». Linjer i samme kategori skal stå rett etter hverandre.
-- Enheter: stk, m2, lm, time eller RS (rund sum).
-- Realistiske norske priser (eks. mva): timepris håndverker 650–900 kr, materialer til innkjøpspris pluss normalt påslag. Runde tall.
-
-VIKTIG — kalibrering av pris og arbeidstid (dette er det vanligste avviket, følg det nøye):
-- Estimer som en EFFEKTIV, erfaren fagperson: tiden jobben faktisk tar, aldri buffer eller «for sikkerhets skyld»-timer. Usikkerhet håndteres i forbeholdene, ikke i prisen.
-- IKKE splitt arbeidet i mange småposter. Planlegging, oppmåling, tilrigging, tetting, rydding og sluttkontroll er INKLUDERT i hovedlinjene — aldri egne poster. Kun stillas/større rigg og avfallshåndtering kan stå separat.
-- Rimelighetssjekk før du svarer: samlet arbeidskostnad delt på timeprisen = antall timer. Er timetallet høyere enn en effektiv fagperson faktisk trenger, reduser prisene.
-- Tilbudet skal ligge på konkurransedyktig markedsnivå. Et tilbud som er 20 % for høyt taper jobben — heller stramt enn romslig.
-
-Prisreferanser (arbeid + materialer, eks. mva) — bruk som anker, avvik kun med god grunn:
-- Maling vegger/tak, to strøk: 150–250 kr per m² MALT FLATE — der ALT er inkludert (maling, materiell, tildekking, kantarbeid). Aldri egne linjer for materialer/tildekking på malerjobber. Er bare gulvareal oppgitt: veggflate ≈ 2,3 × gulvflate, takflate ≈ gulvflate.
-- Komplett vindusbytte: 2 000–2 700 kr arbeid per vindu (riving, montering, tetting, listing) + vinduets materialkost.
-- Parkett/laminat: 250–400 kr per m². Flislegging våtrom: 900–1 400 kr per m².
-- Elektrikerarbeid: 1 200–1 800 kr per punkt for standard punkter.
-- Rørleggerbytte av standard utstyr (servant, kran, toalett): utstyrspris + 2–4 timer arbeid.
-- Liten innvendig jobb (male et par rom, bytte servant): totalen ender typisk 15 000–40 000 kr inkl. mva — sjekk at du lander der.
-
-- Hold beskrivelsene generelle nok til at de stemmer — ikke dikt opp detaljer kunden ikke har oppgitt.
-- 2–4 nøkterne forbehold (f.eks. skjulte feil, tillegg ved råte, priser forutsetter fri tilkomst).
-- Skriv på norsk bokmål. Ingen tekst utenfor JSON-objektet.`
+const aiResponseSchema = z.object({
+  summary: z.string().trim().default(""),
+  reasoning: z.string().trim().default(""),
+  warnings: z.array(z.string().trim()).default([]),
+  lineItems: z.array(aiLineItemSchema).min(1),
+})
 
 function normalizeJsonFromModel(raw: string): string {
   return raw
@@ -77,14 +91,45 @@ function osloToday(): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Oslo" }).format(new Date())
 }
 
-type Linje = {
-  kategori: string
-  tittel: string
-  beskrivelse: string
-  mengde: number
-  enhet: string
-  enhetsprisNok: number
-  sumNok: number
+function toOfferLineItems(items: z.infer<typeof aiLineItemSchema>[]): OfferLineItem[] {
+  return items.map((item) => ({
+    id: crypto.randomUUID(),
+    subproject: item.subproject || "Generelt",
+    title: item.title,
+    description: item.description,
+    reasoning: item.reasoning || undefined,
+    quantity: item.quantity,
+    unit: item.unit,
+    supplier: item.supplier,
+    nobb: item.nobb,
+    supplierSku: item.supplierSku,
+    supplierUrl: item.supplierUrl,
+    unitPriceNok: item.unitPriceNok,
+    markupPercent: item.markupPercent,
+    discountPercent: item.discountPercent,
+  }))
+}
+
+/**
+ * Enhets-sanering: «time» gir bare mening for arbeid/transport, som per
+ * systemprompten har påslag 0. Materiallinjer med påslag som feilaktig får
+ * unit "time" (modellvarians) gjøres om til stk/RS, så dokumentet aldri
+ * viser «12 time trevinduer».
+ */
+function sanitizeUnits(items: OfferLineItem[]): OfferLineItem[] {
+  return items.map((item) => {
+    if (item.unit === "time" && item.markupPercent > 0) {
+      return { ...item, unit: item.quantity === 1 ? "RS" : "stk" }
+    }
+    return item
+  })
+}
+
+/** Tittel utledes av beskrivelsens første setning — analyse-motoren krever en. */
+function deriveTitle(beskrivelse: string, fagLabel: string): string {
+  const firstSentence = beskrivelse.split(/[.!?\n]/)[0]?.trim() ?? ""
+  if (firstSentence.length >= 8) return firstSentence.slice(0, 90)
+  return `Pristilbud – ${fagLabel}`
 }
 
 export async function POST(request: Request) {
@@ -97,7 +142,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Dagsgrense per nettleser
+    // Dagsgrense per nettleser — sjekkes FØR nettsøk/KI-kall.
     const today = osloToday()
     const cookieStore = await cookies()
     const [cookieDate, cookieCount] = (cookieStore.get(LIMIT_COOKIE)?.value ?? "").split(":")
@@ -113,19 +158,78 @@ export async function POST(request: Request) {
     }
 
     const fagLabel = FAG_LABELS[parsed.data.fag ?? "annet"]
-    const userPrompt = [
-      `Fagområde: ${fagLabel}`,
-      "",
-      "Kundens beskrivelse av jobben:",
-      parsed.data.beskrivelse.trim(),
-    ].join("\n")
+    const beskrivelse = parsed.data.beskrivelse.trim()
+    const title = deriveTitle(beskrivelse, fagLabel)
+    // Kalibreringen ligger i oppdragsgrunnlaget (caller-styrt felt), IKKE i
+    // systemprompten — motoren og promptmodellen er identisk med /api/tilbud/analyse.
+    const sourceSummary =
+      `Fagområde: ${fagLabel}. Forespørsel fra Proanbuds gratis tilbudskalkulator. ` +
+      `Kalkylen skal være KOMPLETT: alle nødvendige materialer skal med som egne linjer — også ` +
+      `hovedproduktene som leveres (f.eks. selve vinduene, dørene, flisene). ` +
+      `Timeforbruk estimeres som en effektiv, erfaren fagperson uten buffer — usikkerhet håndteres ` +
+      `som warnings/forbehold, ikke i timetallet. Stillas og rigg prises som RS (leie/oppsett), ikke som timer.`
+    const query = `${title}\n${beskrivelse}\n${sourceSummary}`
+
+    // Materialgrunnlag — samme kilder som den interne motoren:
+    // nettprissøk (best-effort), fallback-katalog og normalpris-indikator.
+    const [materialSearchHits, normalPriceRows] = await Promise.all([
+      searchMaterialPricesForOffer({
+        title,
+        description: beskrivelse,
+        sourceSummary,
+        subprojects: [],
+      }).catch((error) => {
+        console.warn("[kalkulator] nettprissøk feilet — fortsetter uten", error)
+        return []
+      }),
+      createAdminClient()
+        .from("normal_prices")
+        .select(
+          "id, project_type, slug, price_low_nok, price_normal_nok, price_high_nok, typical_total_min_nok, typical_total_max_nok, unit"
+        )
+        .order("sort_order", { ascending: true })
+        .then(({ data }) => data ?? []),
+    ])
+
+    const externalPrices = formatMaterialSearchHitsForPrompt(materialSearchHits)
+    const matchedNormalPrice = pickBestNormalPrice(mapNormalPriceRows(normalPriceRows as unknown[]), query)
+    const normalPriceIndicator = matchedNormalPrice ? formatNormalPriceForPrompt(matchedNormalPrice) : null
+    const supplierMatches = matchNorwegianSupplierPrices({
+      description: query,
+      subprojects: [],
+    })
+
+    const userPrompt = buildAnalysisUserPromptSections({
+      contextJson: {
+        request: {
+          title,
+          description: beskrivelse,
+          sourceSummary,
+          subprojects: [],
+        },
+        prisfiler: {
+          filer: [],
+          fallbackProdukter: supplierMatches,
+        },
+        eksternePriser: externalPrices,
+        normalPrisIndikator: normalPriceIndicator,
+        lagredeJobber: [],
+        relevanteLagredeJobber: [],
+        outputRequirements: {
+          minLineItems: 6,
+          maxLineItems: 30,
+          includeWarnings: true,
+          requireLineItemReasoning: true,
+        },
+      },
+      priceFileAttachments: [],
+    }).join("\n\n")
 
     const response = await openaiFetch("chat/completions", {
       model: process.env.OPENAI_MODEL || "gpt-5.2-mini",
       response_format: { type: "json_object" },
-      max_completion_tokens: 1600,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
     })
@@ -133,51 +237,36 @@ export async function POST(request: Request) {
     const payload = (await response.json()) as {
       choices?: Array<{ message?: { content?: string | null } }>
     }
-    const raw = payload.choices?.[0]?.message?.content || "{}"
-    const draft = JSON.parse(normalizeJsonFromModel(raw)) as {
-      tittel?: string
-      prosjektnavn?: string
-      innledning?: string
-      linjer?: Array<{
-        kategori?: string
-        tittel?: string
-        beskrivelse?: string
-        mengde?: number
-        enhet?: string
-        enhetsprisNok?: number
-      }>
-      forbehold?: string[]
+    const rawContent = payload.choices?.[0]?.message?.content || "{}"
+    const aiParsed = aiResponseSchema.safeParse(JSON.parse(normalizeJsonFromModel(rawContent)))
+    if (!aiParsed.success) {
+      const detail = aiParsed.error.issues
+        .slice(0, 3)
+        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        .join("; ")
+      throw new Error(`KI returnerte et ugyldig kalkyleformat (${detail})`)
     }
 
-    // Aldri stol på modellens regning — alle summer regnes her.
-    const linjer: Linje[] = (draft.linjer ?? [])
-      .filter((l) => l && typeof (l.tittel ?? l.beskrivelse) === "string" && (l.tittel ?? l.beskrivelse ?? "").trim())
-      .slice(0, 12)
-      .map((l) => {
-        const mengde = Math.max(0, Math.round((Number(l.mengde) || 1) * 100) / 100)
-        const enhetsprisNok = Math.max(0, Math.round(Number(l.enhetsprisNok) || 0))
-        return {
-          kategori: String(l.kategori || "Generelt").trim().slice(0, 60) || "Generelt",
-          tittel: String(l.tittel || l.beskrivelse || "").trim().slice(0, 120),
-          beskrivelse: l.tittel ? String(l.beskrivelse || "").trim().slice(0, 240) : "",
-          mengde,
-          enhet: String(l.enhet || "stk").slice(0, 10),
-          enhetsprisNok,
-          sumNok: Math.round(mengde * enhetsprisNok),
-        }
-      })
-
-    if (linjer.length === 0 || !draft.tittel) {
+    // Samme etterbehandling som den interne motoren (uten prisfiler/lagrede jobber).
+    const finalized = finalizeGeneratedOfferLineItems({
+      generatedItems: sanitizeUnits(toOfferLineItems(aiParsed.data.lineItems)),
+      companyRows: [],
+      query,
+      subprojects: [],
+      companyName: null,
+      preserveAiMaterialSelections: true,
+    })
+    const lineItems = finalized.lineItems
+    if (lineItems.length === 0) {
       throw new Error("KI returnerte tomt tilbud")
     }
 
-    const subtotalNok = linjer.reduce((acc, l) => acc + l.sumNok, 0)
-    const mvaNok = Math.round(subtotalNok * 0.25)
-    const totalNok = subtotalNok + mvaNok
+    const totals = calculateOfferTotals(lineItems)
+    const totalInklMvaNok = Math.round(totals.subtotalNok * 1.25)
 
     // Standard betalingsplan på større jobber — som i ekte Proanbud-tilbud.
     const betalingsplan =
-      totalNok >= 100_000
+      totalInklMvaNok >= 100_000
         ? [
             { label: "Ved oppstart", percent: 30 },
             { label: "Underveis i arbeidet", percent: 40 },
@@ -185,17 +274,18 @@ export async function POST(request: Request) {
           ]
         : null
 
+    const forbehold = Array.from(
+      new Set([...aiParsed.data.warnings, ...finalized.warnings].map((w) => w.trim()).filter(Boolean))
+    ).slice(0, 5)
+
     const res = NextResponse.json({
       tilbud: {
-        tittel: String(draft.tittel).slice(0, 120),
-        prosjektnavn: String(draft.prosjektnavn || "").trim().slice(0, 80),
-        innledning: String(draft.innledning || "").slice(0, 600),
-        linjer,
-        forbehold: (draft.forbehold ?? []).map((f) => String(f).slice(0, 200)).slice(0, 5),
+        tittel: title,
+        innledning: aiParsed.data.summary.slice(0, 600),
+        lineItems,
+        forbehold,
         betalingsplan,
-        subtotalNok,
-        mvaNok,
-        totalNok,
+        totalInklMvaNok,
       },
       remaining: DAILY_LIMIT - usedToday - 1,
     })

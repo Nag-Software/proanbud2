@@ -7,6 +7,7 @@ import { ArrowRightIcon, Loader2Icon, SparklesIcon } from "lucide-react"
 
 import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
 import type { OfferDocumentData } from "@/lib/tilbud/offer-document"
+import type { OfferLineItem } from "@/lib/tilbud/types"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
@@ -26,22 +27,11 @@ type FagKey = (typeof FAG)[number]["key"]
 
 type Tilbud = {
   tittel: string
-  prosjektnavn: string
   innledning: string
-  linjer: Array<{
-    kategori: string
-    tittel: string
-    beskrivelse: string
-    mengde: number
-    enhet: string
-    enhetsprisNok: number
-    sumNok: number
-  }>
+  lineItems: OfferLineItem[]
   forbehold: string[]
   betalingsplan: Array<{ label: string; percent: number }> | null
-  subtotalNok: number
-  mvaNok: number
-  totalNok: number
+  totalInklMvaNok: number
 }
 
 const SIGNUP_URL = "/signup?utm_source=kalkulator&utm_medium=produkt&utm_campaign=gratis-kalkulator"
@@ -67,7 +57,6 @@ export function KalkulatorClient() {
     return {
       title: tilbud.tittel,
       description: tilbud.innledning,
-      projectName: tilbud.prosjektnavn || undefined,
       offerReference: "UTKAST",
       customer: {
         name: "Kari Nordmann",
@@ -75,18 +64,7 @@ export function KalkulatorClient() {
         postalCode: "3084",
         city: "Holmestrand",
       },
-      lineItems: tilbud.linjer.map((linje, index) => ({
-        id: `kalk-${index}`,
-        subproject: linje.kategori || "Generelt",
-        title: linje.tittel,
-        description: linje.beskrivelse,
-        quantity: linje.mengde,
-        unit: linje.enhet,
-        supplier: "",
-        unitPriceNok: linje.enhetsprisNok,
-        markupPercent: 0,
-        discountPercent: 0,
-      })),
+      lineItems: tilbud.lineItems,
       company: {
         id: "kalkulator-utkast",
         name: "Ditt firma AS",
@@ -256,7 +234,7 @@ export function KalkulatorClient() {
                 <OfferDocumentPreview
                   {...documentData}
                   extraTerms={tilbud.forbehold}
-                  showSupplier={false}
+                  showSupplier
                   className="bg-[#e8e6e1] p-3 sm:p-6"
                   documentClassName="mx-auto w-full min-w-[660px] max-w-[794px] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.12)]"
                 />
