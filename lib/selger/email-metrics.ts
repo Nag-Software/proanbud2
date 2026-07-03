@@ -25,7 +25,7 @@ export type SalesMetrics = {
   }
 }
 
-const EMAIL_TEMPLATES = [...OUTREACH_TEMPLATE_IDS, "selger-manual"]
+const EMAIL_TEMPLATES = [...OUTREACH_TEMPLATE_IDS]
 
 export async function fetchSalesMetrics(periodDays: number): Promise<SalesMetrics> {
   const admin = createAdminClient()

@@ -54,10 +54,11 @@ export function getOutreachSignupUrl(): string {
   return process.env.OUTREACH_SIGNUP_URL?.trim() || "https://nye.proanbud.no/signup?utm_source=outreach"
 }
 
-/** Template ids logged to seller_email_log for outbound lead emails. Both the
- *  first cold email and follow-ups count toward the same daily cap so the engine
- *  never exceeds a safe sending volume regardless of how the run is triggered. */
-export const OUTREACH_TEMPLATE_IDS = ["outreach-cold", "outreach-followup"] as const
+/** Template ids logged to seller_email_log for outbound lead emails. Historic
+ *  motor sends (outreach-cold/-followup) and today's manual per-lead sends
+ *  (selger-manual) all count toward the same daily cap, so the sending volume
+ *  stays safe for the domain no matter how the email was triggered. */
+export const OUTREACH_TEMPLATE_IDS = ["outreach-cold", "outreach-followup", "selger-manual"] as const
 
 /** Daily send cap protecting sender reputation (cold + follow-up combined).
  *  Default is deliberately conservative (50/day): cold outreach currently sends from
