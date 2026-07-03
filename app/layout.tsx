@@ -57,6 +57,12 @@ export const viewport: Viewport = {
   themeColor: "#ffffff",
 }
 
+// Warm the Supabase connection (DNS + TCP + TLS) while the page is still
+// loading, so the first client-side query doesn't pay the full handshake —
+// worth 100-300ms on mobile. React 19 hoists these into <head> automatically.
+// crossOrigin must match supabase-js' CORS fetches for the socket to be reused.
+const SUPABASE_ORIGIN = process.env.NEXT_PUBLIC_SUPABASE_URL
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -68,6 +74,12 @@ export default function RootLayout({
         className={`${satoshi.className} ${satoshi.variable} antialiased`}
         suppressHydrationWarning
       >
+        {SUPABASE_ORIGIN && (
+          <>
+            <link rel="preconnect" href={SUPABASE_ORIGIN} crossOrigin="anonymous" />
+            <link rel="dns-prefetch" href={SUPABASE_ORIGIN} />
+          </>
+        )}
         <AnalyticsProvider>
           <TooltipProvider>
             <AuthProvider>

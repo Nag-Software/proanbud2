@@ -112,6 +112,49 @@ interface DashboardData {
   companyStatus: "aktiv" | "feil" | "vedlikehold"
 }
 
+// Siste ferdiglastede dashboard per bruker, så gjenbesøk (og appens kalde
+// starter i WebView) maler tallene UMIDDELBART mens de ferske spørringene
+// kjører i bakgrunnen og retter opp — samme stale-while-revalidate-mønster
+// som rollecachen i role-provider. Kun visning: RLS + middleware er fortsatt
+// sikkerhetsgrensen, og nøkkelen er per bruker-id. Bump versjonen i prefikset
+// hvis DashboardData endrer form.
+const DASH_CACHE_PREFIX = "pa_dash_v1:"
+
+type DashSnapshot = {
+  data: DashboardData
+  checklist: { companyId: string; steps: KomIGangStep[] } | null
+}
+
+function readDashSnapshot(userId: string): DashSnapshot | null {
+  try {
+    const raw = window.localStorage.getItem(DASH_CACHE_PREFIX + userId)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as DashSnapshot
+    const d = parsed?.data
+    if (
+      !d ||
+      typeof d.omsetning !== "number" ||
+      !Array.isArray(d.chartData) ||
+      !Array.isArray(d.recentOffers) ||
+      !Array.isArray(d.tableOffers) ||
+      !Array.isArray(d.topProjects)
+    ) {
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function writeDashSnapshot(userId: string, snapshot: DashSnapshot) {
+  try {
+    window.localStorage.setItem(DASH_CACHE_PREFIX + userId, JSON.stringify(snapshot))
+  } catch {
+    // Full/blokkert storage — cachen er kun best-effort.
+  }
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const { canonicalRole, loadingRole } = useUserRole()
@@ -205,6 +248,16 @@ export default function DashboardPage() {
       // network getUser() (middleware + AuthProvider already validated it).
       if (authLoading) return
       if (!authUser) { setLoading(false); return }
+
+      // Gjenbesøk: mal siste kjente dashboard med en gang — de ferske
+      // spørringene under kjører uansett og erstatter alt når de lander.
+      const snapshot = readDashSnapshot(authUser.id)
+      if (snapshot && !cancelled) {
+        setData(snapshot.data)
+        setChecklist(snapshot.checklist)
+        setLoading(false)
+        setFeedsLoading(false)
+      }
 
       const supabase = createClient()
       const { data: userData } = await supabase
@@ -328,20 +381,23 @@ export default function DashboardPage() {
       ]
 
       // PHASE 1 — paint KPIs / chart / gauge / company the moment the aggregates
-      // resolve, with empty feeds. The feed name-lookups below add 1-2 more
-      // serial round-trips; gating the whole dashboard on them kept every number
-      // skeletoned far longer than necessary.
+      // resolve. The feed name-lookups below add 1-2 more serial round-trips;
+      // gating the whole dashboard on them kept every number skeletoned far
+      // longer than necessary. Feeds from a hydrated snapshot are kept as-is
+      // (never flashed back to empty) until the fresh ones land in phase 2.
       if (cancelled) return
-      setData({
+      setData((prev) => ({
         omsetning, omsetningPrev,
         activeProjects, activeProjectsPrev,
         tilbudSendt, tilbudSentPrev,
         kunders, kundersPrev,
         todayOmsetning, yesterdayOmsetning,
         chartData,
-        recentOffers: [], tableOffers: [], topProjects: [],
+        recentOffers: prev?.recentOffers ?? [],
+        tableOffers: prev?.tableOffers ?? [],
+        topProjects: prev?.topProjects ?? [],
         userName, companyName, companyLogo, companyStatus,
-      })
+      }))
       setChecklist({ companyId, steps: checklistSteps })
       setLoading(false)
 
@@ -413,12 +469,25 @@ export default function DashboardPage() {
         )
       }
 
-      // PHASE 2 — patch the resolved feeds into the already-painted dashboard.
+      // PHASE 2 — patch the resolved feeds into the already-painted dashboard,
+      // and persist the complete snapshot so the NESTE besøk maler momentant.
       if (cancelled) return
-      setData((prev) =>
-        prev ? { ...prev, recentOffers, tableOffers, topProjects } : prev
-      )
+      const fullData: DashboardData = {
+        omsetning, omsetningPrev,
+        activeProjects, activeProjectsPrev,
+        tilbudSendt, tilbudSentPrev,
+        kunders, kundersPrev,
+        todayOmsetning, yesterdayOmsetning,
+        chartData,
+        recentOffers, tableOffers, topProjects,
+        userName, companyName, companyLogo, companyStatus,
+      }
+      setData(fullData)
       setFeedsLoading(false)
+      writeDashSnapshot(authUser.id, {
+        data: fullData,
+        checklist: { companyId, steps: checklistSteps },
+      })
     }
     load()
     return () => {

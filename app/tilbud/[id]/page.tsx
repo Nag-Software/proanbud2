@@ -269,28 +269,32 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
   }
 
   const offer = offerResult.data as OfferRecord
-  const tripletexSync = await fetchOfferTripletexSyncStatus(
-    companyId,
-    offer.id,
-    offer.customer_id,
-    offer.project_id
-  ).catch((error) => {
-    void logServerError({
-      message: "Failed to fetch Tripletex sync status for offer detail",
-      error,
-      source: "server",
-      route: "app/tilbud/[id]/page.tsx",
-      level: "warning",
+  // Both depend only on the offer row and not on each other — one parallel
+  // round instead of two serial ones.
+  const [tripletexSync, sourceDocuments] = await Promise.all([
+    fetchOfferTripletexSyncStatus(
       companyId,
-      context: { offerId: offer.id },
-    })
-    return null
-  })
+      offer.id,
+      offer.customer_id,
+      offer.project_id
+    ).catch((error) => {
+      void logServerError({
+        message: "Failed to fetch Tripletex sync status for offer detail",
+        error,
+        source: "server",
+        route: "app/tilbud/[id]/page.tsx",
+        level: "warning",
+        companyId,
+        context: { offerId: offer.id },
+      })
+      return null
+    }),
+    refreshSourceDocumentUrls(supabase, toSourceDocuments(offer.source_documents)),
+  ])
   const lineItems = toLineItems(offer.line_items)
   const project = normalizeRelatedRow(offer.projects)
   const customer = normalizeRelatedRow(offer.customers) || normalizeRelatedRow(project?.customers)
   const resolvedCustomerId = offer.customer_id || project?.customer_id || null
-  const sourceDocuments = await refreshSourceDocumentUrls(supabase, toSourceDocuments(offer.source_documents))
   const projectSummary = readProjectSummaryFromAnalysis(offer.analysis_result)
 
   return (

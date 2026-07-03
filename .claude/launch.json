@@ -9,6 +9,12 @@
       "autoPort": true
     },
     {
+      "name": "prod-start",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["start"],
+      "port": 3000
+    },
+    {
       "name": "attach-3000",
       "runtimeExecutable": "sh",
       "runtimeArgs": ["-c", "sleep 86400"],
