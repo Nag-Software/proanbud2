@@ -49,11 +49,10 @@ async function loadProspectContext(prospectId: string): Promise<ProspectContext 
   if (!p) return null
 
   const { data: steps } = await admin
-    .from("prospect_outreach")
-    .select("ai_subject, sent_at")
+    .from("seller_email_log")
+    .select("subject, created_at")
     .eq("prospect_id", prospectId)
-    .eq("status", "sent")
-    .order("sent_at", { ascending: true })
+    .order("created_at", { ascending: true })
     .limit(5)
 
   return {
@@ -66,7 +65,7 @@ async function loadProspectContext(prospectId: string): Promise<ProspectContext 
     openCount: (p.open_count as number | null) ?? 0,
     clickCount: (p.click_count as number | null) ?? 0,
     lastContactedAt: (p.last_contacted_at as string | null) ?? null,
-    steps: (steps ?? []).map((s) => ({ subject: s.ai_subject as string | null, sentAt: s.sent_at as string | null })),
+    steps: (steps ?? []).map((s) => ({ subject: s.subject as string | null, sentAt: s.created_at as string | null })),
   }
 }
 

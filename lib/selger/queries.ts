@@ -1,6 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
 import type {
+  PipelineLeadRow,
+  ProspectTaskRow,
+  ProspectTimelineEntry,
   SelgerActivityRow,
   SelgerCompanyFilters,
   SelgerCompanyListRow,
@@ -8,8 +11,13 @@ import type {
   SelgerEmailLogRow,
   SellerContactStatus,
   SelgerTimelineEntry,
+  TaskWithLead,
 } from "@/lib/selger/types"
 import { sellerActionLabels } from "@/lib/selger/types"
+import { OPEN_PIPELINE_STATUSES, type ProspectRow, type ProspectStatus } from "@/lib/outreach/types"
+import { PROSPECT_STATUS_LABELS } from "@/lib/outreach/types"
+import { ensureProspectsForCompanies } from "@/lib/selger/sync"
+import { isOptedOut } from "@/lib/outreach/send"
 
 function getAdmin() {
   return createAdminClient()
@@ -341,6 +349,409 @@ export async function fetchSelgerUnifiedActivity(limit = 200): Promise<SelgerAct
     }
   })
 }
+
+// ============================================================
+// Pipeline (kanban) — prospects er den kanoniske «dealen»
+// ============================================================
+
+const PIPELINE_SELECT =
+  "id, name, status, city, nace_description, email, phone, lead_score, is_hot, open_count, click_count, last_activity_at, stage_entered_at, hot_since, source, matched_company_id"
+
+async function attachTasksAndBilling(
+  admin: ReturnType<typeof createAdminClient>,
+  rows: Array<Record<string, unknown>>
+): Promise<PipelineLeadRow[]> {
+  const ids = rows.map((r) => String(r.id))
+  const matchedIds = rows.map((r) => r.matched_company_id).filter(Boolean) as string[]
+
+  const [tasksRes, billingRes] = await Promise.all([
+    ids.length
+      ? admin
+          .from("prospect_tasks")
+          .select("id, prospect_id, task_type, title, due_at, done_at, note, created_at")
+          .in("prospect_id", ids)
+          .is("done_at", null)
+      : Promise.resolve({ data: [] as ProspectTaskRow[] }),
+    matchedIds.length
+      ? admin
+          .from("company_billing")
+          .select("company_id, status, plan_key, trial_ends_at")
+          .in("company_id", matchedIds)
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+  ])
+
+  const taskByProspect = new Map<string, ProspectTaskRow>()
+  for (const task of (tasksRes.data ?? []) as ProspectTaskRow[]) {
+    taskByProspect.set(task.prospect_id, task)
+  }
+  const billingByCompany = new Map<string, { status: string; plan_key: string | null; trial_ends_at: string | null }>()
+  for (const row of (billingRes.data ?? []) as Array<Record<string, unknown>>) {
+    billingByCompany.set(String(row.company_id), {
+      status: String(row.status),
+      plan_key: (row.plan_key as string | null) ?? null,
+      trial_ends_at: (row.trial_ends_at as string | null) ?? null,
+    })
+  }
+
+  return rows.map((row) => {
+    const companyId = (row.matched_company_id as string | null) ?? null
+    const billing = companyId ? billingByCompany.get(companyId) : undefined
+    return {
+      id: String(row.id),
+      name: String(row.name),
+      status: String(row.status),
+      city: (row.city as string | null) ?? null,
+      nace_description: (row.nace_description as string | null) ?? null,
+      email: (row.email as string | null) ?? null,
+      phone: (row.phone as string | null) ?? null,
+      lead_score: (row.lead_score as number | null) ?? 0,
+      is_hot: Boolean(row.is_hot),
+      open_count: (row.open_count as number | null) ?? 0,
+      click_count: (row.click_count as number | null) ?? 0,
+      last_activity_at: (row.last_activity_at as string | null) ?? null,
+      stage_entered_at: (row.stage_entered_at as string | null) ?? null,
+      hot_since: (row.hot_since as string | null) ?? null,
+      source: String(row.source ?? "brreg"),
+      matched_company_id: companyId,
+      billing_status: billing?.status ?? null,
+      plan_key: billing?.plan_key ?? null,
+      trial_ends_at: billing?.trial_ends_at ?? null,
+      open_task: taskByProspect.get(String(row.id)) ?? null,
+    }
+  })
+}
+
+/** Alle åpne pipeline-leads (kanban-kolonnene), med åpen oppgave + billing.
+ *  Kjører trial-bro-synken først så selvregistrerte firmaer alltid er med. */
+export async function fetchPipelineLeads(
+  statuses: readonly string[] = OPEN_PIPELINE_STATUSES
+): Promise<PipelineLeadRow[]> {
+  const admin = getAdmin()
+  await ensureProspectsForCompanies(admin)
+
+  const { data, error } = await admin
+    .from("prospects")
+    .select(PIPELINE_SELECT)
+    .in("status", statuses as string[])
+    .order("lead_score", { ascending: false })
+    .limit(500)
+
+  if (error) {
+    console.error("fetchPipelineLeads", error)
+    await logServerError({
+      message: "fetchPipelineLeads: kunne ikke hente pipeline",
+      error,
+      source: "server",
+      route: "fetchPipelineLeads",
+    })
+    return []
+  }
+
+  return attachTasksAndBilling(admin, (data ?? []) as Array<Record<string, unknown>>)
+}
+
+/** Lukkede leads (Vunnet/Tapt) for egen visning. */
+export async function fetchClosedLeads(limit = 100): Promise<PipelineLeadRow[]> {
+  const admin = getAdmin()
+  const { data, error } = await admin
+    .from("prospects")
+    .select(PIPELINE_SELECT)
+    .in("status", ["kunde", "tapt"])
+    .order("updated_at", { ascending: false })
+    .limit(limit)
+
+  if (error) return []
+  return attachTasksAndBilling(admin, (data ?? []) as Array<Record<string, unknown>>)
+}
+
+// ============================================================
+// Lead-record (detaljside)
+// ============================================================
+
+export type ProspectDetail = {
+  prospect: ProspectRow
+  billing: { status: string; plan_key: string | null; trial_ends_at: string | null } | null
+  openTask: ProspectTaskRow | null
+  /** Står e-posten/org.nr på suppresjonslisten? Da er e-post-kanalen stengt. */
+  optedOut: boolean
+  scoreReasons: string[]
+}
+
+export async function fetchProspectDetail(prospectId: string): Promise<ProspectDetail | null> {
+  const admin = getAdmin()
+  const { data: prospect, error } = await admin
+    .from("prospects")
+    .select("*")
+    .eq("id", prospectId)
+    .maybeSingle()
+
+  if (error || !prospect) return null
+
+  const [taskRes, billingRes, optedOut] = await Promise.all([
+    admin
+      .from("prospect_tasks")
+      .select("id, prospect_id, task_type, title, due_at, done_at, note, created_at")
+      .eq("prospect_id", prospectId)
+      .is("done_at", null)
+      .maybeSingle(),
+    prospect.matched_company_id
+      ? admin
+          .from("company_billing")
+          .select("status, plan_key, trial_ends_at")
+          .eq("company_id", prospect.matched_company_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    isOptedOut(admin, {
+      email: (prospect.email as string | null) ?? null,
+      orgNumber: (prospect.org_number as string | null) ?? null,
+    }),
+  ])
+
+  const reasons = Array.isArray(prospect.lead_score_reason)
+    ? (prospect.lead_score_reason as string[])
+    : []
+
+  return {
+    prospect: prospect as unknown as ProspectRow,
+    billing: billingRes.data
+      ? {
+          status: String(billingRes.data.status),
+          plan_key: (billingRes.data.plan_key as string | null) ?? null,
+          trial_ends_at: (billingRes.data.trial_ends_at as string | null) ?? null,
+        }
+      : null,
+    openTask: (taskRes.data as ProspectTaskRow | null) ?? null,
+    optedOut,
+    scoreReasons: reasons,
+  }
+}
+
+const CALL_OUTCOME_LABELS: Record<string, string> = {
+  svar_interessert: "Fikk svar — interessert",
+  svar_ikke_interessert: "Fikk svar — ikke interessert",
+  ikke_svar: "Ikke svar",
+  beskjed: "La igjen beskjed",
+  feil_nummer: "Feil nummer",
+}
+
+/** Samlet tidslinje for et lead: e-poster (m/ engasjement), samtaler, notater,
+ *  statusskift, fullførte oppgaver og systemhendelser. App-side merge — samme
+ *  mønster som fetchSelgerCompanyTimeline. */
+export async function fetchProspectTimeline(prospectId: string): Promise<ProspectTimelineEntry[]> {
+  const admin = getAdmin()
+
+  const [activityRes, emailRes, tasksRes, prospectRes] = await Promise.all([
+    admin
+      .from("seller_activity_log")
+      .select("id, action, metadata, created_at, seller_user_id")
+      .eq("target_type", "prospect")
+      .eq("target_id", prospectId)
+      .order("created_at", { ascending: false })
+      .limit(200),
+    admin
+      .from("seller_email_log")
+      .select(
+        "id, template_id, recipient_email, subject, body, created_at, sent_by, opened_at, clicked_at, bounced_at"
+      )
+      .eq("prospect_id", prospectId)
+      .order("created_at", { ascending: false })
+      .limit(100),
+    admin
+      .from("prospect_tasks")
+      .select("id, task_type, title, note, done_at")
+      .eq("prospect_id", prospectId)
+      .not("done_at", "is", null)
+      .order("done_at", { ascending: false })
+      .limit(100),
+    admin.from("prospects").select("created_at, source").eq("id", prospectId).maybeSingle(),
+  ])
+
+  const sellerIds = [
+    ...new Set([
+      ...(activityRes.data ?? []).map((r) => r.seller_user_id).filter(Boolean),
+      ...(emailRes.data ?? []).map((r) => r.sent_by).filter(Boolean),
+    ]),
+  ] as string[]
+  const sellerEmails = await loadSellerEmails(sellerIds)
+
+  const entries: ProspectTimelineEntry[] = []
+
+  for (const row of activityRes.data ?? []) {
+    const meta = (row.metadata as Record<string, unknown>) ?? {}
+    const sellerEmail = row.seller_user_id ? sellerEmails.get(row.seller_user_id) ?? null : null
+
+    if (row.action === "phone_call") {
+      const outcome = typeof meta.outcome === "string" ? meta.outcome : null
+      entries.push({
+        id: `activity-${row.id}`,
+        kind: "call",
+        title: outcome ? `Samtale — ${CALL_OUTCOME_LABELS[outcome] ?? outcome}` : "Samtale",
+        description: typeof meta.note === "string" && meta.note ? meta.note : null,
+        created_at: row.created_at,
+        seller_email: sellerEmail,
+      })
+      continue
+    }
+    if (row.action === "note") {
+      entries.push({
+        id: `activity-${row.id}`,
+        kind: "note",
+        title: "Notat",
+        description: typeof meta.note === "string" ? meta.note : null,
+        created_at: row.created_at,
+        seller_email: sellerEmail,
+      })
+      continue
+    }
+    if (
+      row.action === "update_prospect_status" ||
+      row.action === "qualify_prospect" ||
+      row.action === "won_prospect" ||
+      row.action === "lost_prospect"
+    ) {
+      const from = typeof meta.from === "string" ? meta.from : null
+      const to = typeof meta.to === "string" ? meta.to : typeof meta.status === "string" ? meta.status : null
+      const fromLabel = from ? (PROSPECT_STATUS_LABELS as Record<string, string>)[from] ?? from : null
+      const toLabel = to ? (PROSPECT_STATUS_LABELS as Record<string, string>)[to] ?? to : null
+      const lostReason = typeof meta.lostReason === "string" ? meta.lostReason : null
+      entries.push({
+        id: `activity-${row.id}`,
+        kind: "status",
+        title:
+          fromLabel && toLabel
+            ? `Flyttet: ${fromLabel} → ${toLabel}`
+            : (sellerActionLabels[row.action] ?? row.action),
+        description: lostReason
+          ? `Årsak: ${lostReason}${typeof meta.note === "string" && meta.note ? ` — ${meta.note}` : ""}`
+          : typeof meta.note === "string" && meta.note
+            ? meta.note
+            : null,
+        created_at: row.created_at,
+        seller_email: sellerEmail,
+      })
+      continue
+    }
+    entries.push({
+      id: `activity-${row.id}`,
+      kind: "system",
+      title: sellerActionLabels[row.action] ?? row.action,
+      description: typeof meta.note === "string" ? meta.note : null,
+      created_at: row.created_at,
+      seller_email: sellerEmail,
+    })
+  }
+
+  for (const row of emailRes.data ?? []) {
+    const historic = !row.sent_by && (row.template_id === "outreach-cold" || row.template_id === "outreach-followup")
+    entries.push({
+      id: `email-${row.id}`,
+      kind: "email",
+      title: historic
+        ? `Automatisk utsendelse (historisk): ${row.subject ?? row.template_id}`
+        : `E-post sendt: ${row.subject ?? row.template_id}`,
+      description: row.recipient_email,
+      created_at: row.created_at,
+      seller_email: row.sent_by ? sellerEmails.get(row.sent_by) ?? null : null,
+      email: {
+        subject: (row.subject as string | null) ?? null,
+        body: (row.body as string | null) ?? null,
+        opened_at: (row.opened_at as string | null) ?? null,
+        clicked_at: (row.clicked_at as string | null) ?? null,
+        bounced_at: (row.bounced_at as string | null) ?? null,
+        template_id: row.template_id,
+      },
+    })
+  }
+
+  for (const row of tasksRes.data ?? []) {
+    entries.push({
+      id: `task-${row.id}`,
+      kind: "task",
+      title: `Oppgave fullført: ${row.title || "Uten tittel"}`,
+      description: (row.note as string | null) ?? null,
+      created_at: row.done_at as string,
+      seller_email: null,
+    })
+  }
+
+  if (prospectRes.data) {
+    entries.push({
+      id: "system-created",
+      kind: "system",
+      title:
+        prospectRes.data.source === "signup"
+          ? "Registrerte seg selv (trial)"
+          : prospectRes.data.source === "manual"
+            ? "Lagt til manuelt"
+            : "Importert fra Brønnøysundregistrene",
+      description: null,
+      created_at: prospectRes.data.created_at as string,
+      seller_email: null,
+    })
+  }
+
+  return entries.sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )
+}
+
+// ============================================================
+// «I dag»-køen
+// ============================================================
+
+export type TodayData = {
+  /** Åpne oppgaver som forfaller i dag eller tidligere (forfalte først). */
+  tasks: TaskWithLead[]
+  /** Alle åpne pipeline-leads — signaler og råtner-liste beregnes fra disse. */
+  leads: PipelineLeadRow[]
+}
+
+export async function fetchTodayData(): Promise<TodayData> {
+  const admin = getAdmin()
+  const endOfToday = new Date()
+  endOfToday.setHours(23, 59, 59, 999)
+
+  const [tasksRes, leads] = await Promise.all([
+    admin
+      .from("prospect_tasks")
+      .select(
+        "id, prospect_id, task_type, title, due_at, done_at, note, created_at, prospects(id, name, status, phone, email)"
+      )
+      .is("done_at", null)
+      .lte("due_at", endOfToday.toISOString())
+      .order("due_at", { ascending: true })
+      .limit(100),
+    fetchPipelineLeads(),
+  ])
+
+  const tasks: TaskWithLead[] = []
+  for (const row of tasksRes.data ?? []) {
+    const prospect = (Array.isArray(row.prospects) ? row.prospects[0] : row.prospects) as {
+      id: string
+      name: string
+      status: string
+      phone: string | null
+      email: string | null
+    } | null
+    if (!prospect) continue
+    tasks.push({
+      id: row.id,
+      prospect_id: row.prospect_id,
+      task_type: row.task_type,
+      title: row.title,
+      due_at: row.due_at,
+      done_at: row.done_at,
+      note: row.note,
+      created_at: row.created_at,
+      prospect,
+    })
+  }
+
+  return { tasks, leads }
+}
+
+// Re-eksportert så sidene slipper å importere fra to steder.
+export type { ProspectStatus }
 
 export async function fetchSelgerEmailLog(limit = 200): Promise<SelgerEmailLogRow[]> {
   const admin = getAdmin()

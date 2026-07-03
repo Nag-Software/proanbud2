@@ -1,164 +1,450 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+// «I dag» — selgerens dagskø. Alt som skal gjøres i dag, ferdig prioritert:
+// forfalte oppgaver øverst, så dagens, så nye signaler fra pipelinen, og til
+// slutt en sammenleggbar «Råtner»-liste. Tom kø = ferdig på jobb.
+
+import * as React from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { CheckCircle2, Gauge, Settings2, Sparkles } from "lucide-react"
+import {
+  AlertTriangleIcon,
+  CalendarIcon,
+  CheckCircle2Icon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FlameIcon,
+  MailIcon,
+  PhoneIcon,
+  StickyNoteIcon,
+} from "lucide-react"
 
-import { reportClientError } from "@/lib/errors/client"
-import { SelgerPageShell } from "@/components/selger/selger-page-shell"
-import { QueueCardView } from "@/components/selger/queue-card"
-import { CallDrawer } from "@/app/selger/_components/call-drawer"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SelgerPageShell } from "@/components/selger/selger-page-shell"
+import { PlanNextDialog } from "@/components/selger/plan-next-dialog"
 import { cn } from "@/lib/utils"
-import type { HealthSignal } from "@/lib/selger/engine-health"
-import type { OutreachMetrics } from "@/lib/outreach/metrics"
-import type { CallCard, QueueCard, QueueCounts } from "@/lib/selger/queue"
+import { dueLabel, trialDaysLeft } from "@/lib/selger/dates"
+import { rottingFor } from "@/lib/selger/rotting"
+import { PROSPECT_STATUS_LABELS, type ProspectStatus } from "@/lib/outreach/types"
+import type { PipelineLeadRow, TaskWithLead, TaskType } from "@/lib/selger/types"
 
-type TodayClientProps = {
-  standup: string
-  metrics: OutreachMetrics
-  health: HealthSignal[]
-  initialCards: QueueCard[]
-  counts: QueueCounts
+const TASK_ICONS: Record<TaskType, React.ReactNode> = {
+  ring: <PhoneIcon className="size-3.5" />,
+  epost: <MailIcon className="size-3.5" />,
+  mote: <CalendarIcon className="size-3.5" />,
+  annet: <StickyNoteIcon className="size-3.5" />,
 }
 
-type FilterKey = "all" | "call" | "approve" | "trial"
-
-const LEVEL_DOT: Record<string, string> = {
-  ok: "bg-emerald-500",
-  warn: "bg-amber-500",
-  alarm: "bg-red-500",
+const STAGE_CHIP: Record<string, string> = {
+  kvalifisert: "border-border bg-secondary text-foreground/70",
+  kontaktet: "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300",
+  dialog: "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-300",
+  demo: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
+  trial: "border-lime-300 bg-lime-50 text-lime-800 dark:border-lime-900 dark:bg-lime-950 dark:text-lime-300",
 }
 
-export function TodayClient({ standup, metrics, health, initialCards }: TodayClientProps) {
-  const router = useRouter()
-  const [cards, setCards] = useState(initialCards)
-  const [filter, setFilter] = useState<FilterKey>("all")
-  const [callTarget, setCallTarget] = useState<CallCard | null>(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [liveStandup, setLiveStandup] = useState(standup)
+type Signal = {
+  id: string
+  leadId: string
+  title: string
+  description: string
+  action: string
+  hot?: boolean
+}
 
-  // Upgrade the instant heuristic standup to the AI version without blocking render.
-  useEffect(() => {
-    let active = true
-    fetch("/api/selger/standup")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (active && data?.standup) setLiveStandup(data.standup as string)
+/** Signaler fra pipelinen: nye svar, ferske trials, trials som utløper, nye hot. */
+function computeSignals(leads: PipelineLeadRow[]): Signal[] {
+  const now = Date.now()
+  const fresh = (iso: string | null, hours: number) =>
+    Boolean(iso) && now - new Date(iso!).getTime() <= hours * 3600_000
+
+  const signals: Signal[] = []
+  const seen = new Set<string>()
+
+  for (const lead of leads) {
+    if (lead.status === "dialog" && fresh(lead.stage_entered_at, 48) && !seen.has(lead.id)) {
+      signals.push({
+        id: `dialog-${lead.id}`,
+        leadId: lead.id,
+        title: `${lead.name} er i dialog`,
+        description: "Svarte nylig — smi mens jernet er varmt",
+        action: "Følg opp svar",
+        hot: true,
       })
-      .catch((error) => {
-        // Non-fatal: the deterministic standup is already shown. Log for visibility.
-        console.error("[TodayClient] kunne ikke oppgradere standup", error)
-        reportClientError(error, { level: "warning", context: { action: "oppgradere standup" } })
-      })
-    return () => {
-      active = false
+      seen.add(lead.id)
+      continue
     }
-  }, [])
-
-  const remove = (id: string) => setCards((prev) => prev.filter((c) => c.id !== id))
-
-  const openCall = (card: CallCard) => {
-    setCallTarget(card)
-    setDrawerOpen(true)
+    const daysLeft = lead.status === "trial" ? trialDaysLeft(lead.trial_ends_at) : null
+    if (daysLeft !== null && daysLeft >= 0 && daysLeft <= 3 && !seen.has(lead.id)) {
+      signals.push({
+        id: `trial-exp-${lead.id}`,
+        leadId: lead.id,
+        title: `Trial utløper om ${daysLeft === 0 ? "under ett døgn" : `${daysLeft} ${daysLeft === 1 ? "dag" : "dager"}`}`,
+        description: lead.name,
+        action: "Ring trial",
+      })
+      seen.add(lead.id)
+      continue
+    }
+    if (lead.status === "trial" && fresh(lead.stage_entered_at, 48) && !seen.has(lead.id)) {
+      signals.push({
+        id: `trial-new-${lead.id}`,
+        leadId: lead.id,
+        title: `Ny trial: ${lead.name}`,
+        description: "Registrerte seg selv — ingen kontakt ennå",
+        action: "Ring velkommen",
+      })
+      seen.add(lead.id)
+      continue
+    }
+    if (lead.is_hot && fresh(lead.hot_since, 48) && !seen.has(lead.id)) {
+      signals.push({
+        id: `hot-${lead.id}`,
+        leadId: lead.id,
+        title: `${lead.name} viser interesse`,
+        description: `Åpnet ${lead.open_count}× · klikket ${lead.click_count}×`,
+        action: "Ring nå",
+        hot: true,
+      })
+      seen.add(lead.id)
+    }
   }
+  return signals.slice(0, 8)
+}
 
-  const live = useMemo(() => {
-    return {
-      all: cards.length,
-      call: cards.filter((c) => c.kind === "call").length,
-      approve: cards.filter((c) => c.kind === "approve").length,
-      trial: cards.filter((c) => c.kind === "trial").length,
-    }
-  }, [cards])
+export function TodayClient({
+  initialTasks,
+  leads,
+}: {
+  initialTasks: TaskWithLead[]
+  leads: PipelineLeadRow[]
+}) {
+  const router = useRouter()
+  const [tasks, setTasks] = React.useState(initialTasks)
+  const [rotOpen, setRotOpen] = React.useState(false)
+  const [planFor, setPlanFor] = React.useState<{
+    prospectId: string
+    name: string
+    stage: string
+    completeTaskId: string | null
+  } | null>(null)
 
-  const filtered = useMemo(
-    () => (filter === "all" ? cards : cards.filter((c) => c.kind === filter)),
-    [cards, filter]
+  React.useEffect(() => setTasks(initialTasks), [initialTasks])
+
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  const overdue = tasks.filter((task) => new Date(task.due_at) < startOfToday)
+  const today = tasks.filter((task) => new Date(task.due_at) >= startOfToday)
+  const signals = React.useMemo(() => computeSignals(leads), [leads])
+  const rotting = React.useMemo(
+    () =>
+      leads.filter((lead) => {
+        const rot = rottingFor(lead.status as ProspectStatus, lead.last_activity_at)
+        return rot.level !== "fresh" || !lead.open_task
+      }),
+    [leads]
   )
 
-  const FILTERS: { key: FilterKey; label: string; count: number }[] = [
-    { key: "all", label: "Alle", count: live.all },
-    { key: "call", label: "Ring", count: live.call },
-    { key: "approve", label: "Godkjenn", count: live.approve },
-    { key: "trial", label: "Trials", count: live.trial },
-  ]
+  const dateLabel = new Date().toLocaleDateString("no-NO", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  })
 
   return (
     <SelgerPageShell segments={["Selger", "I dag"]}>
-      <div className="mx-auto w-full max-w-3xl space-y-5 pt-2">
-        {/* AI standup */}
-        <div className="flex items-start gap-2.5">
-          <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
-          <p className="text-[15px] leading-relaxed font-medium">{liveStandup}</p>
-        </div>
-
-        {/* Engine health strip */}
-        <button
-          onClick={() => router.push("/selger/motor")}
-          className="flex w-full flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border bg-muted/30 px-4 py-3 text-left transition-colors hover:bg-muted/50"
-        >
-          <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            <Gauge className="size-3.5" /> Motor
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-1 px-4 pb-10">
+        <div className="flex items-end justify-between gap-3 pb-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">I dag</h1>
+            <p className="text-xs text-muted-foreground">
+              {overdue.length} forfalte · {today.length} {today.length === 1 ? "oppgave" : "oppgaver"} i dag ·{" "}
+              {signals.length} nye signaler
+            </p>
+          </div>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            {dateLabel}
           </span>
-          {health.map((s) => (
-            <span key={s.key} className="flex items-center gap-1.5 text-sm" title={s.hint}>
-              <span className={cn("size-2 rounded-full", LEVEL_DOT[s.level])} />
-              <span className="text-muted-foreground">{s.label}</span>
-              <span className="font-medium">{s.value}</span>
-            </span>
-          ))}
-          <Settings2 className="ml-auto size-3.5 text-muted-foreground" />
-        </button>
-
-        {/* Filter pills */}
-        <div className="flex flex-wrap gap-2">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={cn(
-                "rounded-full border px-3 py-1 text-sm transition-colors",
-                filter === f.key
-                  ? "border-foreground bg-foreground text-background"
-                  : "border-border text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {f.label}
-              {f.count > 0 ? <span className="ml-1.5 opacity-70">{f.count}</span> : null}
-            </button>
-          ))}
         </div>
 
-        {/* Card stack */}
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center">
-            <CheckCircle2 className="size-8 text-emerald-500" />
-            <div>
-              <p className="font-medium">Alt under kontroll</p>
-              <p className="text-sm text-muted-foreground">
-                Maskinen jobber i bakgrunnen. {metrics.sentToday} e-poster sendt i dag.
-              </p>
+        {tasks.length === 0 && signals.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-10 text-center">
+            <CheckCircle2Icon className="mx-auto size-8 text-lime-600" />
+            <p className="mt-2 font-semibold">Alt gjort for i dag</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Ingen forfalte oppgaver. Vil du jobbe fremover?
+            </p>
+            <div className="mt-4 flex justify-center gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/selger/pipeline">Åpne pipeline</Link>
+              </Button>
+              <Button asChild size="sm">
+                <Link href="/selger/leads">Kvalifiser nye leads</Link>
+              </Button>
             </div>
-            <Button variant="outline" onClick={() => router.push("/selger/motor")}>
-              Se motoren
-            </Button>
           </div>
         ) : (
-          <div className="space-y-3">
-            {filtered.map((card) => (
-              <QueueCardView key={`${card.kind}-${card.id}`} card={card} onRemove={remove} onOpenCall={openCall} />
-            ))}
-          </div>
+          <>
+            {overdue.length > 0 && (
+              <Section label="Forfalt" count={overdue.length} tone="danger">
+                <div className="divide-y divide-amber-200/70 rounded-lg border border-amber-200 bg-amber-50/50 dark:divide-amber-900 dark:border-amber-900 dark:bg-amber-950/30">
+                  {overdue.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      onComplete={() =>
+                        setPlanFor({
+                          prospectId: task.prospect_id,
+                          name: task.prospect.name,
+                          stage: task.prospect.status,
+                          completeTaskId: task.id,
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {today.length > 0 && (
+              <Section label="I dag" count={today.length}>
+                <div className="divide-y rounded-lg border bg-card">
+                  {today.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      onComplete={() =>
+                        setPlanFor({
+                          prospectId: task.prospect_id,
+                          name: task.prospect.name,
+                          stage: task.prospect.status,
+                          completeTaskId: task.id,
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {signals.length > 0 && (
+              <Section label="Nye signaler" count={signals.length} tone="success">
+                <div className="divide-y rounded-lg border bg-card">
+                  {signals.map((signal) => (
+                    <div key={signal.id} className="flex items-center gap-3 px-3.5 py-3">
+                      <span
+                        className={cn(
+                          "size-2 shrink-0 rounded-full",
+                          signal.hot ? "bg-orange-500" : "bg-lime-500"
+                        )}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-1.5 text-sm font-semibold">
+                          <span className="truncate">{signal.title}</span>
+                          {signal.hot && <FlameIcon className="size-3.5 shrink-0 text-orange-500" />}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">{signal.description}</p>
+                      </div>
+                      <Button asChild size="sm" variant="outline" className="h-7 shrink-0 text-xs">
+                        <Link href={`/selger/leads/${signal.leadId}`}>{signal.action}</Link>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {rotting.length > 0 && (
+              <div className="mt-4 overflow-hidden rounded-lg border bg-card">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3.5 py-3 text-sm font-semibold"
+                  onClick={() => setRotOpen((v) => !v)}
+                >
+                  <AlertTriangleIcon className="size-4 text-amber-600" />
+                  Råtner — trenger et dytt
+                  <span className="rounded-full border bg-secondary px-2 py-0.5 text-[11px] font-bold">
+                    {rotting.length}
+                  </span>
+                  <ChevronDownIcon
+                    className={cn("ml-auto size-4 text-muted-foreground transition-transform", rotOpen && "rotate-180")}
+                  />
+                </button>
+                {rotOpen && (
+                  <div className="divide-y border-t">
+                    {rotting.map((lead) => {
+                      const rot = rottingFor(lead.status as ProspectStatus, lead.last_activity_at)
+                      return (
+                        <div key={lead.id} className="flex items-center gap-3 px-3.5 py-2.5">
+                          <div className="min-w-0 flex-1">
+                            <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">
+                              <Link href={`/selger/leads/${lead.id}`} className="truncate hover:underline">
+                                {lead.name}
+                              </Link>
+                              <Badge
+                                variant="outline"
+                                className={cn("text-[9px]", STAGE_CHIP[lead.status])}
+                              >
+                                {(PROSPECT_STATUS_LABELS as Record<string, string>)[lead.status] ?? lead.status}
+                              </Badge>
+                              {rot.level !== "fresh" && (
+                                <Badge variant="outline" className="theme-badge-status-sent text-[9px]">
+                                  {rot.days} d uten aktivitet
+                                </Badge>
+                              )}
+                            </p>
+                            {!lead.open_task && (
+                              <p className="text-xs text-muted-foreground">Ingen neste handling planlagt</p>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 shrink-0 text-xs"
+                            onClick={() =>
+                              setPlanFor({
+                                prospectId: lead.id,
+                                name: lead.name,
+                                stage: lead.status,
+                                completeTaskId: null,
+                              })
+                            }
+                          >
+                            Planlegg neste
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      <CallDrawer
-        card={callTarget}
-        open={drawerOpen}
-        onOpenChange={setDrawerOpen}
-        onResolved={remove}
-      />
+      {planFor && (
+        <PlanNextDialog
+          open={Boolean(planFor)}
+          onOpenChange={(open) => !open && setPlanFor(null)}
+          prospectId={planFor.prospectId}
+          prospectName={planFor.name}
+          stage={planFor.stage}
+          completeTaskId={planFor.completeTaskId}
+          onSaved={() => {
+            if (planFor.completeTaskId) {
+              setTasks((prev) => prev.filter((task) => task.id !== planFor.completeTaskId))
+            }
+            setPlanFor(null)
+            router.refresh()
+          }}
+        />
+      )}
     </SelgerPageShell>
+  )
+}
+
+function Section({
+  label,
+  count,
+  tone,
+  children,
+}: {
+  label: string
+  count: number
+  tone?: "danger" | "success"
+  children: React.ReactNode
+}) {
+  return (
+    <div className="mt-4 first:mt-0">
+      <div className="mb-1.5 flex items-center gap-2">
+        <span
+          className={cn(
+            "text-[10px] font-semibold uppercase tracking-[0.2em]",
+            tone === "danger"
+              ? "text-red-700 dark:text-red-400"
+              : tone === "success"
+                ? "text-lime-700 dark:text-lime-400"
+                : "text-muted-foreground"
+          )}
+        >
+          {label}
+        </span>
+        <span className="rounded-full border bg-secondary px-1.5 text-[10px] font-bold text-foreground/70">
+          {count}
+        </span>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function TaskRow({ task, onComplete }: { task: TaskWithLead; onComplete: () => void }) {
+  const due = dueLabel(task.due_at)
+  const timePart = new Date(task.due_at).toLocaleTimeString("no-NO", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+
+  return (
+    <div className="group flex items-center gap-3 px-3.5 py-3">
+      <button
+        type="button"
+        onClick={onComplete}
+        aria-label="Fullfør oppgave"
+        className="flex size-6 shrink-0 items-center justify-center rounded-full border-2 border-border text-transparent transition-colors hover:border-lime-600 hover:bg-accent hover:text-accent-foreground"
+      >
+        <CheckIcon className="size-3.5" strokeWidth={3} />
+      </button>
+      <span className="flex size-7 shrink-0 items-center justify-center rounded border bg-secondary text-muted-foreground">
+        {TASK_ICONS[task.task_type]}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-center gap-1.5">
+          <Link
+            href={`/selger/leads/${task.prospect.id}`}
+            className="truncate text-sm font-semibold hover:underline"
+          >
+            {task.prospect.name}
+          </Link>
+          <Badge variant="outline" className={cn("text-[9px]", STAGE_CHIP[task.prospect.status])}>
+            {(PROSPECT_STATUS_LABELS as Record<string, string>)[task.prospect.status] ??
+              task.prospect.status}
+          </Badge>
+        </p>
+        <p className="truncate text-xs text-muted-foreground">{task.title || "Neste handling"}</p>
+      </div>
+      <span
+        className={cn(
+          "shrink-0 text-[11px] font-semibold",
+          due.overdue ? "text-destructive" : "text-muted-foreground"
+        )}
+      >
+        {due.overdue ? due.text : due.text === "i dag" ? `i dag ${timePart}` : due.text}
+      </span>
+      <div className="flex shrink-0 gap-1">
+        {task.prospect.phone && (
+          <Button asChild size="sm" variant="ghost" className="size-7 p-0" title="Ring">
+            <a href={`tel:${task.prospect.phone.replace(/\s/g, "")}`}>
+              <PhoneIcon className="size-3.5" />
+            </a>
+          </Button>
+        )}
+        {task.prospect.email && (
+          <Button asChild size="sm" variant="ghost" className="size-7 p-0" title="Send e-post">
+            <Link href={`/selger/leads/${task.prospect.id}?composer=epost`}>
+              <MailIcon className="size-3.5" />
+            </Link>
+          </Button>
+        )}
+        <Button asChild size="sm" variant="ghost" className="size-7 p-0" title="Åpne">
+          <Link href={`/selger/leads/${task.prospect.id}`}>
+            <ChevronRightIcon className="size-4" />
+          </Link>
+        </Button>
+      </div>
+    </div>
   )
 }

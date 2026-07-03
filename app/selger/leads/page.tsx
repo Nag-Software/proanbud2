@@ -1,10 +1,14 @@
-import { getOutreachFromEmail } from "@/lib/outreach/send"
-import { LeadsClient } from "./leads-client"
+import { Suspense } from "react"
+
+import { InboxClient } from "./inbox-client"
 
 export const dynamic = "force-dynamic"
 
 export default function SelgerLeadsPage() {
-  // Real cold-outreach sender (env-driven) so the UI never lies about which address
-  // the engine sends from once a dedicated subdomain is configured.
-  return <LeadsClient outreachFrom={getOutreachFromEmail()} />
+  // Suspense: InboxClient leser ?nytt=1 via useSearchParams.
+  return (
+    <Suspense fallback={null}>
+      <InboxClient />
+    </Suspense>
+  )
 }

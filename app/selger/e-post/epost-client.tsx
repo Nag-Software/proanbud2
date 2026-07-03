@@ -95,13 +95,22 @@ export function EpostClient() {
   }
 
   return (
-    <SelgerPageShell segments={["Selger", "E-post"]}>
+    <SelgerPageShell segments={["Selger", "E-post og maler"]}>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Send e-post</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">E-post og maler</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Velg mal, tilpass meldingen og send til kunde.
           </p>
+        </div>
+
+        <div className="rounded-lg border border-border bg-secondary/50 px-3.5 py-2.5 text-xs text-muted-foreground">
+          Sender du til et <span className="font-semibold text-foreground">lead</span>? Gjør det
+          fra lead-siden i{" "}
+          <a href="/selger/pipeline" className="font-semibold text-foreground underline underline-offset-2">
+            pipelinen
+          </a>{" "}
+          — da havner e-posten (med åpninger og klikk) på leadets tidslinje.
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">

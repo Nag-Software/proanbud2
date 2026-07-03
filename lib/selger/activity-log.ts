@@ -35,13 +35,17 @@ export async function logSellerActivity(input: LogSellerActivityInput) {
 }
 
 type LogSellerEmailInput = {
-  // Nullable: the outreach cron sends with no logged-in seller.
+  // Nullable: automated senders (e.g. trial reminders) have no logged-in seller.
   sentBy: string | null
   templateId: string
   recipientEmail: string
   companyId?: string | null
   // Resend message id — lets the webhook stamp delivery/open/click engagement.
   providerMessageId?: string | null
+  // Kobler e-posten til leadets tidslinje + lagrer innholdet (db/66).
+  prospectId?: string | null
+  subject?: string | null
+  body?: string | null
 }
 
 export async function logSellerEmail(input: LogSellerEmailInput) {
@@ -53,6 +57,9 @@ export async function logSellerEmail(input: LogSellerEmailInput) {
     recipient_email: input.recipientEmail.trim().toLowerCase(),
     company_id: input.companyId ?? null,
     provider_message_id: input.providerMessageId ?? null,
+    prospect_id: input.prospectId ?? null,
+    subject: input.subject ?? null,
+    body: input.body ?? null,
   })
 
   if (error) {

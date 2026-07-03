@@ -1,8 +1,8 @@
 // Reusable Brønnøysund → prospects importer.
 //
-// Extracted from app/api/outreach/import so it can be driven both by the manual
-// admin import button AND by the daily cron, which auto-tops-up the prospect pool
-// when it runs low so the outbound engine never starves for fresh leads.
+// Drives the seller's manual import UI («Importer liste» på /selger/leads):
+// fetch a batch of construction firms from Brreg and land them in the inbox
+// (status 'ny') for manual qualification. The old auto-refill cron is gone.
 
 import type { createAdminClient } from "@/lib/supabase/admin"
 import { mapEnhetToProspect, searchBrregEnheter, type MappedProspect } from "@/lib/outreach/brreg"
@@ -87,31 +87,6 @@ export function getDefaultImportNace(): string[] {
     if (parsed.length > 0) return parsed
   }
   return ["43", "41.2"]
-}
-
-/** Refill the prospect pool when fewer than this many fresh, sendable prospects
- *  remain. Keeps the daily engine fed. Override with OUTREACH_POOL_MIN. */
-export function getPoolMinThreshold(): number {
-  return Number(process.env.OUTREACH_POOL_MIN) || 150
-}
-
-/** How many prospects to pull from Brreg per auto-import run. Override with
- *  OUTREACH_IMPORT_BATCH. */
-export function getImportBatchSize(): number {
-  return Number(process.env.OUTREACH_IMPORT_BATCH) || 300
-}
-
-/** Count fresh prospects that the initial-send step can actually email right now:
- *  status ny/kvalifisert, has an email, not an existing customer. This is the
- *  "fuel gauge" the cron uses to decide whether to import more. */
-export async function countSendableProspects(admin: AdminClient): Promise<number> {
-  const { count } = await admin
-    .from("prospects")
-    .select("id", { count: "exact", head: true })
-    .not("email", "is", null)
-    .eq("is_existing_customer", false)
-    .in("status", ["ny", "kvalifisert"])
-  return count ?? 0
 }
 
 /**

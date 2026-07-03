@@ -20,13 +20,8 @@ async function suppressProspect(prospectId: string | null): Promise<void> {
 
   await admin
     .from("prospects")
-    .update({ status: "avvist", updated_at: new Date().toISOString() })
+    .update({ status: "tapt", updated_at: new Date().toISOString() })
     .eq("id", prospect.id)
-  await admin
-    .from("prospect_outreach")
-    .update({ status: "unsubscribed", updated_at: new Date().toISOString() })
-    .eq("prospect_id", prospect.id)
-    .in("status", ["sent", "awaiting_approval", "approved", "queued"])
 
   await recordUnsubscribe(admin, {
     email: prospect.email,

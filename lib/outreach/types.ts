@@ -2,29 +2,51 @@ export const PROSPECT_STATUSES = [
   "ny",
   "kvalifisert",
   "kontaktet",
-  "svar",
+  "dialog",
   "demo",
+  "trial",
   "kunde",
-  "avvist",
+  "tapt",
 ] as const
 
 export type ProspectStatus = (typeof PROSPECT_STATUSES)[number]
 
+// «ny» er innboksen (rå-importer) og vises ALDRI i pipelinen; «kvalifisert» er
+// pipelinens første kolonne og heter derfor «Kald lead» i UI-et.
 export const PROSPECT_STATUS_LABELS: Record<ProspectStatus, string> = {
   ny: "Ny",
-  kvalifisert: "Kvalifisert",
+  kvalifisert: "Kald lead",
   kontaktet: "Kontaktet",
-  svar: "Svar",
+  dialog: "Dialog",
   demo: "Demo",
-  kunde: "Kunde",
-  avvist: "Avvist",
+  trial: "Trial",
+  kunde: "Vunnet",
+  tapt: "Tapt",
+}
+
+/** Åpne pipeline-steg = kanban-kolonnene, i rekkefølge. */
+export const OPEN_PIPELINE_STATUSES = [
+  "kvalifisert",
+  "kontaktet",
+  "dialog",
+  "demo",
+  "trial",
+] as const satisfies readonly ProspectStatus[]
+
+export type OpenPipelineStatus = (typeof OPEN_PIPELINE_STATUSES)[number]
+
+export const CLOSED_PIPELINE_STATUSES = ["kunde", "tapt"] as const satisfies readonly ProspectStatus[]
+
+export function isOpenPipelineStatus(status: string | null | undefined): status is OpenPipelineStatus {
+  return OPEN_PIPELINE_STATUSES.includes(status as OpenPipelineStatus)
 }
 
 export type EnrichmentStatus = "pending" | "enriched" | "failed" | "no_contact"
 
 export type ProspectRow = {
   id: string
-  org_number: string
+  /** Nullable siden db/66: selvregistrerte firmaer kan mangle org.nr. */
+  org_number: string | null
   name: string
   nace_code: string | null
   nace_description: string | null
@@ -37,11 +59,15 @@ export type ProspectRow = {
   city: string | null
   kommune: string | null
   kommune_number: string | null
+  source: string
   enrichment_status: EnrichmentStatus
   status: ProspectStatus
+  matched_company_id: string | null
   is_existing_customer: boolean
   notes: string | null
   last_contacted_at: string | null
+  last_activity_at: string | null
+  stage_entered_at: string | null
   created_at: string
   lead_score: number
   open_count: number

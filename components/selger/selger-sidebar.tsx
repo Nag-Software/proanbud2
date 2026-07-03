@@ -6,10 +6,13 @@ import { useRouter } from "next/navigation"
 import {
   ArrowLeftIcon,
   ChevronRightIcon,
-  GaugeIcon,
-  LayoutDashboardIcon,
+  HistoryIcon,
+  InboxIcon,
+  ListTodoIcon,
+  MailIcon,
+  PlusIcon,
   TargetIcon,
-  WrenchIcon,
+  TrendingUpIcon,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -37,13 +40,13 @@ import {
 } from "@/components/ui/sidebar"
 import { createClient } from "@/lib/supabase/client"
 
-// Three daily destinations + a Verktøy group that keeps the old pages reachable
-// without cluttering the cockpit. The seller lives in "I dag".
-const navItems = [
+// Arbeidsflatene øverst (selgeren lever i «I dag» og Pipeline), innsikt under.
+// Motoren og godkjenningskøen er borte — alt salg er manuelt og aktivitetsbasert.
+const workItems = [
   {
     title: "I dag",
     url: "/selger",
-    icon: <LayoutDashboardIcon className="size-4" />,
+    icon: <ListTodoIcon className="size-4" />,
   },
   {
     title: "Pipeline",
@@ -51,23 +54,16 @@ const navItems = [
     icon: <TargetIcon className="size-4" />,
   },
   {
-    title: "Motor",
-    url: "/selger/motor",
-    icon: <GaugeIcon className="size-4" />,
+    title: "Leads",
+    url: "/selger/leads",
+    icon: <InboxIcon className="size-4" />,
   },
-  {
-    title: "Verktøy",
-    url: "#",
-    icon: <WrenchIcon className="size-4" />,
-    collapsible: true,
-    items: [
-      { title: "Godkjenning", url: "/selger/godkjenning" },
-      { title: "E-post", url: "/selger/e-post" },
-      { title: "Leads", url: "/selger/leads" },
-      { title: "Analyse", url: "/selger/analyse" },
-      { title: "Aktivitet", url: "/selger/aktivitet" },
-    ],
-  },
+]
+
+const insightItems = [
+  { title: "Analyse", url: "/selger/analyse", icon: <TrendingUpIcon className="size-4" /> },
+  { title: "Aktivitet", url: "/selger/aktivitet", icon: <HistoryIcon className="size-4" /> },
+  { title: "E-post og maler", url: "/selger/e-post", icon: <MailIcon className="size-4" /> },
 ]
 
 function SelgerSidebarHeader() {
@@ -179,12 +175,52 @@ function SelgerNavUser() {
   )
 }
 
+function NyttLeadButton() {
+  const { state } = useSidebar()
+  const router = useRouter()
+  const isCollapsed = state === "collapsed"
+
+  if (isCollapsed) {
+    return (
+      <div className="px-2 pt-2">
+        <Button
+          size="icon"
+          className="size-8 border border-accent bg-accent text-accent-foreground hover:bg-accent/80"
+          onClick={() => router.push("/selger/leads?nytt=1")}
+          title="Nytt lead"
+          aria-label="Nytt lead"
+        >
+          <PlusIcon className="size-4" />
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="px-2 pt-2">
+      <Button
+        size="sm"
+        className="w-full border border-accent bg-accent font-semibold text-accent-foreground hover:bg-accent/80"
+        onClick={() => router.push("/selger/leads?nytt=1")}
+      >
+        <PlusIcon className="size-4" />
+        Nytt lead
+      </Button>
+    </div>
+  )
+}
+
 export function SelgerSidebar(props: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SelgerSidebarHeader />
       <SidebarContent>
-        <NavMain items={navItems} />
+        <NyttLeadButton />
+        <NavMain items={workItems} />
+        <div className="px-4 pt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground group-data-[collapsible=icon]:hidden">
+          Innsikt
+        </div>
+        <NavMain items={insightItems} />
       </SidebarContent>
       <SidebarFooter>
         <SelgerNavUser />

@@ -31,6 +31,8 @@ export type BrregEnhet = {
 export type BrregSearchParams = {
   /** NACE prefixes, e.g. ["41","42","43"] for construction. Matched by prefix. */
   naeringskoder: string[]
+  /** Fritekst navnesøk (Brreg-parameteren `navn`) — brukes av selgerens søke-UI. */
+  navn?: string
   kommunenummer?: string
   fraAntallAnsatte?: number
   tilAntallAnsatte?: number
@@ -55,6 +57,7 @@ export async function searchBrregEnheter(params: BrregSearchParams): Promise<Brr
   for (const code of params.naeringskoder) {
     if (code.trim()) search.append("naeringskode", code.trim())
   }
+  if (params.navn?.trim()) search.set("navn", params.navn.trim())
   if (params.kommunenummer?.trim()) search.set("kommunenummer", params.kommunenummer.trim())
   if (typeof params.fraAntallAnsatte === "number") {
     search.set("fraAntallAnsatte", String(params.fraAntallAnsatte))

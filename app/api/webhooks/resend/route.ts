@@ -201,16 +201,5 @@ export async function POST(request: Request) {
 
   await recordUnsubscribe(admin, { email, orgNumber: null, reason })
 
-  // Best-effort: mark the matching prospects' outreach rows as bounced.
-  const { data: prospects } = await admin.from("prospects").select("id").eq("email", email)
-  const prospectIds = (prospects ?? []).map((p) => p.id)
-  if (prospectIds.length > 0) {
-    await admin
-      .from("prospect_outreach")
-      .update({ status: "bounced", updated_at: new Date().toISOString() })
-      .in("prospect_id", prospectIds)
-      .in("status", ["sent", "approved", "queued", "awaiting_approval"])
-  }
-
   return NextResponse.json({ ok: true, suppressed: email, reason })
 }

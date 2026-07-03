@@ -163,18 +163,25 @@ export async function POST(request: Request) {
       }
     }
 
-    // Close the outbound loop: if this company was a prospect, mark it converted.
+    // Close the outbound loop: if this company was a prospect, link it and move
+    // it to «Trial» in the sales pipeline — a fresh signup starts a trial, not a
+    // paid subscription (billing-webhooken/trial-broen flytter det videre til
+    // «Vunnet» når abonnementet blir aktivt).
     if (org_number) {
       try {
+        const nowIso = new Date().toISOString()
         await supabaseAdmin
           .from('prospects')
           .update({
-            status: 'kunde',
+            status: 'trial',
             matched_company_id: companyData.id,
             is_existing_customer: true,
-            updated_at: new Date().toISOString(),
+            stage_entered_at: nowIso,
+            last_activity_at: nowIso,
+            updated_at: nowIso,
           })
           .eq('org_number', org_number)
+          .not('status', 'in', '(kunde,tapt)')
       } catch (prospectError) {
         console.error('Prospect conversion update error:', prospectError)
         await logServerError({

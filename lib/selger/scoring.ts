@@ -37,7 +37,7 @@ export function classifyHot(
 ): boolean {
   if ((clickCount ?? 0) >= 1) return true
   if ((openCount ?? 0) >= 2) return true
-  if (status === "svar" || status === "demo") return true
+  if (status === "dialog" || status === "demo" || status === "trial") return true
   return false
 }
 
@@ -92,13 +92,17 @@ export function computeLeadScore(input: LeadScoreInput): LeadScore {
   }
 
   switch (input.status) {
-    case "svar":
+    case "dialog":
       score += 30
-      reasons.push("Har svart")
+      reasons.push("I dialog")
       break
     case "demo":
       score += 40
       reasons.push("Demo avtalt")
+      break
+    case "trial":
+      score += 45
+      reasons.push("I prøveperiode")
       break
     case "kontaktet":
       score += 5

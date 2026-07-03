@@ -36,7 +36,7 @@ export function nextActionForProspect(p: ProspectActionState): NextAction {
   if (p.status === "demo") {
     return { verb: "Marker som kunde", kind: "mark_customer", heat: "hot" }
   }
-  if (p.status === "svar") {
+  if (p.status === "dialog") {
     return { verb: p.phone ? "Ring tilbake" : "Følg opp", kind: "call", heat: "hot" }
   }
   if (hot) {
