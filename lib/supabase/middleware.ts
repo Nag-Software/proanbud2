@@ -75,7 +75,8 @@ export async function updateSession(request: NextRequest) {
   // Dev role mock: `?mock=worker|pm|admin|clear` sets a cookie and redirects to
   // a clean URL. Applied to role gating only; real RLS still governs data.
   if (isRoleMockEnabled() && user && request.nextUrl.searchParams.has('mock')) {
-    const resolution = resolveMockRoleParam(request.nextUrl.searchParams.get('mock'))
+    const rawMock = request.nextUrl.searchParams.get('mock')
+    const resolution = resolveMockRoleParam(rawMock)
     if (resolution.kind !== 'ignore') {
       const url = request.nextUrl.clone()
       url.searchParams.delete('mock')
@@ -92,6 +93,13 @@ export async function updateSession(request: NextRequest) {
         redirect.cookies.set(MOCK_ROLE_COOKIE, '', { path: '/', maxAge: 0 })
       }
       return redirect
+    }
+    if (rawMock?.trim().toLowerCase() === 'tutorial') {
+      // ?mock=tutorial (tutorial-veiviseren): en gjenliggende rolle-mock-cookie
+      // (f.eks. worker fra tidligere testing) ville skjult veiviseren og pekt
+      // spotlighten mot nav-mål som ikke finnes. Nullstill den — men uten
+      // redirect, for parameteren leses client-side av veiviseren.
+      supabaseResponse.cookies.set(MOCK_ROLE_COOKIE, '', { path: '/', maxAge: 0 })
     }
   }
 
