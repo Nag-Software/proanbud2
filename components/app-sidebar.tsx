@@ -44,11 +44,15 @@ type NavMainItem = {
   isActive?: boolean
   hidden?: boolean
   badge?: number
+  // Mål for tutorial-veiviseren (components/onboarding/tutorial-wizard.tsx) —
+  // rendres som data-tour-attributt i NavMain.
+  tourId?: string
   items?: Array<{
     title: string
     url: string
     hidden?: boolean
     badge?: number
+    tourId?: string
   }>
 }
 
@@ -83,6 +87,7 @@ const data: {
       title: "Tilbud",
       url: "/tilbud",
       icon: <FileTextIcon className="size-4" />,
+      tourId: "tilbud",
     },
     {
       // Timeføring er en modul (ikke en plan-feature) — nav-konvensjonen er at
@@ -91,11 +96,13 @@ const data: {
       title: "Timeføring",
       url: "/timeforing",
       icon: <ClockIcon className="size-4" />,
+      tourId: "timeforing",
     },
     {
       title: "Kunder",
       url: "/kunder",
       icon: <UsersIcon className="size-4" />,
+      tourId: "kunder",
     },
     {
       title: "Kart",
@@ -167,10 +174,12 @@ const data: {
       title: "Min bedrift",
       url: "/min-bedrift",
       icon: <Building2Icon className="size-4" />,
+      tourId: "min-bedrift",
       items: [
         {
           title: "Bedriftsprofil",
           url: "/min-bedrift/bedriftsprofil",
+          tourId: "bedriftsprofil",
         },
         {
           title: "Ansatte og roller",
@@ -288,13 +297,16 @@ function AppSidebarHeader({
       {roleLoading ? (
         <Skeleton className="mt-1 h-8 w-full" />
       ) : canCreateProject ? (
-        <CreateProjectDrawer
-          variant="outline"
-          size="sm"
-          className="w-full mt-1 hover:shadow-sm"
-          label={isCollapsed ? "" : "Nytt prosjekt"}
-          showIcon
-        />
+        // data-tour: mål for tutorial-veiviserens «Opprett et prosjekt»-steg.
+        <div data-tour="nytt-prosjekt">
+          <CreateProjectDrawer
+            variant="outline"
+            size="sm"
+            className="w-full mt-1 hover:shadow-sm"
+            label={isCollapsed ? "" : "Nytt prosjekt"}
+            showIcon
+          />
+        </div>
       ) : null}
     </SidebarHeader>
   )

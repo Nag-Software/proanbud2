@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
-import { canManageSubscription, getRoleDisplayName } from "@/lib/roles"
+import { canManageSubscription, getRoleDisplayName, isManagerOrAdmin } from "@/lib/roles"
 import { reportClientError } from "@/lib/errors/client"
+import { START_TUTORIAL_EVENT } from "@/components/onboarding/tutorial-wizard"
 
 import {
   Avatar,
@@ -49,6 +50,7 @@ import {
   BadgeCheckIcon,
   Building2Icon,
   ChevronsUpDownIcon,
+  CompassIcon,
   CreditCardIcon,
   ExternalLinkIcon,
   HelpCircleIcon,
@@ -320,6 +322,16 @@ export function NavUser() {
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
+                {/* Kun admin/prosjektleder — veiviserens steg peker på
+                    navigasjon workers ikke har. */}
+                {isManagerOrAdmin(profile?.role) && (
+                  <DropdownMenuItem
+                    onClick={() => window.dispatchEvent(new Event(START_TUTORIAL_EVENT))}
+                  >
+                    <CompassIcon className="mr-2 h-4 w-4" />
+                    Start omvisningen
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem asChild>
                   <a
                     href="https://proanbud.no/hjelpesenter"

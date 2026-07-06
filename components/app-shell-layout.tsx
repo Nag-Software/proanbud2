@@ -6,6 +6,7 @@ import { type ReactNode } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppShellProvider, useAppShell } from "@/components/app-shell-context"
 import { MobileBottomNav } from "@/components/mobile-bottom-nav"
+import { TutorialWizard } from "@/components/onboarding/tutorial-wizard"
 import { NativeNavBridge, NativeNavState } from "@/components/native-nav-bridge"
 import { PresenceHeartbeat } from "@/components/presence-heartbeat"
 import { useNativePlatform } from "@/hooks/use-is-native-app"
@@ -83,6 +84,10 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
         )}
       </SidebarInset>
       <MobileBottomNav />
+      {/* Tutorial-veiviser for nye brukere — inne i SidebarProvider fordi den
+          styrer sidebar-tilstanden (ekspanderer før spotlight). Skallet
+          persisterer på tvers av navigasjon, så guiden overlever sideskift. */}
+      <TutorialWizard />
     </SidebarProvider>
   )
 }

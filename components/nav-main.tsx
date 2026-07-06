@@ -29,11 +29,14 @@ export function NavMain({
     collapsible?: boolean
     hidden?: boolean
     badge?: number
+    // Mål for tutorial-veiviseren — rendres som data-tour-attributt.
+    tourId?: string
     items?: {
       title: string
       url: string
       hidden?: boolean
       badge?: number
+      tourId?: string
     }[]
   }[]
 }) {
@@ -49,7 +52,7 @@ export function NavMain({
             return (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton asChild tooltip={item.title} className="text-[14px] font-medium">
-                  <Link href={item.url}>
+                  <Link href={item.url} data-tour={item.tourId}>
                     {item.icon}
                     <span>{item.title}</span>
                   </Link>
@@ -72,7 +75,7 @@ export function NavMain({
             >
               <SidebarMenuItem>
                 <CollapsibleTrigger asChild>
-                  <SidebarMenuButton tooltip={item.title} className="text-[14px] font-medium">
+                  <SidebarMenuButton tooltip={item.title} className="text-[14px] font-medium" data-tour={item.tourId}>
                     {item.icon}
                     <span>{item.title}</span>
                     <ChevronRightIcon className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
@@ -83,7 +86,7 @@ export function NavMain({
                     {visibleSubItems?.map((subItem) => (
                       <SidebarMenuSubItem key={subItem.title}>
                         <SidebarMenuSubButton asChild className="text-[15px]">
-                          <Link href={subItem.url}>
+                          <Link href={subItem.url} data-tour={subItem.tourId}>
                             <span>{subItem.title}</span>
                             {subItem.badge != null && subItem.badge > 0 && (
                               <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground tabular-nums">
