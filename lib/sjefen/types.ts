@@ -10,6 +10,21 @@ export type SjefenCompanyRow = {
   contract_count: number
   billing_status: string | null
   plan_key: string | null
+  // Nyeste presence-heartbeat (users.last_seen_at) blant hhv. admin-brukere og alle brukere.
+  admin_last_active_at: string | null
+  last_active_at: string | null
+}
+
+export type SjefenCompanyUserRow = {
+  id: string
+  full_name: string
+  email: string
+  role: string
+  is_active: boolean
+  created_at: string
+  last_seen_at: string | null
+  // undefined = kunne ikke hentes fra auth, null = aldri innlogget
+  last_sign_in_at?: string | null
 }
 
 export type SjefenUserRow = {

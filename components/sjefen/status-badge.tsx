@@ -74,3 +74,80 @@ export function invoiceStatusVariant(status: string): StatusBadgeProps["variant"
       return "muted"
   }
 }
+
+export function projectStatusVariant(status: string): StatusBadgeProps["variant"] {
+  switch (status) {
+    case "active":
+      return "success"
+    case "completed":
+      return "default"
+    case "on_hold":
+      return "warning"
+    case "rejected":
+    case "cancelled":
+      return "danger"
+    default:
+      return "muted"
+  }
+}
+
+export function taskStatusVariant(status: string): StatusBadgeProps["variant"] {
+  switch (status) {
+    case "done":
+      return "success"
+    case "in_progress":
+      return "default"
+    case "review":
+      return "warning"
+    default:
+      return "muted"
+  }
+}
+
+export function taskPriorityVariant(priority: string): StatusBadgeProps["variant"] {
+  switch (priority) {
+    case "urgent":
+      return "danger"
+    case "high":
+      return "warning"
+    case "medium":
+      return "default"
+    default:
+      return "muted"
+  }
+}
+
+export function timeEntryStatusVariant(status: string): StatusBadgeProps["variant"] {
+  switch (status) {
+    case "approved":
+      return "success"
+    case "rejected":
+      return "danger"
+    case "pending":
+      return "warning"
+    default:
+      return "muted"
+  }
+}
+
+export function deviationStatusVariant(status: string): StatusBadgeProps["variant"] {
+  switch (status) {
+    case "open":
+      return "warning"
+    case "closed":
+      return "success"
+    default:
+      return "muted"
+  }
+}
+
+export function checklistStatusVariant(status: string): StatusBadgeProps["variant"] {
+  switch (status) {
+    case "completed":
+      return "success"
+    case "in_progress":
+      return "default"
+    default:
+      return "muted"
+  }
+}

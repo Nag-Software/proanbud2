@@ -2,6 +2,7 @@ import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type {
   SjefenCompanyRow,
+  SjefenCompanyUserRow,
   SjefenContractRow,
   SjefenMessageRow,
   SjefenOfferRow,
@@ -64,7 +65,7 @@ export async function fetchPlatformOverview(): Promise<SjefenOverviewStats> {
     admin
       .from("companies")
       .select(
-        "id, name, org_number, email, phone, created_at, users(count), offers(count), contracts(count), company_billing(status, plan_key)"
+        "id, name, org_number, email, phone, created_at, users(role, last_seen_at), offers(count), contracts(count), company_billing(status, plan_key)"
       )
       .order("created_at", { ascending: false })
       .limit(5),
@@ -108,7 +109,7 @@ export async function fetchPlatformCompanies(): Promise<SjefenCompanyRow[]> {
   const { data, error } = await admin
     .from("companies")
     .select(
-      "id, name, org_number, email, phone, created_at, users(count), offers(count), contracts(count), company_billing(status, plan_key)"
+      "id, name, org_number, email, phone, created_at, users(role, last_seen_at), offers(count), contracts(count), company_billing(status, plan_key)"
     )
     .order("created_at", { ascending: false })
 
@@ -121,6 +122,29 @@ export async function fetchPlatformCompanies(): Promise<SjefenCompanyRow[]> {
   return mapCompanies(data ?? [])
 }
 
+// Actual login timestamps live in auth.users (not exposed via PostgREST), so
+// they are fetched per user through the GoTrue admin API. undefined = lookup
+// failed, null = user has never signed in.
+async function fetchLastSignIns(
+  userIds: string[]
+): Promise<Map<string, string | null | undefined>> {
+  const admin = getAdmin()
+  const entries = await Promise.all(
+    userIds.map(async (userId): Promise<[string, string | null | undefined]> => {
+      try {
+        const { data, error } = await admin.auth.admin.getUserById(userId)
+        if (error || !data?.user) {
+          return [userId, undefined]
+        }
+        return [userId, data.user.last_sign_in_at ?? null]
+      } catch {
+        return [userId, undefined]
+      }
+    })
+  )
+  return new Map(entries)
+}
+
 export async function fetchPlatformCompany(companyId: string) {
   const admin = getAdmin()
 
@@ -128,7 +152,7 @@ export async function fetchPlatformCompany(companyId: string) {
     admin.from("companies").select("*").eq("id", companyId).maybeSingle(),
     admin
       .from("users")
-      .select("id, full_name, email, role, is_active, created_at")
+      .select("id, full_name, email, role, is_active, created_at, last_seen_at")
       .eq("company_id", companyId)
       .order("created_at", { ascending: false }),
     admin.from("company_billing").select("*").eq("company_id", companyId).maybeSingle(),
@@ -143,9 +167,32 @@ export async function fetchPlatformCompany(companyId: string) {
 
   const [offers, contracts, customers, projects, messages] = statsRes
 
+  const userRows = (usersRes.data ?? []) as Array<{
+    id: string
+    full_name: string
+    email: string
+    role: string
+    is_active: boolean | null
+    created_at: string
+    last_seen_at: string | null
+  }>
+
+  const lastSignIns = await fetchLastSignIns(userRows.map((user) => user.id))
+
+  const users: SjefenCompanyUserRow[] = userRows.map((user) => ({
+    id: user.id,
+    full_name: user.full_name,
+    email: user.email,
+    role: user.role,
+    is_active: user.is_active ?? true,
+    created_at: user.created_at,
+    last_seen_at: user.last_seen_at ?? null,
+    last_sign_in_at: lastSignIns.get(user.id),
+  }))
+
   return {
     company: companyRes.data,
-    users: usersRes.data ?? [],
+    users,
     billing: billingRes.data,
     stats: {
       offers: offers.count ?? 0,
@@ -347,9 +394,21 @@ export async function fetchPlatformOverviewSalesStats() {
   }
 }
 
+function latestTimestamp(values: Array<string | null>): string | null {
+  let latest: string | null = null
+  for (const value of values) {
+    if (value && (!latest || value > latest)) {
+      latest = value
+    }
+  }
+  return latest
+}
+
 function mapCompanies(rows: Array<Record<string, unknown>>): SjefenCompanyRow[] {
   return rows.map((row) => {
-    const users = row.users as { count: number }[] | undefined
+    const users = row.users as
+      | { role: string | null; last_seen_at: string | null }[]
+      | undefined
     const offers = row.offers as { count: number }[] | undefined
     const contracts = row.contracts as { count: number }[] | undefined
     const billing = row.company_billing as
@@ -358,6 +417,7 @@ function mapCompanies(rows: Array<Record<string, unknown>>): SjefenCompanyRow[] 
       | null
 
     const billingRow = Array.isArray(billing) ? billing[0] : billing
+    const userRows = users ?? []
 
     return {
       id: String(row.id),
@@ -366,11 +426,15 @@ function mapCompanies(rows: Array<Record<string, unknown>>): SjefenCompanyRow[] 
       email: (row.email as string | null) ?? null,
       phone: (row.phone as string | null) ?? null,
       created_at: String(row.created_at),
-      user_count: users?.[0]?.count ?? 0,
+      user_count: userRows.length,
       offer_count: offers?.[0]?.count ?? 0,
       contract_count: contracts?.[0]?.count ?? 0,
       billing_status: billingRow?.status ?? null,
       plan_key: billingRow?.plan_key ?? null,
+      admin_last_active_at: latestTimestamp(
+        userRows.filter((user) => user.role === "admin").map((user) => user.last_seen_at)
+      ),
+      last_active_at: latestTimestamp(userRows.map((user) => user.last_seen_at)),
     }
   })
 }

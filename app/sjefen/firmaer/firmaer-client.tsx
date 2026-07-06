@@ -8,7 +8,7 @@ import { AdminDataTable } from "@/components/sjefen/admin-data-table"
 import { SjefenPageShell } from "@/components/sjefen/sjefen-page-shell"
 import { billingStatusVariant, StatusBadge } from "@/components/sjefen/status-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { billingStatusLabels, formatDate } from "@/lib/sjefen/format"
+import { billingStatusLabels, formatDate, formatRelative } from "@/lib/sjefen/format"
 import type { SjefenCompanyRow } from "@/lib/sjefen/types"
 
 const columns: ColumnDef<SjefenCompanyRow>[] = [
@@ -57,6 +57,23 @@ const columns: ColumnDef<SjefenCompanyRow>[] = [
         variant={billingStatusVariant(row.original.billing_status)}
       />
     ),
+  },
+  {
+    accessorKey: "admin_last_active_at",
+    header: "Admin sist aktiv",
+    cell: ({ row }) => {
+      if (row.original.admin_last_active_at) {
+        return formatRelative(row.original.admin_last_active_at)
+      }
+      // Fall tilbake til andre brukere så kolonnen skiller «lever» fra «dødt».
+      return row.original.last_active_at ? (
+        <span className="text-muted-foreground">
+          {formatRelative(row.original.last_active_at)} (ikke admin)
+        </span>
+      ) : (
+        <span className="text-muted-foreground">Aldri</span>
+      )
+    },
   },
   {
     accessorKey: "created_at",
