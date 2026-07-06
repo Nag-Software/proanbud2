@@ -16,8 +16,8 @@ describe('create-company onboarding hand-off', () => {
   it('confirms the company link via get_current_company_id before navigating', () => {
     expect(page).toContain("supabase.rpc('get_current_company_id')")
 
-    const confirmAt = page.indexOf("get_current_company_id")
-    const navigateAt = page.indexOf('completeClientLogin(router, "/onboarding/abonnement")')
+    const confirmAt = page.indexOf("supabase.rpc('get_current_company_id')")
+    const navigateAt = page.indexOf('completeClientLogin(router,')
 
     expect(confirmAt).toBeGreaterThan(-1)
     expect(navigateAt).toBeGreaterThan(-1)
@@ -25,7 +25,12 @@ describe('create-company onboarding hand-off', () => {
     expect(confirmAt).toBeLessThan(navigateAt)
   })
 
-  it('still hands off to the subscription onboarding step', () => {
-    expect(page).toContain('completeClientLogin(router, "/onboarding/abonnement")')
+  // Since the card-free trial (signup-trakt fase 1) the trial starts server-side:
+  // a started trial goes straight to /onboarding/velkommen, a failed Stripe call
+  // falls back to /onboarding/abonnement which retries.
+  it('hands off to velkommen on started trial, abonnement as fallback', () => {
+    expect(page).toContain(
+      'completeClientLogin(router, created?.trialStarted ? "/onboarding/velkommen" : "/onboarding/abonnement")'
+    )
   })
 })
