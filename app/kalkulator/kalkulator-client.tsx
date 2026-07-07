@@ -37,8 +37,8 @@ type Tilbud = {
 const SIGNUP_URL = "/signup?utm_source=kalkulator&utm_medium=produkt&utm_campaign=gratis-kalkulator"
 
 const PLACEHOLDER =
-  "F.eks: Bytte 12 vinduer i enebolig fra 1978. To etasjer, trenger stillas på baksiden. " +
-  "Kunden ønsker trevinduer med aluminiumskledning. Riving og bortkjøring av de gamle vinduene er inkludert."
+  "F.eks: Bytte 12 vinduer i enebolig fra 1978. To etasjer, stillas på baksiden. " +
+  "Riving og bortkjøring inkludert."
 
 export function KalkulatorClient() {
   const [fag, setFag] = useState<FagKey>("tomrer")
@@ -142,12 +142,11 @@ export function KalkulatorClient() {
             Tilbudskalkulator for håndverkere
           </h1>
           <p className="mx-auto max-w-xl text-base leading-relaxed text-muted-foreground">
-            Lim inn notatene fra befaringen, så bygger Proanbud et komplett pristilbud på
-            sekunder — som et ekte tilbudsdokument, klart til å justeres og sendes.
+            Lim inn notatene fra befaringen — få et ferdig pristilbud på sekunder.
           </p>
-          <p className="mx-auto max-w-xl rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-            <span className="font-semibold">PS:</span> Dette er en forenklet kalkulator — mindre
-            nøyaktig enn KI-kalkulasjonen i Proanbud, som bruker dine egne priser.
+          <p className="mx-auto max-w-md rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+            <span className="font-semibold">PS:</span> Forenklet kalkulator — mindre nøyaktig
+            enn KI-kalkulasjonen i Proanbud.
           </p>
         </div>
 
@@ -219,7 +218,7 @@ export function KalkulatorClient() {
             )}
           </Button>
           <p className="mt-2 text-center text-xs text-muted-foreground">
-            3 gratis tilbud per dag. Ingen konto nødvendig.
+            3 gratis tilbud per dag — uten konto.
           </p>
         </div>
 
@@ -250,15 +249,15 @@ export function KalkulatorClient() {
             </div>
 
             <p className="mt-3 text-center text-xs text-muted-foreground">
-              Forenklet overslag basert på standardpriser — regn med avvik.
+              Forenklet overslag — regn med avvik.
             </p>
 
             {/* CTA */}
             <div className="mx-auto mt-6 max-w-3xl rounded-2xl border border-primary/25 bg-primary/5 p-6 text-center sm:p-8">
               <h3 className="text-lg font-semibold tracking-tight">Vil du ha en nøyaktig kalkyle?</h3>
               <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                Med gratis prøveperiode får du den fulle KI-kalkulasjonen med dine egne priser —
-                og tilbudet med din logo, klart til digital signering. 14 dager gratis — uten kort.
+                Full KI-kalkulasjon med dine egne priser, din logo og digital signering.
+                14 dager gratis — uten kort.
               </p>
               <Button className="mt-4 h-11 px-6 text-base" asChild>
                 <Link href={SIGNUP_URL} onClick={() => track("kalkulator_cta_klikket", { plassering: "resultat" })}>
@@ -266,9 +265,6 @@ export function KalkulatorClient() {
                   <ArrowRightIcon className="ml-2 size-4" />
                 </Link>
               </Button>
-              <p className="mt-3 text-xs text-muted-foreground">
-                Tilbud, prosjekt, timer og HMS i ett norsk system.
-              </p>
             </div>
 
             <div className="mt-4 text-center">
