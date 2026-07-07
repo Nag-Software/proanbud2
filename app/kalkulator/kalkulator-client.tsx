@@ -145,10 +145,9 @@ export function KalkulatorClient() {
             Lim inn notatene fra befaringen, så bygger Proanbud et komplett pristilbud på
             sekunder — som et ekte tilbudsdokument, klart til å justeres og sendes.
           </p>
-          <p className="mx-auto max-w-xl text-xs leading-relaxed text-muted-foreground">
-            Dette er en forenklet utgave av KI-kalkulasjonen i Proanbud. Den regner med
-            standardpriser og gir et raskt overslag — den fulle kalkulasjonen bruker dine egne
-            timepriser, påslag og materialpriser, og treffer langt mer nøyaktig.
+          <p className="mx-auto max-w-xl rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+            <span className="font-semibold">PS:</span> Dette er en forenklet kalkulator — mindre
+            nøyaktig enn KI-kalkulasjonen i Proanbud, som bruker dine egne priser.
           </p>
         </div>
 
@@ -251,19 +250,15 @@ export function KalkulatorClient() {
             </div>
 
             <p className="mt-3 text-center text-xs text-muted-foreground">
-              Dette er et forenklet overslag basert på standardpriser — regn med avvik.
-              KI-kalkulasjonen i Proanbud er mer nøyaktig: den regner med dine egne timepriser,
-              påslag og materialpriser, og lar deg justere linjer og mengder før du sender.
+              Forenklet overslag basert på standardpriser — regn med avvik.
             </p>
 
             {/* CTA */}
             <div className="mx-auto mt-6 max-w-3xl rounded-2xl border border-primary/25 bg-primary/5 p-6 text-center sm:p-8">
               <h3 className="text-lg font-semibold tracking-tight">Vil du ha en nøyaktig kalkyle?</h3>
               <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                Med gratis prøveperiode får du den fulle KI-kalkulasjonen — den regner med dine
-                egne timepriser, påslag og materialpriser. Tilbudet får din logo og ditt org.nr.,
-                du sender det digitalt, og kunden signerer med kode fra sofaen.
-                14 dager gratis — uten kort.
+                Med gratis prøveperiode får du den fulle KI-kalkulasjonen med dine egne priser —
+                og tilbudet med din logo, klart til digital signering. 14 dager gratis — uten kort.
               </p>
               <Button className="mt-4 h-11 px-6 text-base" asChild>
                 <Link href={SIGNUP_URL} onClick={() => track("kalkulator_cta_klikket", { plassering: "resultat" })}>
