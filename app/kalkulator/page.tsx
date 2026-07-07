@@ -5,7 +5,7 @@ import { KalkulatorClient } from "./kalkulator-client"
 export const metadata: Metadata = {
   title: "Gratis tilbudskalkulator for håndverkere – Proanbud",
   description:
-    "Lim inn notatene fra befaringen og få et profesjonelt pristilbud på sekunder. Helt gratis, ingen innlogging. Bygget for norske håndverkere.",
+    "Lim inn notatene fra befaringen og få et pristilbud på sekunder. Forenklet utgave av KI-kalkulasjonen i Proanbud — gratis og uten innlogging.",
   alternates: { canonical: "/kalkulator" },
   openGraph: {
     title: "Gratis tilbudskalkulator for håndverkere",
