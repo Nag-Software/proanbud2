@@ -49,9 +49,10 @@ export function getOutreachFromEmail(): string {
   return (match ? match[1] : from).trim()
 }
 
-/** Signup/landing CTA the outreach invites recipients to. */
+/** Signup/landing CTA the outreach invites recipients to. Defaults to the
+ *  canonical app domain (app.proanbud.no since the July 2026 DNS cutover). */
 export function getOutreachSignupUrl(): string {
-  return process.env.OUTREACH_SIGNUP_URL?.trim() || "https://nye.proanbud.no/signup?utm_source=outreach"
+  return process.env.OUTREACH_SIGNUP_URL?.trim() || "https://app.proanbud.no/signup?utm_source=outreach"
 }
 
 /** Template ids logged to seller_email_log for outbound lead emails. Historic

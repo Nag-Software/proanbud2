@@ -1,6 +1,12 @@
 // Best-effort contact enrichment: fetch a prospect's website and extract a
-// contact email + phone. Brønnøysund does not provide these. Coverage is
+// contact email + phone. Brønnøysund does not always provide these. Coverage is
 // partial (~40-70%); prospects without a hit become a phone/call list.
+//
+// Two sources, in order:
+//   1. Brønnøysund (fetchBrregContact) — refetches hjemmeside/epost/telefon for
+//      prospects imported before those fields were captured, or registered since.
+//   2. Website scrape (enrichFromWebsite) — front page first, then common
+//      Norwegian contact pages (/kontakt, /kontakt-oss, /om-oss).
 
 const GENERIC_EMAIL = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
 const MAILTO = /mailto:([^"'?>\s]+)/gi
@@ -27,6 +33,9 @@ const EMAIL_BLOCKLIST = [
   ".svg",
   ".webp",
 ]
+
+/** Typiske norske kontaktside-stier — prøves når forsiden ikke gir e-post. */
+const CONTACT_PATHS = ["/kontakt", "/kontakt-oss", "/om-oss"]
 
 function hostOf(url: string): string | null {
   try {
@@ -59,26 +68,21 @@ function normalizePhone(raw: string): string | null {
   return digits.startsWith("+47") || digits.startsWith("47") ? `+47 ${local}` : local
 }
 
-export type EnrichResult = { email: string | null; phone: string | null }
-
-export async function enrichFromWebsite(website: string | null): Promise<EnrichResult> {
-  if (!website) return { email: null, phone: null }
-
-  let html = ""
+async function fetchHtml(url: string, timeoutMs: number): Promise<string | null> {
   try {
-    const res = await fetch(website, {
+    const res = await fetch(url, {
       headers: { "User-Agent": "ProanbudBot/1.0 (+https://proanbud.no)", Accept: "text/html" },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(timeoutMs),
       redirect: "follow",
     })
-    if (!res.ok) return { email: null, phone: null }
-    html = await res.text()
+    if (!res.ok) return null
+    return await res.text()
   } catch {
-    return { email: null, phone: null }
+    return null
   }
+}
 
-  const siteHost = hostOf(website)
-
+function extractContacts(html: string, siteHost: string | null): EnrichResult {
   const emailCandidates: string[] = []
   for (const m of html.matchAll(MAILTO)) emailCandidates.push(decodeURIComponent(m[1]))
   for (const m of html.matchAll(GENERIC_EMAIL)) emailCandidates.push(m[0])
@@ -98,4 +102,65 @@ export async function enrichFromWebsite(website: string | null): Promise<EnrichR
   }
 
   return { email, phone }
+}
+
+export type EnrichResult = { email: string | null; phone: string | null }
+
+export async function enrichFromWebsite(website: string | null): Promise<EnrichResult> {
+  if (!website) return { email: null, phone: null }
+
+  const siteHost = hostOf(website)
+  const frontHtml = await fetchHtml(website, 8000)
+  const result: EnrichResult = frontHtml
+    ? extractContacts(frontHtml, siteHost)
+    : { email: null, phone: null }
+  if (result.email) return result
+
+  // Forsiden ga ingen e-post — prøv de vanlige kontaktsidene før vi gir oss.
+  let origin: string
+  try {
+    origin = new URL(website).origin
+  } catch {
+    return result
+  }
+  for (const path of CONTACT_PATHS) {
+    const html = await fetchHtml(`${origin}${path}`, 6000)
+    if (!html) continue
+    const contacts = extractContacts(html, siteHost)
+    if (contacts.email) {
+      return { email: contacts.email, phone: result.phone ?? contacts.phone }
+    }
+    if (!result.phone && contacts.phone) result.phone = contacts.phone
+  }
+  return result
+}
+
+export type BrregContact = { website: string | null; email: string | null; phone: string | null }
+
+/** Hent kontaktfeltene på nytt fra Brønnøysund for ett org.nr. Dekker prospekter
+ *  der hjemmeside/e-post/telefon manglet ved import eller er registrert senere. */
+export async function fetchBrregContact(orgNumber: string): Promise<BrregContact | null> {
+  try {
+    const res = await fetch(`https://data.brreg.no/enhetsregisteret/api/enheter/${orgNumber}`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+      cache: "no-store",
+    })
+    if (!res.ok) return null
+    const enhet = (await res.json()) as {
+      hjemmeside?: string
+      epostadresse?: string
+      telefon?: string
+      mobil?: string
+    }
+    const websiteRaw = enhet.hjemmeside?.trim() || null
+    const email = enhet.epostadresse?.trim().toLowerCase() || null
+    return {
+      website: websiteRaw ? (websiteRaw.startsWith("http") ? websiteRaw : `https://${websiteRaw}`) : null,
+      email: email && email.includes("@") ? email : null,
+      phone: enhet.telefon?.trim() || enhet.mobil?.trim() || null,
+    }
+  } catch {
+    return null
+  }
 }

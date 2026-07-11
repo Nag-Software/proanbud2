@@ -4,6 +4,7 @@ import { Webhook } from "svix"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { computeLeadScore } from "@/lib/selger/scoring"
 import { recordUnsubscribe } from "@/lib/outreach/send"
+import { stopSequenceForEmail } from "@/lib/outreach/autosend"
 import { logServerError } from "@/lib/errors/log"
 
 export const runtime = "nodejs"
@@ -170,6 +171,10 @@ export async function POST(request: Request) {
       const recipient = await resolveRecipient(admin, event, provider)
       if (recipient) {
         await bumpProspectEngagement(admin, recipient, kind)
+        // Et klikk er ekte interesse — autosekvensen stopper og selger tar over.
+        if (kind === "click") {
+          await stopSequenceForEmail(admin, recipient, "engasjert")
+        }
       } else {
         console.warn(`[resend webhook] ${kind} event without resolvable recipient (provider=${provider})`)
       }
@@ -200,6 +205,9 @@ export async function POST(request: Request) {
   }
 
   await recordUnsubscribe(admin, { email, orgNumber: null, reason })
+  // Død/klagende adresse: suppresjonslisten blokkerer sendinger, men stopp også
+  // sekvensen eksplisitt så dashboards viser riktig årsak i stedet for «aktiv».
+  await stopSequenceForEmail(admin, email, reason === "complaint" ? "klage" : "bounce")
 
   return NextResponse.json({ ok: true, suppressed: email, reason })
 }

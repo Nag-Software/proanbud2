@@ -198,6 +198,7 @@ export function InboxClient() {
         body: JSON.stringify({ limit: 40 }),
       })
       const payload = (await response.json().catch(() => ({}))) as {
+        processed?: number
         enriched?: number
         error?: string
       }
@@ -205,7 +206,13 @@ export function InboxClient() {
         toast.error(payload.error || "Berikelsen feilet")
         return
       }
-      toast.success(`Fant kontaktinfo på ${payload.enriched ?? 0} firmaer`)
+      if ((payload.processed ?? 0) === 0) {
+        toast.info("Alle leads har allerede e-postadresse")
+      } else {
+        toast.success(
+          `Fant e-post på ${payload.enriched ?? 0} av ${payload.processed} leads som manglet`
+        )
+      }
       void load()
     } finally {
       setEnriching(false)

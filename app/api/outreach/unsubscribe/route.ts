@@ -18,9 +18,10 @@ async function suppressProspect(prospectId: string | null): Promise<void> {
     .maybeSingle()
   if (!prospect) return
 
+  const now = new Date().toISOString()
   await admin
     .from("prospects")
-    .update({ status: "tapt", updated_at: new Date().toISOString() })
+    .update({ status: "tapt", updated_at: now, sequence_stopped_at: now, sequence_stop_reason: "avmeldt" })
     .eq("id", prospect.id)
 
   await recordUnsubscribe(admin, {

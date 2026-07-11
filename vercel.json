@@ -24,6 +24,10 @@
     {
       "path": "/api/cron/timeforing-auto-close",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/selger-autosend",
+      "schedule": "5 8 * * 1-5"
     }
   ]
 }
