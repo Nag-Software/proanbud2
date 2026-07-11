@@ -84,7 +84,7 @@ export const MODULE_CATALOG: Array<{
   {
     key: "integrasjoner",
     label: "Integrasjoner",
-    description: "Koble til Tripletex, DocuSign m.m. Google Kalender og Outlook er alltid gratis.",
+    description: "Koble til Tripletex og Fiken. Google Kalender og Outlook er alltid gratis.",
     monthlyNok: MODULE_PRICING.integrasjoner,
   },
   {
@@ -336,6 +336,6 @@ export const PROFF_INCLUDED_FEATURES: Array<{
   {
     key: "integrasjoner",
     label: "Integrasjoner inkludert",
-    description: "Tripletex, Fiken og DocuSign uten ekstra modulkostnad.",
+    description: "Tripletex og Fiken uten ekstra modulkostnad.",
   },
 ]
