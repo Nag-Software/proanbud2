@@ -78,6 +78,8 @@ export type AiChatPanelProps = {
   customerName?: string | null
   onComplete: (lineItems: OfferLineItem[], analysis: OfferAnalysisResult) => void
   onClose: () => void
+  /** Vises i feiltilstanden: lukk panelet og fortsett med manuell kalkyle. */
+  onContinueManually?: () => void
 }
 
 const phaseLabels = ["Leser oppdrag", "Avklarer", "Bygger kalkyle", "Ferdig"]
@@ -128,6 +130,7 @@ export function AiChatPanel({
   sourceDocuments,
   onComplete,
   onClose,
+  onContinueManually,
 }: AiChatPanelProps) {
   const [phase, setPhase] = useState<ChatPhase>("loading")
   const [questions, setQuestions] = useState<ClarificationQuestion[]>([])
@@ -136,6 +139,8 @@ export function AiChatPanel({
   const [customAnswer, setCustomAnswer] = useState("")
   const [errorText, setErrorText] = useState<string | null>(null)
   const [generatingStepIndex, setGeneratingStepIndex] = useState(0)
+  // null = ukjent (før første svar fra API-et); 0 = bedriften mangler prisfiler
+  const [priceFileCount, setPriceFileCount] = useState<number | null>(null)
   const generationIdRef = useRef(
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -213,6 +218,10 @@ export function AiChatPanel({
       })
 
       const payload = await readAiChatResponse(response, "Analysen feilet. Prøv igjen.")
+
+      if (typeof payload.priceFileCount === "number") {
+        setPriceFileCount(payload.priceFileCount)
+      }
 
       if (payload.phase === "questions" && payload.questions.length > 0) {
         setQuestions(payload.questions)
@@ -429,6 +438,23 @@ export function AiChatPanel({
         </div>
 
         <div className="min-h-0 flex-1 px-5 pb-5 sm:px-6 sm:pb-6">
+          {priceFileCount === 0 && (phase === "clarifying" || phase === "generating") ? (
+            <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <p className="font-medium">Ingen prisfiler er lastet opp – prisene blir generelle estimater.</p>
+              <p className="mt-0.5 text-[13px] leading-5 text-amber-800">
+                Last opp prislisten fra leverandøren din under{" "}
+                <a
+                  href="/mine-priser/prisfiler"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium underline underline-offset-2"
+                >
+                  Mine priser → Prisfiler
+                </a>
+                {" "}(åpnes i ny fane), så brukes bedriftens faktiske priser i kalkylen.
+              </p>
+            </div>
+          ) : null}
           <div className="min-h-0 rounded-[16px] border border-slate-100 bg-white p-5 sm:p-6">
             {phase === "loading" ? <CenteredState title="Forbereder analyse" description="Finner nødvendige avklaringer." /> : null}
 
@@ -516,11 +542,21 @@ export function AiChatPanel({
                 <div className="rounded-3xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">
                   {errorText || "Noe gikk galt under analysen."}
                 </div>
-                <div className="mt-4">
+                <div className="mt-4 flex flex-wrap items-center gap-2">
                   <Button type="button" variant="outline" onClick={() => void startAnalysis()}>
                     Prøv igjen
                   </Button>
+                  {onContinueManually ? (
+                    <Button type="button" variant="ghost" onClick={onContinueManually}>
+                      Fortsett manuelt uten forslag
+                    </Button>
+                  ) : null}
                 </div>
+                {onContinueManually ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Du kan alltid legge inn prislinjene selv – ingenting går tapt.
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>

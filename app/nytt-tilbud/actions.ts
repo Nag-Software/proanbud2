@@ -284,9 +284,15 @@ async function persistOffer(input: SaveOfferInput, status: "draft" | "sent"): Pr
       .single()
 
     if (error || !data?.id) {
-      throw new Error(
-        `Kunne ikke oppdatere tilbud: ${error?.message || "ukjent feil"}. Husk å kjøre db/07_nytt_tilbud_workflow.sql.`
-      )
+      // Teknisk detalj skal i loggen — aldri i meldingen brukeren leser
+      void logServerError({
+        message: "Kunne ikke oppdatere tilbud i databasen",
+        error,
+        source: "action",
+        route: "nytt-tilbud/persistOffer",
+        context: { offerId: input.id, companyId },
+      })
+      throw new Error("Kunne ikke lagre endringene i tilbudet. Prøv igjen om litt.")
     }
 
     if (hasAiAnalysis) {
@@ -324,9 +330,15 @@ async function persistOffer(input: SaveOfferInput, status: "draft" | "sent"): Pr
     .single()
 
   if (error || !data?.id) {
-    throw new Error(
-      `Kunne ikke lagre tilbud: ${error?.message || "ukjent feil"}. Husk å kjøre db/07_nytt_tilbud_workflow.sql.`
-    )
+    // Teknisk detalj skal i loggen — aldri i meldingen brukeren leser
+    void logServerError({
+      message: "Kunne ikke opprette tilbud i databasen",
+      error,
+      source: "action",
+      route: "nytt-tilbud/persistOffer",
+      context: { companyId },
+    })
+    throw new Error("Kunne ikke lagre tilbudet. Prøv igjen om litt.")
   }
 
   await logOfferActivity({

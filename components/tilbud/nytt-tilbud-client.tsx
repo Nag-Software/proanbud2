@@ -1,6 +1,5 @@
 "use client"
 
-import { useRouter } from "next/navigation"
 import { NewOfferWizard } from "@/components/tilbud/new-offer-wizard"
 import { type OfferCompanyContext, type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
 
@@ -11,14 +10,8 @@ type Props = {
 }
 
 export function NyttTilbudClient({ project, customers, company }: Props) {
-  const router = useRouter()
-
-  return (
-    <NewOfferWizard
-      project={project}
-      customers={customers}
-      company={company}
-      onCompleted={() => router.push(`/prosjekter/${project.id}`)}
-    />
-  )
+  // Ingen onCompleted her: wizarden navigerer selv til /tilbud/[id] etter
+  // lagring. En ekstra router.push hit ga en navigasjonsrace der brukeren
+  // så et glimt av prosjektsiden før tilbudssiden lastet.
+  return <NewOfferWizard project={project} customers={customers} company={company} />
 }

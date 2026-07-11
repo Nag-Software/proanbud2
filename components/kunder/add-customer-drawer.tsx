@@ -46,17 +46,21 @@ export function AddCustomerDrawer({ open, onOpenChange, onCreated }: AddCustomer
     try {
       // Append the type since it's in state and not necessarily a form input by default
       formData.append("type", type);
-      
-      const createdId = await createCustomerAction(formData)
+
+      const result = await createCustomerAction(formData)
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
       const createdName = (formData.get("name") as string) || ""
 
-      onCreated?.({ id: createdId, name: createdName })
+      onCreated?.({ id: result.data.id, name: createdName })
       router.refresh()
       onOpenChange(false)
     } catch (error) {
       console.error("Failed to create customer:", error)
       reportClientError(error, { context: { action: "create-customer" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke opprette kunde")
+      toast.error("Kunne ikke opprette kunden. Sjekk nettforbindelsen og prøv igjen.")
     } finally {
       setIsPending(false)
     }

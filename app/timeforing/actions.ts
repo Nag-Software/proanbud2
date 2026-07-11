@@ -25,7 +25,7 @@ const TIMEFORING_MODULE = "timeforing" as const
 const GEOFENCE_BUFFER_M = 10
 
 const MODULE_MISSING_ERROR =
-  "Timeføring er ikke aktivert. Gå til abonnement for å aktivere modulen."
+  "Timeføring er ikke aktivert. Gå til Min bedrift → Betaling for å aktivere modulen."
 
 /**
  * Diskriminert resultat for actions som kalles fra klientkomponenter.

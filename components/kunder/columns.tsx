@@ -46,12 +46,16 @@ export function CustomerRowActions({
     if (!ok) return
 
     try {
-      await deleteCustomerAction(customer.id)
+      const result = await deleteCustomerAction(customer.id)
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
       toast.success("Kunde slettet")
       router.refresh()
     } catch (error) {
       reportClientError(error, { context: { action: "delete-customer", customerId: customer.id } })
-      toast.error("Kunne ikke slette kunde")
+      toast.error("Kunne ikke slette kunden. Sjekk nettforbindelsen og prøv igjen.")
       console.error(error)
     }
   }

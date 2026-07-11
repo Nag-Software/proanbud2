@@ -68,7 +68,7 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
 
     startTransition(async () => {
       try {
-        await updateCustomerAction({
+        const result = await updateCustomerAction({
           id: customer.id,
           type,
           name: nextCustomer.name,
@@ -79,14 +79,17 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
           postalCode: nextCustomer.postalCode,
           city: nextCustomer.city,
         })
+        if (!result.ok) {
+          toast.error(result.error)
+          return
+        }
 
         onUpdate?.(nextCustomer)
         setIsEditing(false)
         toast.success("Kunden ble oppdatert")
       } catch (error) {
         reportClientError(error, { context: { action: "update-customer", customerId: customer.id } })
-        const message = error instanceof Error ? error.message : "Kunne ikke lagre kunde"
-        toast.error(message)
+        toast.error("Kunne ikke lagre endringene. Sjekk nettforbindelsen og prøv igjen.")
       }
     })
   }

@@ -103,9 +103,9 @@ export default function OppgaverTab({
 
     try {
       let createdTaskId = "";
-      
+
       // Save Task to Supabase Database
-      const newTaskData = await createTaskAction({
+      const result = await createTaskAction({
         project_id: projectId,
         title: newTaskTitle,
         description: newTaskDesc,
@@ -114,6 +114,24 @@ export default function OppgaverTab({
         due_date: newTaskDue ? newTaskDue.toISOString() : null,
       });
 
+      if (!result.ok) {
+        // Plan-vegg: gi brukeren en vei videre, ikke bare en beskjed
+        if (result.code === "plan_upgrade") {
+          toast.error(result.error, {
+            action: {
+              label: "Se abonnement",
+              onClick: () => {
+                window.location.href = "/innstillinger/betaling";
+              },
+            },
+          });
+        } else {
+          toast.error(result.error);
+        }
+        return;
+      }
+
+      const newTaskData = result.data;
       if (newTaskData) {
         createdTaskId = newTaskData.id;
         // Optionally update with local representation:

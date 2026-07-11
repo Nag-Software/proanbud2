@@ -7,9 +7,15 @@ import { createProjectSchema, type CreateProjectInput } from "./ny/removed-proje
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { enqueueEntityTripletexSync, processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
-import { assertPlanFeature, companyHasFeature } from "@/lib/billing/server-modules"
+import {
+  assertPlanFeature,
+  companyHasFeature,
+  PlanUpgradeRequiredError,
+} from "@/lib/billing/server-modules"
 import { canManageProjects } from "@/lib/roles"
 import { logServerError } from "@/lib/errors/log"
+import { GENERIC_ERROR_MESSAGE } from "@/lib/errors/user-message"
+import type { ActionResult } from "@/lib/errors/action-result"
 import { geocodeAddress } from "@/lib/geo/geocode"
 import { upsertProjectGeofence } from "@/lib/geo/project-geofence"
 
@@ -123,57 +129,79 @@ export async function createTaskAction(taskData: {
   status: string
   priority: string
   due_date?: string | null
-}) {
+}): Promise<ActionResult<{ id: string } & Record<string, unknown>>> {
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    throw new Error("Du må være logget inn")
-  }
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return { ok: false, error: "Du må være logget inn for å opprette oppgaver." }
+    }
 
-  const { data: userData, error: userError } = await supabase
-    .from("users")
-    .select("company_id")
-    .eq("id", user.id)
-    .single()
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("company_id")
+      .eq("id", user.id)
+      .single()
 
-  if (userError || !userData?.company_id) {
-    throw new Error("Kunne ikke hente bedriftsinformasjon")
-  }
+    if (userError || !userData?.company_id) {
+      return { ok: false, error: "Kunne ikke hente bedriftsinformasjonen din. Prøv å laste siden på nytt." }
+    }
 
-  await assertPlanFeature(userData.company_id, "project_tasks", "Oppgaver")
-  await assertCanManageProjectTasks(supabase, user.id, taskData.project_id)
+    try {
+      await assertPlanFeature(userData.company_id, "project_tasks", "Oppgaver")
+      await assertCanManageProjectTasks(supabase, user.id, taskData.project_id)
+    } catch (gateError) {
+      if (gateError instanceof PlanUpgradeRequiredError) {
+        return { ok: false, error: gateError.message, code: "plan_upgrade" }
+      }
+      // assertCanManageProjectTasks kaster kun sin egen norske melding
+      return {
+        ok: false,
+        error: gateError instanceof Error && gateError.message ? gateError.message : GENERIC_ERROR_MESSAGE,
+      }
+    }
 
-  const { data, error } = await supabase
-    .from("tasks")
-    .insert({
-      project_id: taskData.project_id,
-      company_id: userData.company_id,
-      title: taskData.title,
-      description: taskData.description || null,
-      status: normalizeTaskStatus(taskData.status),
-      priority: normalizeTaskPriority(taskData.priority),
-      due_date: taskData.due_date ? new Date(taskData.due_date).toISOString() : null,
-    })
-    .select()
-    .single()
+    const { data, error } = await supabase
+      .from("tasks")
+      .insert({
+        project_id: taskData.project_id,
+        company_id: userData.company_id,
+        title: taskData.title,
+        description: taskData.description || null,
+        status: normalizeTaskStatus(taskData.status),
+        priority: normalizeTaskPriority(taskData.priority),
+        due_date: taskData.due_date ? new Date(taskData.due_date).toISOString() : null,
+      })
+      .select()
+      .single()
 
-  if (error) {
-    console.error("Error creating task:", error)
+    if (error) {
+      console.error("Error creating task:", error)
+      await logServerError({
+        message: "Kunne ikke lagre oppgave i databasen",
+        error,
+        source: "action",
+        route: "createTaskAction",
+        context: { projectId: taskData.project_id, companyId: userData.company_id, userId: user.id },
+      })
+      return { ok: false, error: "Kunne ikke lagre oppgaven. Prøv igjen om litt." }
+    }
+
+    revalidatePath(`/prosjekter/${taskData.project_id}`)
+    return { ok: true, data }
+  } catch (error) {
     await logServerError({
-      message: "Kunne ikke lagre oppgave i databasen",
+      message: "Uventet feil ved oppretting av oppgave",
       error,
       source: "action",
       route: "createTaskAction",
-      context: { projectId: taskData.project_id, companyId: userData.company_id, userId: user.id },
+      context: { projectId: taskData.project_id },
     })
-    throw new Error("Kunne ikke lagre oppgave i databasen")
+    return { ok: false, error: GENERIC_ERROR_MESSAGE }
   }
-
-  revalidatePath(`/prosjekter/${taskData.project_id}`)
-  return data
 }
 
 export async function updateTaskStatusAction(taskId: string, newStatus: string, projectId: string) {
@@ -335,19 +363,22 @@ export async function deleteTaskAction(taskId: string, projectId: string) {
 // PROJECTS Server Actions
 // ==========================
 
-export async function createProjectAction(input: CreateProjectInput) {
+export async function createProjectAction(
+  input: CreateProjectInput
+): Promise<ActionResult<{ id: string; warning?: string }>> {
   const supabase = await createClient()
 
+  try {
   const {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) {
-    throw new Error("Du må være logget inn for å opprette et prosjekt")
+    return { ok: false, error: "Du må være logget inn for å opprette et prosjekt." }
   }
 
   const parsed = createProjectSchema.safeParse(input)
   if (!parsed.success) {
-    throw new Error(getValidationMessage(parsed.error))
+    return { ok: false, error: getValidationMessage(parsed.error) }
   }
 
   const { data: userData, error: userError } = await supabase
@@ -357,11 +388,11 @@ export async function createProjectAction(input: CreateProjectInput) {
     .single()
 
   if (userError || !userData?.company_id) {
-    throw new Error("Kunne ikke hente bedriftsinformasjon")
+    return { ok: false, error: "Kunne ikke hente bedriftsinformasjonen din. Prøv å laste siden på nytt." }
   }
 
   if (!canManageProjects(userData.role)) {
-    throw new Error("Du har ikke tilgang til å opprette prosjekter")
+    return { ok: false, error: "Du har ikke tilgang til å opprette prosjekter. Be en administrator om hjelp." }
   }
 
   const companyId = userData.company_id
@@ -375,7 +406,7 @@ export async function createProjectAction(input: CreateProjectInput) {
     .maybeSingle()
 
   if (customerError || !customer) {
-    throw new Error("Den valgte kunden finnes ikke for bedriften din")
+    return { ok: false, error: "Den valgte kunden finnes ikke lenger. Velg en annen kunde, eller opprett den på nytt." }
   }
 
   const requestedMemberIds = Array.from(
@@ -390,11 +421,11 @@ export async function createProjectAction(input: CreateProjectInput) {
       .in("id", requestedMemberIds)
 
     if (membersError) {
-      throw new Error("Kunne ikke validere prosjektteamet")
+      return { ok: false, error: "Kunne ikke validere prosjektteamet. Prøv igjen om litt." }
     }
 
     if ((validUsers?.length || 0) !== requestedMemberIds.length) {
-      throw new Error("En eller flere valgte brukere er ikke tilgjengelige i bedriften")
+      return { ok: false, error: "En eller flere valgte brukere er ikke lenger tilgjengelige i bedriften. Sjekk teamvalget." }
     }
   }
 
@@ -439,8 +470,12 @@ export async function createProjectAction(input: CreateProjectInput) {
       route: "createProjectAction",
       context: { companyId, userId: user.id },
     })
-    throw new Error("Kunne ikke opprette prosjekt")
+    return { ok: false, error: "Kunne ikke opprette prosjektet. Prøv igjen om litt." }
   }
+
+  // Fra nå av FINNES prosjektet: delfeil under skal aldri feile hele handlingen
+  // (et «Prøv igjen» ville opprettet et duplikatprosjekt) — de blir advarsler.
+  const warnings: string[] = []
 
   const projectMembers = requestedMemberIds.map((memberId) => ({
     project_id: project.id,
@@ -466,7 +501,7 @@ export async function createProjectAction(input: CreateProjectInput) {
         route: "createProjectAction",
         context: { companyId, userId: user.id, projectId: project.id },
       })
-      throw new Error("Prosjektet ble opprettet, men teamet kunne ikke lagres")
+      warnings.push("Teamet kunne ikke lagres – legg til medlemmene på prosjektsiden.")
     }
   }
 
@@ -497,29 +532,56 @@ export async function createProjectAction(input: CreateProjectInput) {
         route: "createProjectAction",
         context: { companyId, userId: user.id, projectId: project.id },
       })
-      throw new Error("Prosjektet ble opprettet, men oppgaver kunne ikke lagres")
+      warnings.push("Oppgavene kunne ikke lagres – legg dem til på prosjektsiden.")
     }
   }
 
-  // Store the project's geofence (real teig boundary, else 100 m circle).
-  if (siteAddress) {
-    await upsertProjectGeofence(companyId, project.id, siteLat, siteLng)
+  // Geofence, cache-revalidering og Tripletex-synk er også «best effort» etter
+  // at prosjektet finnes.
+  try {
+    // Store the project's geofence (real teig boundary, else 100 m circle).
+    if (siteAddress) {
+      await upsertProjectGeofence(companyId, project.id, siteLat, siteLng)
+    }
+
+    revalidatePath("/prosjekter")
+    revalidatePath(`/prosjekter/${project.id}`)
+    revalidatePath("/prosjekter/ny")
+    revalidatePath("/kart")
+
+    await enqueueEntityTripletexSync({
+      companyId,
+      jobType: "project.upsert",
+      payload: { projectId: project.id },
+      idempotencyKey: `project:${project.id}:upsert`,
+    })
+    processTripletexQueueInBackground()
+  } catch (tailError) {
+    await logServerError({
+      message: "Prosjekt opprettet, men etterarbeid feilet (geofence/synk)",
+      error: tailError,
+      source: "action",
+      route: "createProjectAction",
+      context: { companyId, projectId: project.id },
+    })
   }
 
-  revalidatePath("/prosjekter")
-  revalidatePath(`/prosjekter/${project.id}`)
-  revalidatePath("/prosjekter/ny")
-  revalidatePath("/kart")
-
-  await enqueueEntityTripletexSync({
-    companyId,
-    jobType: "project.upsert",
-    payload: { projectId: project.id },
-    idempotencyKey: `project:${project.id}:upsert`,
-  })
-  processTripletexQueueInBackground()
-
-  return { id: project.id }
+  return {
+    ok: true,
+    data: {
+      id: project.id,
+      warning: warnings.length > 0 ? `Prosjektet ble opprettet, men: ${warnings.join(" ")}` : undefined,
+    },
+  }
+  } catch (error) {
+    await logServerError({
+      message: "Uventet feil ved oppretting av prosjekt",
+      error,
+      source: "action",
+      route: "createProjectAction",
+    })
+    return { ok: false, error: GENERIC_ERROR_MESSAGE }
+  }
 }
 
 /** Columns that may be edited via updateProjectAction. Anything else is ignored. */

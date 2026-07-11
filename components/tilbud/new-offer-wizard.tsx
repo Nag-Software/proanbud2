@@ -373,6 +373,28 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     setStep(2)
   }
 
+  // Delt mellom «Fortsett manuelt»-knappen på steg 1 og feiltilstanden i
+  // KI-panelet: sørg for minst én rad å jobbe med, og gå til kalkylesteget.
+  const seedManualLineItems = () => {
+    if (lineItems.length === 0) {
+      addLineItems([
+        {
+          id: generateLocalId(),
+          subproject: defaultSubproject,
+          title: "Ny komponent",
+          description: "",
+          quantity: 1,
+          unit: "stk",
+          supplier: "",
+          unitPriceNok: 0,
+          markupPercent: globalMarkupPercent,
+          discountPercent: 0,
+        },
+      ])
+    }
+    setStep(2)
+  }
+
   const applyGlobalAdjustments = () => {
     setLineItems((previous) =>
       previous.map((item) => ({
@@ -411,8 +433,9 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
 
         setOfferId(result.data.id)
         setFeedback(null)
-        toast.success("Utkast lagret — du finner det igjen under Tilbud.")
-        onCompleted?.()
+        // Bli i wizarden: brukeren lagret for å være trygg, ikke for å slutte.
+        // Utkastet oppdateres ved neste lagring (offerId er satt).
+        toast.success("Utkast lagret. Du kan fortsette å jobbe — det ligger også under Tilbud.")
       } catch (error) {
         reportClientError(error, { context: { action: "save offer draft", projectId } })
         const message = error instanceof Error ? error.message : "Kunne ikke lagre utkast"
@@ -481,6 +504,10 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
           customerName={selectedCustomer?.name}
           onComplete={handleAiComplete}
           onClose={() => setShowAiChat(false)}
+          onContinueManually={() => {
+            setShowAiChat(false)
+            seedManualLineItems()
+          }}
         />
       ) : null}
 
@@ -628,23 +655,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                       return
                     }
                     setAnalysisError(null)
-                    if (lineItems.length === 0) {
-                      addLineItems([
-                        {
-                          id: generateLocalId(),
-                          subproject: defaultSubproject,
-                          title: "Ny komponent",
-                          description: "",
-                          quantity: 1,
-                          unit: "stk",
-                          supplier: "",
-                          unitPriceNok: 0,
-                          markupPercent: globalMarkupPercent,
-                          discountPercent: 0,
-                        },
-                      ])
-                    }
-                    setStep(2)
+                    seedManualLineItems()
                   }}
                 >
                   Fortsett manuelt
@@ -673,6 +684,33 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   </div>
                 </div>
               </div>
+
+              {/* Manuell kalkyle: kort veiviser i stedet for et blankt
+                  regneark — første gang er dette skjermbildet mye å ta inn */}
+              {!analysisResult ? (
+                <div className="rounded-lg border border-sky-200 bg-sky-50 p-3.5 text-sm text-sky-900 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-200">
+                  <p className="font-medium">Slik bygger du kalkylen:</p>
+                  <p className="mt-1 leading-6">
+                    Skriv hva hver del av jobben består av (f.eks. «Gipsplate 13 mm» eller «Montering,
+                    timer») med antall, enhet og innkjøpspris. Med «Legg til → Fra prisliste» henter du
+                    varer med dine egne priser fra prisfilene. Påslaget er fortjenesten din og legges på
+                    innkjøpsprisen.
+                  </p>
+                </div>
+              ) : null}
+
+              {/* Forbehold fra prisforslaget — estimater og antakelser brukeren
+                  bør se over FØR tilbudet går til kunden */}
+              {analysisResult && analysisResult.warnings.length > 0 ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3.5 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+                  <p className="font-medium">Verdt å sjekke før du sender:</p>
+                  <ul className="mt-1.5 list-disc space-y-1 pl-5">
+                    {analysisResult.warnings.map((warning, index) => (
+                      <li key={index}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               {/* Compact markup + add row toolbar */}
               <div className="flex flex-wrap items-center gap-2">
@@ -811,10 +849,13 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 <div className="order-2 sm:basis-0 sm:flex-1">
                   <Button type="button" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleOpenOffer} disabled={isPersisting || lineItems.length === 0}>
                     {isPersisting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    {isPersisting ? "Lagrer..." : "Lagre tilbud"}
+                    {isPersisting ? "Lagrer..." : "Lagre og gå til sending"}
                   </Button>
                 </div>
               </div>
+              <p className="text-center text-xs text-muted-foreground">
+                Tilbudet er ikke sendt til kunden ennå — det gjør du med «Send tilbud» på neste side.
+              </p>
             </div>
           ) : null}
 

@@ -9,13 +9,22 @@ import {
 } from "@/lib/billing/plans"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+/**
+ * Kastes av plan-/modulveggene så actions kan kjenne igjen veggen og returnere
+ * `code: "plan_upgrade"` til klienten (som da viser en «Se abonnement»-knapp
+ * i stedet for en ren feilmelding uten vei videre).
+ */
+export class PlanUpgradeRequiredError extends Error {}
+
 export async function assertCompanyHasModule(
   companyId: string | null | undefined,
   moduleKey: string,
   moduleLabel: string
 ): Promise<void> {
   if (!companyId || !(await companyHasModule(companyId, moduleKey))) {
-    throw new Error(`${moduleLabel} er ikke aktivert. Gå til abonnement for å aktivere modulen.`)
+    throw new PlanUpgradeRequiredError(
+      `${moduleLabel} er ikke aktivert. Gå til Min bedrift → Betaling for å aktivere modulen.`
+    )
   }
 }
 
@@ -105,6 +114,8 @@ export async function assertPlanFeature(
   featureLabel: string
 ): Promise<void> {
   if (!(await companyHasFeature(companyId, feature))) {
-    throw new Error(`${featureLabel} krever Proff-abonnement. Oppgrader under abonnement for å aktivere.`)
+    throw new PlanUpgradeRequiredError(
+      `${featureLabel} krever Proff-abonnement. Oppgrader under Min bedrift → Betaling.`
+    )
   }
 }

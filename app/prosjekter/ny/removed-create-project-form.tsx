@@ -194,7 +194,11 @@ export function CreateProjectForm({ currentUserId, customers, users }: CreatePro
 
     try {
       const result = await createProjectAction(values)
-      router.push(`/prosjekter/${result.id}`)
+      if (!result.ok) {
+        setSubmitError(result.error)
+        return
+      }
+      router.push(`/prosjekter/${result.data.id}`)
       router.refresh()
     } catch (error) {
       reportClientError(error, { context: { action: "opprette nytt prosjekt (skjema)" } })

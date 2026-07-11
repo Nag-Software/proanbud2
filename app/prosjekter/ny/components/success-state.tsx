@@ -8,6 +8,8 @@ type SuccessStateProps = {
   projectName: string
   onGoToProject: () => void
   onCreateAnother: () => void
+  /** Naturlig neste steg i førstegangsreisen: lag tilbud på prosjektet. */
+  onCreateOffer?: () => void
 }
 
 const particles = Array.from({ length: 18 }).map((_, index) => ({
@@ -16,7 +18,7 @@ const particles = Array.from({ length: 18 }).map((_, index) => ({
   delay: index * 0.04,
 }))
 
-export function SuccessState({ projectName, onGoToProject, onCreateAnother }: SuccessStateProps) {
+export function SuccessState({ projectName, onGoToProject, onCreateAnother, onCreateOffer }: SuccessStateProps) {
   return (
     <div className="relative overflow-hidden rounded-lg border border-accent/60 bg-accent/10 p-6 text-center sm:p-10">
       {/* Confetti via CSS keyframes instead of motion/react — same falling +
@@ -40,10 +42,20 @@ export function SuccessState({ projectName, onGoToProject, onCreateAnother }: Su
         </div>
         <h2 className="text-2xl font-bold text-foreground">Prosjekt opprettet</h2>
         <p className="text-muted-foreground">
-          <span className="font-semibold">{projectName || "Prosjektet"}</span> er klart. Du kan gå rett til prosjektet eller opprette et nytt.
+          <span className="font-semibold">{projectName || "Prosjektet"}</span> er klart.
+          {onCreateOffer ? " Neste steg er som regel å lage tilbudet til kunden." : " Du kan gå rett til prosjektet eller opprette et nytt."}
         </p>
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
-          <Button className="h-9 rounded-lg px-4" onClick={onGoToProject}>
+          {onCreateOffer ? (
+            <Button className="h-9 rounded-lg px-4" onClick={onCreateOffer}>
+              Lag tilbud på prosjektet
+            </Button>
+          ) : null}
+          <Button
+            variant={onCreateOffer ? "outline" : "default"}
+            className="h-9 rounded-lg px-4"
+            onClick={onGoToProject}
+          >
             Gå til prosjekt
           </Button>
           <Button type="button" variant="outline" className="h-9 rounded-lg px-4" onClick={onCreateAnother}>

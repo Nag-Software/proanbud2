@@ -413,8 +413,16 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
         task_titles: taskTitles,
       })
 
+      if (!result.ok) {
+        setSubmitError(result.error)
+        return
+      }
+      if (result.data.warning) {
+        toast.warning(result.data.warning)
+      }
+
       const uploadedDocuments = await uploadProjectDocuments(
-        result.id,
+        result.data.id,
         parsedValues.projectFiles,
         parsedValues.contractFiles
       )
@@ -428,11 +436,15 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
       }
 
       setDraft(parsedValues)
-      setCreatedProjectId(result.id)
+      setCreatedProjectId(result.data.id)
       setSuccessView(true)
     } catch (error) {
       reportClientError(error, { context: { action: "opprette nytt prosjekt (wizard)" } })
-      setSubmitError(error instanceof Error ? error.message : "Kunne ikke opprette prosjekt")
+      setSubmitError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Kunne ikke opprette prosjektet. Sjekk nettforbindelsen og prøv igjen."
+      )
     }
   }
 
@@ -463,6 +475,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
     return (
       <SuccessState
         projectName={draft.projectName}
+        onCreateOffer={() => router.push(`/nytt-tilbud?projectId=${createdProjectId}`)}
         onGoToProject={() => router.push(`/prosjekter/${createdProjectId}`)}
         onCreateAnother={() => {
           form.reset(defaultValues)
