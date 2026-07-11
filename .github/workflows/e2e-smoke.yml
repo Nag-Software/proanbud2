@@ -1,0 +1,46 @@
+# E2E-røyktester mot produksjon (app.proanbud.no).
+# Kun lesende/ufarlige flyter — ingen signup, ingen betaling, ingen skriving
+# (lokal kjøring mot prod-DB er forbudt; disse testene treffer bare offentlige
+# sider og verifiserer at middleware/innlogging/offentlig tilbudsvisning lever).
+# Kjøres hver morgen + manuelt fra Actions-fanen.
+name: E2E-røyk mot prod
+
+on:
+  schedule:
+    - cron: "0 5 * * *" # 07:00 norsk sommertid
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Installer avhengigheter
+        run: pnpm install --frozen-lockfile
+
+      - name: Installer Playwright-nettleser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Kjør røyktester
+        run: pnpm exec playwright test
+        env:
+          # v2 bor på nye.proanbud.no til DNS-cutover — oppdater ved lansering.
+          E2E_BASE_URL: https://nye.proanbud.no
+
+      - name: Last opp rapport ved feil
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-rapport
+          path: playwright-report/
+          retention-days: 14

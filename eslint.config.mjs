@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Stale agent-worktrees inneholder fulle repo-kopier (samme grunn som
+    // vitest-excluden) — uten denne drukner reelle funn i 2000+ falske.
+    ".claude/**",
+    // Playwright-artefakter:
+    "test-results/**",
+    "playwright-report/**",
   ]),
 ]);
 

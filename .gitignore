@@ -45,3 +45,7 @@ proanbud-old/
 # Word-låsefiler (åpne dokumenter)
 ~$*
 **/~$*
+
+# Playwright
+test-results/
+playwright-report/

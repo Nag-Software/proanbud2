@@ -1,0 +1,51 @@
+# CI: lint + enhetstester + produksjonsbygg på hver push og PR.
+# Bygget bruker placeholder-miljø — verifisert at `next build` fullfører uten
+# ekte nøkler (alle sider som treffer Supabase er dynamiske). Ingen secrets
+# trengs i GitHub for denne pipelinen.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+  SUPABASE_SERVICE_ROLE_KEY: placeholder-service-key
+  STRIPE_SECRET_KEY: sk_test_placeholder
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+jobs:
+  kvalitet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Installer avhengigheter
+        run: pnpm install --frozen-lockfile
+
+      # Synlig men ikke-blokkerende inntil de ~115 eksisterende lint-feilene i
+      # appkoden er ryddet — fjern continue-on-error når tallet er 0.
+      - name: Lint (ikke-blokkerende)
+        run: pnpm lint
+        continue-on-error: true
+
+      - name: Enhetstester
+        run: pnpm test --run
+
+      - name: Produksjonsbygg
+        run: pnpm build
