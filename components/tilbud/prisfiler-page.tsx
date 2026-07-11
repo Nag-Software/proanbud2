@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import { useDropzone, type FileRejection } from "react-dropzone"
 import {
   Upload,
@@ -46,11 +46,18 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
+import {
+  detectEfoNelfo,
+  parseEfoNelfo,
+  formatEfoSkipSummary,
+  type EfoParsedRow,
+} from "@/lib/tilbud/efo-nelfo"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type ColumnField =
   | "produkt"
+  | "leverandor_id"
   | "nobb"
   | "ean"
   | "varekategori"
@@ -58,6 +65,7 @@ type ColumnField =
   | "enhet"
   | "veil_pris"
   | "veil_pris_ore"
+  | "netto_pris"
   | "min_pris"
   | "min_pris_ore"
   | "rabatt"
@@ -70,7 +78,7 @@ type PriceFile = {
   supplier_name: string
   original_filename: string
   row_count: number
-  status: "ready" | "error"
+  status: "ready" | "error" | "uploading"
   source?: "upload" | "manual"
   created_at: string
 }
@@ -78,6 +86,9 @@ type PriceFile = {
 type ParsedData = {
   headers: string[]
   rows: string[][]
+  // Antall datarader i fila før MAX_ROWS-kuttet – brukes til å varsle brukeren
+  // om at ikke alt ble med, i stedet for å kutte stille.
+  totalDataRows?: number
 }
 
 type PriceRow = {
@@ -167,6 +178,7 @@ function SupplierLogo({
 
 const COLUMN_FIELDS: { value: ColumnField; label: string }[] = [
   { value: "produkt", label: "Produktnavn" },
+  { value: "leverandor_id", label: "Varenr/artikkelnr" },
   { value: "nobb", label: "NOBB-nr" },
   { value: "ean", label: "EAN / Strekkode" },
   { value: "varekategori", label: "Varekategori" },
@@ -174,6 +186,7 @@ const COLUMN_FIELDS: { value: ColumnField; label: string }[] = [
   { value: "enhet", label: "Enhet" },
   { value: "veil_pris", label: "Veil.pris (kr)" },
   { value: "veil_pris_ore", label: "Veil.pris (øre)" },
+  { value: "netto_pris", label: "Nettopris (kr)" },
   { value: "min_pris", label: "Min.pris (kr)" },
   { value: "min_pris_ore", label: "Min.pris (øre)" },
   { value: "rabatt", label: "Rabatt (%)" },
@@ -193,7 +206,7 @@ function dedupeHeaders(raw: string[]): string[] {
   })
 }
 
-const MAX_ROWS = 50000
+const MAX_ROWS = 100000
 
 function parseCSV(text: string): ParsedData {
   const lines = text
@@ -236,6 +249,7 @@ function parseCSV(text: string): ParsedData {
   return {
     headers: dedupeHeaders(parseLine(lines[0])),
     rows: lines.slice(1, MAX_ROWS + 1).map(parseLine),
+    totalDataRows: lines.length - 1,
   }
 }
 
@@ -244,7 +258,7 @@ function parseCSV(text: string): ParsedData {
 // rest of the wizard (auto-detect, mapping, applyMapping) is reused unchanged.
 // xlsx is imported dynamically so CSV users never download the library.
 
-const EXCEL_EXT = /\.(xlsx|xls)$/i
+const EXCEL_EXT = /\.(xlsx|xlsm|xls)$/i
 
 async function parseExcel(buffer: ArrayBuffer): Promise<{ parsed: ParsedData; sheetNames: string[] }> {
   const XLSX = await import("xlsx")
@@ -287,28 +301,41 @@ async function parseExcel(buffer: ArrayBuffer): Promise<{ parsed: ParsedData; sh
   if (rows.length === 0) return { parsed: { headers: [], rows: [] }, sheetNames }
 
   return {
-    parsed: { headers: dedupeHeaders(rows[0]), rows: rows.slice(1, MAX_ROWS + 1) },
+    parsed: {
+      headers: dedupeHeaders(rows[0]),
+      rows: rows.slice(1, MAX_ROWS + 1),
+      totalDataRows: rows.length - 1,
+    },
     sheetNames,
   }
 }
 
 function autoDetect(header: string): ColumnField {
   const h = header.toLowerCase().replace(/[^a-zæøå0-9]/g, "")
+  const isOre = /øre|oere/.test(h)
   if (/nobb/.test(h)) return "nobb"
   if (/ean|strekkode|barcode/.test(h)) return "ean"
   if (/enhet|unit/.test(h)) return "enhet"
   if (/varegruppekode|grpkode|gruppekode|varegruppenr/.test(h)) return "varegruppekode"
   if (/kategori|gruppe|klasse/.test(h)) return "varekategori"
   if (/rabatt|discount/.test(h)) return "rabatt"
-  if (/min|bunn|floor/.test(h)) return "min_pris"
-  if (/veil|listpris|pris|price/.test(h)) return "veil_pris"
-  if (/øremin|minoere|minoere/.test(h)) return "min_pris_ore"
-  if (/øre|oere/.test(h)) return "veil_pris_ore"
+  if (/varenr|varenummer|artikkelnr|artikkelnummer|artnr|sku/.test(h)) return "leverandor_id"
+  if (/netto/.test(h)) return "netto_pris"
+  if (/min|bunn|floor/.test(h)) return isOre ? "min_pris_ore" : "min_pris"
+  if (/veil|listpris|pris|price/.test(h)) return isOre ? "veil_pris_ore" : "veil_pris"
+  if (isOre) return "veil_pris_ore"
   if (/navn|name|beskrivelse|produkt|betegnelse|artikkel/.test(h)) return "produkt"
   return "ignore"
 }
 
-const NUMERIC: Set<ColumnField> = new Set(["veil_pris", "veil_pris_ore", "min_pris", "min_pris_ore", "rabatt"])
+const NUMERIC: Set<ColumnField> = new Set([
+  "veil_pris",
+  "veil_pris_ore",
+  "netto_pris",
+  "min_pris",
+  "min_pris_ore",
+  "rabatt",
+])
 
 function applyMapping(
   headers: string[],
@@ -338,6 +365,84 @@ function applyMapping(
       return out
     })
     .filter((r) => Object.keys(r).length > 0)
+}
+
+// Konverterer parsede EFO/NELFO-rader til wizardens ParsedData-form med
+// semantiske kolonneoverskrifter og ferdig kolonnemapping, slik at
+// mapping-steget er korrekt utfylt uten at brukeren må gjøre noe.
+function efoToParsedData(efoRows: EfoParsedRow[]): {
+  parsed: ParsedData
+  mapping: Record<string, ColumnField>
+} {
+  const has = {
+    sku: efoRows.some((r) => r.leverandor_id),
+    ean: efoRows.some((r) => r.ean),
+    list: efoRows.some((r) => r.veil_pris != null),
+    net: efoRows.some((r) => r.netto_pris != null),
+    discount: efoRows.some((r) => r.rabatt != null),
+    group: efoRows.some((r) => r.varegruppekode),
+  }
+
+  const cols: { header: string; field: ColumnField; get: (r: EfoParsedRow) => string }[] = [
+    { header: "Produktnavn", field: "produkt", get: (r) => r.produkt },
+  ]
+  if (has.sku)
+    cols.push({ header: "Varenr", field: "leverandor_id", get: (r) => r.leverandor_id ?? "" })
+  if (has.ean) cols.push({ header: "EAN", field: "ean", get: (r) => r.ean ?? "" })
+  cols.push({ header: "Enhet", field: "enhet", get: (r) => r.enhet ?? "" })
+  if (has.list)
+    cols.push({
+      header: "Veil.pris (kr)",
+      field: "veil_pris",
+      get: (r) => (r.veil_pris != null ? String(r.veil_pris) : ""),
+    })
+  if (has.net)
+    cols.push({
+      header: "Nettopris (kr)",
+      field: "netto_pris",
+      get: (r) => (r.netto_pris != null ? String(r.netto_pris) : ""),
+    })
+  if (has.discount)
+    cols.push({
+      header: "Rabatt (%)",
+      field: "rabatt",
+      get: (r) => (r.rabatt != null ? String(r.rabatt) : ""),
+    })
+  if (has.group)
+    cols.push({
+      header: "Varegruppekode",
+      field: "varegruppekode",
+      get: (r) => r.varegruppekode ?? "",
+    })
+
+  const capped = efoRows.length > MAX_ROWS ? efoRows.slice(0, MAX_ROWS) : efoRows
+  const mapping: Record<string, ColumnField> = {}
+  cols.forEach((c) => {
+    mapping[c.header] = c.field
+  })
+
+  return {
+    parsed: {
+      headers: cols.map((c) => c.header),
+      rows: capped.map((r) => cols.map((c) => c.get(r))),
+      totalDataRows: efoRows.length,
+    },
+    mapping,
+  }
+}
+
+// Leser en feilrespons fra API-et og returnerer en forståelig norsk melding.
+async function readApiError(res: Response): Promise<string> {
+  if (res.status === 413) {
+    return "En del av fila er for stor til å lastes opp. Fjern kolonner du ikke trenger (velg «Ignorer») og prøv igjen."
+  }
+  try {
+    const data = await res.json()
+    if (data && typeof data.error === "string" && data.error) return data.error
+  } catch {
+    // Responsen var ikke JSON – fall tilbake til generisk melding
+  }
+  return "Noe gikk galt under opplastingen. Prøv igjen."
 }
 
 function fmtDate(iso: string) {
@@ -431,6 +536,12 @@ export function PrisfilerPage() {
   const [customSupplierMode, setCustomSupplierMode] = useState(false)
   const [fileName, setFileName] = useState("")
   const [saving, setSaving] = useState(false)
+  const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(null)
+  const [efoInfo, setEfoInfo] = useState<{
+    kind: "varefil" | "pristilbud"
+    supplierName: string
+    skipSummary: string | null
+  } | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const [viewerFile, setViewerFile] = useState<PriceFile | null>(null)
@@ -476,6 +587,8 @@ export function PrisfilerPage() {
     setCustomSupplierMode(false)
     setFileName("")
     setSaving(false)
+    setSaveProgress(null)
+    setEfoInfo(null)
     setParsing(false)
   }
 
@@ -484,6 +597,7 @@ export function PrisfilerPage() {
     if (!file) return
     setParsing(true)
     setFileName(file.name)
+    setEfoInfo(null)
     const matched = matchKnownSupplier(file.name)
     if (matched) {
       setSupplierName(matched)
@@ -499,17 +613,30 @@ export function PrisfilerPage() {
 
     const isExcel = EXCEL_EXT.test(file.name)
 
-    // Shared tail of both parse paths: validate, auto-detect columns, go to step 2
-    const finishParsing = (parsed: ParsedData, emptyMessage: string) => {
+    // Shared tail of all parse paths: validate, map columns, go to step 2.
+    // mappingOverride brukes når formatet er kjent (EFO/NELFO) og kolonnene
+    // allerede er semantisk bestemt – da hoppes auto-gjetting over.
+    const finishParsing = (
+      parsed: ParsedData,
+      emptyMessage: string,
+      mappingOverride?: Record<string, ColumnField>
+    ) => {
       if (parsed.headers.length === 0) {
         toast.error(emptyMessage)
         setParsing(false)
         return
       }
-      const mapping: Record<string, ColumnField> = {}
-      parsed.headers.forEach((h) => {
-        mapping[h] = autoDetect(h)
-      })
+      if (parsed.totalDataRows != null && parsed.totalDataRows > parsed.rows.length) {
+        toast.warning(
+          `Filen har ${parsed.totalDataRows.toLocaleString("no-NO")} rader – bare de første ${MAX_ROWS.toLocaleString("no-NO")} blir med. Del gjerne fila i to og last opp resten separat.`
+        )
+      }
+      const mapping: Record<string, ColumnField> = mappingOverride ?? {}
+      if (!mappingOverride) {
+        parsed.headers.forEach((h) => {
+          mapping[h] = autoDetect(h)
+        })
+      }
       setParsedData(parsed)
       setColumnMapping(mapping)
       setStep(2)
@@ -542,11 +669,37 @@ export function PrisfilerPage() {
       }
 
       // Try UTF-8 first; if replacement chars (U+FFFD) appear, fall back to Windows-1252
-      // which is the encoding used by most Norwegian Excel / ERP CSV exports
+      // which is the encoding used by most Norwegian Excel / ERP CSV exports \u2013
+      // and the charset EFO/NELFO-spesifikasjonen krever (CP1252/ISO-8859-1)
       let text = new TextDecoder("utf-8", { fatal: false }).decode(buffer)
       if (text.includes("\uFFFD")) {
         text = new TextDecoder("windows-1252", { fatal: false }).decode(buffer)
       }
+
+      // EFO/NELFO-prisfiler (bransjeformatet fra VVS-/elektrogrossister som
+      // Ahlsell, Br\u00F8drene Dahl og Onninen) mangler kolonneoverskrifter og
+      // parses posisjonsbasert med egen parser.
+      if (detectEfoNelfo(text)) {
+        const result = parseEfoNelfo(text)
+        if (!result.ok) {
+          toast.error(result.error)
+          setParsing(false)
+          return
+        }
+        if (result.supplierName) {
+          setSupplierName(result.supplierName)
+          setCustomSupplierMode(!findSupplier(result.supplierName))
+        }
+        setEfoInfo({
+          kind: result.kind,
+          supplierName: result.supplierName,
+          skipSummary: formatEfoSkipSummary(result.stats),
+        })
+        const { parsed, mapping } = efoToParsedData(result.rows)
+        finishParsing(parsed, "Fant ingen varelinjer i EFO/NELFO-filen.", mapping)
+        return
+      }
+
       finishParsing(parseCSV(text), "Kunne ikke lese filen. Sjekk at den er i CSV-format.")
     }
     reader.onerror = () => {
@@ -588,6 +741,11 @@ export function PrisfilerPage() {
     multiple: false,
   })
 
+  // Store filer deles opp i flere forespørsler: serverless-funksjoner avviser
+  // request-bodies over ~4,5 MB, så én stor POST ville feilet for filer med
+  // titusenvis av rader (typisk EFO/NELFO-kataloger).
+  const UPLOAD_CHUNK = 8000
+
   async function handleSave() {
     if (!parsedData || !supplierName.trim()) return
     const rows = applyMapping(parsedData.headers, parsedData.rows, columnMapping)
@@ -596,16 +754,69 @@ export function PrisfilerPage() {
       return
     }
     setSaving(true)
+    setSaveProgress(null)
     try {
-      const res = await fetch("/api/mine-priser/prisfiler", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ supplierName: supplierName.trim(), fileName, rows }),
-      })
-      if (!res.ok) {
-        const { error } = await res.json()
-        toast.error(error ?? "Noe gikk galt")
-        return
+      if (rows.length <= UPLOAD_CHUNK) {
+        const res = await fetch("/api/mine-priser/prisfiler", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ supplierName: supplierName.trim(), fileName, rows }),
+        })
+        if (!res.ok) {
+          toast.error(await readApiError(res))
+          return
+        }
+      } else {
+        // Fila står som «uploading» (usynlig for KI-tilbud) til siste bit er
+        // inne, og slettes i sin helhet hvis noe feiler underveis.
+        const total = rows.length
+        setSaveProgress({ done: 0, total })
+        const startRes = await fetch("/api/mine-priser/prisfiler", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            supplierName: supplierName.trim(),
+            fileName,
+            rows: rows.slice(0, UPLOAD_CHUNK),
+            chunked: { total },
+          }),
+        })
+        if (!startRes.ok) {
+          toast.error(await readApiError(startRes))
+          return
+        }
+        const { id: fileId } = await startRes.json()
+        setSaveProgress({ done: Math.min(UPLOAD_CHUNK, total), total })
+
+        try {
+          for (let offset = UPLOAD_CHUNK; offset < total; offset += UPLOAD_CHUNK) {
+            const isLast = offset + UPLOAD_CHUNK >= total
+            const res = await fetch("/api/mine-priser/prisfiler", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                rows: rows.slice(offset, offset + UPLOAD_CHUNK),
+                chunked: { fileId, done: isLast },
+              }),
+            })
+            if (!res.ok) throw new Error(await readApiError(res))
+            setSaveProgress({ done: Math.min(offset + UPLOAD_CHUNK, total), total })
+          }
+        } catch (chunkError) {
+          // Rydd bort den halvferdige fila så den ikke blir liggende igjen
+          await fetch(`/api/mine-priser/prisfiler/${fileId}`, { method: "DELETE" }).catch(() => {})
+          reportClientError(chunkError, {
+            context: { action: "chunked price file upload", supplierName: supplierName.trim() },
+          })
+          const reason =
+            chunkError instanceof Error && chunkError.message
+              ? chunkError.message
+              : "Nettverksfeil."
+          toast.error(
+            `Opplastingen ble avbrutt: ${reason} Ingen halvferdig prisfil er lagret – prøv igjen.`
+          )
+          return
+        }
       }
       toast.success(`Prisfil fra ${supplierName} er klar til bruk`)
       track("prisfil_lastet_opp", { antall_rader: rows.length })
@@ -614,9 +825,10 @@ export function PrisfilerPage() {
       loadFiles()
     } catch (error) {
       reportClientError(error, { context: { action: "save price file", supplierName: supplierName.trim() } })
-      toast.error("Noe gikk galt. Prøv igjen.")
+      toast.error("Noe gikk galt under opplastingen. Sjekk nettforbindelsen og prøv igjen.")
     } finally {
       setSaving(false)
+      setSaveProgress(null)
     }
   }
 
@@ -816,9 +1028,13 @@ export function PrisfilerPage() {
   const mappedCount = Object.values(columnMapping).filter((v) => v !== "ignore").length
   const previewRows = parsedData?.rows.slice(0, 3) ?? []
   const totalRows = parsedData?.rows.length ?? 0
-  const mappedRows = parsedData
-    ? applyMapping(parsedData.headers, parsedData.rows, columnMapping).length
-    : 0
+  // Memoisert – applyMapping over inntil 100 000 rader er for tungt å kjøre
+  // på hver render (kjørte tidligere per tastetrykk i leverandørfeltet)
+  const mappedRows = useMemo(
+    () =>
+      parsedData ? applyMapping(parsedData.headers, parsedData.rows, columnMapping).length : 0,
+    [parsedData, columnMapping]
+  )
 
   return (
     <>
@@ -916,10 +1132,19 @@ export function PrisfilerPage() {
 
                 <div className="flex items-center justify-between border-t border-border/50 bg-muted/25 px-3.5 py-2">
                   <Badge
-                    variant={file.source === "manual" ? "outline" : "secondary"}
-                    className="text-[10px] font-medium uppercase tracking-[0.12em]"
+                    variant={file.status !== "ready" || file.source === "manual" ? "outline" : "secondary"}
+                    className={cn(
+                      "text-[10px] font-medium uppercase tracking-[0.12em]",
+                      file.status !== "ready" && "border-amber-500/50 text-amber-600 dark:text-amber-500"
+                    )}
                   >
-                    {file.source === "manual" ? "Manuell" : "Klar"}
+                    {file.status === "uploading"
+                      ? "Ufullstendig"
+                      : file.status === "error"
+                        ? "Feil"
+                        : file.source === "manual"
+                          ? "Manuell"
+                          : "Klar"}
                   </Badge>
                   <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5" />
                 </div>
@@ -1194,11 +1419,12 @@ export function PrisfilerPage() {
                         : "Slipp filen her, eller klikk for å velge"}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Excel (.xlsx), CSV, TSV eller TXT · maks 50 000 rader
+                    Excel (.xlsx), CSV, TSV, TXT eller EFO/NELFO · maks 100 000 rader
                   </p>
                 </div>
                 <p className="text-center text-xs text-muted-foreground">
-                  Last opp prisfilen fra leverandøren – Excel (.xlsx) eller CSV.
+                  Last opp prisfilen fra leverandøren – Excel/CSV, eller EFO/NELFO-fil fra
+                  VVS- og elektrogrossister (Ahlsell, Brødrene Dahl, Onninen m.fl.).
                 </p>
               </div>
             )}
@@ -1206,6 +1432,20 @@ export function PrisfilerPage() {
             {/* ── Step 2: Column mapping ── */}
             {step === 2 && parsedData && (
               <div className="space-y-4">
+                {efoInfo && (
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+                    <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                      {efoInfo.kind === "pristilbud"
+                        ? "EFO/NELFO-pristilbud gjenkjent"
+                        : "EFO/NELFO-prisfil gjenkjent"}
+                      {efoInfo.supplierName ? ` – ${efoInfo.supplierName}` : ""}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Kolonnene er fylt ut automatisk, så du kan gå rett videre.
+                      {efoInfo.skipSummary ? ` ${efoInfo.skipSummary}` : ""}
+                    </p>
+                  </div>
+                )}
                 <p className="text-sm text-muted-foreground">
                   <span className="font-medium text-foreground">
                     {parsedData.headers.length} kolonner
@@ -1419,7 +1659,9 @@ export function PrisfilerPage() {
                 {saving ? (
                   <>
                     <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    Lagrer...
+                    {saveProgress
+                      ? `Laster opp ${saveProgress.done.toLocaleString("no-NO")} av ${saveProgress.total.toLocaleString("no-NO")}…`
+                      : "Lagrer..."}
                   </>
                 ) : (
                   <>

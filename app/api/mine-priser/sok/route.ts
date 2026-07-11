@@ -80,6 +80,8 @@ export async function GET(request: Request) {
         .from("supplier_price_files")
         .select("id, supplier_name")
         .eq("company_id", companyId)
+        // Kun ferdige filer – chunkede opplastinger står som 'uploading' til alt er inne
+        .eq("status", "ready")
 
       const supplierByFileId = new Map(
         ((fileRows ?? []) as Array<{ id: string; supplier_name: string | null }>).map((file) => [
@@ -92,6 +94,9 @@ export async function GET(request: Request) {
         .from("supplier_price_rows")
         .select("id, product, unit, net_price, list_price, category, nobb, supplier_sku, file_id, product_group_code, ean")
         .eq("company_id", companyId)
+        // Begrens til radene i de ferdige filene over, så et halvopplastet
+        // datasett aldri dukker opp i prissøket
+        .in("file_id", Array.from(supplierByFileId.keys()))
         .not("product", "is", null)
         .order("product", { ascending: true })
         .limit(Math.max(limit * 8, 80))

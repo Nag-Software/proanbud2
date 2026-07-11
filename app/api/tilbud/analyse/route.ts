@@ -296,6 +296,8 @@ export async function POST(request: Request) {
           .from("supplier_price_files")
           .select("id, supplier_name, original_filename, row_count")
           .eq("company_id", companyId)
+          // Kun ferdige filer – chunkede opplastinger står som 'uploading' til alt er inne
+          .eq("status", "ready")
           .order("created_at", { ascending: false })
           .limit(20),
         supabase.from("companies").select("name").eq("id", companyId).maybeSingle(),
