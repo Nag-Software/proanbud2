@@ -170,7 +170,7 @@ async function runOpenAiAnalysis(
       },
       eksternePriser: externalPrices,
       normalPrisIndikator: normalPriceIndicator,
-      lagredeJobber: formatSavedJobsForPrompt(savedJobs),
+      lagredeJobber: formatSavedJobsForPrompt(savedJobs.slice(0, 200)),
       relevanteLagredeJobber: relevantSavedJobs.map((job) => formatMatchedSavedJobForPrompt(job)),
       outputRequirements: {
         minLineItems: 6,
@@ -183,18 +183,26 @@ async function runOpenAiAnalysis(
       fileName: attachment.fileName,
       supplierName: attachment.supplierName,
       rowCount: attachment.rowCount,
+      totalRowCount: attachment.totalRowCount,
       content: attachment.content,
     })),
   }).join("\n\n")
 
-  const response = await openaiFetch("chat/completions", {
-    model: process.env.OPENAI_MODEL || "gpt-5.2-mini",
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
-      { role: "user", content: userPrompt },
-    ],
-  })
+  // 120s per forsøk + maks 1 retry: kalkylegenerering med store prompter kan
+  // bruke godt over standard-timeouten på 30s, og retries må holde seg innenfor
+  // maxDuration så Vercel ikke dreper funksjonen (klienten får da ren tekst).
+  const response = await openaiFetch(
+    "chat/completions",
+    {
+      model: process.env.OPENAI_MODEL || "gpt-5.2-mini",
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+    },
+    { timeoutMs: 120_000, retries: 1 }
+  )
 
   const payload = (await response.json()) as {
     choices?: Array<{
@@ -219,8 +227,8 @@ async function runOpenAiAnalysis(
 }
 
 // AI generation can take longer than the default serverless limit — allow up to
-// 60s so requests aren't killed mid-generation on Vercel.
-export const maxDuration = 60
+// 300s (Pro-plan limit) so requests aren't killed mid-generation on Vercel.
+export const maxDuration = 300
 
 export async function POST(request: Request) {
   try {
@@ -324,6 +332,9 @@ export async function POST(request: Request) {
       const aiPriceSelectionContext = buildAiPriceSelectionContext({
         files: (fileRows ?? []) as CompanyPriceFileMeta[],
         rows: fetchedRows,
+        // Relevansrangerer radene når prisfilene overstiger tegnbudsjettet —
+        // ellers sprenger store prisfiler modellens kontekstvindu.
+        query: `${input.title}\n${input.description}\n${input.sourceSummary}`,
       })
       allCompanyPrices = aiPriceSelectionContext.allCompanyPrices
       priceFileAttachments = aiPriceSelectionContext.attachments

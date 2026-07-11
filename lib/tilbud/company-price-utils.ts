@@ -24,7 +24,10 @@ export type CompanyPricePromptAttachment = {
   fileId: string
   supplierName: string
   fileName: string
+  /** Antall rader som faktisk er med i content (kan være et utvalg). */
   rowCount: number
+  /** Totalt antall rader i prisfilen. rowCount < totalRowCount betyr relevansutvalg. */
+  totalRowCount: number
   content: string
 }
 
@@ -182,22 +185,24 @@ function formatCompanyPriceValue(value: string | number | null | undefined) {
   return value?.trim() || ""
 }
 
-function formatCompanyPriceAttachmentContent(rows: CompanyPriceRow[]) {
-  const header = "product\tunit\tnet_price\tlist_price\tcategory\tnobb\tsupplier_sku\tproduct_group_code"
-  const body = rows.map((row) =>
-    [
-      formatCompanyPriceValue(row.product),
-      formatCompanyPriceValue(row.unit),
-      formatCompanyPriceValue(row.net_price),
-      formatCompanyPriceValue(row.list_price),
-      formatCompanyPriceValue(row.category),
-      formatCompanyPriceValue(row.nobb),
-      formatCompanyPriceValue(row.supplier_sku),
-      formatCompanyPriceValue(row.product_group_code),
-    ].join("\t")
-  )
+const COMPANY_PRICE_ATTACHMENT_HEADER =
+  "product\tunit\tnet_price\tlist_price\tcategory\tnobb\tsupplier_sku\tproduct_group_code"
 
-  return [header, ...body].join("\n")
+function formatCompanyPriceRowLine(row: CompanyPriceRow) {
+  return [
+    formatCompanyPriceValue(row.product),
+    formatCompanyPriceValue(row.unit),
+    formatCompanyPriceValue(row.net_price),
+    formatCompanyPriceValue(row.list_price),
+    formatCompanyPriceValue(row.category),
+    formatCompanyPriceValue(row.nobb),
+    formatCompanyPriceValue(row.supplier_sku),
+    formatCompanyPriceValue(row.product_group_code),
+  ].join("\t")
+}
+
+function formatCompanyPriceAttachmentContent(rows: CompanyPriceRow[]) {
+  return [COMPANY_PRICE_ATTACHMENT_HEADER, ...rows.map(formatCompanyPriceRowLine)].join("\n")
 }
 
 function countMatchingTerms(haystack: string, terms: string[]) {
@@ -501,9 +506,49 @@ export function compressCompanyPriceRowsForPrompt(rows: CompanyPriceRow[], limit
   return dedupedRows
 }
 
+/**
+ * Samlet tegnbudsjett for prisfil-innhold i KI-prompter. Uten et tak sprenger
+ * store prisfiler modellens kontekstvindu (reell kunde: 28k rader ≈ 2,6M tegn
+ * → OpenAI 400 context_length_exceeded). ~240k tegn ≈ 60k tokens gir god
+ * margin til øvrig kontekst selv på modeller med 128k-vindu.
+ */
+export const PRICE_ATTACHMENT_CONTENT_BUDGET_CHARS = 240_000
+
+function selectRowsWithinCharBudget(rows: CompanyPriceRow[], tokens: string[], charBudget: number) {
+  const ranked =
+    tokens.length === 0
+      ? rows
+      : rows
+          .map((row, index) => ({ row, index, score: scoreCompanyPriceRow(row, tokens) }))
+          .sort((left, right) => right.score - left.score || left.index - right.index)
+          .map((item) => item.row)
+
+  const selected: CompanyPriceRow[] = []
+  let usedChars = COMPANY_PRICE_ATTACHMENT_HEADER.length
+
+  for (const row of ranked) {
+    const lineLength = formatCompanyPriceRowLine(row).length + 1
+    if (usedChars + lineLength > charBudget && selected.length > 0) {
+      break
+    }
+
+    selected.push(row)
+    usedChars += lineLength
+
+    if (usedChars >= charBudget) {
+      break
+    }
+  }
+
+  return selected
+}
+
 export function buildAiPriceSelectionContext(input: {
   files: CompanyPriceFileMeta[]
   rows: Array<CompanyPriceRow & { file_id?: string | null }>
+  /** Oppdragstekst brukt til å relevansrangere rader når budsjettet må kuttes. */
+  query?: string
+  maxTotalContentChars?: number
 }) {
   const supplierNameByFileId = new Map(input.files.map((file) => [file.id, file.supplier_name || null]))
 
@@ -522,22 +567,44 @@ export function buildAiPriceSelectionContext(input: {
     rowsByFileId.set(fileId, current)
   }
 
-  const attachments = input.files
-    .map((file) => {
-      const rows = rowsByFileId.get(file.id) || []
-      if (rows.length === 0) {
-        return null
-      }
+  const filesWithRows = input.files
+    .map((file) => ({ file, rows: rowsByFileId.get(file.id) || [] }))
+    .filter((entry) => entry.rows.length > 0)
 
-      return {
-        fileId: file.id,
-        supplierName: file.supplier_name?.trim() || "Ukjent leverandør",
-        fileName: file.original_filename?.trim() || `${file.supplier_name || "prisfil"}.csv`,
-        rowCount: rows.length,
-        content: formatCompanyPriceAttachmentContent(rows),
-      } satisfies CompanyPricePromptAttachment
-    })
-    .filter((attachment): attachment is CompanyPricePromptAttachment => Boolean(attachment))
+  const budget = Math.max(input.maxTotalContentChars ?? PRICE_ATTACHMENT_CONTENT_BUDGET_CHARS, 10_000)
+  const totalContentChars = filesWithRows.reduce(
+    (sum, entry) =>
+      sum +
+      COMPANY_PRICE_ATTACHMENT_HEADER.length +
+      entry.rows.reduce((rowSum, row) => rowSum + formatCompanyPriceRowLine(row).length + 1, 0),
+    0
+  )
+
+  const tokens = totalContentChars > budget ? extractSearchTokens(input.query || "") : []
+  let remainingBudget = budget
+
+  const attachments = filesWithRows.map((entry, index) => {
+    const { file, rows } = entry
+
+    let includedRows = rows
+    if (totalContentChars > budget) {
+      const remainingFiles = filesWithRows.length - index
+      const share = Math.floor(remainingBudget / remainingFiles)
+      includedRows = selectRowsWithinCharBudget(rows, tokens, share)
+    }
+
+    const content = formatCompanyPriceAttachmentContent(includedRows)
+    remainingBudget = Math.max(remainingBudget - content.length, 0)
+
+    return {
+      fileId: file.id,
+      supplierName: file.supplier_name?.trim() || "Ukjent leverandør",
+      fileName: file.original_filename?.trim() || `${file.supplier_name || "prisfil"}.csv`,
+      rowCount: includedRows.length,
+      totalRowCount: rows.length,
+      content,
+    } satisfies CompanyPricePromptAttachment
+  })
 
   return {
     allCompanyPrices,

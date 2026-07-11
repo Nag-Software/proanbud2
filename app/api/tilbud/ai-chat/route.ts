@@ -283,7 +283,10 @@ async function callOpenAiResponses(body: Record<string, unknown>): Promise<Respo
       })()
     : body
 
-  const response = await openaiFetch("responses", requestBody)
+  // Kalkylegenerering med store prompter kan bruke godt over standard-timeouten
+  // på 30s. 120s per forsøk + maks 1 retry holder oss under maxDuration (300s)
+  // i stedet for at Vercel dreper funksjonen og klienten får ren tekst tilbake.
+  const response = await openaiFetch("responses", requestBody, { timeoutMs: 120_000, retries: 1 })
   return response.json() as Promise<ResponsesPayload>
 }
 
@@ -424,6 +427,9 @@ async function resolvePriceContext(
   const aiPriceSelectionContext = buildAiPriceSelectionContext({
     files: files as CompanyPriceFileMeta[],
     rows: allFetchedRows,
+    // Relevansrangerer radene når prisfilene overstiger tegnbudsjettet —
+    // ellers sprenger store prisfiler modellens kontekstvindu.
+    query: savedJobQuery,
   })
 
   return {
@@ -457,9 +463,11 @@ async function extractAttachmentText(fileData: Blob, type?: string) {
 
   if (type === "application/pdf") {
     try {
-      const { PDFParse } = await import("pdf-parse")
-      const parser = new PDFParse({ data: new Uint8Array(await fileData.arrayBuffer()) })
-      const result = await parser.getText()
+      // unpdf i stedet for pdf-parse: pdf-parse v2 krever DOMMatrix (nettleser-API)
+      // ved import og krasjer i Node-runtime på Vercel. unpdf har en serverless-
+      // bygget pdf.js uten den avhengigheten.
+      const { extractText } = await import("unpdf")
+      const result = await extractText(new Uint8Array(await fileData.arrayBuffer()), { mergePages: true })
       return result.text.slice(0, 12000)
     } catch (error) {
       void logServerError({
@@ -483,12 +491,17 @@ async function extractAttachmentText(fileData: Blob, type?: string) {
   return ""
 }
 
+// Samlet tak på tekst hentet ut av opplastede vedlegg (12k tegn per dokument i
+// tillegg) — vedleggstekst skal aldri kunne presse prompten mot kontekstgrensen.
+const ATTACHMENT_TEXT_TOTAL_BUDGET_CHARS = 48_000
+
 async function resolveAttachmentContext(
   supabase: Awaited<ReturnType<typeof createClient>>,
   sourceDocuments: z.infer<typeof sourceDocumentSchema>[]
 ) {
   const attachments: AttachmentSummary[] = []
   const imageInputs: Array<{ type: "input_image"; image_url: string }> = []
+  let remainingTextBudget = ATTACHMENT_TEXT_TOTAL_BUDGET_CHARS
 
   for (const doc of sourceDocuments) {
     let signedUrl = doc.signedUrl
@@ -503,7 +516,8 @@ async function resolveAttachmentContext(
       if (doc.storageBucket && doc.storagePath) {
         const { data } = await supabase.storage.from(doc.storageBucket).download(doc.storagePath)
         if (data) {
-          extractedText = await extractAttachmentText(data, doc.type)
+          extractedText = (await extractAttachmentText(data, doc.type)).slice(0, Math.max(remainingTextBudget, 0))
+          remainingTextBudget -= extractedText.length
         }
       }
     } catch (error) {
@@ -557,7 +571,7 @@ function buildContextEnvelope(
       egetFirma: body.company,
     },
     normalPrisIndikator: priceContext.normalPriceIndicator,
-    lagredeJobber: formatSavedJobsForPrompt(priceContext.savedJobs),
+    lagredeJobber: formatSavedJobsForPrompt(priceContext.savedJobs.slice(0, 200)),
     relevanteLagredeJobber: priceContext.relevantSavedJobs.map((job) => formatMatchedSavedJobForPrompt(job)),
     avklaringer:
       body.phase === "answer"
@@ -582,6 +596,7 @@ function buildContextEnvelope(
         supplierName: attachment.supplierName,
         fileName: attachment.fileName,
         rowCount: attachment.rowCount,
+        totalRowCount: attachment.totalRowCount,
       })),
       fallbackProdukter: priceContext.fallbackMatches,
     },
@@ -619,6 +634,7 @@ function analysisPrompt(
       fileName: attachment.fileName,
       supplierName: attachment.supplierName,
       rowCount: attachment.rowCount,
+      totalRowCount: attachment.totalRowCount,
       content: attachment.content,
     })),
   }).join("\n\n")
@@ -755,8 +771,46 @@ async function buildResultPayload(input: {
 }
 
 // AI generation can take longer than the default serverless limit — allow up to
-// 60s so requests aren't killed mid-generation on Vercel.
-export const maxDuration = 60
+// 300s (Pro-plan limit, same as billing/reconcile) so requests aren't killed
+// mid-generation on Vercel. When the function is killed, the client gets a
+// plain-text error page instead of JSON.
+export const maxDuration = 300
+
+/**
+ * Oversetter interne/tekniske feil til en norsk melding som er trygg å vise
+ * bruker, med riktig statuskode. Full teknisk detalj logges separat.
+ */
+function toClientError(error: unknown): { message: string; status: number } {
+  const raw = error instanceof Error ? error.message : ""
+
+  if (raw.includes("context_length_exceeded") || raw.includes("exceeds the context window")) {
+    return {
+      message:
+        "Oppdraget inneholder for mye data til at KI-en kan behandle alt på én gang. Prøv igjen – og fjern gjerne noen vedlegg hvis det fortsatt feiler.",
+      status: 400,
+    }
+  }
+
+  if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+    return {
+      message: "KI-tjenesten brukte for lang tid på å svare. Prøv igjen – det går som regel bra på nytt forsøk.",
+      status: 504,
+    }
+  }
+
+  if (/^OpenAI \d+/.test(raw)) {
+    return {
+      message: "KI-tjenesten svarte med en feil. Prøv igjen om et øyeblikk.",
+      status: 502,
+    }
+  }
+
+  if (raw.startsWith("KI returnerte")) {
+    return { message: `${raw}. Prøv igjen.`, status: 502 }
+  }
+
+  return { message: raw || "Ukjent feil. Prøv igjen.", status: 500 }
+}
 
 export async function POST(request: Request) {
   try {
@@ -879,16 +933,14 @@ export async function POST(request: Request) {
     )
   } catch (error) {
     console.error("[ai-chat POST]", error)
+    const clientError = toClientError(error)
     await logServerError({
       message: "ai-chat offer generation failed",
       error,
       source: "api",
       route: "POST /api/tilbud/ai-chat",
-      statusCode: 500,
+      statusCode: clientError.status,
     })
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Ukjent feil" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: clientError.message }, { status: clientError.status })
   }
 }

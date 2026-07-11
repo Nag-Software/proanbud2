@@ -108,19 +108,38 @@ export const ANALYSIS_SYSTEM_PROMPT = [
   `- Følg dette formatet: ${JSON.stringify(ANALYSIS_JSON_EXAMPLE)}`,
 ].join("\n")
 
+export function formatPriceFileAttachmentHeader(attachment: {
+  fileName: string
+  supplierName: string
+  rowCount: number
+  totalRowCount?: number
+}) {
+  const isFiltered = typeof attachment.totalRowCount === "number" && attachment.totalRowCount > attachment.rowCount
+  const rowInfo = isFiltered
+    ? `Rader: ${attachment.rowCount} mest relevante av totalt ${attachment.totalRowCount}`
+    : `Rader: ${attachment.rowCount}`
+
+  return `Prisfilvedlegg: ${attachment.fileName} | Leverandør: ${attachment.supplierName} | ${rowInfo}`
+}
+
 export function buildAnalysisUserPromptSections(input: {
   contextJson: Record<string, unknown>
-  priceFileAttachments: Array<{ fileName: string; supplierName: string; rowCount: number; content: string }>
+  priceFileAttachments: Array<{
+    fileName: string
+    supplierName: string
+    rowCount: number
+    totalRowCount?: number
+    content: string
+  }>
 }) {
   return [
     "Bruk oppdragsgrunnlaget under til å generere en komplett kalkyle.",
-    "Les hele prisfilvedlegg og velg korrekte produkter derfra – ikke stol på forhåndsfiltrering.",
+    "Les prisfilvedleggene og velg korrekte produkter derfra. Ved store prisfiler viser vedlegget et relevansutvalg av radene – bruk det som bedriftens prisgrunnlag.",
     "Hvis eksternePriser finnes og produkt mangler i prisfil, bruk disse med konkret produktnavn i title.",
     "Returner kun gyldig JSON i formatet fra systemprompten.",
     JSON.stringify(input.contextJson),
     ...input.priceFileAttachments.map(
-      (attachment) =>
-        `Prisfilvedlegg: ${attachment.fileName} | Leverandør: ${attachment.supplierName} | Rader: ${attachment.rowCount}\n${attachment.content}`
+      (attachment) => `${formatPriceFileAttachmentHeader(attachment)}\n${attachment.content}`
     ),
   ]
 }

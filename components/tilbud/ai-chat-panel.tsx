@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react"
 import { ArrowLeft, ArrowRight, CheckCircle2, LoaderCircle, Sparkles, X } from "lucide-react"
 
 import { reportClientError } from "@/lib/errors/client"
+import { apiErrorMessage, parseJsonResponse } from "@/lib/http/safe-json"
 import { Button } from "@/components/ui/button"
 import {
   type OfferAnalysisResult,
@@ -87,6 +88,36 @@ const generatingSteps = [
   "Beregner mengder og priser…",
   "Setter sammen forslag…",
 ]
+
+/**
+ * Leser og validerer svar fra /api/tilbud/ai-chat. Kaster alltid en norsk,
+ * bruker-vennlig melding — aldri rå JSON-parsefeil eller engelske API-feil
+ * (Vercel-timeouts svarer med ren tekst, ikke JSON).
+ */
+async function readAiChatResponse(response: Response, fallback: string): Promise<AiChatApiResponse> {
+  const payload = await parseJsonResponse<AiChatApiResponse>(response)
+
+  if (!response.ok || !payload) {
+    throw new Error(
+      apiErrorMessage({
+        status: response.status,
+        serverMessage: payload?.error ?? null,
+        fallback,
+      })
+    )
+  }
+
+  return payload
+}
+
+function toDisplayError(error: unknown): string {
+  if (error instanceof TypeError) {
+    // fetch() kaster TypeError ved nettverksbrudd — meldingen er engelsk støy.
+    return "Fikk ikke kontakt med tjeneren. Sjekk nettverket og prøv igjen."
+  }
+
+  return error instanceof Error && error.message ? error.message : "Ukjent feil. Prøv igjen."
+}
 
 export function AiChatPanel({
   title,
@@ -181,10 +212,7 @@ export function AiChatPanel({
         }),
       })
 
-      const payload = (await response.json()) as AiChatApiResponse
-      if (!response.ok) {
-        throw new Error(payload.error || "Analyse feilet")
-      }
+      const payload = await readAiChatResponse(response, "Analysen feilet. Prøv igjen.")
 
       if (payload.phase === "questions" && payload.questions.length > 0) {
         setQuestions(payload.questions)
@@ -196,7 +224,7 @@ export function AiChatPanel({
       applyResult(payload)
     } catch (error) {
       reportClientError(error, { context: { action: "ai-chat start phase" } })
-      setErrorText(error instanceof Error ? error.message : "Ukjent feil")
+      setErrorText(toDisplayError(error))
       setPhase("error")
     }
   }
@@ -337,15 +365,12 @@ export function AiChatPanel({
         }),
       })
 
-      const payload = (await response.json()) as AiChatApiResponse
-      if (!response.ok) {
-        throw new Error(payload.error || "Kalkyle feilet")
-      }
+      const payload = await readAiChatResponse(response, "Kalkylen feilet. Prøv igjen.")
 
       applyResult(payload)
     } catch (error) {
       reportClientError(error, { context: { action: "ai-chat answer phase" } })
-      setErrorText(error instanceof Error ? error.message : "Ukjent feil")
+      setErrorText(toDisplayError(error))
       setPhase("error")
     }
   }

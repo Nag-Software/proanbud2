@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { toast } from "sonner"
 
 import { reportClientError } from "@/lib/errors/client"
+import { apiErrorMessage, parseJsonResponse } from "@/lib/http/safe-json"
 import { generateLocalId } from "@/lib/utils"
 import { AiChatPanel } from "@/components/tilbud/ai-chat-panel"
 import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
@@ -262,9 +263,15 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
           body: formData,
         })
 
-        const payload = (await response.json()) as { document?: OfferSourceDocument; error?: string }
-        if (!response.ok || !payload.document) {
-          throw new Error(payload.error || `Kunne ikke laste opp ${documentItem.name}`)
+        const payload = await parseJsonResponse<{ document?: OfferSourceDocument; error?: string }>(response)
+        if (!response.ok || !payload?.document) {
+          throw new Error(
+            apiErrorMessage({
+              status: response.status,
+              serverMessage: payload?.error ?? null,
+              fallback: `Kunne ikke laste opp ${documentItem.name}. Prøv igjen.`,
+            })
+          )
         }
 
         nextDocuments = nextDocuments.map((item) => (item.id === documentItem.id ? payload.document! : item))

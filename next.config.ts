@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["mammoth", "pdf-parse", "puppeteer-core", "@sparticuz/chromium"],
+  // NB: unpdf (PDF-tekstuttrekk) skal IKKE hit — den bundles med sin
+  // serverless pdf.js-build. Forgjengeren pdf-parse lå her og krasjet på
+  // Vercel med «DOMMatrix is not defined» ved import.
+  serverExternalPackages: ["mammoth", "puppeteer-core", "@sparticuz/chromium"],
   experimental: {
     // Client router cache: reuse a page's RSC payload for 30s after visiting it
     // (Next 14's old default; 15+ set it to 0 = refetch on every navigation).
