@@ -34,8 +34,7 @@ jobs:
       - name: Kjør røyktester
         run: pnpm exec playwright test
         env:
-          # v2 bor på nye.proanbud.no til DNS-cutover — oppdater ved lansering.
-          E2E_BASE_URL: https://nye.proanbud.no
+          E2E_BASE_URL: https://app.proanbud.no
 
       - name: Last opp rapport ved feil
         uses: actions/upload-artifact@v4
