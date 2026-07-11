@@ -52,6 +52,14 @@ export function CustomerList({ data, onRowClick, tripletexEnabled = false }: Cus
   const [typeFilter, setTypeFilter] = React.useState<TypeFilter>("alle")
   const [page, setPage] = React.useState(0)
 
+  // Det globale søket (⌘K) lenker hit med ?sok=<kundenavn> — forhåndsfyll
+  // filteret så kunden står øverst. Leses i effekt (ikke i initializer) for å
+  // unngå hydration-avvik mellom server og klient.
+  React.useEffect(() => {
+    const sok = new URLSearchParams(window.location.search).get("sok")
+    if (sok) setQuery(sok)
+  }, [])
+
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase()
     return data.filter((customer) => {

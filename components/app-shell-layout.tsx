@@ -6,6 +6,7 @@ import { type ReactNode } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppShellProvider, useAppShell } from "@/components/app-shell-context"
 import { MobileBottomNav } from "@/components/mobile-bottom-nav"
+import { GlobalSearch, GlobalSearchTrigger } from "@/components/search/global-search"
 import { TutorialWizard } from "@/components/onboarding/tutorial-wizard"
 import { NativeNavBridge, NativeNavState } from "@/components/native-nav-bridge"
 import { PresenceHeartbeat } from "@/components/presence-heartbeat"
@@ -51,7 +52,7 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
       <SidebarInset className="h-svh min-h-0 overflow-hidden">
         <TrialBanner />
         <header className="flex h-14 shrink-0 items-center gap-2 transition-[width,height] ease-linear md:h-16 group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-          <div className="flex items-center gap-2 px-4">
+          <div className="flex min-w-0 flex-1 items-center gap-2 px-4">
             {/* On mobile the bottom-nav "Meny" tab opens the sidebar, so the
                 header hamburger is redundant — hide it to save vertical space.
                 EXCEPT in the native iOS app: there the tab bar is the system's
@@ -64,6 +65,9 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
               className="mr-2 hidden data-vertical:h-4 data-vertical:self-auto md:block"
             />
             <ShellBreadcrumb segments={segments} hideMobileTitle={hideMobileTitle} />
+          </div>
+          <div className="flex shrink-0 items-center pr-4">
+            <GlobalSearchTrigger />
           </div>
         </header>
         <div
@@ -88,6 +92,9 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
           styrer sidebar-tilstanden (ekspanderer før spotlight). Skallet
           persisterer på tvers av navigasjon, så guiden overlever sideskift. */}
       <TutorialWizard />
+      {/* Globalt ⌘K-søk — montert én gang i skallet så hurtigtasten virker
+          på alle sider. */}
+      <GlobalSearch />
     </SidebarProvider>
   )
 }
