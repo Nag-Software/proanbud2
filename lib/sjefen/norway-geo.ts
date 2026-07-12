@@ -104,8 +104,11 @@ export const CITY_ANCHORS: Record<string, CityAnchor> = {
 
 export const ANCHOR_LIST = Object.values(CITY_ANCHORS)
 
-// Postal-prefix (first two digits) → anchor key. Norwegian postal codes are
-// geographically ordered, so a two-digit prefix pins a region reliably.
+// Coarse postal-prefix (first two digits) → anchor key, used as a fallback when
+// the city name isn't recognised. Norwegian postal codes are geographically
+// ordered, but a two-digit prefix is coarse and crosses anchor borders in a few
+// places (notably 30–39 across Buskerud/Vestfold/Telemark) — POSTAL_PREFIX3
+// below refines those. Keep the two in sync.
 const POSTAL_PREFIX: Record<string, string> = {
   "00": "oslo", "01": "oslo", "02": "oslo", "03": "oslo", "04": "oslo",
   "05": "oslo", "06": "oslo", "07": "oslo", "08": "oslo", "09": "oslo",
@@ -116,14 +119,21 @@ const POSTAL_PREFIX: Record<string, string> = {
   "21": "hamar", "22": "hamar", "23": "hamar", "24": "hamar",
   "25": "hamar", "26": "lillehammer", "27": "lillehammer", "28": "gjovik",
   "29": "gjovik",
-  "30": "drammen", "31": "drammen", "32": "drammen",
-  "33": "holmestrand", "34": "kongsberg", "35": "kongsberg",
-  "36": "kongsberg", "37": "tonsberg", "38": "tonsberg",
-  "39": "skien", "40": "stavanger", "41": "stavanger", "42": "stavanger",
-  "43": "stavanger", "44": "haugesund", "45": "kristiansand",
+  // 30 Drammen; 307–309 (Sande/Holmestrand/Hof) split out in POSTAL_PREFIX3.
+  "30": "drammen",
+  // 31 Tønsberg/Horten, 32 Sandefjord/Larvik — Vestfold, not Drammen.
+  "31": "tonsberg", "32": "tonsberg",
+  // 33 Hokksund/Modum, 34 Lier/Røyken — inland/adjacent to Drammen.
+  "33": "drammen", "34": "drammen",
+  "35": "kongsberg", "36": "kongsberg",
+  // 37 Skien, 38 Bø/Telemark, 39 Porsgrunn — Grenland/Telemark, not Tønsberg.
+  "37": "skien", "38": "skien", "39": "skien",
+  "40": "stavanger", "41": "stavanger", "42": "stavanger",
+  "43": "stavanger", "44": "kristiansand", "45": "kristiansand",
   "46": "kristiansand", "47": "kristiansand", "48": "arendal", "49": "arendal",
-  "50": "bergen", "51": "bergen", "52": "haugesund", "53": "bergen",
-  "54": "bergen", "55": "bergen", "56": "bergen", "57": "forde",
+  // 52 Os/Bjørnafjorden = Bergen; 55 = Haugesund (own anchor), not Bergen.
+  "50": "bergen", "51": "bergen", "52": "bergen", "53": "bergen",
+  "54": "bergen", "55": "haugesund", "56": "bergen", "57": "forde",
   "58": "bergen", "59": "bergen",
   "60": "alesund", "61": "alesund", "62": "molde", "63": "molde",
   "64": "molde", "65": "molde", "66": "molde", "67": "alesund",
@@ -139,7 +149,19 @@ const POSTAL_PREFIX: Record<string, string> = {
   "98": "kirkenes", "99": "kirkenes",
 }
 
-// City-name fallback for rows that have a city string but no usable postal code.
+// Finer three-digit overrides where a two-digit prefix would misplace a town.
+// Checked before POSTAL_PREFIX.
+const POSTAL_PREFIX3: Record<string, string> = {
+  "307": "holmestrand", // Sande i Vestfold (3070–3077)
+  "308": "holmestrand", // Holmestrand (3080–3085)
+  "309": "holmestrand", // Hof / Holmestrand nord (3090–3095)
+  "318": "holmestrand", // Horten / Borre (3180–3189)
+  "319": "holmestrand", // Horten / Åsgårdstrand (3190–3193)
+}
+
+// City-name lookup — the primary signal, since it names the town directly and
+// also covers companies that have a city but no usable postal code. Keys are
+// lower-cased; include common spellings (with/without æøå).
 const CITY_NAME_LOOKUP: Record<string, string> = {
   oslo: "oslo", bergen: "bergen", trondheim: "trondheim", stavanger: "stavanger",
   sandnes: "stavanger", drammen: "drammen", fredrikstad: "fredrikstad",
@@ -152,21 +174,41 @@ const CITY_NAME_LOOKUP: Record<string, string> = {
   kongsberg: "kongsberg", holmestrand: "holmestrand", horten: "holmestrand",
   narvik: "narvik", alta: "alta", kirkenes: "kirkenes", "mo i rana": "moirana",
   steinkjer: "steinkjer", "førde": "forde", forde: "forde",
+  // Vestfold / Grenland / Buskerud — the region the coarse prefix got wrong.
+  sandefjord: "tonsberg", larvik: "tonsberg", stavern: "tonsberg",
+  "nøtterøy": "tonsberg", notteroy: "tonsberg", sande: "holmestrand",
+  hokksund: "drammen", "mjøndalen": "drammen", mjondalen: "drammen",
+  lier: "drammen", "røyken": "drammen", royken: "drammen",
+  notodden: "kongsberg", rjukan: "kongsberg", "kragerø": "skien", kragero: "skien",
+  // Østfold / Romerike.
+  moss: "fredrikstad", halden: "fredrikstad", "lillestrøm": "oslo",
+  lillestrom: "oslo", ski: "oslo", jessheim: "oslo", elverum: "hamar",
+  // West coast / Agder / Nordmøre.
+  voss: "bergen", "askøy": "bergen", askoy: "bergen", stord: "haugesund",
+  mandal: "kristiansand", flekkefjord: "kristiansand", grimstad: "arendal",
+  kristiansund: "molde", harstad: "narvik",
 }
 
-/** Resolve a company location to a map anchor. Postal code wins; city name is a
- *  fallback. Returns null when nothing matches so callers can skip the row. */
+/** Resolve a company location to a map anchor. A recognised city name wins — it
+ *  names the town directly and also covers companies with no postal code —
+ *  otherwise fall back to the postal code, finest prefix first. Returns null
+ *  when nothing matches so callers can skip the row. */
 export function locateCompany(
   postalCode: string | null | undefined,
   city: string | null | undefined
 ): CityAnchor | null {
+  const name = (city ?? "").trim().toLowerCase()
+  if (name && CITY_NAME_LOOKUP[name]) return CITY_ANCHORS[CITY_NAME_LOOKUP[name]]
+
   const digits = (postalCode ?? "").replace(/\D/g, "")
+  if (digits.length >= 3) {
+    const key3 = POSTAL_PREFIX3[digits.slice(0, 3)]
+    if (key3) return CITY_ANCHORS[key3]
+  }
   if (digits.length >= 2) {
     const key = POSTAL_PREFIX[digits.slice(0, 2)]
     if (key) return CITY_ANCHORS[key]
   }
-  const name = (city ?? "").trim().toLowerCase()
-  if (name && CITY_NAME_LOOKUP[name]) return CITY_ANCHORS[CITY_NAME_LOOKUP[name]]
   return null
 }
 
