@@ -1,0 +1,78 @@
+import { NextResponse } from "next/server"
+import { createServerClient } from '@supabase/ssr'
+import { logServerError } from '@/lib/errors/log'
+
+/**
+ * Sign in with Apple — mirrors /api/auth/google/start (same PKCE server flow,
+ * same pa_oauth_native handoff), minus the Google-specific queryParams.
+ * Requires the Apple provider to be configured in Supabase Auth (Services ID,
+ * Team ID, Key ID, .p8 key) — see proanbud-app/docs/APP_STORE.md.
+ */
+function getAppBaseUrl(request: Request) {
+  const base = process.env.NEXT_PUBLIC_APP_URL?.trim() || new URL(request.url).origin
+  // Strip any trailing slash so we never build `.../api/...` with a double slash
+  // (a doubled path breaks Supabase's redirect_to allowlist match).
+  return base.replace(/\/+$/, "")
+}
+
+export async function GET(request: Request) {
+  try {
+    const redirectTo = process.env.APPLE_LOGIN_REDIRECT_URI?.trim()
+      ?? `${getAppBaseUrl(request)}/api/auth/apple/callback`
+
+    const pendingCookies: Array<{ name: string; value: string; options?: Record<string, unknown> }> = []
+
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return (request as Request & { cookies: { getAll(): { name: string; value: string }[] } }).cookies.getAll()
+          },
+          setAll(cookiesToSet) {
+            pendingCookies.push(...cookiesToSet)
+          },
+        },
+      }
+    )
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "apple",
+      options: { redirectTo },
+    })
+
+    if (error || !data?.url) {
+      return NextResponse.json({ error: error?.message ?? "failed to start oauth" }, { status: 500 })
+    }
+
+    const response = NextResponse.redirect(data.url)
+    pendingCookies.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+
+    // Native app (Expo WebView) handoff: the app opens this flow in the system
+    // browser (ASWebAuthenticationSession → the OS-native Apple sheet) with
+    // ?native=1. Remember it here so the callback returns the session via the
+    // proanbud:// deep link instead of the normal web redirect.
+    const isNative = new URL(request.url).searchParams.get("native") === "1"
+    if (isNative) {
+      response.cookies.set("pa_oauth_native", "1", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: true,
+        path: "/",
+        maxAge: 600,
+      })
+    }
+    return response
+  } catch (e) {
+    console.error('OAuth start (apple login) error:', e)
+    await logServerError({
+      message: 'Apple login OAuth start failed',
+      error: e,
+      source: 'api',
+      route: 'GET /api/auth/apple/start',
+    })
+    const message = e instanceof Error ? e.message : String(e)
+    return NextResponse.json({ error: message ?? "internal error" }, { status: 500 })
+  }
+}

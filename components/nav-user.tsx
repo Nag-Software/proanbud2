@@ -40,6 +40,7 @@ import {
   DrawerFooter,
   DrawerClose,
 } from "@/components/ui/drawer"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
@@ -76,10 +77,12 @@ export function NavUser() {
   const { isMobile } = useSidebar()
   const router = useRouter()
   const supabase = createClient()
+  const confirm = useConfirm()
 
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfileState | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [editName, setEditName] = useState("")
@@ -158,6 +161,43 @@ export function NavUser() {
     await supabase.auth.signOut()
     router.push("/login")
     router.refresh()
+  }
+
+  // App Review 5.1.1(v): kontosletting må kunne startes i appen. Serverruten
+  // anonymiserer persondata og stenger innloggingen; lovpålagte bedriftsdata
+  // (timeføring m.m.) består uten navn — se /api/account/delete.
+  const handleDeleteAccount = async () => {
+    const confirmed = await confirm({
+      title: "Slette kontoen din permanent?",
+      description:
+        "Innloggingen din stenges og persondataene dine fjernes. Dette kan ikke angres. " +
+        "Dokumentasjon bedriften er lovpålagt å beholde (som timeføring) blir liggende, uten navnet ditt. " +
+        "Et aktivt abonnement må sies opp separat under Abonnement.",
+      confirmText: "Slett kontoen min",
+      variant: "destructive",
+    })
+    if (!confirmed) return
+
+    setIsDeletingAccount(true)
+    try {
+      const res = await fetch("/api/account/delete", { method: "POST" })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(body?.error || "Kunne ikke slette kontoen. Prøv igjen.")
+        return
+      }
+      toast.success("Kontoen din er slettet.")
+      // Serverruten har allerede logget ut sesjonen; signOut her rydder
+      // klient-tilstand (og sender gps:stop til den native appen).
+      await supabase.auth.signOut()
+      router.push("/login")
+      router.refresh()
+    } catch (error) {
+      reportClientError(error, { context: { action: "delete-account", userId: user?.id } })
+      toast.error("Kunne ikke slette kontoen. Prøv igjen.")
+    } finally {
+      setIsDeletingAccount(false)
+    }
   }
 
   const handleManageSubscription = () => {
@@ -461,6 +501,18 @@ export function NavUser() {
             </Button>
             <Button type="button" variant="outline" className="w-full font-bold text-red-700 hover:text-red-bolder border-red-600 justify-center" onClick={handleLogout}>
                 Logg ut av Proanbud
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full justify-center text-sm text-muted-foreground hover:text-red-700"
+              onClick={handleDeleteAccount}
+              disabled={isDeletingAccount}
+            >
+              {isDeletingAccount ? (
+                <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Slett konto
             </Button>
           </DrawerFooter>
         </DrawerContent>

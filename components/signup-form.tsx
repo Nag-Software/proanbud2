@@ -6,6 +6,7 @@ import { Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { startGoogleLogin } from "@/lib/native-bridge"
+import { APPLE_LOGIN_ENABLED, AppleLoginButton } from "@/components/apple-login-button"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -178,6 +179,14 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
           <CardContent>
             <form onSubmit={handleSubmit}>
               <FieldGroup>
+                {APPLE_LOGIN_ENABLED ? (
+                  <Field>
+                    <AppleLoginButton
+                      label="Registrer med Apple"
+                      disabled={loading || !!inviteInvalid}
+                    />
+                  </Field>
+                ) : null}
                 <Field>
                   <Button
                     variant="outline"

@@ -26,14 +26,16 @@ describe('auth UI', () => {
   const signupForm = readFileSync(resolve(__dirname, '../../components/signup-form.tsx'), 'utf-8')
   const middleware = readFileSync(resolve(__dirname, '../../lib/supabase/middleware.ts'), 'utf-8')
 
-  it('login form does not reference Apple login', () => {
-    expect(loginForm).not.toMatch(/Apple/i)
+  it('login form offers Apple login behind the dark-deploy flag', () => {
+    expect(loginForm).toContain('AppleLoginButton')
+    expect(loginForm).toContain('APPLE_LOGIN_ENABLED')
     expect(loginForm).toContain('completeClientLogin')
     expect(loginForm).not.toContain('getSession')
   })
 
-  it('signup form does not reference Apple login', () => {
-    expect(signupForm).not.toMatch(/Apple/i)
+  it('signup form offers Apple login behind the dark-deploy flag', () => {
+    expect(signupForm).toContain('AppleLoginButton')
+    expect(signupForm).toContain('APPLE_LOGIN_ENABLED')
     expect(signupForm).toContain('completeClientLogin')
   })
 
@@ -56,5 +58,33 @@ describe('auth OAuth routes', () => {
     expect(googleCallback).toContain('exchangeCodeForSession')
     expect(googleCallback).toContain('pendingCookies')
     expect(googleCallback).toContain('user_profiles')
+  })
+
+  const appleButton = readFileSync(
+    resolve(__dirname, '../../components/apple-login-button.tsx'),
+    'utf-8'
+  )
+  const appleStart = readFileSync(
+    resolve(__dirname, '../../app/api/auth/apple/start/route.ts'),
+    'utf-8'
+  )
+  const appleCallback = readFileSync(
+    resolve(__dirname, '../../app/api/auth/apple/callback/route.ts'),
+    'utf-8'
+  )
+
+  it('apple button stays dark until NEXT_PUBLIC_APPLE_LOGIN is set', () => {
+    expect(appleButton).toContain('NEXT_PUBLIC_APPLE_LOGIN')
+  })
+
+  it('apple login start uses signInWithOAuth', () => {
+    expect(appleStart).toContain('signInWithOAuth')
+    expect(appleStart).toContain('provider: "apple"')
+  })
+
+  it('apple login callback exchanges code for session and attaches cookies', () => {
+    expect(appleCallback).toContain('exchangeCodeForSession')
+    expect(appleCallback).toContain('pendingCookies')
+    expect(appleCallback).toContain('user_profiles')
   })
 })

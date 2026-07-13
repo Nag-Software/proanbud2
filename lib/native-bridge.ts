@@ -53,3 +53,18 @@ export function startGoogleLogin(): void {
     window.location.href = "/api/auth/google/start"
   }
 }
+
+/**
+ * Start Sign in with Apple. Apple (unlike Google) permits its OAuth page in
+ * embedded WebViews, but the app still routes it through the native shell:
+ * ASWebAuthenticationSession gets the OS-native Apple sheet with Face ID
+ * instead of a password form. On the web, the normal server-driven redirect.
+ */
+export function startAppleLogin(): void {
+  const rn = getReactNativeWebView()
+  if (rn) {
+    rn.postMessage(JSON.stringify({ type: "oauth", provider: "apple" }))
+  } else if (typeof window !== "undefined") {
+    window.location.href = "/api/auth/apple/start"
+  }
+}
