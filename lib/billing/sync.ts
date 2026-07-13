@@ -24,6 +24,19 @@ function toIso(unix: number | null | undefined): string | null {
 }
 
 /**
+ * Thrown when a billing write references a company that no longer exists in the
+ * database (FK 23503): the company was deleted while its Stripe subscription
+ * lived on. The webhook treats this as an orphaned subscription (cancel it in
+ * Stripe, ack the event) instead of failing and letting Stripe retry forever.
+ */
+export class CompanyMissingError extends Error {
+  constructor(readonly companyId: string) {
+    super(`Bedriften ${companyId} finnes ikke lenger — Stripe-abonnementet er foreldreløst`)
+    this.name = "CompanyMissingError"
+  }
+}
+
+/**
  * Mark a company's billing row as canceled and clear all dangling Stripe
  * pointers (subscription + seat item). Idempotent. Called whenever we discover
  * the stored subscription no longer exists in Stripe (drift self-heal) and from
@@ -154,6 +167,10 @@ export async function upsertCompanyBillingFromSubscription(input: {
   })
 
   if (error) {
+    // 23503 = FK-brudd på company_id: bedriften er slettet, abonnementet er foreldreløst.
+    if (error.code === "23503") {
+      throw new CompanyMissingError(input.companyId)
+    }
     throw new Error(`Kunne ikke synke billing: ${error.message}`)
   }
 

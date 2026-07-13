@@ -5,8 +5,10 @@ import { applyOverageToUpcomingInvoice } from "@/lib/billing/overage"
 import {
   getInvoiceSubscriptionId,
   getSubscriptionPeriodBounds,
+  isStripeResourceMissing,
 } from "@/lib/billing/stripe-helpers"
 import {
+  CompanyMissingError,
   fetchSubscription,
   markCompanyBillingCanceled,
   syncModulesFromSubscription,
@@ -19,12 +21,27 @@ import { createAdminClient } from "@/lib/supabase/admin"
 
 export const runtime = "nodejs"
 
+async function companyExists(companyId: string): Promise<boolean> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from("companies")
+    .select("id")
+    .eq("id", companyId)
+    .maybeSingle()
+  return Boolean(data)
+}
+
 /**
  * Resolve the company for a Stripe event. Prefers the company_id we stamp on
  * subscription/checkout metadata, but falls back to looking the company up by the
  * stored stripe_subscription_id, then stripe_customer_id — so an event for a
  * subscription created out-of-band (or whose metadata is somehow absent) still
  * reconciles instead of silently no-op'ing. Returns null only when truly unknown.
+ *
+ * The metadata id is verified against companies: bedriften kan være slettet mens
+ * abonnementet lever videre i Stripe, og en upsert mot en død company_id ville
+ * FK-krasje og la Stripe retrye i evighet. Kallere som har abonnementet for hånden
+ * skal behandle null som mulig foreldreløst (cancelOrphanedSubscription).
  */
 async function resolveCompanyId(opts: {
   metadata?: Stripe.Metadata | null
@@ -32,7 +49,7 @@ async function resolveCompanyId(opts: {
   customerId?: string | null
 }): Promise<string | null> {
   const fromMeta = opts.metadata?.company_id?.trim()
-  if (fromMeta) return fromMeta
+  if (fromMeta && (await companyExists(fromMeta))) return fromMeta
 
   const admin = createAdminClient()
   if (opts.subscriptionId) {
@@ -57,6 +74,74 @@ async function resolveCompanyId(opts: {
 function customerIdOf(customer: string | { id: string } | null | undefined): string | null {
   if (!customer) return null
   return typeof customer === "string" ? customer : customer.id
+}
+
+/**
+ * En hendelse peker på en bedrift som ikke lenger finnes i databasen: bedriften er
+ * slettet mens Stripe-abonnementet lever videre (f.eks. fordi Stripe-oppryddingen i
+ * deleteCompanyAccountAction feilet, eller raden ble fjernet manuelt). Kanseller
+ * abonnementet umiddelbart så en slettet konto aldri faktureres videre — og så
+ * Stripe slutter å sende hendelser ingen kan behandle.
+ *
+ * Rører ALDRI abonnementer uten company_id-metadata: samme Stripe-konto inneholder
+ * abonnementer fra v1-appen (Firestore-æraen) som ikke tilhører denne databasen.
+ */
+async function cancelOrphanedSubscription(subscription: Stripe.Subscription) {
+  const companyId = subscription.metadata?.company_id?.trim()
+  if (!companyId) return
+  if (await companyExists(companyId)) return
+
+  const stripe = getStripe()
+  let live: Stripe.Subscription
+  try {
+    // Hendelsesobjektet kan være foreldet — les live status så vi ikke prøver å
+    // kansellere et allerede kansellert abonnement (400 fra Stripe → retry-løkke).
+    live = await stripe.subscriptions.retrieve(subscription.id)
+  } catch (error) {
+    if (isStripeResourceMissing(error)) return
+    throw error
+  }
+  if (live.status === "canceled") return
+
+  await stripe.subscriptions.cancel(subscription.id)
+
+  console.warn("[stripe/webhook] canceled orphaned subscription", {
+    subscriptionId: subscription.id,
+    companyId,
+  })
+  void logServerError({
+    message: "Foreldreløst Stripe-abonnement kansellert (bedriften er slettet)",
+    level: "warning",
+    source: "api",
+    route: "/api/stripe/webhook",
+    context: {
+      subscriptionId: subscription.id,
+      companyId,
+      customerId: customerIdOf(subscription.customer),
+    },
+  })
+}
+
+/**
+ * Upsert billing, men behandle «bedriften ble slettet i kappløp med oppslaget»
+ * (FK 23503) som foreldreløst abonnement i stedet for en retrybar feil.
+ * Returnerer false når bedriften er borte — kalleren skal da hoppe over resten.
+ */
+async function upsertBillingOrCancelOrphan(input: {
+  companyId: string
+  customerId: string
+  subscription: Stripe.Subscription
+}): Promise<boolean> {
+  try {
+    await upsertCompanyBillingFromSubscription(input)
+    return true
+  } catch (error) {
+    if (error instanceof CompanyMissingError) {
+      await cancelOrphanedSubscription(input.subscription)
+      return false
+    }
+    throw error
+  }
 }
 
 async function recordWebhookEvent(event: Stripe.Event) {
@@ -88,15 +173,13 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     subscriptionId,
     customerId,
   })
-  if (!companyId || !customerId) return
-
   const subscription = await fetchSubscription(subscriptionId)
+  if (!companyId || !customerId) {
+    await cancelOrphanedSubscription(subscription)
+    return
+  }
 
-  await upsertCompanyBillingFromSubscription({
-    companyId,
-    customerId,
-    subscription,
-  })
+  if (!(await upsertBillingOrCancelOrphan({ companyId, customerId, subscription }))) return
   await syncModulesFromSubscription(companyId, subscription)
   await syncSeatQuantity(companyId)
 }
@@ -113,14 +196,11 @@ async function handleSubscriptionChange(subscription: Stripe.Subscription) {
       subscriptionId: subscription.id,
       customerId,
     })
+    await cancelOrphanedSubscription(subscription)
     return
   }
 
-  await upsertCompanyBillingFromSubscription({
-    companyId,
-    customerId,
-    subscription,
-  })
+  if (!(await upsertBillingOrCancelOrphan({ companyId, customerId, subscription }))) return
   await syncModulesFromSubscription(companyId, subscription)
   await syncSeatQuantity(companyId)
 }
@@ -166,7 +246,10 @@ async function handleInvoiceUpcoming(invoice: Stripe.Invoice) {
     subscriptionId,
     customerId,
   })
-  if (!companyId || !customerId) return
+  if (!companyId || !customerId) {
+    await cancelOrphanedSubscription(subscription)
+    return
+  }
 
   // Use the SUBSCRIPTION's current period (the same bounds persisted to
   // company_billing.current_period_* and used by the usage-summary RPC) as the
@@ -201,7 +284,10 @@ async function setBillingStatusFromInvoice(
     subscriptionId,
     customerId: customerIdOf(invoice.customer),
   })
-  if (!companyId) return
+  if (!companyId) {
+    await cancelOrphanedSubscription(subscription)
+    return
+  }
 
   // Trust Stripe's own status when it's more specific (e.g. already canceled),
   // otherwise apply the dunning status.
@@ -299,11 +385,9 @@ export async function POST(request: Request) {
             customerId,
           })
           if (companyId && customerId) {
-            await upsertCompanyBillingFromSubscription({
-              companyId,
-              customerId,
-              subscription,
-            })
+            await upsertBillingOrCancelOrphan({ companyId, customerId, subscription })
+          } else {
+            await cancelOrphanedSubscription(subscription)
           }
         }
         break

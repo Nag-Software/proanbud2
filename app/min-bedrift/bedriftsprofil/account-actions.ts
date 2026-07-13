@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { isStripeResourceMissing } from "@/lib/billing/stripe-helpers"
 import { getStripe } from "@/lib/stripe/server"
 import { isAdmin } from "@/lib/roles"
 import { logServerError } from "@/lib/errors/log"
@@ -85,14 +86,21 @@ export async function deleteCompanyAccountAction(input: { confirmName: string })
 
   // 1. Stop billing AND remove personal data from Stripe (GDPR). Deleting the
   //    customer also cancels any live subscription and removes stored payment
-  //    methods, so it supersedes a standalone subscription cancel. Best-effort —
-  //    never block the account deletion on a Stripe hiccup.
+  //    methods, so it supersedes a standalone subscription cancel.
+  //
+  //    En Stripe-feil BLOKKERER slettingen (den kan trygt prøves igjen): fortsetter
+  //    vi uten opprydding står abonnementet igjen og trekker kort for en bedrift
+  //    ingen lenger kan logge inn i og stoppe, og hver webhook for det FK-krasjer
+  //    mot den slettede bedriften. «Finnes ikke» i Stripe = allerede ryddet → ok.
+  const { data: billing, error: billingError } = await admin
+    .from("company_billing")
+    .select("stripe_subscription_id, stripe_customer_id")
+    .eq("company_id", companyId)
+    .maybeSingle()
+  if (billingError) {
+    throw new Error("Fikk ikke hentet abonnementsstatus. Bedriften er ikke slettet — prøv igjen.")
+  }
   try {
-    const { data: billing } = await admin
-      .from("company_billing")
-      .select("stripe_subscription_id, stripe_customer_id")
-      .eq("company_id", companyId)
-      .maybeSingle()
     const stripe = getStripe()
     if (billing?.stripe_customer_id) {
       await stripe.customers.del(billing.stripe_customer_id)
@@ -100,15 +108,19 @@ export async function deleteCompanyAccountAction(input: { confirmName: string })
       await stripe.subscriptions.cancel(billing.stripe_subscription_id)
     }
   } catch (error) {
-    console.error("[delete-company] stripe cleanup failed", error)
-    await logServerError({
-      message: "Stripe-opprydding feilet under sletting av bedrift",
-      error,
-      source: "action",
-      route: "deleteCompanyAccountAction",
-      level: "warning",
-      context: { companyId, userId: user.id },
-    })
+    if (!isStripeResourceMissing(error)) {
+      console.error("[delete-company] stripe cleanup failed", error)
+      await logServerError({
+        message: "Stripe-opprydding feilet under sletting av bedrift — slettingen ble avbrutt",
+        error,
+        source: "action",
+        route: "deleteCompanyAccountAction",
+        context: { companyId, userId: user.id },
+      })
+      throw new Error(
+        "Fikk ikke avsluttet abonnementet i Stripe. Bedriften er ikke slettet — prøv igjen om litt."
+      )
+    }
   }
 
   // 2. Remove uploaded files (best-effort). Most buckets are company-prefixed;
