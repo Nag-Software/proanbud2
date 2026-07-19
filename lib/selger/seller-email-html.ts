@@ -7,6 +7,8 @@ export type SellerEmailHtmlInput = {
   steps?: { title: string; body: string }[]
   bullets?: string[]
   customMessage?: string | null
+  /** Fremhevet tilbudsboks med personlig kampanjekode (velkomstrabatt o.l.). */
+  promo?: { label: string; title: string; code: string; body: string }
   ctaLabel: string
   ctaUrl: string
   fallbackUrl?: string
@@ -92,6 +94,19 @@ function renderCustomMessage(message: string) {
   `
 }
 
+function renderPromo(promo: NonNullable<SellerEmailHtmlInput["promo"]>) {
+  return `
+    <div style="margin:8px 0 24px;padding:20px;background:#151515;border-radius:10px;">
+      <p style="margin:0 0 6px;color:#c7ef63;font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">${escapeHtml(promo.label)}</p>
+      <p style="margin:0 0 14px;color:#ffffff;font-size:18px;font-weight:700;line-height:1.35;">${escapeHtml(promo.title)}</p>
+      <div style="display:inline-block;padding:10px 16px;background:#ffffff;border-radius:8px;">
+        <span style="color:#151515;font-family:'SF Mono',Menlo,Consolas,monospace;font-size:17px;font-weight:700;letter-spacing:0.08em;">${escapeHtml(promo.code)}</span>
+      </div>
+      <p style="margin:14px 0 0;color:#d1d5db;font-size:13px;line-height:1.6;">${escapeHtml(promo.body)}</p>
+    </div>
+  `
+}
+
 export function buildSellerEmailHtml(input: SellerEmailHtmlInput) {
   const logoUrl = `${appUrl()}/logo/light/logo-primary.svg`
   const headline = input.headline
@@ -101,6 +116,7 @@ export function buildSellerEmailHtml(input: SellerEmailHtmlInput) {
   const steps = input.steps?.length ? renderSteps(input.steps) : ""
   const bullets = input.bullets?.length ? renderBullets(input.bullets) : ""
   const customMessage = input.customMessage?.trim() ? renderCustomMessage(input.customMessage.trim()) : ""
+  const promo = input.promo ? renderPromo(input.promo) : ""
 
   const fallbackUrl = input.fallbackUrl?.trim()
     ? `
@@ -136,6 +152,7 @@ export function buildSellerEmailHtml(input: SellerEmailHtmlInput) {
           ${headline}
           ${renderParagraphs(input.paragraphs)}
           ${steps}
+          ${promo}
           ${bullets}
           ${customMessage}
           <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 0;">

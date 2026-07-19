@@ -37,6 +37,7 @@ type BillingSummary = {
   billable_seats: number
   included_seats: number
   chargeable_seats: number
+  welcome_discount: { code: string; percent_off: number; applied: boolean } | null
   seat_price_nok: number
   overage_unit_nok: number
   pricing: { monthlyNok: number; yearlyTotalNok: number } | null
@@ -281,6 +282,23 @@ export function BillingPageClient() {
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">
           Abonnementet avsluttes {cancelDate}. Du beholder tilgangen til da. Åpne «Administrer
           betaling» for å gjenoppta abonnementet.
+        </div>
+      )}
+
+      {/* Velkomstbonus: samme personlige kode som i prøveperiode-e-posten. */}
+      {summary?.welcome_discount && (
+        <div className="rounded-xl border bg-muted/40 px-5 py-4">
+          <p className="text-sm font-semibold">
+            Velkomstbonus: {summary.welcome_discount.percent_off} % av første måned
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {summary.welcome_discount.applied
+              ? "Rabatten er allerede knyttet til abonnementet ditt og trekkes fra på første faktura."
+              : "Koden er personlig og gjelder én gang — den legges inn automatisk når du aktiverer betaling."}
+          </p>
+          <code className="mt-3 inline-block rounded-md border bg-background px-3 py-1.5 font-mono text-sm font-semibold tracking-wider">
+            {summary.welcome_discount.code}
+          </code>
         </div>
       )}
 

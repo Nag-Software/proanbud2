@@ -14,9 +14,12 @@ import { Resend } from "resend"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
-import { BILLING_PATH } from "@/lib/constants"
+import { TRIAL_TEMPLATES, type TrialTemplate } from "@/lib/billing/trial-reminder-templates"
+import {
+  applyWelcomeDiscountToSubscription,
+  ensureWelcomeDiscount,
+} from "@/lib/billing/welcome-discount"
 import { logSellerEmail } from "@/lib/selger/activity-log"
-import { buildSellerEmailHtml, sellerEmailAppUrl } from "@/lib/selger/seller-email-html"
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -29,76 +32,6 @@ function getTransactionalFrom(): string {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
-
-type TrialTemplate = {
-  id: string
-  subject: string
-  buildHtml: (input: { recipientName: string; companyName: string | null }) => string
-}
-
-const subscriptionUrl = () => `${sellerEmailAppUrl()}${BILLING_PATH}`
-
-const TRIAL_TEMPLATES: Record<"soon" | "lastDay" | "expired", TrialTemplate> = {
-  soon: {
-    id: "trial-paminnelse-3",
-    subject: "Prøveperioden din i Proanbud utløper snart",
-    buildHtml: ({ recipientName, companyName }) =>
-      buildSellerEmailHtml({
-        recipientName,
-        headline: "Prøveperioden utløper om kort tid",
-        paragraphs: [
-          companyName
-            ? `Prøveperioden for ${companyName} nærmer seg slutten. For å beholde tilgangen til tilbud, prosjekter og kunder uten avbrudd, legg inn betaling nå — det tar under ett minutt.`
-            : "Prøveperioden din nærmer seg slutten. For å beholde tilgangen uten avbrudd, legg inn betaling nå — det tar under ett minutt.",
-          "Du blir ikke belastet før prøveperioden faktisk er over, og du kan si opp når som helst.",
-        ],
-        bullets: [
-          "Behold alle tilbud, prosjekter og kunder",
-          "Ingen binding — si opp når du vil",
-          "Velg Mini eller Proff etter behov",
-        ],
-        ctaLabel: "Aktiver abonnement",
-        ctaUrl: subscriptionUrl(),
-        secondaryText: "Spørsmål om plan eller pris? Svar på denne e-posten eller kontakt post@proanbud.no.",
-      }),
-  },
-  lastDay: {
-    id: "trial-paminnelse-1",
-    subject: "Siste dag med gratis Proanbud",
-    buildHtml: ({ recipientName, companyName }) =>
-      buildSellerEmailHtml({
-        recipientName,
-        headline: "Siste dag av prøveperioden",
-        paragraphs: [
-          companyName
-            ? `Prøveperioden for ${companyName} utløper i morgen. Legg inn betaling i dag så mister du ikke tilgangen til arbeidet ditt.`
-            : "Prøveperioden din utløper i morgen. Legg inn betaling i dag så mister du ikke tilgangen til arbeidet ditt.",
-          "Alt du har lagt inn blir liggende — du fortsetter bare der du slapp.",
-        ],
-        ctaLabel: "Aktiver abonnement nå",
-        ctaUrl: subscriptionUrl(),
-        secondaryText: "Trenger du litt mer tid eller har spørsmål? Bare svar på denne e-posten.",
-      }),
-  },
-  expired: {
-    id: "trial-utlopt",
-    subject: "Prøveperioden er over — slik beholder du tilgangen",
-    buildHtml: ({ recipientName, companyName }) =>
-      buildSellerEmailHtml({
-        recipientName,
-        headline: "Prøveperioden er utløpt",
-        paragraphs: [
-          companyName
-            ? `Prøveperioden for ${companyName} er nå over. Dataene dine er trygt lagret — aktiver et abonnement for å få full tilgang tilbake.`
-            : "Prøveperioden din er nå over. Dataene dine er trygt lagret — aktiver et abonnement for å få full tilgang tilbake.",
-          "Det tar under ett minutt, og du kan si opp når som helst.",
-        ],
-        ctaLabel: "Aktiver abonnement",
-        ctaUrl: subscriptionUrl(),
-        secondaryText: "Vil du heller ha en kort gjennomgang først? Svar på denne e-posten, så hjelper vi deg.",
-      }),
-  },
-}
 
 export type TrialReminderResult = { considered: number; sent: number; skipped: number; failed: number }
 
@@ -201,9 +134,33 @@ export async function runTrialReminders(admin: AdminClient): Promise<TrialRemind
         continue
       }
 
+      // Velkomstbonus: personlig 80 %-kode på første måned. Festes med én gang
+      // på det (kortfrie) prøveabonnementet, slik at rabatten treffer første
+      // faktura uten at brukeren må taste inn noe. Skal aldri blokkere
+      // utsendingen — feiler den, går e-posten ut uten tilbudsboks.
+      let promoCode: string | null = null
+      try {
+        const discount = await ensureWelcomeDiscount(row.company_id as string)
+        if (discount) {
+          promoCode = discount.code
+          await applyWelcomeDiscountToSubscription(row.company_id as string, discount)
+        }
+      } catch (err) {
+        console.error("[trial-reminders] velkomstrabatt feilet", row.company_id, err)
+        void logServerError({
+          message: "Velkomstrabatt kunne ikke opprettes/festes",
+          error: err,
+          level: "warning",
+          source: "worker",
+          route: "runTrialReminders",
+          context: { companyId: row.company_id, templateId: template.id },
+        })
+      }
+
       const html = template.buildHtml({
         recipientName: contact.name,
         companyName: (company?.name as string | null) ?? null,
+        promoCode,
       })
 
       const { data: sendData, error: sendError } = await resend.emails.send({

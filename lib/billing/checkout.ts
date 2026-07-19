@@ -26,6 +26,7 @@ import {
 } from "@/lib/billing/stripe-helpers"
 import { getStripe } from "@/lib/stripe/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getRedeemableWelcomeDiscount } from "@/lib/billing/welcome-discount"
 
 /**
  * Verify a company's stored subscription is still live in Stripe.
@@ -188,6 +189,18 @@ export async function createSubscriptionCheckoutSession(
   const successPath = input.successPath ?? "/onboarding/velkommen"
   const cancelPath = input.cancelPath ?? "/onboarding/abonnement"
 
+  // Velkomstbonus etter prøveperioden: har bedriften en ubrukt personlig kode,
+  // forhåndsutfylles den i Checkout så den ikke går tapt fordi noen glemmer å
+  // taste den inn. Stripe tillater ikke `discounts` sammen med
+  // `allow_promotion_codes` — derfor er dette et enten-eller.
+  const welcomeDiscount = input.trial ? null : await getRedeemableWelcomeDiscount(input.companyId)
+  const discountParams: Pick<
+    Stripe.Checkout.SessionCreateParams,
+    "discounts" | "allow_promotion_codes"
+  > = welcomeDiscount
+    ? { discounts: [{ promotion_code: welcomeDiscount.promotionCodeId }] }
+    : { allow_promotion_codes: true }
+
   const sessionParams: Stripe.Checkout.SessionCreateParams = {
     mode: "subscription",
     customer: customerId,
@@ -216,7 +229,7 @@ export async function createSubscriptionCheckoutSession(
         : {}),
     },
     payment_method_collection: "always",
-    allow_promotion_codes: true,
+    ...discountParams,
     billing_address_collection: "auto",
     customer_update: {
       address: "auto",
