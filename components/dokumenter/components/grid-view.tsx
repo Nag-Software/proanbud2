@@ -4,7 +4,7 @@ import { memo, useRef } from "react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { useFileKeyboard } from "../hooks/use-file-keyboard"
-import { folderPathFromItem, formatBytes, isImage } from "../utils"
+import { folderPathFromItem, formatBytes, isRenderableImage } from "../utils"
 import { FileGlyph } from "./file-glyph"
 import type { ViewProps } from "./view-types"
 import type { DocumentItem } from "../types"
@@ -80,7 +80,7 @@ const Tile = memo(function Tile({
 }: TileProps) {
   const isFolder = item.itemType === "folder"
   const dropActive = isFolder && drag.dropTargetPath === folderPathFromItem(item)
-  const showThumb = isImage(item) && Boolean(item.downloadUrl ?? item.webUrl)
+  const showThumb = isRenderableImage(item) && Boolean(item.downloadUrl ?? item.webUrl)
 
   return (
     <div

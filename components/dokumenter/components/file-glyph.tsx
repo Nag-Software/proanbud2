@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { cn } from "@/lib/utils"
-import { fileVisual, isImage } from "../utils"
+import { fileVisual, isRenderableImage } from "../utils"
 import type { DocumentItem } from "../types"
 
 type Props = {
@@ -17,7 +17,7 @@ export function FileGlyph({ item, className = "h-4 w-4", thumb = false }: Props)
   const { Icon, colorClass } = fileVisual(item)
   const url = item.downloadUrl ?? item.webUrl
 
-  if (thumb && isImage(item) && url && !errored) {
+  if (thumb && isRenderableImage(item) && url && !errored) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img

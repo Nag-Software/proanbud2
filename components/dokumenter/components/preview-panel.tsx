@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Download, ExternalLink, Loader2, PencilLine, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { resolveFileUrl } from "../data/api"
-import { formatBytes, formatDateTime, isImage, isPdf, providerLabel } from "../utils"
+import { formatBytes, formatDateTime, isPdf, isRenderableImage, providerLabel } from "../utils"
 import { FileGlyph } from "./file-glyph"
 import type { DocumentItem } from "../types"
 
@@ -20,7 +20,7 @@ type Props = {
 export function PreviewPanel({ item, onClose, canMutate, onRename, onDelete, onDownload }: Props) {
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const showInline = item.itemType === "file" && (isImage(item) || isPdf(item))
+  const showInline = item.itemType === "file" && (isRenderableImage(item) || isPdf(item))
 
   /* eslint-disable react-hooks/set-state-in-effect -- lazily resolving a signed URL for the selected file */
   useEffect(() => {
@@ -59,16 +59,7 @@ export function PreviewPanel({ item, onClose, canMutate, onRename, onDelete, onD
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         <div className="mb-3 flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
           {showInline ? (
-            loading ? (
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            ) : url && isImage(item) ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={url} alt={item.name} className="h-full w-full object-contain" />
-            ) : url && isPdf(item) ? (
-              <iframe src={url} title={item.name} className="h-full w-full" />
-            ) : (
-              <FileGlyph item={item} className="h-12 w-12" />
-            )
+            <InlineMedia key={item.id} item={item} url={url} loading={loading} />
           ) : (
             <FileGlyph item={item} className="h-12 w-12" />
           )}
@@ -131,5 +122,43 @@ export function PreviewPanel({ item, onClose, canMutate, onRename, onDelete, onD
         </div>
       )}
     </aside>
+  )
+}
+
+/**
+ * Inline bilde/PDF-forhåndsvisning med pen fallback: klarer ikke nettleseren å
+ * tegne filen (HEIC/TIFF utenfor WebKit, en eksotisk image/*-mime, eller en
+ * korrupt fil), bytter onError inn typeikonet i stedet for en ødelagt bilderamme.
+ * Calleren gir key={item.id}, så feiltilstanden nullstilles når valget endres.
+ */
+function InlineMedia({ item, url, loading }: { item: DocumentItem; url: string | null; loading: boolean }) {
+  const [failed, setFailed] = useState(false)
+
+  if (loading) return <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+  if (!url || failed) return <PreviewFallback item={item} />
+
+  if (isRenderableImage(item)) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt={item.name}
+        onError={() => setFailed(true)}
+        className="h-full w-full object-contain"
+      />
+    )
+  }
+  if (isPdf(item)) {
+    return <iframe src={url} title={item.name} onError={() => setFailed(true)} className="h-full w-full" />
+  }
+  return <PreviewFallback item={item} />
+}
+
+function PreviewFallback({ item }: { item: DocumentItem }) {
+  return (
+    <div className="flex flex-col items-center gap-1.5 px-3 text-center">
+      <FileGlyph item={item} className="h-12 w-12" />
+      <span className="text-[11px] text-muted-foreground">Ingen forhåndsvisning – last ned for å åpne</span>
+    </div>
   )
 }

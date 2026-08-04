@@ -114,6 +114,43 @@ export function isPdf(item: Pick<DocumentItem, "itemType" | "extension" | "mimeT
   return fileKind(item) === "pdf"
 }
 
+// Formater som minst én mainstream-nettleser tegner inline i <img>. png/jpg/gif/
+// webp/svg/bmp/avif/ico/apng er universelle; heic/heif/tiff tegnes kun av WebKit
+// (Safari + appens WebView) – der faller vi tilbake til ikon via onError. Vi
+// utelater bevisst «image/*»-typer som EGENTLIG ikke er bilder (f.eks. en .dwg
+// som lastes opp som image/vnd.dwg), så de aldri gir et ødelagt bilde-ikon.
+const RENDERABLE_IMAGE_EXT = new Set([
+  "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif", "ico", "apng", "heic", "heif", "tif", "tiff",
+])
+const RENDERABLE_IMAGE_MIME = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "image/bmp",
+  "image/avif",
+  "image/x-icon",
+  "image/vnd.microsoft.icon",
+  "image/apng",
+  "image/heic",
+  "image/heif",
+  "image/tiff",
+])
+
+/**
+ * True kun for bildeformater en nettleser faktisk kan tegne inline. Brukes til å
+ * avgjøre om vi skal *forsøke* miniatyr/forhåndsvisning – en onError-fallback
+ * fanger fortsatt korrupte filer og nettleser-hull (f.eks. HEIC utenfor Safari).
+ * Med åpen bucket kan hva som helst lastes opp, så vi må gjette konservativt her.
+ */
+export function isRenderableImage(item: Pick<DocumentItem, "itemType" | "extension" | "mimeType">) {
+  if (item.itemType !== "file") return false
+  const ext = item.extension?.toLowerCase() ?? ""
+  const mime = item.mimeType ?? ""
+  return RENDERABLE_IMAGE_EXT.has(ext) || RENDERABLE_IMAGE_MIME.has(mime)
+}
+
 const KIND_RANK: Record<FileKind, number> = {
   folder: 0,
   pdf: 1,
