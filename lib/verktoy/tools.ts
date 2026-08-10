@@ -93,6 +93,19 @@ export function getTool(slug: string): ToolMeta | undefined {
   return TOOLS.find((t) => t.slug === slug)
 }
 
+/**
+ * Verktøysidene serveres på proanbud.no via multi-zone-rewrite fra markedssiden,
+ * men /signup, /login og /kalkulator finnes bare i denne appen — på apex-domenet
+ * gir de 404. Alt som peker UT av /verktoy må derfor være absolutt mot app-domenet,
+ * ellers er hver konverteringsknapp død for besøkende som kom via Google.
+ */
+export const APP_ORIGIN = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.proanbud.no"
+
+/** Absolutt lenke til en side i app-en (se APP_ORIGIN). */
+export function appUrl(path: string): string {
+  return `${APP_ORIGIN}${path}`
+}
+
 /** Signup-lenke med UTM slik at PostHog/registreringer attribueres til verktøyet. */
 export function signupUrl(source: string): string {
   const p = new URLSearchParams({
@@ -100,5 +113,5 @@ export function signupUrl(source: string): string {
     utm_medium: "verktoy",
     utm_campaign: "gratis-verktoy",
   })
-  return `/signup?${p.toString()}`
+  return appUrl(`/signup?${p.toString()}`)
 }

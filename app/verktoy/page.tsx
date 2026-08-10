@@ -4,7 +4,7 @@ import { ArrowRightIcon } from "lucide-react"
 import { JsonLd } from "@/components/verktoy/json-ld"
 import { VerktoyHeader } from "@/components/verktoy/verktoy-header"
 import { VerktoyFooter } from "@/components/verktoy/verktoy-page"
-import { SITE_URL, TOOLS } from "@/lib/verktoy/tools"
+import { SITE_URL, TOOLS, signupUrl } from "@/lib/verktoy/tools"
 
 export const metadata: Metadata = {
   title: "Gratis kalkulatorer og verktøy for håndverkere | Proanbud",
@@ -80,9 +80,9 @@ export default function VerktoyHub() {
 
         <p className="mt-10 max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Verktøyene er forenklede utgaver av det Proanbud gjør automatisk med dine egne priser.{" "}
-          <Link href="/signup?utm_source=verktoy-hub&utm_medium=verktoy&utm_campaign=gratis-verktoy" className="font-medium text-foreground underline">
+          <a href={signupUrl("verktoy-hub")} className="font-medium text-foreground underline">
             Prøv Proanbud gratis
-          </Link>{" "}
+          </a>{" "}
           for ferdige, signerbare tilbud på minutter.
         </p>
       </main>

@@ -4,7 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { track } from "@/lib/analytics/track"
-import { signupUrl } from "@/lib/verktoy/tools"
+import { appUrl, signupUrl } from "@/lib/verktoy/tools"
 
 export function VerktoyHeader({ source }: { source: string }) {
   return (
@@ -18,15 +18,15 @@ export function VerktoyHeader({ source }: { source: string }) {
             <Link href="/verktoy">Verktøy</Link>
           </Button>
           <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex">
-            <Link href="/login">Logg inn</Link>
+            <a href={appUrl("/login")}>Logg inn</a>
           </Button>
           <Button size="sm" asChild>
-            <Link
+            <a
               href={signupUrl(source)}
               onClick={() => track("verktoy_cta_klikket", { verktoy: source, plassering: "topp" })}
             >
               Prøv gratis
-            </Link>
+            </a>
           </Button>
         </nav>
       </div>

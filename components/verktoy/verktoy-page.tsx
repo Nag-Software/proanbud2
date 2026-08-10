@@ -4,7 +4,7 @@ import { ChevronRightIcon } from "lucide-react"
 import { JsonLd } from "./json-ld"
 import { VerktoyHeader } from "./verktoy-header"
 import { VerktoyCta } from "./verktoy-cta"
-import { SITE_URL, TOOLS, type ToolMeta } from "@/lib/verktoy/tools"
+import { SITE_URL, TOOLS, appUrl, type ToolMeta } from "@/lib/verktoy/tools"
 
 export type Faq = { q: string; a: string }
 
@@ -148,12 +148,12 @@ export function VerktoyFooter() {
           <Link href="/verktoy" className="hover:text-foreground">
             Alle verktøy
           </Link>
-          <Link href="/kalkulator" className="hover:text-foreground">
+          <a href={appUrl("/kalkulator")} className="hover:text-foreground">
             Tilbudskalkulator
-          </Link>
-          <Link href="/login" className="hover:text-foreground">
+          </a>
+          <a href={appUrl("/login")} className="hover:text-foreground">
             Logg inn
-          </Link>
+          </a>
         </nav>
       </div>
     </footer>

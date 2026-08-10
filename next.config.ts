@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Multi-zone: proanbud.no (markedssiden, eget Vercel-prosjekt) rewriter
+  // /verktoy/* hit, så kalkulatorene vises på apex-domenet der SEO-autoriteten
+  // ligger. HTML-en leveres da fra proanbud.no, og uten assetPrefix ville
+  // nettleseren hentet /_next/* fra MARKEDSSIDENS app (annen build-id) — 404,
+  // ustylet side, død kalkulator. Prefikset gir sonen en egen assetsti som
+  // markedssiden kan rewrite separat, uten å kollidere med sine egne /_next/*.
+  assetPrefix: "/verktoy-zone",
   // NB: unpdf (PDF-tekstuttrekk) skal IKKE hit — den bundles med sin
   // serverless pdf.js-build. Forgjengeren pdf-parse lå her og krasjet på
   // Vercel med «DOMMatrix is not defined» ved import.
