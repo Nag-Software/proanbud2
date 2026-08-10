@@ -14,6 +14,9 @@ export const AUTH_PUBLIC_ROUTE_PREFIXES = [
   '/eksempel-tilbud',
   // Gratis KI-tilbudskalkulator — åpen lead-magnet, skal aldri kreve innlogging.
   '/kalkulator',
+  // Gratis kalkulatorer/verktøy (timepris, påslag, jobb) — SEO-lead-magneter,
+  // alltid åpne uten innlogging.
+  '/verktoy',
 ] as const
 
 export const SUBSCRIPTION_EXEMPT_ROUTE_PREFIXES = [

@@ -34,6 +34,7 @@ const satoshi = localFont({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://proanbud.no"),
   title: "Proanbud — fra befaring til betalt for byggebransjen",
   description:
     "Samlet arbeidsflyt for bygg- og anleggsbedrifter: anbud, kontrakter, HMS/KS, timeføring og fakturering rett til Tripletex. Smart automatikk som akselererer hvert steg.",
