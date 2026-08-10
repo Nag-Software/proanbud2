@@ -4,7 +4,7 @@ import { ArrowRightIcon } from "lucide-react"
 import { JsonLd } from "@/components/verktoy/json-ld"
 import { VerktoyHeader } from "@/components/verktoy/verktoy-header"
 import { VerktoyFooter } from "@/components/verktoy/verktoy-page"
-import { SITE_URL, TOOLS, signupUrl } from "@/lib/verktoy/tools"
+import { SITE_URL, TOOLS, appUrl, signupUrl } from "@/lib/verktoy/tools"
 
 export const metadata: Metadata = {
   title: "Gratis kalkulatorer og verktøy for håndverkere | Proanbud",
@@ -22,8 +22,10 @@ export const metadata: Metadata = {
 }
 
 // Den KI-drevne tilbudskalkulatoren bor på /kalkulator og tas med som et kort her.
+// Absolutt URL: huben serveres på proanbud.no via multi-zone-rewrite, og
+// /kalkulator finnes bare i app-en — relativ lenke ga 404 på apex.
 const EXTRA = {
-  path: "/kalkulator",
+  path: appUrl("/kalkulator"),
   name: "Tilbudskalkulator",
   teaser: "Lim inn befaringsnotatene og få et ferdig pristilbud på sekunder.",
   glyph: "✨",
