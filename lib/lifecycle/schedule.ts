@@ -49,6 +49,18 @@ export function pickLifecycleEmail(input: LifecycleInput): LifecycleStage | null
   return null
 }
 
+/**
+ * Firmanavn er fritekst ved registrering, og noen skriver inn e-postadressen sin
+ * der. «Prøveperioden for ola@gmail.com er over» leser som en ødelagt flettefelt-
+ * e-post. Malene har allerede en pen upersonlig variant når navnet mangler, så vi
+ * returnerer null i stedet for å sende noe som ser automatisert ut.
+ */
+export function presentableCompanyName(name: string | null): string | null {
+  const trimmed = name?.trim()
+  if (!trimmed) return null
+  return /\S+@\S+\.\S+/.test(trimmed) ? null : trimmed
+}
+
 /** template_id som lagres i seller_email_log (idempotensnøkkel per bedrift). */
 export const LIFECYCLE_TEMPLATE_IDS: Record<LifecycleStage, string> = {
   velkomst: "lifecycle-velkomst",

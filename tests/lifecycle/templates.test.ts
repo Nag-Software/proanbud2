@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { LIFECYCLE_TEMPLATES } from "@/lib/lifecycle/onboarding-templates"
+import { LIFECYCLE_TEMPLATES, resolveSubject } from "@/lib/lifecycle/onboarding-templates"
+import { presentableCompanyName } from "@/lib/lifecycle/schedule"
 
 const base = { recipientName: "Kari", companyName: "Testbygg AS", promoCode: null as string | null }
 
@@ -45,6 +46,56 @@ describe("LIFECYCLE_TEMPLATES", () => {
   it("alle malene bygger uten å kaste, med og uten firmanavn", () => {
     for (const key of ["velkomst", "aktivering", "verdi", "winback"] as const) {
       expect(() => LIFECYCLE_TEMPLATES[key].buildHtml({ recipientName: "der", companyName: null, promoCode: null })).not.toThrow()
+    }
+  })
+})
+
+describe("presentableCompanyName", () => {
+  it("slipper gjennom ekte firmanavn", () => {
+    expect(presentableCompanyName("DIV DRIFT AS")).toBe("DIV DRIFT AS")
+    expect(presentableCompanyName("  Våtromspartner AS  ")).toBe("Våtromspartner AS")
+  })
+
+  it("nuller ut navn som egentlig er en e-postadresse", () => {
+    // Ekte tilfelle i prod: firmanavnet var signup-e-posten, og winback-malen
+    // ville sagt «Prøveperioden for KonarzewskiOppusing@gmail.com er over».
+    expect(presentableCompanyName("KonarzewskiOppusing@gmail.com")).toBeNull()
+    expect(presentableCompanyName("post@firma.no")).toBeNull()
+  })
+
+  it("nuller ut tomt og blankt navn", () => {
+    expect(presentableCompanyName(null)).toBeNull()
+    expect(presentableCompanyName("   ")).toBeNull()
+  })
+})
+
+describe("winback: tom konto", () => {
+  const winback = LIFECYCLE_TEMPLATES.winback
+
+  it("påstår IKKE at noe ligger lagret når kontoen er tom", () => {
+    const html = winback.buildHtml({ ...base, hasContent: false })
+    expect(html).not.toContain("ligger akkurat som du forlot dem")
+    expect(html).not.toContain("Alt du laget ligger trygt")
+    expect(html).toContain("ikke rakk å komme i gang")
+  })
+
+  it("bruker et emne som ikke motsier brødteksten", () => {
+    expect(resolveSubject(winback, { ...base, hasContent: false })).toBe(
+      "Rakk du aldri å teste Proanbud?"
+    )
+    expect(resolveSubject(winback, { ...base, hasContent: true })).toBe(winback.subject)
+  })
+
+  it("beholder den opprinnelige teksten når det faktisk finnes innhold", () => {
+    const html = winback.buildHtml({ ...base, hasContent: true })
+    expect(html).toContain("ligger akkurat som du forlot dem")
+  })
+
+  it("tilbyr rabattkoden i begge varianter", () => {
+    for (const hasContent of [true, false]) {
+      expect(winback.buildHtml({ ...base, hasContent, promoCode: "VELKOMMEN-X" })).toContain(
+        "VELKOMMEN-X"
+      )
     }
   })
 })

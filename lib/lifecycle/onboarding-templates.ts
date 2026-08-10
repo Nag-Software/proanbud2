@@ -18,12 +18,29 @@ export type LifecycleTemplateInput = {
   promoCode: string | null
   /** Kun for «verdi»-e-posten. */
   stats?: { offerCount: number; pipelineNok: number }
+  /**
+   * Har bedriften faktisk opprettet noe (prosjekt eller tilbud)? Winback-teksten
+   * lovet «tilbud, kunder og prosjekter ligger akkurat som du forlot dem» til
+   * ALLE — også de som registrerte seg og aldri kom i gang. For dem leser den
+   * som spam fra et system de aldri brukte, så de får en ærlig variant i stedet.
+   */
+  hasContent?: boolean
 }
 
 export type LifecycleTemplate = {
   id: string
   subject: string
+  /**
+   * Overstyrer `subject` når emnet avhenger av mottakeren. Winback trenger det:
+   * «Vi har tatt vare på alt du laget» motsier brødteksten for en tom konto.
+   */
+  buildSubject?: (input: LifecycleTemplateInput) => string
   buildHtml: (input: LifecycleTemplateInput) => string
+}
+
+/** Emnet som faktisk skal sendes for en gitt mottaker. */
+export function resolveSubject(t: LifecycleTemplate, input: LifecycleTemplateInput): string {
+  return t.buildSubject ? t.buildSubject(input) : t.subject
 }
 
 const appUrl = () => sellerEmailAppUrl()
@@ -122,20 +139,42 @@ export const LIFECYCLE_TEMPLATES: Record<LifecycleStage, LifecycleTemplate> = {
   winback: {
     id: "lifecycle-winback",
     subject: "Vi har tatt vare på alt du laget i Proanbud",
-    buildHtml: ({ recipientName, companyName, promoCode }) =>
-      buildSellerEmailHtml({
+    buildSubject: ({ hasContent = true }) =>
+      hasContent
+        ? "Vi har tatt vare på alt du laget i Proanbud"
+        : "Rakk du aldri å teste Proanbud?",
+    buildHtml: ({ recipientName, companyName, promoCode, hasContent = true }) => {
+      const eier = companyName ? `Prøveperioden for ${companyName}` : "Prøveperioden din"
+
+      // Tom konto: ikke påstå at noe ligger lagret. Da er den ærlige vinklingen
+      // at de aldri rakk å prøve det — ikke at de mister noe.
+      if (!hasContent) {
+        return buildSellerEmailHtml({
+          recipientName,
+          headline: "Rakk du aldri å teste det?",
+          paragraphs: [
+            `${eier} er over, og vi ser at du ikke rakk å komme i gang. Det skjer — som regel fordi hverdagen kom i veien, ikke fordi programmet var feil.`,
+            "Vil du gi det et forsøk, tar det fem minutter å lage det første tilbudet: beskriv jobben, så setter Proanbud opp postene og prisene for deg.",
+          ],
+          promo: promoBox(promoCode),
+          ctaLabel: "Lag ditt første tilbud",
+          ctaUrl: nyttTilbudUrl(),
+          secondaryText: "Var det noe som stoppet deg? Svar på denne e-posten — det er nyttig for oss å vite.",
+        })
+      }
+
+      return buildSellerEmailHtml({
         recipientName,
         headline: "Alt du laget ligger trygt",
         paragraphs: [
-          companyName
-            ? `Prøveperioden for ${companyName} er over, men ingenting er slettet — tilbud, kunder og prosjekter ligger akkurat som du forlot dem.`
-            : "Prøveperioden din er over, men ingenting er slettet — tilbud, kunder og prosjekter ligger akkurat som du forlot dem.",
+          `${eier} er over, men ingenting er slettet — tilbud, kunder og prosjekter ligger akkurat som du forlot dem.`,
           "Legg inn betalingskort for å få full tilgang tilbake. Det tar under ett minutt, og du kan si opp når som helst.",
         ],
         promo: promoBox(promoCode),
         ctaLabel: "Legg inn betalingskort",
         ctaUrl: billingUrl(),
         secondaryText: "Var det noe som manglet for deg? Svar på denne e-posten — vi vil gjerne høre det.",
-      }),
+      })
+    },
   },
 }

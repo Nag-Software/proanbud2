@@ -15,8 +15,13 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
 import { logSellerEmail } from "@/lib/selger/activity-log"
 import { ensureWelcomeDiscount, applyWelcomeDiscountToSubscription } from "@/lib/billing/welcome-discount"
-import { LIFECYCLE_TEMPLATES, type LifecycleTemplateInput } from "./onboarding-templates"
-import { LIFECYCLE_TEMPLATE_IDS, pickLifecycleEmail, type LifecycleStage } from "./schedule"
+import { LIFECYCLE_TEMPLATES, resolveSubject, type LifecycleTemplateInput } from "./onboarding-templates"
+import {
+  LIFECYCLE_TEMPLATE_IDS,
+  pickLifecycleEmail,
+  presentableCompanyName,
+  type LifecycleStage,
+} from "./schedule"
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -78,6 +83,15 @@ async function hasSentOffer(admin: AdminClient, companyId: string): Promise<bool
     .eq("company_id", companyId)
     .not("sent_at", "is", null)
   return (count ?? 0) > 0
+}
+
+/** Har bedriften opprettet noe i det hele tatt? Styrer winback-varianten. */
+async function hasAnyContent(admin: AdminClient, companyId: string): Promise<boolean> {
+  const [offers, projects] = await Promise.all([
+    admin.from("offers").select("id", { count: "exact", head: true }).eq("company_id", companyId),
+    admin.from("projects").select("id", { count: "exact", head: true }).eq("company_id", companyId),
+  ])
+  return (offers.count ?? 0) > 0 || (projects.count ?? 0) > 0
 }
 
 async function offerStats(admin: AdminClient, companyId: string): Promise<{ offerCount: number; pipelineNok: number }> {
@@ -183,15 +197,16 @@ export async function runLifecycleEmails(admin: AdminClient): Promise<LifecycleR
 
       const input: LifecycleTemplateInput = {
         recipientName: contact.name,
-        companyName: (company.name as string | null) ?? null,
+        companyName: presentableCompanyName(company.name as string | null),
         promoCode,
         stats,
+        hasContent: stage === "winback" ? await hasAnyContent(admin, companyId) : true,
       }
 
       const { data: sendData, error: sendError } = await resend.emails.send({
         from: getTransactionalFrom(),
         to: contact.email,
-        subject: template.subject,
+        subject: resolveSubject(template, input),
         html: template.buildHtml(input),
       })
 
