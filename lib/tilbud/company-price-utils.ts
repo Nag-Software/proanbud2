@@ -2,6 +2,9 @@ import { normalizeQuoteLineItems } from "@/lib/tilbud/normalize-quote-line-items
 import { type OfferLineItem } from "@/lib/tilbud/types"
 
 export type CompanyPriceRow = {
+  /** Radens id i supplier_price_rows. Brukes som referanse når KI velger en rad
+   *  i stedet for å skrive et pristall selv (se lib/tilbud/price-lookup.ts). */
+  id?: string | null
   product: string | null
   unit: string | null
   net_price: number | null
@@ -142,29 +145,33 @@ const STOP_TOKENS = new Set([
   "uten",
 ])
 
+// \b foran alternativene: uten ordgrense traff korte ledd som «ull» inni
+// vilkårlige ord («tuller», «fulle»), og et søk fikk da lagt til isolasjonstermer
+// det ikke var dekning for. Prefiksmatching består — «etterisol» treffer
+// fortsatt «etterisolering».
 const QUERY_TERM_EXPANSIONS: Array<{ pattern: RegExp; terms: string[] }> = [
   {
-    pattern: /(etterisol|isolasjon|isolere|mineralull|glava|rockwool|ull)/,
+    pattern: /\b(etterisol|isolasjon|isolere|mineralull|glava|rockwool|ull)/,
     terms: ["isolasjon", "mineralull", "glava", "rockwool", "ull", "plate", "batts"],
   },
   {
-    pattern: /(tak|loft|undertak|takstein|lekt|himling)/,
+    pattern: /\b(tak|loft|undertak|takstein|lekt|himling)/,
     terms: ["tak", "loft", "himling", "undertak", "lekt"],
   },
   {
-    pattern: /(riving|rive|fjerning|demonter|avfall)/,
+    pattern: /\b(riving|rive|fjerning|demonter|avfall)/,
     terms: ["riving", "fjerning", "avfall"],
   },
   {
-    pattern: /(bad|baderom|våtrom|vatrom|membran|flis)/,
+    pattern: /\b(bad|baderom|våtrom|vatrom|membran|flis)/,
     terms: ["bad", "våtrom", "membran", "flis"],
   },
   {
-    pattern: /(gulv|parkett|laminat)/,
+    pattern: /\b(gulv|parkett|laminat)/,
     terms: ["gulv", "parkett", "laminat"],
   },
   {
-    pattern: /(vegg|kledning|vindsperre|gips)/,
+    pattern: /\b(vegg|kledning|vindsperre|gips)/,
     terms: ["vegg", "kledning", "vindsperre", "gips"],
   },
 ]
@@ -653,10 +660,15 @@ function pickerHaystack(row: CompanyPriceRow) {
   )
 }
 
-export function rankCompanyPriceRowsForPicker(rows: CompanyPriceRow[], query: string, limit = 20) {
+export function rankCompanyPriceRowsForPicker(
+  rows: CompanyPriceRow[],
+  query: string,
+  limit = 20,
+  options?: { allowFallback?: boolean }
+) {
   const trimmedQuery = query.trim()
   if (!trimmedQuery) {
-    return rows.slice(0, limit)
+    return options?.allowFallback === false ? [] : rows.slice(0, limit)
   }
 
   const compactQuery = compactSearchKey(trimmedQuery)
@@ -704,7 +716,10 @@ export function rankCompanyPriceRowsForPicker(rows: CompanyPriceRow[], query: st
     return scoredRows.slice(0, limit).map((item) => item.row)
   }
 
-  return rows.slice(0, limit)
+  // Uten treff får plukkelista i UI-et noe å bla i. KI-verktøyet må IKKE ha dette:
+  // får modellen tilfeldige rader tilbake på et søk som ikke traff, kan den velge
+  // et vilkårlig produkt og presentere prisen som verifisert.
+  return options?.allowFallback === false ? [] : rows.slice(0, limit)
 }
 
 function findBestCompanyPriceRow(rows: CompanyPriceRow[], query: string) {

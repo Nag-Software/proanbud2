@@ -18,6 +18,7 @@ import {
   formatNormalPriceForPrompt,
   mapNormalPriceRows,
   pickBestNormalPrice,
+  type NormalPriceRow,
 } from "@/lib/tilbud/normal-prices"
 import {
   applySavedJobsToOfferLineItems,
@@ -29,6 +30,17 @@ import {
 } from "@/lib/tilbud/saved-jobs"
 import { ANALYSIS_SYSTEM_PROMPT, buildAnalysisUserPromptSections } from "@/lib/tilbud/analysis-system-prompt"
 import { loadProjectModelTakeoff, type ModelTakeoffContext } from "@/lib/tilbud/model-takeoff"
+import {
+  buildPriceRowIndex,
+  resolvePriceRowReferences,
+  runPriceLookup,
+  PRICE_LOOKUP_TOOL,
+  PRICE_LOOKUP_TOOL_NAME,
+  type GeneratedLineItem,
+  type PriceLookupArgs,
+  type PriceRowIndex,
+} from "@/lib/tilbud/price-lookup"
+import { checkOfferSanity } from "@/lib/tilbud/offer-sanity"
 import {
   formatMaterialSearchHitsForPrompt,
   searchMaterialPricesForOffer,
@@ -127,6 +139,10 @@ const lineItemSchema = z.object({
   unitPriceNok: z.number().min(0),
   markupPercent: z.number().min(0).max(100).default(15),
   discountPercent: z.number().min(0).max(100).default(0),
+  // Radens id fra sok_prisfil. Er den satt, er unitPriceNok bare et forslag —
+  // prisen hentes fra raden i resolvePriceRowReferences() og kan da ikke være
+  // et tall modellen har funnet på.
+  prisRadId: z.string().optional(),
 })
 
 const questionOptionSchema = z.object({
@@ -185,6 +201,11 @@ type ResponsesPayload = {
     type: string
     text?: string
     content?: Array<{ type: string; text?: string }>
+    // Verktøykall (sok_prisfil). Responses-APIet legger dem i samme output-liste
+    // som teksten, med call_id vi må ekko tilbake i function_call_output.
+    name?: string
+    arguments?: string
+    call_id?: string
   }>
   model?: string
 }
@@ -195,6 +216,7 @@ type PriceContext = {
   priceFileAttachments: CompanyPricePromptAttachment[]
   fallbackMatches: ReturnType<typeof matchNorwegianSupplierPrices>
   normalPriceIndicator: ReturnType<typeof formatNormalPriceForPrompt> | null
+  normalPriceRow: NormalPriceRow | null
   savedJobs: SavedJobRow[]
   relevantSavedJobs: SavedJobRow[]
   companyId: string | null
@@ -253,7 +275,7 @@ function parseStructuredJson<T>(raw: string, schema: z.ZodType<T>) {
   return null
 }
 
-function toLineItems(items: z.infer<typeof lineItemSchema>[]): OfferLineItem[] {
+function toLineItems(items: z.infer<typeof lineItemSchema>[]): GeneratedLineItem[] {
   return items.map((item) => ({
     id: crypto.randomUUID(),
     subproject: item.subproject,
@@ -269,6 +291,7 @@ function toLineItems(items: z.infer<typeof lineItemSchema>[]): OfferLineItem[] {
     unitPriceNok: item.unitPriceNok,
     markupPercent: item.markupPercent,
     discountPercent: item.discountPercent,
+    prisRadId: item.prisRadId,
   }))
 }
 
@@ -314,7 +337,19 @@ async function resolveNormalPriceIndicator(
     .join("\n")
 
   const matched = pickBestNormalPrice(rows, query)
-  return matched ? formatNormalPriceForPrompt(matched, priceLevel) : null
+  if (!matched) return null
+
+  // Raden følger med videre: rimelighetssjekken trenger tallene, ikke bare den
+  // ferdigformaterte prompt-teksten.
+  return { prompt: formatNormalPriceForPrompt(matched, priceLevel), row: matched }
+}
+
+/** Areal fra oppdraget, brukt til kvadratmeter-sjekken. */
+function parseAreaFromRequest(body: RequestPayload) {
+  const match = `${body.title}\n${body.description}`.match(/(\d+(?:[.,]\d+)?)\s*(?:m2|m²)/i)
+  if (!match) return null
+  const parsed = Number.parseFloat(match[1].replace(",", "."))
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 function buildSavedJobQuery(body: RequestPayload) {
@@ -373,7 +408,9 @@ async function resolvePriceContext(
   }
 
   const savedJobQuery = buildSavedJobQuery(body)
-  const normalPriceIndicator = await resolveNormalPriceIndicator(supabase, body, priceLevel)
+  const normalPrice = await resolveNormalPriceIndicator(supabase, body, priceLevel)
+  const normalPriceIndicator = normalPrice?.prompt ?? null
+  const normalPriceRow = normalPrice?.row ?? null
   const { savedJobs, relevantSavedJobs } = await resolveSavedJobs(supabase, companyId, savedJobQuery)
 
   if (!companyId) {
@@ -383,6 +420,7 @@ async function resolvePriceContext(
       priceFileAttachments: [],
       fallbackMatches: matchNorwegianSupplierPrices({ description: `${body.title}\n${body.description}`, subprojects: [] }).slice(0, 20),
       normalPriceIndicator,
+      normalPriceRow,
       savedJobs,
       relevantSavedJobs,
       companyId: null,
@@ -412,7 +450,7 @@ async function resolvePriceContext(
   for (let offset = 0; fileIds.length > 0; offset += batchSize) {
     const { data: batch } = await supabase
       .from("supplier_price_rows")
-      .select("product, unit, net_price, list_price, category, nobb, supplier_sku, file_id, product_group_code")
+      .select("id, product, unit, net_price, list_price, category, nobb, supplier_sku, file_id, product_group_code")
       .eq("company_id", companyId)
       .in("file_id", fileIds)
       .not("product", "is", null)
@@ -441,6 +479,7 @@ async function resolvePriceContext(
     priceFileAttachments: aiPriceSelectionContext.attachments,
     fallbackMatches: matchNorwegianSupplierPrices({ description: `${body.title}\n${body.description}`, subprojects: [] }).slice(0, 20),
     normalPriceIndicator,
+    normalPriceRow,
     savedJobs,
     relevantSavedJobs,
     companyId,
@@ -497,6 +536,9 @@ async function extractAttachmentText(fileData: Blob, type?: string) {
 // Samlet tak på tekst hentet ut av opplastede vedlegg (12k tegn per dokument i
 // tillegg) — vedleggstekst skal aldri kunne presse prompten mot kontekstgrensen.
 const ATTACHMENT_TEXT_TOTAL_BUDGET_CHARS = 48_000
+
+/** Maks antall søkerunder KI-en får før den må levere kalkylen. */
+const MAX_PRICE_TOOL_ROUNDS = 4
 
 async function resolveAttachmentContext(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -675,35 +717,118 @@ async function generateClarifications(
   return { data: parsed, model: response.model || model }
 }
 
+/**
+ * Kalkylegenerering med prisoppslag som verktøy.
+ *
+ * Verktøyløkka er ny og ikke verifisert mot live-APIet, mens dette er en levende
+ * kundefunksjon. Skulle formatet bli avvist, faller vi tilbake til den gamle
+ * ett-kalls-genereringen uten verktøy i stedet for å gi brukeren en feilmelding.
+ * Da mister vi radreferansene (linjene blir merket anslag), men tilbudet kommer.
+ */
 async function generateAnalysis(
   model: string,
   context: ReturnType<typeof buildContextEnvelope>,
   imageInputs: Array<{ type: "input_image"; image_url: string }>,
-  priceFileAttachments: CompanyPricePromptAttachment[]
+  priceFileAttachments: CompanyPricePromptAttachment[],
+  priceIndex: PriceRowIndex
 ) {
-  const response = await callOpenAiResponses({
-    model,
-    instructions: ANALYSIS_SYSTEM_INSTRUCTION,
-    store: true,
-    input: [
-      {
-        role: "user",
-        content: [
-          { type: "input_text", text: analysisPrompt(context, priceFileAttachments) },
-          ...imageInputs,
-        ],
-      },
-    ],
-  })
+  try {
+    return await generateAnalysisWithTools(model, context, imageInputs, priceFileAttachments, priceIndex)
+  } catch (error) {
+    if (priceIndex.size === 0) throw error
 
-  const rawText = extractTextFromOutput(response.output)
-  const parsed = parseStructuredJson(rawText, analysisResponseSchema)
-  if (!parsed) {
-    console.error("[ai-chat answer] parse failed. raw text:", rawText.slice(0, 800))
-    throw new Error("KI returnerte et ugyldig kalkylesvar")
+    console.error("[ai-chat answer] verktøyløkka feilet, faller tilbake uten verktøy", error)
+    void logServerError({
+      message: "Kalkyle: prisoppslag-verktøyet feilet, brukte fallback uten verktøy",
+      error,
+      level: "warning",
+      source: "api",
+      route: "POST /api/tilbud/ai-chat",
+    })
+
+    return generateAnalysisWithTools(model, context, imageInputs, priceFileAttachments, buildPriceRowIndex([]))
+  }
+}
+
+async function generateAnalysisWithTools(
+  model: string,
+  context: ReturnType<typeof buildContextEnvelope>,
+  imageInputs: Array<{ type: "input_image"; image_url: string }>,
+  priceFileAttachments: CompanyPricePromptAttachment[],
+  priceIndex: PriceRowIndex
+) {
+  const input: unknown[] = [
+    {
+      role: "user",
+      content: [
+        { type: "input_text", text: analysisPrompt(context, priceFileAttachments) },
+        ...imageInputs,
+      ],
+    },
+  ]
+
+  // Verktøyet gis bare når bedriften faktisk har prisfiler — ellers ville modellen
+  // brukt runder på søk som garantert ikke gir treff.
+  const tools = priceIndex.size > 0 ? [PRICE_LOOKUP_TOOL] : undefined
+
+  let lastModel = model
+
+  // Taket er en tidsgaranti, ikke en kvalitetsgrense: hver runde er et nytt
+  // OpenAI-kall med 120s timeout, og ruta har maxDuration 300. Uten tak kan en
+  // modell som søker i det uendelige få Vercel til å drepe funksjonen, og da får
+  // klienten ren tekst i stedet for JSON.
+  for (let round = 0; round <= MAX_PRICE_TOOL_ROUNDS; round += 1) {
+    const isLastRound = round === MAX_PRICE_TOOL_ROUNDS
+    const response = await callOpenAiResponses({
+      model,
+      instructions: ANALYSIS_SYSTEM_INSTRUCTION,
+      store: true,
+      input,
+      // Siste runde: ta bort verktøyet så modellen tvinges til å svare med kalkylen
+      // i stedet for å be om enda et søk vi ikke har tid til å svare på.
+      ...(tools && !isLastRound ? { tools } : {}),
+    })
+
+    lastModel = response.model || model
+
+    const toolCalls = (response.output || []).filter(
+      (item) => item.type === "function_call" && item.name === PRICE_LOOKUP_TOOL_NAME
+    )
+
+    if (toolCalls.length === 0) {
+      const rawText = extractTextFromOutput(response.output)
+      const parsed = parseStructuredJson(rawText, analysisResponseSchema)
+      if (!parsed) {
+        console.error("[ai-chat answer] parse failed. raw text:", rawText.slice(0, 800))
+        throw new Error("KI returnerte et ugyldig kalkylesvar")
+      }
+
+      return { data: parsed, model: lastModel }
+    }
+
+    for (const call of toolCalls) {
+      let args: PriceLookupArgs = {}
+      try {
+        args = call.arguments ? (JSON.parse(call.arguments) as PriceLookupArgs) : {}
+      } catch {
+        args = {}
+      }
+
+      input.push({
+        type: "function_call",
+        call_id: call.call_id,
+        name: call.name,
+        arguments: call.arguments ?? "{}",
+      })
+      input.push({
+        type: "function_call_output",
+        call_id: call.call_id,
+        output: JSON.stringify(runPriceLookup(priceIndex, args)),
+      })
+    }
   }
 
-  return { data: parsed, model: response.model || model }
+  throw new Error("KI returnerte et ugyldig kalkylesvar")
 }
 
 function toSupplierSnapshots(items: OfferLineItem[]): OfferAnalysisResult["supplierSnapshots"] {
@@ -722,12 +847,19 @@ function toSupplierSnapshots(items: OfferLineItem[]): OfferAnalysisResult["suppl
 
 function finalizeOfferLineItems(
   requestBody: RequestPayload,
-  generatedItems: OfferLineItem[],
-  priceContext: PriceContext
+  generatedItems: GeneratedLineItem[],
+  priceContext: PriceContext,
+  priceIndex: PriceRowIndex
 ) {
   const query = buildSavedJobQuery(requestBody)
+
+  // Bytt modellens pristall mot prisen på raden den valgte, FØR noe annet regner
+  // på beløpene. Etter dette er en «prisfil»-linje etterprøvbar, og alt annet
+  // står merket som anslag.
+  const resolved = resolvePriceRowReferences(generatedItems, priceIndex)
+
   const finalized = finalizeGeneratedOfferLineItems({
-    generatedItems,
+    generatedItems: resolved.lineItems,
     companyRows: priceContext.allRows,
     query,
     subprojects: requestBody.project?.name ? [requestBody.project.name] : [],
@@ -743,9 +875,17 @@ function finalizeOfferLineItems(
     companyName: requestBody.company?.name,
   })
 
+  const sanityWarnings = checkOfferSanity({
+    lineItems: savedJobResult.lineItems,
+    areaM2: parseAreaFromRequest(requestBody),
+    normalPrice: priceContext.normalPriceRow,
+  })
+
   return {
     lineItems: savedJobResult.lineItems,
-    warnings: Array.from(new Set([...finalized.warnings, ...savedJobResult.warnings])),
+    warnings: Array.from(
+      new Set([...resolved.warnings, ...finalized.warnings, ...savedJobResult.warnings, ...sanityWarnings])
+    ),
   }
 }
 
@@ -865,6 +1005,9 @@ export async function POST(request: Request) {
     const model = process.env.OPENAI_MODEL || "gpt-5.2-mini"
 
     const priceContext = await resolvePriceContext(supabase, user.id, requestBody)
+    // Indekseres én gang: både verktøysøket og oppslaget av valgt rad går mot
+    // denne, og de MÅ dele nøkler for at radId-en modellen får skal kunne slås opp.
+    const priceIndex = buildPriceRowIndex(priceContext.allRows)
     const { attachments, imageInputs } = await resolveAttachmentContext(supabase, requestBody.sourceDocuments)
     const materialSearchHits = await searchMaterialPricesForOffer({
       title: requestBody.title,
@@ -885,8 +1028,8 @@ export async function POST(request: Request) {
       const clarificationResult = await generateClarifications(model, context, imageInputs)
 
       if (!clarificationResult.data.questions.length) {
-        const finalResult = await generateAnalysis(model, context, imageInputs, priceContext.priceFileAttachments)
-        const finalized = finalizeOfferLineItems(requestBody, toLineItems(finalResult.data.lineItems), priceContext)
+        const finalResult = await generateAnalysis(model, context, imageInputs, priceContext.priceFileAttachments, priceIndex)
+        const finalized = finalizeOfferLineItems(requestBody, toLineItems(finalResult.data.lineItems), priceContext, priceIndex)
         const lineItems = finalized.lineItems
         return NextResponse.json(
           await buildResultPayload({
@@ -921,8 +1064,8 @@ export async function POST(request: Request) {
       })
     }
 
-    const finalResult = await generateAnalysis(model, context, imageInputs, priceContext.priceFileAttachments)
-    const finalized = finalizeOfferLineItems(requestBody, toLineItems(finalResult.data.lineItems), priceContext)
+    const finalResult = await generateAnalysis(model, context, imageInputs, priceContext.priceFileAttachments, priceIndex)
+    const finalized = finalizeOfferLineItems(requestBody, toLineItems(finalResult.data.lineItems), priceContext, priceIndex)
     const lineItems = finalized.lineItems
 
     return NextResponse.json(
