@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next"
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://proanbud.no"
+import { APP_BASE_URL } from "@/lib/constants"
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -9,6 +9,9 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       disallow: ["/sjefen", "/sjefen/", "/selger", "/selger/"],
     },
-    sitemap: `${siteUrl}/sitemap.xml`,
+    // Dette domenets egen sitemap. Pekte før på proanbud.no/sitemap.xml, som er
+    // markedssidens fil på et annet vertsnavn — app-domenets sider ble dermed
+    // aldri meldt inn noe sted.
+    sitemap: `${APP_BASE_URL}/sitemap.xml`,
   }
 }
