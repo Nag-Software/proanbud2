@@ -28,6 +28,7 @@ import {
   type SavedJobRow,
 } from "@/lib/tilbud/saved-jobs"
 import { ANALYSIS_SYSTEM_PROMPT, buildAnalysisUserPromptSections } from "@/lib/tilbud/analysis-system-prompt"
+import { loadProjectModelTakeoff, type ModelTakeoffContext } from "@/lib/tilbud/model-takeoff"
 import {
   formatMaterialSearchHitsForPrompt,
   searchMaterialPricesForOffer,
@@ -562,9 +563,14 @@ function buildContextEnvelope(
   body: RequestPayload,
   priceContext: PriceContext,
   attachments: AttachmentSummary[],
-  externalPrices: ReturnType<typeof formatMaterialSearchHitsForPrompt>
+  externalPrices: ReturnType<typeof formatMaterialSearchHitsForPrompt>,
+  modelTakeoff: ModelTakeoffContext | null
 ) {
   return {
+    // Mengder fra prosjektets 3D-modell. Når denne finnes er den FASIT for
+    // areal og lengder — modellen er tegnet av mennesket som har vært på
+    // befaring, og skal ikke overprøves av et estimat.
+    modell3d: modelTakeoff,
     oppdrag: {
       tittel: body.title,
       jobbeskrivelse: body.description,
@@ -866,7 +872,14 @@ export async function POST(request: Request) {
       subprojects: [],
     })
     const externalPrices = formatMaterialSearchHitsForPrompt(materialSearchHits)
-    const context = buildContextEnvelope(requestBody, priceContext, attachments, externalPrices)
+    const modelTakeoff = await loadProjectModelTakeoff(supabase, requestBody.project?.id ?? null)
+    const context = buildContextEnvelope(
+      requestBody,
+      priceContext,
+      attachments,
+      externalPrices,
+      modelTakeoff
+    )
 
     if (requestBody.phase === "start") {
       const clarificationResult = await generateClarifications(model, context, imageInputs)

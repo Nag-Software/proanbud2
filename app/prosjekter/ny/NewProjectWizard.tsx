@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils"
 import { ClientAutocomplete, type ClientOption } from "./components/client-autocomplete"
 import { DatePickerField } from "./components/date-picker-field"
 import { EmployeeMultiSelect, type EmployeeOption } from "./components/employee-multi-select"
+import { ModelPhotosField } from "./components/model-photos-field"
 import { StepProgress } from "./components/step-progress"
 import { SuccessState } from "./components/success-state"
 import { Plus, PlusCircle } from "lucide-react"
@@ -74,6 +75,8 @@ const wizardSchema = z
       .max(40, "Du kan legge til maks 40 oppgaver")
       .default([]),
     projectFiles: z.array(z.custom<File>()).max(30, "Maks 30 prosjektfiler").default([]),
+    modelPhotos: z.array(z.custom<File>()).max(8, "Maks 8 bilder til 3D-modellen").default([]),
+    generateModel: z.boolean().default(true),
     budgetNok: z.coerce.number().min(0, "Budsjett kan ikke være negativt").default(0),
     contractFiles: z.array(z.custom<File>()).max(15, "Maks 15 kontraktsfiler").default([]),
     priceListId: z.string().optional().default(""),
@@ -107,6 +110,8 @@ const defaultValues: WizardValues = {
   employeeIds: [],
   tasks: [{ title: "" }],
   projectFiles: [],
+  modelPhotos: [],
+  generateModel: true,
   budgetNok: 0,
   contractFiles: [],
   priceListId: "standard",
@@ -258,6 +263,46 @@ async function uploadProjectDocuments(projectId: string, projectFiles: File[], c
   }
 }
 
+/**
+ * Laster opp bildene 3D-modellen skal genereres fra, og starter genereringen.
+ *
+ * Genereringen ventes bevisst IKKE på: den tar gjerne et halvt minutt, og
+ * brukeren skal ikke stå og se på en spinner for noe han uansett kan justere
+ * etterpå. Ruten setter status til «generating» med en gang, så prosjektsiden
+ * viser riktig tilstand uansett når brukeren kommer dit.
+ */
+async function startModelGeneration(projectId: string, photos: File[], shouldGenerate: boolean) {
+  if (photos.length > 0) {
+    try {
+      const formData = new FormData()
+      photos.forEach((file) => formData.append("files", file))
+      await fetch(`/api/prosjekter/${projectId}/modell/bilder`, {
+        method: "POST",
+        body: formData,
+      })
+    } catch (error) {
+      reportClientError(error, {
+        level: "warning",
+        context: { action: "laste opp bilder til 3D-modell", projectId },
+      })
+      return { started: false, photosFailed: true }
+    }
+  }
+
+  if (!shouldGenerate) return { started: false, photosFailed: false }
+
+  void fetch(`/api/prosjekter/${projectId}/modell/generer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ persist: true }),
+  }).catch(() => {
+    // Feilen fanges opp av statusfeltet på modellen; her har brukeren allerede
+    // gått videre til kvitteringsskjermen.
+  })
+
+  return { started: true, photosFailed: false }
+}
+
 function getFirstInvalidStep(errors: FieldErrors<WizardValues>) {
   for (const field of orderedValidationFields) {
     if (errors[field]) {
@@ -279,6 +324,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
   })
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null)
   const [successView, setSuccessView] = useState(false)
+  const [modelGenerationStarted, setModelGenerationStarted] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const submitRequestedRef = useRef(false)
 
@@ -435,8 +481,18 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
         toast.success(`${uploadedDocuments.uploaded} vedlegg ble lagret i prosjektmappen.`)
       }
 
+      const modelStart = await startModelGeneration(
+        result.data.id,
+        parsedValues.modelPhotos,
+        parsedValues.generateModel
+      )
+      if (modelStart.photosFailed) {
+        toast.warning("Bildene til 3D-modellen ble ikke lastet opp. Du kan legge dem til på modellfanen.")
+      }
+
       setDraft(parsedValues)
       setCreatedProjectId(result.data.id)
+      setModelGenerationStarted(modelStart.started)
       setSuccessView(true)
     } catch (error) {
       reportClientError(error, { context: { action: "opprette nytt prosjekt (wizard)" } })
@@ -475,6 +531,11 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
     return (
       <SuccessState
         projectName={draft.projectName}
+        note={
+          modelGenerationStarted
+            ? "Proanbud bygger 3D-modellen av prosjektet i bakgrunnen. Du finner den under fanen 3D-modell om et minutt."
+            : null
+        }
         onCreateOffer={() => router.push(`/nytt-tilbud?projectId=${createdProjectId}`)}
         onGoToProject={() => router.push(`/prosjekter/${createdProjectId}`)}
         onCreateAnother={() => {
@@ -483,6 +544,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
           setStep(0)
           setSuccessView(false)
           setCreatedProjectId(null)
+          setModelGenerationStarted(false)
           setSubmitError(null)
         }}
       />
@@ -656,6 +718,25 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
                             options={employees}
                             value={field.value || []}
                             onChange={field.onChange}
+                          />
+                        )}
+                      />
+
+                      <Controller
+                        control={form.control}
+                        name="modelPhotos"
+                        render={({ field }) => (
+                          <Controller
+                            control={form.control}
+                            name="generateModel"
+                            render={({ field: generateField }) => (
+                              <ModelPhotosField
+                                files={field.value || []}
+                                onChange={field.onChange}
+                                generateModel={generateField.value ?? true}
+                                onGenerateModelChange={generateField.onChange}
+                              />
+                            )}
                           />
                         )}
                       />

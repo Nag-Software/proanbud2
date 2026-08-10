@@ -124,7 +124,12 @@ Valgfritt, men anbefalt for AI-analyse:
 ```bash
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4.1-mini
+OPENAI_CAD_MODEL=gpt-5.2
 ```
+
+`OPENAI_MODEL` brukes av de fleste AI-funksjonene. `OPENAI_CAD_MODEL` er egen
+innstilling for bygningsmodellen, og bør settes til en sterkere modell enn den
+globale hvis du bruker en liten standardmodell andre steder.
 
 Dokumentasjon:
 

@@ -1,8 +1,10 @@
 "use client"
 
-import { CheckCircle2 } from "lucide-react"
+import { ChevronDown, CheckCircle2 } from "lucide-react"
+import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 type SuccessStateProps = {
   projectName: string
@@ -10,6 +12,8 @@ type SuccessStateProps = {
   onCreateAnother: () => void
   /** Naturlig neste steg i førstegangsreisen: lag tilbud på prosjektet. */
   onCreateOffer?: () => void
+  /** Kort beskjed om noe som jobber i bakgrunnen, f.eks. 3D-generering. */
+  note?: string | null
 }
 
 const particles = Array.from({ length: 18 }).map((_, index) => ({
@@ -18,7 +22,15 @@ const particles = Array.from({ length: 18 }).map((_, index) => ({
   delay: index * 0.04,
 }))
 
-export function SuccessState({ projectName, onGoToProject, onCreateAnother, onCreateOffer }: SuccessStateProps) {
+export function SuccessState({
+  projectName,
+  onGoToProject,
+  onCreateAnother,
+  onCreateOffer,
+  note,
+}: SuccessStateProps) {
+  const [noteOpen, setNoteOpen] = useState(false)
+
   return (
     <div className="relative overflow-hidden rounded-lg border border-accent/60 bg-accent/10 p-6 text-center sm:p-10">
       {/* Confetti via CSS keyframes instead of motion/react — same falling +
@@ -45,6 +57,27 @@ export function SuccessState({ projectName, onGoToProject, onCreateAnother, onCr
           <span className="font-semibold">{projectName || "Prosjektet"}</span> er klart.
           {onCreateOffer ? " Neste steg er som regel å lage tilbudet til kunden." : " Du kan gå rett til prosjektet eller opprette et nytt."}
         </p>
+        {note ? (
+          <div className="overflow-hidden rounded-lg border bg-background/70 text-left">
+            <button
+              type="button"
+              aria-expanded={noteOpen}
+              onClick={() => setNoteOpen((previous) => !previous)}
+              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted/40"
+            >
+              <span>Modellen er generert - kontroll målene</span>
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+                  noteOpen && "rotate-180"
+                )}
+              />
+            </button>
+            {noteOpen ? (
+              <div className="border-t px-3 py-2 text-sm text-muted-foreground">{note}</div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
           {onCreateOffer ? (
             <Button className="h-9 rounded-lg px-4" onClick={onCreateOffer}>

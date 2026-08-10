@@ -19,6 +19,7 @@ import { getDeviationsAction } from "@/app/avvik/actions"
 import { getProjectChecklistsAction } from "@/app/ks/actions"
 import { getProjectCustomer } from "@/app/prosjekter/project-utils"
 
+import ModellTab from "./modell-tab"
 import OppgaverTab from "./oppgaver-tab"
 import DeltakereTab from "./deltakere-tab"
 import AvvikTab from "./avvik-tab"
@@ -211,6 +212,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <ProjectTabsShell
             tabs={[
               { value: "oversikt", label: "Oversikt" },
+              { value: "modell", label: "3D-modell", shortLabel: "3D" },
               { value: "tilbud", label: "Tilbud" },
               { value: "oppgaver", label: "Oppgaver", hidden: !hasTasks },
               { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
@@ -259,6 +261,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   hasKs,
                 }}
               />
+            </ProjectTabPanel>
+
+            <ProjectTabPanel value="modell">
+              <ModellTab projectId={project.id} projectName={project.name} />
             </ProjectTabPanel>
 
             <ProjectTabPanel value="tilbud">
