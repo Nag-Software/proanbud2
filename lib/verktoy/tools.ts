@@ -1,6 +1,8 @@
 // Register over de offentlige gratis-verktøyene. Én kilde til sannhet for
 // hub-siden, sitemap, canonical-URLer og intern lenking (SEO).
 
+import { APP_BASE_URL } from "@/lib/constants"
+
 export const MVA_RATE = 0.25
 
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://proanbud.no").replace(/\/$/, "")
@@ -98,12 +100,13 @@ export function getTool(slug: string): ToolMeta | undefined {
  * men /signup, /login og /kalkulator finnes bare i denne appen — på apex-domenet
  * gir de 404. Alt som peker UT av /verktoy må derfor være absolutt mot app-domenet,
  * ellers er hver konverteringsknapp død for besøkende som kom via Google.
+ *
+ * Bruker APP_BASE_URL, som allerede trimmer etterfølgende skråstrek — verdien i
+ * Vercel har en, og rå interpolering ga «//signup» (fungerte via 308, men med en
+ * unødvendig redirect midt i konverteringen).
  */
-export const APP_ORIGIN = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.proanbud.no"
-
-/** Absolutt lenke til en side i app-en (se APP_ORIGIN). */
 export function appUrl(path: string): string {
-  return `${APP_ORIGIN}${path}`
+  return `${APP_BASE_URL}${path}`
 }
 
 /** Signup-lenke med UTM slik at PostHog/registreringer attribueres til verktøyet. */
