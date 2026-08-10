@@ -40,6 +40,14 @@ export type OfferLineItem = {
   unitPriceNok: number
   markupPercent: number
   discountPercent: number
+  /**
+   * Hvor enhetsprisen kommer fra. `undefined` betyr ukjent — gjelder linjer laget
+   * før dette feltet fantes, og skal IKKE vises som anslag (vi vet ikke).
+   *
+   * «anslag» er KI-ens eget tall uten dekning i bedriftens priser. Det er intern
+   * kvalitetsinfo for håndverkeren, og vises aldri i kundens tilbudsdokument.
+   */
+  priceSource?: "prisfil" | "lagret-jobb" | "anslag"
 }
 
 export type OfferAnalysisResult = {

@@ -56,6 +56,9 @@ const aiLineItemSchema = z.object({
   unitPriceNok: z.number().min(0),
   markupPercent: z.number().min(0).max(100).default(15),
   discountPercent: z.number().min(0).max(100).default(0),
+  // Intern kildemerking (prisfil/lagret-jobb/anslag). Uten den her stripper zod
+  // feltet ved lagring, og «Anslag»-merket forsvinner i det tilbudet lagres.
+  priceSource: z.enum(["prisfil", "lagret-jobb", "anslag"]).optional(),
 })
 
 const aiResponseSchema = z.object({

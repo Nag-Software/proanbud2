@@ -741,6 +741,8 @@ function createCompanyMaterialLineItem(item: OfferLineItem, row: CompanyPriceRow
     supplierUrl: undefined,
     unitPriceNok: resolveUnitPrice(row),
     markupPercent: Number.isFinite(item.markupPercent) ? item.markupPercent : DEFAULT_MATERIAL_MARKUP_PERCENT,
+    // Prisen er lest rett ut av prisfilraden, ikke gjettet.
+    priceSource: "prisfil",
   }
 }
 
@@ -796,6 +798,7 @@ function buildFallbackMaterialLineItems(input: {
       unitPriceNok: resolveUnitPrice(row),
       markupPercent: DEFAULT_MATERIAL_MARKUP_PERCENT,
       discountPercent: 0,
+      priceSource: "prisfil" as const,
     }
   })
 }

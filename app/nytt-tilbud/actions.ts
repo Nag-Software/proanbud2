@@ -38,6 +38,9 @@ const lineItemSchema = z.object({
   unitPriceNok: z.number().min(0),
   markupPercent: z.number().min(0).max(100),
   discountPercent: z.number().min(0).max(100),
+  // Intern kildemerking (prisfil/lagret-jobb/anslag). Uten den her stripper zod
+  // feltet ved lagring, og «Anslag»-merket forsvinner i det tilbudet lagres.
+  priceSource: z.enum(["prisfil", "lagret-jobb", "anslag"]).optional(),
 })
 
 const analysisSchema = z

@@ -63,28 +63,57 @@ export function normalizeQuoteSubproject(raw: string) {
   return trimmed
 }
 
-function findPriceRowForLineItem(item: OfferLineItem, companyRows: CompanyPriceRow[]) {
-  if (companyRows.length === 0) return null
+function rowPrice(row: CompanyPriceRow) {
+  return Number(row.net_price ?? row.list_price ?? Number.NaN)
+}
 
-  if (item.supplierSku?.trim()) {
-    const skuMatch = companyRows.find((row) => row.supplier_sku?.trim() === item.supplierSku?.trim())
-    if (skuMatch) return skuMatch
+/** Egen formatering i varsler: formatNok runder til hele kroner og ville skjult
+ *  små, men reelle prisendringer (129,50 → 129,90 blir «130 kr → 130 kr»). */
+function priceLabel(value: number) {
+  return `${value.toLocaleString("no-NO", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} kr`
+}
+
+type PriceMatch =
+  | { kind: "match"; row: CompanyPriceRow }
+  | { kind: "ambiguous"; count: number }
+  | { kind: "none" }
+
+/**
+ * Finner prisfilraden en KI-generert linje faktisk refererer til.
+ *
+ * Kun IDENTITET teller: leverandørens artikkelnummer, NOBB, eller nøyaktig samme
+ * produktnavn. Tidligere holdt det at navnene inneholdt hverandre begge veier, og
+ * første treff i array-rekkefølge vant — da traff «Gips» hvilken som helst rad med
+ * «gips» i seg, og prisen ble overskrevet med feil produkt. En feil pris er verre
+ * enn ingen pris: uten treff beholder vi KI-ens tall og merker linjen som anslag.
+ */
+function findPriceRowForLineItem(item: OfferLineItem, companyRows: CompanyPriceRow[]): PriceMatch {
+  if (companyRows.length === 0) return { kind: "none" }
+
+  const sku = item.supplierSku?.trim()
+  if (sku) {
+    const skuMatch = companyRows.find((row) => row.supplier_sku?.trim() === sku)
+    if (skuMatch) return { kind: "match", row: skuMatch }
   }
 
-  if (item.nobb?.trim()) {
-    const nobbMatch = companyRows.find((row) => row.nobb?.trim() === item.nobb?.trim())
-    if (nobbMatch) return nobbMatch
+  const nobb = item.nobb?.trim()
+  if (nobb) {
+    const nobbMatch = companyRows.find((row) => row.nobb?.trim() === nobb)
+    if (nobbMatch) return { kind: "match", row: nobbMatch }
   }
 
   const titleKey = normalizeText(item.title)
-  if (!titleKey) return null
+  if (!titleKey) return { kind: "none" }
 
-  return (
-    companyRows.find((row) => {
-      const productKey = normalizeText(row.product || "")
-      return productKey === titleKey || productKey.includes(titleKey) || titleKey.includes(productKey)
-    }) || null
-  )
+  const exact = companyRows.filter((row) => normalizeText(row.product || "") === titleKey)
+  if (exact.length === 0) return { kind: "none" }
+  if (exact.length === 1) return { kind: "match", row: exact[0] }
+
+  // Samme produktnavn flere steder: greit så lenge prisen er den samme (duplikate
+  // filer), men ved ulik pris kan vi ikke gjette hvilken bedriften mente.
+  const distinctPrices = new Set(exact.map((row) => rowPrice(row)))
+  if (distinctPrices.size === 1) return { kind: "match", row: exact[0] }
+  return { kind: "ambiguous", count: exact.length }
 }
 
 export function normalizeQuoteLineItems(input: {
@@ -100,21 +129,60 @@ export function normalizeQuoteLineItems(input: {
       warnings.push(`Kategorien "${item.subproject}" ble forenklet til "${normalizedSubproject}".`)
     }
 
-    const priceRow = findPriceRowForLineItem(item, companyRows)
-    const normalizedUnit = priceRow?.unit ? normalizeUnit(priceRow.unit) : normalizeUnit(item.unit)
+    const match = findPriceRowForLineItem(item, companyRows)
 
-    if (priceRow?.unit && normalizeUnit(priceRow.unit) !== normalizeUnit(item.unit)) {
+    if (match.kind === "ambiguous") {
+      warnings.push(
+        `"${item.title}" finnes ${match.count} ganger i prisfilene med ulik pris. Prisen er ikke endret — velg riktig rad selv.`
+      )
+    }
+
+    // Lagrede jobber (fastpris) settes av applySavedJobsToOfferLineItems etterpå;
+    // her avgjør vi bare om prisen har dekning i en prisfilrad eller ikke.
+    if (match.kind !== "match") {
+      const unit = normalizeUnit(item.unit)
+      // Arbeid og fastpris måles ikke mot prisfilene — de er materialkataloger.
+      // Å merke hver eneste timelinje som «anslag» ville gjort merket til støy,
+      // og da slutter håndverkeren å se de materialprisene som faktisk er gjettet.
+      const isService = unit === "time" || unit === "fastpris"
+
+      return {
+        ...item,
+        subproject: normalizedSubproject,
+        unit,
+        priceSource: isService ? item.priceSource : (item.priceSource ?? ("anslag" as const)),
+      }
+    }
+
+    const priceRow = match.row
+    const normalizedUnit = priceRow.unit ? normalizeUnit(priceRow.unit) : normalizeUnit(item.unit)
+
+    if (priceRow.unit && normalizeUnit(priceRow.unit) !== normalizeUnit(item.unit)) {
       warnings.push(`Enhet for "${item.title}" ble justert fra "${item.unit}" til "${normalizedUnit}" i tråd med prisfilen.`)
+    }
+
+    const filePrice = rowPrice(priceRow)
+    const unitPriceNok = Number.isFinite(filePrice) ? filePrice : item.unitPriceNok
+
+    // Prisendring var tidligere usynlig: enhet og kategori ble varslet, pris ikke.
+    // Da kunne totalsummen flytte seg uten at noen fikk vite hvorfor.
+    if (Number.isFinite(filePrice) && Math.abs(filePrice - item.unitPriceNok) >= 0.01) {
+      warnings.push(
+        `Prisen for "${item.title}" ble justert fra ${priceLabel(item.unitPriceNok)} til ${priceLabel(filePrice)} i tråd med prisfilen${
+          priceRow.supplier_name?.trim() ? ` (${priceRow.supplier_name.trim()})` : ""
+        }.`
+      )
     }
 
     return {
       ...item,
       subproject: normalizedSubproject,
       unit: normalizedUnit,
-      unitPriceNok: priceRow ? Number(priceRow.net_price ?? priceRow.list_price ?? item.unitPriceNok) : item.unitPriceNok,
-      supplier: priceRow?.supplier_name?.trim() || item.supplier,
-      nobb: priceRow?.nobb?.trim() || item.nobb,
-      supplierSku: priceRow?.supplier_sku?.trim() || item.supplierSku,
+      unitPriceNok,
+      supplier: priceRow.supplier_name?.trim() || item.supplier,
+      nobb: priceRow.nobb?.trim() || item.nobb,
+      supplierSku: priceRow.supplier_sku?.trim() || item.supplierSku,
+      priceSource: "prisfil" as const,
     }
   })
 

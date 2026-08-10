@@ -137,6 +137,7 @@ function createSavedJobLineItem(job: SavedJobRow, subproject: string, companyNam
     unitPriceNok: job.price_nok,
     markupPercent: 0,
     discountPercent: 0,
+    priceSource: "lagret-jobb",
   }
 }
 
@@ -183,6 +184,7 @@ export function applySavedJobsToOfferLineItems(input: {
         supplier: lineItems[existingIndex]!.supplier.trim() || input.companyName?.trim() || "Eget arbeid",
         unitPriceNok: job.price_nok,
         markupPercent: 0,
+        priceSource: "lagret-jobb",
       }
       appliedJobIds.add(job.id)
       warnings.push(`Oppdaterte «${job.name}» til fastpris ${formatSavedJobPrice(job.price_nok)}.`)

@@ -46,6 +46,10 @@ function normalizeLineItems(input: unknown): OfferLineItem[] {
       subproject: String(item.subproject || "Generelt"),
       title: String(item.title || ""),
       description: String(item.description || ""),
+      // reasoning og priceSource ble strippet her. Klienten autolagrer et fullt
+      // snapshot ved hver endring, så begrunnelsen bak prisen og «Anslag»-merket
+      // forsvant ved første tastetrykk i tilbudet.
+      reasoning: item.reasoning ? String(item.reasoning) : undefined,
       quantity: Number(item.quantity || 0),
       unit: String(item.unit || "stk"),
       supplier: String(item.supplier || ""),
@@ -55,6 +59,7 @@ function normalizeLineItems(input: unknown): OfferLineItem[] {
       unitPriceNok: Number(item.unitPriceNok || 0),
       markupPercent: Number(item.markupPercent || 0),
       discountPercent: Number(item.discountPercent || 0),
+      priceSource: item.priceSource,
     }
   })
 }

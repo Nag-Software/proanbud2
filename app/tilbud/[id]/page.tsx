@@ -142,6 +142,9 @@ function toLineItems(input: unknown): OfferLineItem[] {
         subproject: String(item.subproject || "Generelt"),
         title: String(item.title || "Uten navn"),
         description: String(item.description || ""),
+        // reasoning ble droppet her, så begrunnelsen bak pris og mengde var tom på
+        // alle lagrede tilbud — den fantes kun i veiviseren før lagring.
+        reasoning: item.reasoning ? String(item.reasoning) : undefined,
         quantity: Number(item.quantity || 0),
         unit: String(item.unit || "stk"),
         supplier: String(item.supplier || ""),
@@ -151,6 +154,7 @@ function toLineItems(input: unknown): OfferLineItem[] {
         unitPriceNok: Number(item.unitPriceNok || 0),
         markupPercent: Number(item.markupPercent || 0),
         discountPercent: Number(item.discountPercent || 0),
+        priceSource: item.priceSource,
       } satisfies OfferLineItem
     })
     .filter((item) => item.title.trim().length > 0)

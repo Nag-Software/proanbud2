@@ -250,6 +250,32 @@ function EditableText({
   )
 }
 
+/**
+ * Intern kvalitetsmerking: prisen har ingen dekning i bedriftens prisfiler eller
+ * lagrede jobber, så den er KI-ens eget anslag. Vises kun her i redigeringen —
+ * aldri i kundens tilbudsdokument. `undefined` (linjer fra før feltet fantes)
+ * merkes ikke: vi vet ikke hvor prisen kom fra, og skal ikke påstå at den er gjettet.
+ */
+function PriceSourceBadge({ item }: { item: OfferLineItem }) {
+  if (item.priceSource !== "anslag") return null
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant="outline"
+          className="shrink-0 cursor-default border-amber-500/40 bg-amber-500/10 px-1.5 py-0 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+        >
+          Anslag
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">
+        Prisen er KI-ens eget anslag — den er ikke funnet i prisfilene dine. Kontroller den før du sender tilbudet.
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function LineItemInfoButton({ item }: { item: OfferLineItem }) {
   const reasoning = item.reasoning?.trim()
   const description = item.description?.trim()
@@ -389,7 +415,22 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
 
   const updateRow = useCallback(
     (id: string, patch: Partial<OfferLineItem>) => {
-      onItemsChange(items.map((item) => (item.id === id ? { ...item, ...patch } : item)))
+      onItemsChange(
+        items.map((item) => {
+          if (item.id !== id) return item
+          const next = { ...item, ...patch }
+          // Retter håndverkeren prisen selv, er den ikke lenger KI-ens anslag.
+          // Uten dette ville «Anslag»-merket blitt stående etter at feilen er rettet.
+          if (
+            patch.unitPriceNok !== undefined &&
+            patch.unitPriceNok !== item.unitPriceNok &&
+            item.priceSource === "anslag"
+          ) {
+            next.priceSource = undefined
+          }
+          return next
+        })
+      )
     },
     [items, onItemsChange]
   )
@@ -665,6 +706,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                                               className="font-medium"
                                             />
                                           </div>
+                                          <PriceSourceBadge item={item} />
                                           <LineItemInfoButton item={item} />
                                           {resolveNobb(item) ? (
                                             <Button
