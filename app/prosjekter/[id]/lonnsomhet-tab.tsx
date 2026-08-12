@@ -247,6 +247,11 @@ function BudgetForm({
     return Number.isFinite(parsed) ? parsed : Number.NaN
   }
 
+  function handleReset() {
+    setHours("0");
+    setMaterial("0");
+  }
+
   async function handleSave() {
     const budgetedHours = parseField(hours)
     const budgetedMaterialNok = parseField(material)
@@ -358,18 +363,6 @@ function BudgetForm({
             value={hours}
             onChange={(e) => setHours(e.target.value)}
           />
-          {remainingHours !== null ? (
-            <p
-              className={cn(
-                "text-xs tabular-nums",
-                remainingHours < 0 ? "text-destructive" : "text-muted-foreground"
-              )}
-            >
-              {remainingHours < 0
-                ? `${formatHours(Math.abs(remainingHours))} over budsjett`
-                : `${formatHours(remainingHours)} igjen`}
-            </p>
-          ) : null}
         </div>
         <div className="space-y-2">
           <FieldLabel
@@ -392,21 +385,13 @@ function BudgetForm({
             value={material}
             onChange={(e) => setMaterial(e.target.value)}
           />
-          {remainingMaterial !== null ? (
-            <p
-              className={cn(
-                "text-xs tabular-nums",
-                remainingMaterial < 0 ? "text-destructive" : "text-muted-foreground"
-              )}
-            >
-              {remainingMaterial < 0
-                ? `${formatNok(Math.abs(remainingMaterial))} over budsjett`
-                : `${formatNok(remainingMaterial)} igjen`}
-            </p>
-          ) : null}
         </div>
       </div>
       <div className="flex items-center justify-end border-t px-4 py-3">
+        <Button size="sm" variant="outline" onClick={handleReset}>
+          Tilbakestill
+        </Button>
+        <div className="mx-2 h-4 w-px bg-border" />
         <Button size="sm" onClick={handleSave} disabled={saving}>
           {saving ? "Lagrer …" : "Lagre"}
         </Button>

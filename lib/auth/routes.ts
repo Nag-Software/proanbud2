@@ -12,6 +12,8 @@ export const AUTH_PUBLIC_ROUTE_PREFIXES = [
   '/auth/callback',
   '/tilbudsvisning',
   '/eksempel-tilbud',
+  // Offentlig godkjenningsside for ekstrajobber / tilleggsarbeid.
+  '/tilleggsarbeid',
   // Gratis KI-tilbudskalkulator — åpen lead-magnet, skal aldri kreve innlogging.
   '/kalkulator',
   // Gratis kalkulatorer/verktøy (timepris, påslag, jobb) — SEO-lead-magneter,

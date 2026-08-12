@@ -147,7 +147,7 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
           Innstillinger
         </Button>
       </ResponsiveDialogTrigger>
-      <ResponsiveDialogContent className="max-h-[90vh] px-2 md:p-4 overflow-y-hidden sm:max-w-lg">
+      <ResponsiveDialogContent className="max-h-[90vh] px-2 md:p-4 overflow-y-scroll sm:max-w-lg">
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>Prosjektinnstillinger</ResponsiveDialogTitle>
           <ResponsiveDialogDescription>Rediger detaljer, fremdrift og arkivering for prosjektet.</ResponsiveDialogDescription>
@@ -249,16 +249,6 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
                   onChange={(e) => setEndDate(e.target.value)}
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="project-budget">Budsjett (kr)</Label>
-              <Input
-                id="project-budget"
-                inputMode="numeric"
-                value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-                placeholder="0"
-              />
             </div>
           </section>
 

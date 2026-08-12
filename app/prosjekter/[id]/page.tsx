@@ -29,6 +29,7 @@ import KsTab from "./ks-tab"
 import { EditProjectDialog } from "./edit-project-dialog"
 import ProjectDocumentsTab from "./project-documents-tab"
 import TilbudTab from "./tilbud-tab"
+import { EtterfaktureringTab } from "./etterfakturering-tab"
 import TimeforingTab from "./timeforing-tab"
 import KjorebokTab from "./kjorebok-tab"
 import { ProjectOverviewTab, type OverviewTask } from "./project-overview-tab"
@@ -62,6 +63,23 @@ type ProjectOfferRow = {
   amount_nok: number | null
 }
 
+type ProjectChangeOrderRow = {
+  id: string
+  offer_id: string | null
+  project_id: string | null
+  title: string
+  description: string | null
+  amount_nok: number
+  billing_type: "fixed" | "hourly"
+  hourly_rate_nok: number | null
+  estimated_hours: number | null
+  status: "draft" | "sent" | "accepted" | "rejected"
+  public_slug: string | null
+  sent_at: string | null
+  customer_responded_at: string | null
+  created_at: string
+}
+
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params
   const supabase = await createClient()
@@ -73,6 +91,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     { data: project },
     { data: tasksData },
     { data: offersData },
+    { data: changeOrdersData },
     { data: membersData },
     companyId,
   ] = await Promise.all([
@@ -90,6 +109,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       .from("offers")
       .select("id, title, description, amount_nok, status, created_at, analysis_result")
       .eq("project_id", resolvedParams.id),
+    supabase
+      .from("change_orders")
+      .select(
+        "id, offer_id, project_id, title, description, amount_nok, billing_type, hourly_rate_nok, estimated_hours, status, public_slug, sent_at, customer_responded_at, created_at",
+      )
+      .eq("project_id", resolvedParams.id)
+      .order("created_at", { ascending: false }),
     supabase
       .from("project_members")
       .select("access_level, users(id, email, full_name, role)")
@@ -181,6 +207,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   }))
 
   const offers = (offersData || []) as ProjectOfferRow[]
+  const changeOrders = (changeOrdersData || []) as ProjectChangeOrderRow[]
   const doneTasks = tasks.filter((task) => task.status === "done").length
   const openTasks = tasks.filter((task) => task.status !== "done").length
   const overdueTasks = tasks.filter((task) => {
@@ -227,6 +254,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               { value: "modell", label: "3D-modell", shortLabel: "3D" },
               { value: "lonnsomhet", label: "Lønnsomhet", hidden: isWorker },
               { value: "tilbud", label: "Tilbud" },
+              { value: "etterfakturering", label: "Etterfakturering", hidden: isWorker },
               { value: "oppgaver", label: "Oppgaver", hidden: !hasTasks },
               { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
               { value: "timeforing", label: "Timeføring" },
@@ -289,6 +317,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 readOnly={isWorker}
               />
             </ProjectTabPanel>
+
+            {!isWorker && (
+              <ProjectTabPanel value="etterfakturering">
+                <EtterfaktureringTab projectId={project.id} canManage={isProjectAdmin} initialItems={changeOrders} />
+              </ProjectTabPanel>
+            )}
 
             <ProjectTabPanel value="oppgaver">
               {hasTasks ? (
