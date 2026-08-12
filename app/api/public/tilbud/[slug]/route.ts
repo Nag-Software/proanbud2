@@ -56,7 +56,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
       lineItems: snapshot?.lineItems ?? offer.lineItems,
       company: snapshot?.company ?? offer.company,
       customer: snapshot?.customer ?? offer.customer,
-      paymentSchedule: snapshot?.paymentSchedule ?? offer.paymentSchedule,
       pricingModel: snapshot?.pricingModel ?? offer.pricingModel,
       contractBasis: snapshot?.contractBasis ?? offer.contractBasis,
       acceptance: offer.acceptance,

@@ -41,7 +41,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
         issuedDate: offer.createdAt,
         quoteValidUntil: offer.quoteValidUntil,
         validityDays: offer.validityDays,
-        paymentSchedule: offer.paymentSchedule,
         pricingModel: offer.pricingModel,
         contractBasis: offer.contractBasis,
         acceptance: offer.acceptance,

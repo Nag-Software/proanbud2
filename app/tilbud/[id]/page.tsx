@@ -7,11 +7,9 @@ import { readProjectSummaryFromAnalysis } from "@/lib/tilbud/project-summary"
 import { fetchOfferTripletexSyncStatus } from "@/lib/integrations/tripletex/sync"
 import { fetchOfferActivity } from "@/lib/tilbud/offer-activity"
 import { createClient } from "@/lib/supabase/server"
-import { DEFAULT_PAYMENT_SCHEDULE } from "@/lib/contracts/pricing"
 import {
   type OfferContractBasis,
   type OfferLineItem,
-  type OfferPaymentScheduleEntry,
   type OfferPricingModel,
   type OfferSourceDocument,
 } from "@/lib/tilbud/types"
@@ -45,7 +43,6 @@ type OfferRecord = {
   pricing_model: string | null
   contract_basis: string | null
   markup_percent: number | null
-  payment_schedule: unknown
   accepted_at: string | null
   accepted_by_name: string | null
   accepted_email: string | null
@@ -160,23 +157,6 @@ function toLineItems(input: unknown): OfferLineItem[] {
     .filter((item) => item.title.trim().length > 0)
 }
 
-function toPaymentSchedule(input: unknown): OfferPaymentScheduleEntry[] {
-  if (!Array.isArray(input) || input.length === 0) {
-    return DEFAULT_PAYMENT_SCHEDULE
-  }
-
-  return input
-    .map((row) => {
-      const entry = row as Partial<OfferPaymentScheduleEntry>
-      return {
-        label: String(entry.label || "").trim(),
-        percent: Number(entry.percent || 0),
-        dueDescription: entry.dueDescription ? String(entry.dueDescription) : undefined,
-      }
-    })
-    .filter((entry) => entry.label.length > 0)
-}
-
 function toSourceDocuments(input: unknown): OfferSourceDocument[] {
   if (!Array.isArray(input)) return []
 
@@ -260,7 +240,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
     supabase
       .from("offers")
       .select(
-        "id, title, description, status, amount_nok, subtotal_nok, discount_nok, quote_valid_until, created_at, updated_at, sent_at, recipient_name, recipient_email, recipient_phone, source_summary, source_documents, line_items, analysis_result, pricing_model, contract_basis, markup_percent, payment_schedule, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, customer_id, project_id, customers(id, name, email, phone, address, postal_code, city, org_number), projects(id, name, customer_id, customers(id, name, email, phone, address, postal_code, city, org_number))"
+        "id, title, description, status, amount_nok, subtotal_nok, discount_nok, quote_valid_until, created_at, updated_at, sent_at, recipient_name, recipient_email, recipient_phone, source_summary, source_documents, line_items, analysis_result, pricing_model, contract_basis, markup_percent, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, customer_id, project_id, customers(id, name, email, phone, address, postal_code, city, org_number), projects(id, name, customer_id, customers(id, name, email, phone, address, postal_code, city, org_number))"
       )
       .eq("id", id)
       .eq("company_id", companyId)
@@ -337,7 +317,6 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
           pricingModel: (offer.pricing_model as OfferPricingModel) || "fixed",
           contractBasis: (offer.contract_basis as OfferContractBasis) || "none",
           markupPercent: Number(offer.markup_percent || 0),
-          paymentSchedule: toPaymentSchedule(offer.payment_schedule),
           acceptance:
             offer.status === "accepted" && offer.accepted_at && offer.accepted_by_name && offer.accepted_method === "email_otp"
               ? {

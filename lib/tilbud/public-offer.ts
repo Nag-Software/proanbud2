@@ -19,7 +19,6 @@ import {
   type OfferCompanyContext,
   type OfferContractBasis,
   type OfferLineItem,
-  type OfferPaymentScheduleEntry,
   type OfferPricingModel,
 } from "@/lib/tilbud/types"
 import { APP_BASE_URL } from "@/lib/constants"
@@ -96,7 +95,6 @@ export type PublicOfferRecord = {
   offerReference: string
   isExpired: boolean
   canRespond: boolean
-  paymentSchedule: OfferPaymentScheduleEntry[]
   pricingModel: OfferPricingModel | null
   contractBasis: OfferContractBasis | null
   /** Digital acceptance evidence — set when the customer accepted with a one-time code. */
@@ -134,7 +132,6 @@ type RawOfferRow = {
   analysis_result: unknown
   pricing_model?: string | null
   contract_basis?: string | null
-  payment_schedule?: unknown
   accepted_at?: string | null
   accepted_by_name?: string | null
   accepted_email?: string | null
@@ -204,9 +201,6 @@ export function mapPublicOfferRow(row: RawOfferRow): PublicOfferRecord | null {
     offerReference: formatOfferReference(row.id),
     isExpired,
     canRespond: status === "sent" && !isExpired,
-    paymentSchedule: Array.isArray(row.payment_schedule)
-      ? (row.payment_schedule as OfferPaymentScheduleEntry[])
-      : [],
     pricingModel: toPricingModel(row.pricing_model),
     contractBasis: toContractBasis(row.contract_basis),
     acceptance:
@@ -242,7 +236,7 @@ export async function fetchPublicOfferBySlug(slug: string) {
     .from("offers")
     .select(
       PUBLIC_OFFER_BASE_SELECT +
-        ", pricing_model, contract_basis, payment_schedule, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, accepted_snapshot, customers(name, email, phone, address, postal_code, city, org_number), projects(name), companies(" +
+        ", pricing_model, contract_basis, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, accepted_snapshot, customers(name, email, phone, address, postal_code, city, org_number), projects(name), companies(" +
         COMPANY_PROFILE_SELECT +
         ")"
     )

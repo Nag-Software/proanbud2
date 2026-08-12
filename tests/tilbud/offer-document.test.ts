@@ -12,7 +12,6 @@ import {
   formatDocumentQuantity,
   formatDocumentUnit,
   formatOfferDate,
-  normalizePaymentSchedule,
   type OfferDocumentData,
 } from "@/lib/tilbud/offer-document"
 import { type OfferLineItem } from "@/lib/tilbud/types"
@@ -75,23 +74,6 @@ describe("computeValidUntilDate", () => {
   it("derives issued date + validity days when no explicit date exists", () => {
     const result = computeValidUntilDate("2026-07-01T00:00:00Z", null, 14)
     expect(formatOfferDate(result)).toBe("15.07.2026")
-  })
-})
-
-describe("normalizePaymentSchedule", () => {
-  it("drops empty and zero-percent entries", () => {
-    expect(
-      normalizePaymentSchedule([
-        { label: "Ved oppstart", percent: 30 },
-        { label: "", percent: 50 },
-        { label: "Ugyldig", percent: 0 },
-      ])
-    ).toEqual([{ label: "Ved oppstart", percent: 30, dueDescription: "" }])
-  })
-
-  it("handles null/undefined", () => {
-    expect(normalizePaymentSchedule(null)).toEqual([])
-    expect(normalizePaymentSchedule(undefined)).toEqual([])
   })
 })
 
@@ -161,18 +143,20 @@ describe("buildOfferDocumentSheet", () => {
     expect(html).toContain(">Rabatt<")
   })
 
-  it("renders payment schedule and contract terms when present", () => {
+  it("renders contract terms when present", () => {
     const html = buildOfferDocumentSheet(
       makeData({
-        paymentSchedule: [{ label: "Ved oppstart", percent: 30 }],
         pricingModel: "fixed",
         contractBasis: "ns8407",
       })
     )
-    expect(html).toContain("Betalingsplan")
-    expect(html).toContain("Ved oppstart")
     expect(html).toContain("Prismodell: Fastpris.")
     expect(html).toContain("Kontraktsgrunnlag: NS 8407.")
+  })
+
+  it("never mentions a payment plan — betalingsplan is out of the product", () => {
+    const html = buildOfferDocumentSheet(makeData({ pricingModel: "fixed" }))
+    expect(html).not.toContain("Betalingsplan")
   })
 
   it("hides supplier names when showSupplier is false", () => {

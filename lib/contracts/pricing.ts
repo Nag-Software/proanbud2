@@ -1,14 +1,4 @@
-import type {
-  OfferLineItem,
-  OfferPaymentScheduleEntry,
-  OfferPricingModel,
-} from "@/lib/tilbud/types"
-
-export const DEFAULT_PAYMENT_SCHEDULE: OfferPaymentScheduleEntry[] = [
-  { label: "Ved oppstart", percent: 30, dueDescription: "Ved kontraktsinngåelse" },
-  { label: "Under arbeid", percent: 40, dueDescription: "Ved halvtid" },
-  { label: "Ved ferdigstillelse", percent: 30, dueDescription: "Ved overtakelse" },
-]
+import type { OfferLineItem, OfferPricingModel } from "@/lib/tilbud/types"
 
 export const PRICING_MODEL_LABELS: Record<OfferPricingModel, string> = {
   fixed: "Fastpris",

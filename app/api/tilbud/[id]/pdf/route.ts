@@ -14,7 +14,6 @@ import {
   toContractBasis,
   toPricingModel,
   type OfferLineItem,
-  type OfferPaymentScheduleEntry,
 } from "@/lib/tilbud/types"
 
 export const runtime = "nodejs"
@@ -43,7 +42,6 @@ type OfferRow = {
   line_items: unknown
   pricing_model: string | null
   contract_basis: string | null
-  payment_schedule: unknown
   status: string | null
   accepted_at: string | null
   accepted_by_name: string | null
@@ -107,7 +105,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { data: offerData } = await supabase
     .from("offers")
     .select(
-      "id, title, description, created_at, quote_valid_until, source_summary, analysis_result, line_items, pricing_model, contract_basis, payment_schedule, status, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, accepted_snapshot, customers(name, email, phone, address, postal_code, city, org_number), projects(name, customers(name, email, phone, address, postal_code, city, org_number))"
+      "id, title, description, created_at, quote_valid_until, source_summary, analysis_result, line_items, pricing_model, contract_basis, status, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, accepted_snapshot, customers(name, email, phone, address, postal_code, city, org_number), projects(name, customers(name, email, phone, address, postal_code, city, org_number))"
     )
     .eq("id", id)
     .eq("company_id", company.id)
@@ -156,9 +154,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         company,
         issuedDate: offer.created_at,
         quoteValidUntil: offer.quote_valid_until,
-        paymentSchedule: Array.isArray(offer.payment_schedule)
-          ? (offer.payment_schedule as OfferPaymentScheduleEntry[])
-          : [],
         pricingModel: toPricingModel(offer.pricing_model),
         contractBasis: toContractBasis(offer.contract_basis),
         acceptance,

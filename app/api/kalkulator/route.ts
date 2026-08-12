@@ -267,16 +267,6 @@ export async function POST(request: Request) {
     const totals = calculateOfferTotals(lineItems)
     const totalInklMvaNok = Math.round(totals.subtotalNok * 1.25)
 
-    // Standard betalingsplan på større jobber — som i ekte Proanbud-tilbud.
-    const betalingsplan =
-      totalInklMvaNok >= 100_000
-        ? [
-            { label: "Ved oppstart", percent: 30 },
-            { label: "Underveis i arbeidet", percent: 40 },
-            { label: "Ved ferdigstillelse", percent: 30 },
-          ]
-        : null
-
     const forbehold = Array.from(
       new Set([...aiParsed.data.warnings, ...finalized.warnings].map((w) => w.trim()).filter(Boolean))
     ).slice(0, 5)
@@ -287,7 +277,6 @@ export async function POST(request: Request) {
         innledning: aiParsed.data.summary.slice(0, 600),
         lineItems,
         forbehold,
-        betalingsplan,
         totalInklMvaNok,
       },
       remaining: DAILY_LIMIT - usedToday - 1,

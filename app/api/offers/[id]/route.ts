@@ -33,7 +33,6 @@ type UpdatePayload = {
   pricingModel?: OfferPricingModel
   contractBasis?: OfferContractBasis
   markupPercent?: number
-  paymentSchedule?: Array<{ label: string; percent: number; dueDescription?: string }>
 }
 
 function normalizeLineItems(input: unknown): OfferLineItem[] {
@@ -169,7 +168,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (payload.pricingModel !== undefined) updateRow.pricing_model = payload.pricingModel
     if (payload.contractBasis !== undefined) updateRow.contract_basis = payload.contractBasis
     if (payload.markupPercent !== undefined) updateRow.markup_percent = Number(payload.markupPercent)
-    if (payload.paymentSchedule !== undefined) updateRow.payment_schedule = payload.paymentSchedule
   }
 
   const { data, error } = await ctx.supabase

@@ -45,7 +45,6 @@ import { getOfferActivityTone, type OfferActivityEvent } from "@/lib/tilbud/offe
 import {
   type OfferCompanyContext,
   type OfferContractBasis,
-  type OfferPaymentScheduleEntry,
   type OfferLineItem,
   type OfferPricingModel,
   type OfferSourceDocument,
@@ -107,7 +106,6 @@ type OfferPageModel = {
   pricingModel: OfferPricingModel
   contractBasis: OfferContractBasis
   markupPercent: number
-  paymentSchedule: OfferPaymentScheduleEntry[]
   acceptance: OfferDocumentAcceptance | null
 }
 
@@ -124,7 +122,6 @@ type OfferSaveSnapshot = {
   pricingModel: OfferPricingModel
   contractBasis: OfferContractBasis
   markupPercent: number
-  paymentSchedule: OfferPaymentScheduleEntry[]
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -272,14 +269,12 @@ export function OfferDetailClient({
       pricingModel: offer.pricingModel,
       contractBasis: offer.contractBasis,
       markupPercent: offer.markupPercent,
-      paymentSchedule: offer.paymentSchedule,
     }),
     [
       lineItems,
       offer.contractBasis,
       offer.description,
       offer.markupPercent,
-      offer.paymentSchedule,
       offer.pricingModel,
       offer.quoteValidUntil,
       offer.recipientEmail,
@@ -317,7 +312,6 @@ export function OfferDetailClient({
       company,
       issuedDate: offer.createdAt,
       quoteValidUntil: offer.quoteValidUntil,
-      paymentSchedule: offer.paymentSchedule,
       pricingModel: offer.pricingModel,
       contractBasis: offer.contractBasis,
       acceptance: offer.acceptance,
@@ -331,7 +325,6 @@ export function OfferDetailClient({
       offer.projectName,
       offer.createdAt,
       offer.quoteValidUntil,
-      offer.paymentSchedule,
       offer.pricingModel,
       offer.contractBasis,
       offer.acceptance,

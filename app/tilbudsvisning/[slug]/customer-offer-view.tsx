@@ -35,7 +35,6 @@ import {
   formatOfferDateTime,
   getOfferDocumentTotals,
   groupLineItemsBySubproject,
-  normalizePaymentSchedule,
   type OfferDocumentAcceptance,
 } from "@/lib/tilbud/offer-document"
 import {
@@ -44,7 +43,6 @@ import {
   type OfferCompanyContext,
   type OfferContractBasis,
   type OfferLineItem,
-  type OfferPaymentScheduleEntry,
   type OfferPricingModel,
 } from "@/lib/tilbud/types"
 
@@ -73,7 +71,6 @@ type PublicOfferPayload = {
     city: string | null
     orgNumber: string | null
   }
-  paymentSchedule?: OfferPaymentScheduleEntry[]
   pricingModel?: OfferPricingModel | null
   contractBasis?: OfferContractBasis | null
   acceptance?: OfferDocumentAcceptance | null
@@ -181,7 +178,6 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
     offer.validityDays ?? computeValidityDays(String(offer.createdAt || ""), offer.quoteValidUntil)
   const validUntil = computeValidUntilDate(offer.createdAt, offer.quoteValidUntil, validityDays)
   const preDiscountSubtotal = Math.round((totals.subtotalNok + totals.discountNok) * 100) / 100
-  const paymentSchedule = useMemo(() => normalizePaymentSchedule(offer.paymentSchedule), [offer.paymentSchedule])
   const pricingModelLabel = offer.pricingModel ? PRICING_MODEL_LABELS[offer.pricingModel] : ""
   const contractBasisLabel =
     offer.contractBasis && offer.contractBasis !== "none" ? CONTRACT_BASIS_LABELS[offer.contractBasis] : ""
@@ -253,25 +249,6 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
           </div>
         </div>
       ))}
-
-      {paymentSchedule.length ? (
-        <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm shadow-sm">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Betalingsplan</p>
-          <div className="mt-2 space-y-1.5">
-            {paymentSchedule.map((entry, index) => (
-              <div key={`${entry.label}-${index}`} className="flex justify-between gap-3 text-neutral-600">
-                <span>
-                  {entry.label}
-                  {entry.dueDescription ? <span className="text-neutral-400"> — {entry.dueDescription}</span> : null}
-                </span>
-                <span className="shrink-0 tabular-nums">
-                  {formatDocumentQuantity(entry.percent)} % · {formatDocumentCurrency(Math.round(totalInclVat * entry.percent) / 100)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm shadow-sm">
         <div className="space-y-1.5">
@@ -728,7 +705,6 @@ export function CustomerOfferView({
               issuedDate={offer.createdAt}
               quoteValidUntil={offer.quoteValidUntil}
               validityDays={offer.validityDays}
-              paymentSchedule={offer.paymentSchedule}
               pricingModel={offer.pricingModel}
               contractBasis={offer.contractBasis}
               acceptance={offer.acceptance}

@@ -33,10 +33,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  DEFAULT_PAYMENT_SCHEDULE,
-  inferPricingModelFromLineItems,
-} from "@/lib/contracts/pricing"
+import { inferPricingModelFromLineItems } from "@/lib/contracts/pricing"
 import { getDistinctSuppliers } from "@/lib/tilbud/supplier-prices"
 import {
   calculateOfferTotals,
@@ -46,7 +43,6 @@ import {
   type OfferCustomerOption,
   type OfferContractBasis,
   type OfferLineItem,
-  type OfferPaymentScheduleEntry,
   type OfferPricingModel,
   type OfferProjectOption,
   type OfferSourceDocument,
@@ -133,7 +129,6 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
   const [pricingModel, setPricingModel] = useState<OfferPricingModel>("fixed")
   const [contractBasis, setContractBasis] = useState<OfferContractBasis>("none")
   const [markupPercent, setMarkupPercent] = useState(15)
-  const [paymentSchedule, setPaymentSchedule] = useState<OfferPaymentScheduleEntry[]>(DEFAULT_PAYMENT_SCHEDULE)
 
   const [isPersisting, startPersisting] = useTransition()
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -313,7 +308,6 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
       pricingModel,
       contractBasis,
       markupPercent,
-      paymentSchedule: pricingModel === "fixed" || pricingModel === "mixed" ? paymentSchedule : [],
     }
   }
 
@@ -832,7 +826,6 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   company={company}
                   issuedDate={new Date()}
                   validityDays={validityDays}
-                  paymentSchedule={paymentSchedule}
                   pricingModel={pricingModel}
                   contractBasis={contractBasis}
                 />

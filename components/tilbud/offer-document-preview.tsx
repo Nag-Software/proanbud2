@@ -307,29 +307,6 @@ export function OfferDocumentPreview({
           </div>
         </div>
 
-        {/* Payment schedule */}
-        {m.paymentSchedule.length ? (
-          <div className="px-12 pt-[22px]">
-            <PartyLabel>Betalingsplan</PartyLabel>
-            <div className="border-t border-gray-200">
-              {m.paymentSchedule.map((entry, index) => (
-                <div
-                  key={`${entry.label}-${index}`}
-                  className="flex justify-between gap-4 border-b border-gray-100 py-1.5"
-                >
-                  <span className="text-[11px] text-gray-700">
-                    {entry.label}
-                    {entry.dueDescription ? <span className="text-gray-400"> — {entry.dueDescription}</span> : null}
-                  </span>
-                  <span className="whitespace-nowrap text-[11px] tabular-nums text-gray-900">
-                    {formatDocumentQuantity(entry.percent)} % · {formatDocumentCurrency(Math.round(m.totalInclVatNok * entry.percent) / 100)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
         {/* Terms */}
         <div className="px-12 pt-[22px]">
           <PartyLabel>Forutsetninger og vilkår</PartyLabel>

@@ -6,12 +6,6 @@ export type OfferPricingModel = "fixed" | "time_materials" | "unit_price" | "mix
 
 export type OfferContractBasis = "ns8405" | "ns8407" | "custom" | "none"
 
-export type OfferPaymentScheduleEntry = {
-  label: string
-  percent: number
-  dueDescription?: string
-}
-
 export type OfferSourceDocument = {
   id: string
   name: string
@@ -129,7 +123,6 @@ export type SaveOfferPayload = {
   pricingModel?: OfferPricingModel
   contractBasis?: OfferContractBasis
   markupPercent?: number
-  paymentSchedule?: OfferPaymentScheduleEntry[]
 }
 
 const PRICING_MODELS: OfferPricingModel[] = ["fixed", "time_materials", "unit_price", "mixed"]

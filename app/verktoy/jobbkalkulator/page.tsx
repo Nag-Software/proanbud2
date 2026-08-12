@@ -40,7 +40,7 @@ const faq: Faq[] = [
 ]
 
 const pitch =
-  "Proanbud gjør prisoverslaget til et ferdig tilbud: linjer, betalingsplan, forbehold og din logo — som kunden kan signere digitalt. Alt bygger på dine egne priser."
+  "Proanbud gjør prisoverslaget til et ferdig tilbud: linjer, forbehold og din logo — som kunden kan signere digitalt. Alt bygger på dine egne priser."
 
 export default function Page() {
   return (

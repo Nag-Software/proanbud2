@@ -5,7 +5,6 @@ import {
   type OfferCompanyContext,
   type OfferContractBasis,
   type OfferLineItem,
-  type OfferPaymentScheduleEntry,
   type OfferPricingModel,
 } from "@/lib/tilbud/types"
 
@@ -46,7 +45,6 @@ export type OfferDocumentData = {
   issuedDate?: string | Date | null
   validityDays?: number
   quoteValidUntil?: string | null
-  paymentSchedule?: OfferPaymentScheduleEntry[] | null
   pricingModel?: OfferPricingModel | null
   contractBasis?: OfferContractBasis | null
   acceptance?: OfferDocumentAcceptance | null
@@ -192,17 +190,6 @@ export function getOfferDocumentTotals(lineItems: OfferLineItem[]) {
   }
 }
 
-export function normalizePaymentSchedule(entries: OfferPaymentScheduleEntry[] | null | undefined) {
-  if (!Array.isArray(entries)) return []
-  return entries
-    .map((entry) => ({
-      label: String(entry?.label || "").trim(),
-      percent: Number(entry?.percent || 0),
-      dueDescription: entry?.dueDescription ? String(entry.dueDescription).trim() : "",
-    }))
-    .filter((entry) => entry.label.length > 0 && entry.percent > 0)
-}
-
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -246,7 +233,6 @@ export function buildOfferDocumentModel(data: OfferDocumentData) {
   const validityDays = data.validityDays ?? computeValidityDays(String(data.issuedDate || ""), data.quoteValidUntil)
   const validUntil = computeValidUntilDate(issuedDate, data.quoteValidUntil, validityDays)
 
-  const paymentSchedule = normalizePaymentSchedule(data.paymentSchedule)
   const pricingModelLabel = data.pricingModel ? PRICING_MODEL_LABELS[data.pricingModel] : ""
   const contractBasisLabel =
     data.contractBasis && data.contractBasis !== "none" ? CONTRACT_BASIS_LABELS[data.contractBasis] : ""
@@ -267,7 +253,6 @@ export function buildOfferDocumentModel(data: OfferDocumentData) {
     issuedDate,
     validityDays,
     validUntil,
-    paymentSchedule,
     pricingModelLabel,
     contractBasisLabel,
     showGroups,
@@ -447,25 +432,6 @@ export function buildOfferDocumentSheet(data: OfferDocumentData, options: OfferD
       </div>
     </div>`
 
-  // ---------- payment schedule ----------
-  const paymentBlock = m.paymentSchedule.length
-    ? `
-    <div class="avoid-break" style="padding:22px 48px 0;">
-      ${sectionLabel("Betalingsplan")}
-      <div style="border-top:1px solid #e5e7eb;">
-        ${m.paymentSchedule
-          .map(
-            (entry) => `
-          <div style="display:flex;justify-content:space-between;gap:16px;padding:6px 0;border-bottom:1px solid #f3f4f6;">
-            <span style="font-size:11px;color:#374151;">${escapeHtml(entry.label)}${entry.dueDescription ? `<span style="color:#9ca3af;"> — ${escapeHtml(entry.dueDescription)}</span>` : ""}</span>
-            <span style="font-size:11px;color:#111827;font-variant-numeric:tabular-nums;white-space:nowrap;">${escapeHtml(formatDocumentQuantity(entry.percent))} % · ${escapeHtml(formatDocumentCurrency(Math.round(m.totalInclVatNok * entry.percent) / 100))}</span>
-          </div>`
-          )
-          .join("")}
-      </div>
-    </div>`
-    : ""
-
   // ---------- terms ----------
   const termsItems: string[] = []
   if (m.validUntil) {
@@ -535,7 +501,6 @@ export function buildOfferDocumentSheet(data: OfferDocumentData, options: OfferD
     ${tableBlock}
     <div style="margin:0 48px;border-top:1px solid #111827;"></div>
     ${totalsBlock}
-    ${paymentBlock}
     ${termsBlock}
     ${acceptanceBlock}
     ${footerBlock}

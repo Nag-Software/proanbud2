@@ -55,7 +55,6 @@ function makeRecord(): PublicOfferRecord {
     offerReference: "OFFER1",
     isExpired: false,
     canRespond: true,
-    paymentSchedule: [],
     pricingModel: "fixed",
     contractBasis: "none",
     acceptance: null,

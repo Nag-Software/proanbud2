@@ -30,7 +30,6 @@ type Tilbud = {
   innledning: string
   lineItems: OfferLineItem[]
   forbehold: string[]
-  betalingsplan: Array<{ label: string; percent: number }> | null
   totalInklMvaNok: number
 }
 
@@ -74,7 +73,6 @@ export function KalkulatorClient() {
       issuedDate: issued,
       validityDays: 14,
       quoteValidUntil: validUntil.toISOString(),
-      paymentSchedule: tilbud.betalingsplan ?? null,
       pricingModel: "fixed",
     }
   }, [tilbud])

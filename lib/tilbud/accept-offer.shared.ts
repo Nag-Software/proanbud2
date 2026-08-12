@@ -55,7 +55,6 @@ export function buildAcceptanceSnapshot(record: PublicOfferRecord): OfferDocumen
     issuedDate: record.createdAt,
     validityDays: record.validityDays,
     quoteValidUntil: record.quoteValidUntil,
-    paymentSchedule: record.paymentSchedule,
     pricingModel: record.pricingModel,
     contractBasis: record.contractBasis,
   }
