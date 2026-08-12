@@ -11,9 +11,20 @@ const updateSchema = z.object({
     .finite()
     .min(0, "Timeprisen kan ikke være negativ")
     .max(1_000_000, "Timeprisen er for høy"),
+  // `null` nullstiller kostprisen bevisst — den er valgfri, og «ikke satt» er
+  // en ekte tilstand som lønnsomhetsfanen viser eget varsel for.
+  costRateNok: z
+    .number()
+    .finite()
+    .min(0, "Kostprisen kan ikke være negativ")
+    .max(1_000_000, "Kostprisen er for høy")
+    .nullable()
+    .optional(),
 })
 
-const FIELD_LABELS = { jobType: "Type jobb", hourlyRateNok: "Timepris" }
+const FIELD_LABELS = { jobType: "Type jobb", hourlyRateNok: "Timepris", costRateNok: "Kostpris" }
+
+const RATE_COLUMNS = "id, job_type, hourly_rate_nok, cost_rate_nok, sort_order, created_at, updated_at"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -38,10 +49,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .update({
         job_type: parsed.data.jobType,
         hourly_rate_nok: parsed.data.hourlyRateNok,
+        cost_rate_nok: parsed.data.costRateNok ?? null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .select("id, job_type, hourly_rate_nok, sort_order, created_at, updated_at")
+      .select(RATE_COLUMNS)
       .maybeSingle()
 
     if (error) {

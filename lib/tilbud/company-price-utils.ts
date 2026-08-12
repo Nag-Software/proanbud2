@@ -16,6 +16,18 @@ export type CompanyPriceRow = {
   product_group_code?: string | null
 }
 
+/** Ett treff fra `/api/mine-priser/sok?type=material` — brukes av alle materialsøk-plukkere i UI-et. */
+export type SearchMaterial = {
+  id: string
+  product: string
+  unit: string
+  unitPriceNok: number
+  supplier: string
+  nobb: string | null
+  supplierSku: string | null
+  category: string | null
+}
+
 export type CompanyPriceFileMeta = {
   id: string
   supplier_name: string | null

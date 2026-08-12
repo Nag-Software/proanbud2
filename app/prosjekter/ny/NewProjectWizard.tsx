@@ -76,7 +76,7 @@ const wizardSchema = z
       .default([]),
     projectFiles: z.array(z.custom<File>()).max(30, "Maks 30 prosjektfiler").default([]),
     modelPhotos: z.array(z.custom<File>()).max(8, "Maks 8 bilder til 3D-modellen").default([]),
-    generateModel: z.boolean().default(true),
+    generateModel: z.boolean().default(false),
     budgetNok: z.coerce.number().min(0, "Budsjett kan ikke være negativt").default(0),
     contractFiles: z.array(z.custom<File>()).max(15, "Maks 15 kontraktsfiler").default([]),
     priceListId: z.string().optional().default(""),
@@ -111,7 +111,7 @@ const defaultValues: WizardValues = {
   tasks: [{ title: "" }],
   projectFiles: [],
   modelPhotos: [],
-  generateModel: true,
+  generateModel: false,
   budgetNok: 0,
   contractFiles: [],
   priceListId: "standard",
@@ -270,6 +270,10 @@ async function uploadProjectDocuments(projectId: string, projectFiles: File[], c
  * brukeren skal ikke stå og se på en spinner for noe han uansett kan justere
  * etterpå. Ruten setter status til «generating» med en gang, så prosjektsiden
  * viser riktig tilstand uansett når brukeren kommer dit.
+ *
+ * Uten bilder starter vi ikke: veiviseren spør ikke om noe som beskriver bygget
+ * (beskrivelsen den lager er lokasjon + oppgaveliste), så en generering her
+ * ville vært ren gjetning. Serveren stopper det samme tilfellet uansett.
  */
 async function startModelGeneration(projectId: string, photos: File[], shouldGenerate: boolean) {
   if (photos.length > 0) {
@@ -289,7 +293,7 @@ async function startModelGeneration(projectId: string, photos: File[], shouldGen
     }
   }
 
-  if (!shouldGenerate) return { started: false, photosFailed: false }
+  if (!shouldGenerate || photos.length === 0) return { started: false, photosFailed: false }
 
   void fetch(`/api/prosjekter/${projectId}/modell/generer`, {
     method: "POST",
@@ -733,7 +737,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
                               <ModelPhotosField
                                 files={field.value || []}
                                 onChange={field.onChange}
-                                generateModel={generateField.value ?? true}
+                                generateModel={generateField.value ?? false}
                                 onGenerateModelChange={generateField.onChange}
                               />
                             )}

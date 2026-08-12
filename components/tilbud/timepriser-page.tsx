@@ -20,6 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { InfoHint } from "@/components/ui/info-hint"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -35,6 +36,8 @@ type HourlyRate = {
   id: string
   job_type: string
   hourly_rate_nok: number
+  /** Selvkost per time. `null` = ikke satt, som IKKE er det samme som 0 kr. */
+  cost_rate_nok: number | null
   sort_order: number
   created_at: string
   updated_at: string
@@ -55,6 +58,12 @@ function formatRate(value: number) {
   return `${Math.round(value).toLocaleString("no-NO")} kr/t`
 }
 
+/** Dekningsgrad på selve timen: hvor mye av salgsprisen som er igjen etter selvkost. */
+function marginPercent(rate: HourlyRate) {
+  if (rate.cost_rate_nok === null || rate.hourly_rate_nok <= 0) return null
+  return Math.round(((rate.hourly_rate_nok - rate.cost_rate_nok) / rate.hourly_rate_nok) * 100)
+}
+
 function parseRateInput(value: string) {
   const normalized = value.replace(/\s/g, "").replace(",", ".")
   const parsed = Number.parseFloat(normalized)
@@ -72,6 +81,7 @@ export function TimepriserPage() {
   const [rateToDelete, setRateToDelete] = useState<HourlyRate | null>(null)
   const [jobType, setJobType] = useState("")
   const [rateInput, setRateInput] = useState("")
+  const [costInput, setCostInput] = useState("")
 
   const loadRates = useCallback(async () => {
     setIsLoading(true)
@@ -99,10 +109,21 @@ export function TimepriserPage() {
     rate.job_type.toLowerCase().includes(search.toLowerCase())
   )
 
+  const missingCostRates = rates.filter((rate) => rate.cost_rate_nok === null).length
+
+  // Live dekningsgrad mens man skriver — gjør det tydelig hva kostprisen betyr.
+  const costMarginPreview = (() => {
+    const price = parseRateInput(rateInput)
+    const cost = costInput.trim() ? parseRateInput(costInput) : null
+    if (price == null || price <= 0 || cost == null) return null
+    return Math.round(((price - cost) / price) * 100)
+  })()
+
   const openCreateDialog = () => {
     setEditingRate(null)
     setJobType("")
     setRateInput("")
+    setCostInput("")
     setDialogOpen(true)
   }
 
@@ -110,6 +131,7 @@ export function TimepriserPage() {
     setEditingRate(rate)
     setJobType(rate.job_type)
     setRateInput(String(Math.round(rate.hourly_rate_nok)))
+    setCostInput(rate.cost_rate_nok === null ? "" : String(Math.round(rate.cost_rate_nok)))
     setDialogOpen(true)
   }
 
@@ -124,6 +146,7 @@ export function TimepriserPage() {
       setEditingRate(null)
       setJobType("")
       setRateInput("")
+      setCostInput("")
     }, 200)
   }
 
@@ -141,10 +164,22 @@ export function TimepriserPage() {
       return
     }
 
+    // Tomt felt = ingen kostpris satt. Det er en gyldig tilstand, ikke 0 kr.
+    const trimmedCost = costInput.trim()
+    const costRateNok = trimmedCost ? parseRateInput(trimmedCost) : null
+    if (trimmedCost && (costRateNok == null || costRateNok < 0)) {
+      toast.error("Oppgi en gyldig kostpris, eller la feltet stå tomt.")
+      return
+    }
+    // Varsler, men stopper ikke: en time kan være priset med tap med vilje.
+    if (costRateNok !== null && costRateNok > hourlyRateNok) {
+      toast.warning("Kostprisen er høyere enn timeprisen — du taper penger på hver time.")
+    }
+
     setIsSaving(true)
 
     try {
-      const payload = { jobType: trimmedType, hourlyRateNok }
+      const payload = { jobType: trimmedType, hourlyRateNok, costRateNok }
       const res = await fetch(
         editingRate ? `/api/mine-priser/timepriser/${editingRate.id}` : "/api/mine-priser/timepriser",
         {
@@ -208,8 +243,9 @@ export function TimepriserPage() {
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Mine priser</p>
           <h1 className="text-2xl font-semibold tracking-tight">Timepriser</h1>
           <p className="text-sm text-muted-foreground">
-            Standard timepriser per type arbeid, f.eks. tømrerarbeid eller prosjektledelse. Brukes
-            som forslag når du legger til arbeidstimer i tilbud.
+            Standard timepriser per type arbeid, f.eks. tømrerarbeid eller prosjektledelse.
+            Timeprisen foreslås når du legger til arbeidstimer i tilbud, og kostprisen er det
+            lønnskosten på prosjektenes lønnsomhet regnes ut fra.
           </p>
         </div>
         <Button onClick={openCreateDialog} className="w-full gap-2 sm:w-auto">
@@ -217,6 +253,14 @@ export function TimepriserPage() {
           Ny timepris
         </Button>
       </div>
+
+      {!isLoading && missingCostRates > 0 && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+          {missingCostRates === rates.length
+            ? "Ingen av timeprisene har kostpris. Uten kostpris regnes lønnskosten på prosjektene som 0 kr, og dekningsgraden blir misvisende høy."
+            : `${missingCostRates} av ${rates.length} timepriser mangler kostpris. Lønnskosten på prosjektene regnes ut fra snittet av dem som er satt.`}
+        </p>
+      )}
 
       <div className="relative w-full sm:w-72">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -235,19 +279,21 @@ export function TimepriserPage() {
             <TableRow className="bg-muted/50 hover:bg-muted/50">
               <TableHead>Type arbeid</TableHead>
               <TableHead className="text-right">Timepris</TableHead>
+              <TableHead className="text-right">Kostpris</TableHead>
+              <TableHead className="text-right">Dekningsgrad</TableHead>
               <TableHead className="w-[70px]" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                 </TableCell>
               </TableRow>
             ) : filteredRates.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
                   {rates.length === 0
                     ? "Ingen timepriser ennå. Legg til din første timepris."
                     : "Ingen jobbtyper matcher søket."}
@@ -258,6 +304,22 @@ export function TimepriserPage() {
                 <TableRow key={rate.id}>
                   <TableCell className="font-medium">{rate.job_type}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatRate(rate.hourly_rate_nok)}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {rate.cost_rate_nok === null ? (
+                      <button
+                        type="button"
+                        onClick={() => openEditDialog(rate)}
+                        className="text-sm text-amber-700 underline underline-offset-2 hover:text-amber-800 dark:text-amber-400"
+                      >
+                        Ikke satt
+                      </button>
+                    ) : (
+                      formatRate(rate.cost_rate_nok)
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">
+                    {marginPercent(rate) === null ? "—" : `${marginPercent(rate)} %`}
+                  </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -303,7 +365,18 @@ export function TimepriserPage() {
             <div key={rate.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
                 <p className="font-medium">{rate.job_type}</p>
-                <p className="mt-1 text-sm tabular-nums text-muted-foreground">{formatRate(rate.hourly_rate_nok)}</p>
+                <p className="mt-1 text-sm tabular-nums text-muted-foreground">
+                  {formatRate(rate.hourly_rate_nok)}
+                  {rate.cost_rate_nok === null ? (
+                    <span className="text-amber-700 dark:text-amber-400"> · kostpris ikke satt</span>
+                  ) : (
+                    <span>
+                      {" · kost "}
+                      {formatRate(rate.cost_rate_nok)}
+                      {marginPercent(rate) === null ? "" : ` · DG ${marginPercent(rate)} %`}
+                    </span>
+                  )}
+                </p>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -335,7 +408,7 @@ export function TimepriserPage() {
           <DialogHeader>
             <DialogTitle>{editingRate ? "Rediger timepris" : "Ny timepris"}</DialogTitle>
             <DialogDescription>
-              Velg type arbeid og sett standard timepris som skal foreslås i tilbud.
+              Velg type arbeid, sett timeprisen kunden skal betale, og hva timen koster deg.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -355,7 +428,13 @@ export function TimepriserPage() {
               </datalist>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="rate-amount">Timepris (kr/t)</Label>
+              <div className="flex items-center gap-1">
+                <Label htmlFor="rate-amount">Timepris (kr/t)</Label>
+                <InfoHint title="Timepris (kr/t)">
+                  <p>Det kunden betaler per time for denne typen arbeid.</p>
+                  <p>Foreslås automatisk når du legger til arbeidstimer i et tilbud.</p>
+                </InfoHint>
+              </div>
               <Input
                 id="rate-amount"
                 inputMode="decimal"
@@ -363,6 +442,34 @@ export function TimepriserPage() {
                 value={rateInput}
                 onChange={(event) => setRateInput(event.target.value)}
               />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <Label htmlFor="rate-cost">Kostpris (kr/t)</Label>
+                <InfoHint title="Kostpris (kr/t)">
+                  <p>
+                    Hva timen koster deg — lønn, feriepenger, arbeidsgiveravgift og sosiale
+                    kostnader.
+                  </p>
+                  <p>
+                    Dette er tallet lønnskosten på prosjektenes lønnsomhet regnes ut fra. Uten
+                    kostpris blir lønnskosten 0 kr, og dekningsgraden ser bedre ut enn den er.
+                  </p>
+                  <p>La feltet stå tomt hvis du ikke vet — det er ærligere enn å gjette.</p>
+                </InfoHint>
+              </div>
+              <Input
+                id="rate-cost"
+                inputMode="decimal"
+                placeholder="F.eks. 420"
+                value={costInput}
+                onChange={(event) => setCostInput(event.target.value)}
+              />
+              {costMarginPreview !== null && (
+                <p className="text-xs text-muted-foreground">
+                  Dekningsgrad på timen: <span className="font-medium text-foreground">{costMarginPreview} %</span>
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>

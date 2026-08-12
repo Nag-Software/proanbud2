@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Briefcase, ChevronDown, FilePlus2, Loader2, Package, Plus, Search } from "lucide-react"
 
 import { reportClientError } from "@/lib/errors/client"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { generateLocalId } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,20 +22,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { DEFAULT_MATERIAL_MARKUP_PERCENT, buildOfferLineItemFromPriceRow } from "@/lib/tilbud/company-price-utils"
+import {
+  DEFAULT_MATERIAL_MARKUP_PERCENT,
+  buildOfferLineItemFromPriceRow,
+  type SearchMaterial,
+} from "@/lib/tilbud/company-price-utils"
 import { buildOfferLineItemFromSavedJob } from "@/lib/tilbud/saved-jobs"
 import { formatNok, type OfferLineItem } from "@/lib/tilbud/types"
-
-type SearchMaterial = {
-  id: string
-  product: string
-  unit: string
-  unitPriceNok: number
-  supplier: string
-  nobb: string | null
-  supplierSku: string | null
-  category: string | null
-}
 
 type SearchJob = {
   id: string
@@ -49,17 +43,6 @@ type AddOfferLineItemMenuProps = {
   companyName?: string | null
   buttonLabel?: string
   buttonClassName?: string
-}
-
-function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debounced, setDebounced] = useState(value)
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delayMs)
-    return () => window.clearTimeout(timer)
-  }, [value, delayMs])
-
-  return debounced
 }
 
 export function AddOfferLineItemMenu({

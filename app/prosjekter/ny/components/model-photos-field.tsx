@@ -64,6 +64,8 @@ export function ModelPhotosField({
     [files, onChange]
   )
 
+  const hasPhotos = files.length > 0
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: { "image/*": [] },
     maxSize: MAX_SIZE_MB * 1024 * 1024,
@@ -80,15 +82,24 @@ export function ModelPhotosField({
     <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-foreground">3D-modell av prosjektet</p>
+          <p className="text-sm font-semibold text-foreground">3D-modell av prosjektet (valgfritt)</p>
           <p className="text-sm text-muted-foreground">
-            Legg ved bilder av bygget, tomta eller en skisse. ProAnbud bygger en 3D-modell fra
-            bildene og beskrivelsen, som du kan justere fritt etterpå.
+            Legg ved bilder av bygget, tomta eller en skisse. Har du bilder, kan ProAnbud bygge en
+            3D-modell fra dem, som du kan justere fritt etterpå.
           </p>
         </div>
-        <label className="flex shrink-0 items-center gap-2 text-sm">
-          <Switch checked={generateModel} onCheckedChange={onGenerateModelChange} />
-          <span className="text-muted-foreground">Lag modell automatisk</span>
+        <label
+          className={cn(
+            "flex shrink-0 items-center gap-2 text-sm",
+            !hasPhotos && "cursor-not-allowed opacity-60"
+          )}
+        >
+          <Switch
+            checked={generateModel && hasPhotos}
+            disabled={!hasPhotos}
+            onCheckedChange={onGenerateModelChange}
+          />
+          <span className="text-muted-foreground">Lag modell av bildene</span>
         </label>
       </div>
 
@@ -137,12 +148,17 @@ export function ModelPhotosField({
         </div>
       )}
 
-      {!generateModel && (
+      {!hasPhotos ? (
+        <p className="text-xs text-muted-foreground">
+          Uten bilder lager vi ingen modell — den ville blitt ren gjetning. Du kan legge til bilder
+          og starte genereringen når som helst fra fanen 3D-modell på prosjektet.
+        </p>
+      ) : !generateModel ? (
         <p className="text-xs text-muted-foreground">
           Modellen lages ikke nå. Du kan starte genereringen når som helst fra fanen 3D-modell på
           prosjektet.
         </p>
-      )}
+      ) : null}
     </div>
   )
 }

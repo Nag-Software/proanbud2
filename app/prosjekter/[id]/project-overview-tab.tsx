@@ -11,10 +11,13 @@ import {
   Mail,
   Phone,
   Plus,
+  TrendingUp,
   Users,
 } from "lucide-react"
 
 import { DeviationListItem } from "@/components/hms/deviation-badges"
+import { formatMarginPct } from "@/lib/job-costing/format"
+import type { ProjectProfitability } from "@/lib/job-costing/types"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -104,6 +107,8 @@ export type ProjectOverviewProps = {
     sent: number
     acceptancePercent: number
   }
+  /** Utdraget av lønnsomheten. `null` for håndverkere, som ikke ser tallene. */
+  profitability: ProjectProfitability | null
   metrics: {
     progressPercent: number
     doneTasks: number
@@ -179,6 +184,103 @@ function OverviewStat({
   )
 }
 
+/**
+ * Lønnsomhetsutdraget: resultat og dekningsgrad så tidlig som mulig i bildet.
+ *
+ * Bevisst bare fire tall og en linje — hele poenget er at håndverkeren skal se
+ * om jobben tjener penger uten å lete etter det. Detaljene, kalkyleavviket og
+ * registreringen av kostnader hører hjemme på Lønnsomhet-fanen.
+ */
+function ProfitabilitySnapshot({
+  profitability,
+  onOpen,
+}: {
+  profitability: ProjectProfitability
+  onOpen: () => void
+}) {
+  const { actual, revenueNok } = profitability
+  const marginPositive = actual.marginNok >= 0
+  const costShare =
+    revenueNok > 0 ? Math.min(100, Math.round((actual.totalCostNok / revenueNok) * 100)) : 0
+  const hasRevenue = revenueNok > 0
+
+  return (
+    <Card className="rounded-sm lg:col-span-12">
+      <CardHeader className="flex flex-row items-center justify-between px-3 pb-1 pt-3">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <TrendingUp className="h-4 w-4" />
+          Lønnsomhet
+        </CardTitle>
+        <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={onOpen}>
+          Se lønnsomhet
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-3 px-3 pb-3">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+          <OverviewStat label="Omsetning" value={formatNok(revenueNok)} />
+          <OverviewStat label="Kostnad hittil" value={formatNok(actual.totalCostNok)} />
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Dekningsbidrag
+            </p>
+            <p
+              className={cn(
+                "mt-0.5 text-lg font-semibold leading-none tabular-nums",
+                marginPositive ? "text-emerald-600" : "text-destructive"
+              )}
+            >
+              {formatNok(actual.marginNok)}
+            </p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Dekningsgrad
+            </p>
+            <p
+              className={cn(
+                "mt-0.5 text-lg font-semibold leading-none tabular-nums",
+                actual.marginPct === null
+                  ? "text-foreground"
+                  : marginPositive
+                    ? "text-emerald-600"
+                    : "text-destructive"
+              )}
+            >
+              {formatMarginPct(actual.marginPct)}
+            </p>
+          </div>
+        </div>
+
+        {hasRevenue && (
+          <div>
+            <div className="flex h-2 overflow-hidden rounded-sm bg-emerald-600/20">
+              <span
+                className={cn("block h-full", marginPositive ? "bg-foreground/70" : "bg-destructive")}
+                style={{ width: `${costShare}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {costShare} % av omsetningen er brukt på lønn og materialer
+            </p>
+          </div>
+        )}
+
+        {!hasRevenue && (
+          <p className="text-xs text-muted-foreground">
+            Omsetningen teller først når et tilbud er akseptert på prosjektet.
+          </p>
+        )}
+
+        {profitability.costRateNok === 0 && (
+          <p className="text-xs text-amber-700 dark:text-amber-300">
+            Lønnskost mangler: ingen av timeprisene dine har kostpris (kr/t).
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function ProjectOverviewTab({
   projectId,
   project,
@@ -189,6 +291,7 @@ export function ProjectOverviewTab({
   participants,
   participantHours,
   offersSummary,
+  profitability,
   metrics,
   flags,
 }: ProjectOverviewProps) {
@@ -267,6 +370,14 @@ export function ProjectOverviewTab({
           )}
         </CardContent>
       </Card>
+
+      {/* Lønnsomhet — utdrag; hele bildet ligger på Lønnsomhet-fanen */}
+      {!flags.isWorker && profitability && (
+        <ProfitabilitySnapshot
+          profitability={profitability}
+          onOpen={() => navigateToTab("lonnsomhet")}
+        />
+      )}
 
       {/* Quick actions — ryddig 2-kolonners grid på mobil, wrap-rad fra sm */}
       <Card className="rounded-sm lg:col-span-12">

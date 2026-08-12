@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { logServerError } from "@/lib/errors/log"
 import { requireActiveSubscription } from "@/lib/billing/guards"
 import { generateBuildingModel } from "@/lib/cad/generate"
+import { assessModelContext } from "@/lib/cad/model-context"
 import { canManageProjects } from "@/lib/roles"
 
 /**
@@ -96,6 +97,19 @@ export async function POST(
       .from(reference.storage_bucket || "project_models")
       .createSignedUrl(reference.storage_path, 60 * 20)
     if (signed?.signedUrl) imageUrls.push(signed.signedUrl)
+  }
+
+  // Uten bilder eller konkret informasjon om bygget stopper vi FØR det opprettes
+  // en modell: veiviseren skal ikke etterlate en tom/gjettet 3D-modell på hvert
+  // eneste nye prosjekt. Sjekken kjøres etter at bildene er talt opp, siden ett
+  // bilde er nok grunnlag i seg selv.
+  const context = assessModelContext({
+    description: project.description,
+    instructions: body.instructions,
+    imageCount: imageUrls.length,
+  })
+  if (!context.ok) {
+    return NextResponse.json({ error: context.reason }, { status: 422 })
   }
 
   const modelId = body.persist ? await resolveModelId(supabase, projectId, userRow.company_id, user.id, project.name) : body.modelId

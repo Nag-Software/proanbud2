@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache"
 
 import { createClient } from "@/lib/supabase/server"
 import { canManageProjects } from "@/lib/roles"
-import { sumHours } from "@/lib/time-tracking"
-import { computeJobCosting, computeLaborCost } from "@/lib/job-costing/calc"
+import { fetchProjectProfitability, readProjectBudget } from "@/lib/job-costing/project-profitability"
+import type { ProjectProfitability } from "@/lib/job-costing/types"
 
 async function resolveCompanyProject(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -23,82 +23,72 @@ async function resolveCompanyProject(
     .maybeSingle()
   if (!profile?.company_id) throw new Error("Fant ikke bedrift")
 
+  // `*` og ikke en kolonneliste med vilje: budsjettfeltene kom i db/76, og en
+  // eksplisitt liste ville gjort hele fanen død med «column does not exist» i
+  // en base der migrasjonen ennå ikke er kjørt. Med `*` mangler feltene bare,
+  // og de leses defensivt.
   const { data: project } = await supabase
     .from("projects")
-    .select("id, company_id")
+    .select("*")
     .eq("id", projectId)
     .maybeSingle()
   if (!project || project.company_id !== profile.company_id) throw new Error("Ugyldig prosjekt")
 
-  return { userId: user.id, companyId: profile.company_id as string, role: profile.role as string }
-}
-
-export type MaterialCost = {
-  id: string
-  supplier_name: string | null
-  description: string | null
-  amount_nok: number
-  invoice_ref: string | null
-  cost_date: string | null
-  created_at: string
-}
-
-export type ProjectJobCosting = {
-  revenueNok: number
-  laborCostNok: number
-  materialCostNok: number
-  marginNok: number
-  marginPct: number | null
-  totalHours: number
-  costRateNok: number
-  acceptedOfferCount: number
-  materialCosts: MaterialCost[]
-}
-
-export async function getProjectJobCostingAction(projectId: string): Promise<ProjectJobCosting> {
-  const supabase = await createClient()
-  const { companyId } = await resolveCompanyProject(supabase, projectId)
-
-  const [{ data: offers }, { data: entries }, { data: materials }, { data: rates }] = await Promise.all([
-    supabase
-      .from("offers")
-      .select("amount_nok")
-      .eq("company_id", companyId)
-      .eq("project_id", projectId)
-      .eq("status", "accepted"),
-    supabase
-      .from("time_entries")
-      .select("hours")
-      .eq("company_id", companyId)
-      .eq("project_id", projectId)
-      .not("ended_at", "is", null),
-    supabase
-      .from("project_material_costs")
-      .select("id, supplier_name, description, amount_nok, invoice_ref, cost_date, created_at")
-      .eq("company_id", companyId)
-      .eq("project_id", projectId)
-      .order("cost_date", { ascending: false, nullsFirst: false }),
-    supabase.from("hourly_rates").select("cost_rate_nok").eq("company_id", companyId).not("cost_rate_nok", "is", null),
-  ])
-
-  const revenueNok = (offers ?? []).reduce((sum, o) => sum + Number(o.amount_nok || 0), 0)
-  const totalHours = sumHours((entries ?? []) as Array<{ hours: number | null }>)
-  // Fase 1: bruk snitt-kostpris av satte cost_rate_nok som lønnskost-rate (per-økt-sats kommer i Fase 4).
-  const costRates = (rates ?? []).map((r) => Number(r.cost_rate_nok)).filter((n) => Number.isFinite(n) && n > 0)
-  const costRateNok = costRates.length
-    ? Math.round((costRates.reduce((a, b) => a + b, 0) / costRates.length) * 100) / 100
-    : 0
-  const laborCostNok = computeLaborCost(totalHours, costRateNok)
-  const materialCostNok = (materials ?? []).reduce((sum, m) => sum + Number(m.amount_nok || 0), 0)
-
-  const costing = computeJobCosting({ revenueNok, laborCostNok, materialCostNok })
   return {
-    ...costing,
-    totalHours: Math.round(totalHours * 100) / 100,
-    costRateNok,
-    acceptedOfferCount: (offers ?? []).length,
-    materialCosts: (materials ?? []) as MaterialCost[],
+    userId: user.id,
+    companyId: profile.company_id as string,
+    role: profile.role as string,
+    budget: readProjectBudget(project),
   }
+}
+
+export async function getProjectProfitabilityAction(
+  projectId: string,
+): Promise<ProjectProfitability> {
+  const supabase = await createClient()
+  const { companyId, role, budget } = await resolveCompanyProject(supabase, projectId)
+  // Lønnsomhet er tall håndverkeren ikke skal se — samme grense som fanen har.
+  if (!canManageProjects(role)) throw new Error("Mangler tilgang")
+
+  return fetchProjectProfitability(supabase, { companyId, projectId, ...budget })
+}
+
+/**
+ * Lagrer målet jobben skal styres mot.
+ *
+ * Tomt felt lagres som NULL, ikke 0: «ikke satt» og «null timer budsjettert»
+ * er to forskjellige ting, og bare den første skal skjule kalkylekolonnen.
+ */
+export async function saveProjectBudgetAction(input: {
+  projectId: string
+  budgetedHours: number | null
+  budgetedMaterialNok: number | null
+}) {
+  const supabase = await createClient()
+  const { companyId, role } = await resolveCompanyProject(supabase, input.projectId)
+  if (!canManageProjects(role)) throw new Error("Mangler tilgang")
+
+  const hours = normalizeOptionalNumber(input.budgetedHours, "Budsjetterte timer")
+  const material = normalizeOptionalNumber(input.budgetedMaterialNok, "Budsjettert materialkost")
+  const { error } = await supabase
+    .from("projects")
+    .update({
+      budgeted_hours: hours,
+      budgeted_material_nok: material,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.projectId)
+    .eq("company_id", companyId)
+
+  if (error) throw new Error(error.message)
+  revalidatePath(`/prosjekter/${input.projectId}`)
+}
+
+function normalizeOptionalNumber(value: number | null, label: string) {
+  if (value === null || value === undefined) return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`${label} må være et positivt tall`)
+  return parsed
 }
 
 export async function addMaterialCostAction(input: {

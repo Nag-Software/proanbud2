@@ -18,6 +18,8 @@ import { fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import { getDeviationsAction } from "@/app/avvik/actions"
 import { getProjectChecklistsAction } from "@/app/ks/actions"
 import { getProjectCustomer } from "@/app/prosjekter/project-utils"
+import { fetchProjectProfitability, readProjectBudget } from "@/lib/job-costing/project-profitability"
+import type { ProjectProfitability } from "@/lib/job-costing/types"
 
 import ModellTab from "./modell-tab"
 import OppgaverTab from "./oppgaver-tab"
@@ -31,7 +33,7 @@ import TimeforingTab from "./timeforing-tab"
 import KjorebokTab from "./kjorebok-tab"
 import { ProjectOverviewTab, type OverviewTask } from "./project-overview-tab"
 import { ProjectTabsShell } from "./project-tabs-shell"
-import { EtterkalkyleTab } from "./etterkalkyle-tab"
+import { LonnsomhetTab } from "./lonnsomhet-tab"
 
 type MemberUser = {
   id: string
@@ -134,7 +136,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   // keeps its own gate: timeføring (admin/manager only, matching the action's
   // canManageProjects gate), Avvik -> hasAvvik, KS -> hasKs. Mini companies
   // never hit the Proff-only data paths.
-  const [participantHours, projectDeviations, projectChecklists] = await Promise.all([
+  const [participantHours, projectDeviations, projectChecklists, profitability] = await Promise.all([
     hasTimeforing && canManageProjects(canonicalRole)
       ? fetchParticipantHours(supabase, resolvedParams.id)
       : Promise.resolve([] as Awaited<ReturnType<typeof fetchParticipantHours>>),
@@ -144,6 +146,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     hasKs
       ? getProjectChecklistsAction(resolvedParams.id)
       : Promise.resolve([] as Awaited<ReturnType<typeof getProjectChecklistsAction>>),
+    // Lønnsomheten hentes server-side slik at både utdraget på Oversikt og
+    // Lønnsomhet-fanen viser de samme tallene med én gang. Håndverkere ser
+    // hverken fanen eller utdraget, og skal da heller ikke koste en spørring.
+    !isWorker && companyId
+      ? fetchProjectProfitability(supabase, {
+          companyId,
+          projectId: resolvedParams.id,
+          ...readProjectBudget(project),
+        })
+      : Promise.resolve(null as ProjectProfitability | null),
   ])
 
   const projectDeltakere = normalizedMembers.map((member) => {
@@ -213,12 +225,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             tabs={[
               { value: "oversikt", label: "Oversikt" },
               { value: "modell", label: "3D-modell", shortLabel: "3D" },
+              { value: "lonnsomhet", label: "Lønnsomhet", hidden: isWorker },
               { value: "tilbud", label: "Tilbud" },
               { value: "oppgaver", label: "Oppgaver", hidden: !hasTasks },
               { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
               { value: "timeforing", label: "Timeføring" },
               { value: "kjorebok", label: "Kjørebok" },
-              // { value: "lonnsomhet", label: "Etterkalkyle", shortLabel: "Margin", hidden: isWorker },
               { value: "ks", label: "KS", hidden: isWorker || !hasKs },
               { value: "avvik", label: "Avvik", hidden: !hasAvvik },
               { value: "deltakere", label: "Deltakere", hidden: isWorker },
@@ -246,6 +258,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   sent: sentOffers,
                   acceptancePercent: offerAcceptancePercent,
                 }}
+                profitability={profitability}
                 metrics={{
                   progressPercent,
                   doneTasks,
@@ -320,13 +333,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               )}
             </ProjectTabPanel>
 
-            {/*
             {!isWorker && (
               <ProjectTabPanel value="lonnsomhet">
-                <EtterkalkyleTab projectId={project.id} canManage={!isWorker} />
+                <LonnsomhetTab
+                  projectId={project.id}
+                  canManage={isProjectAdmin}
+                  initialData={profitability}
+                />
               </ProjectTabPanel>
             )}
-              */}
 
             {!isWorker && (
               <ProjectTabPanel value="ks">

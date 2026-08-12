@@ -11,9 +11,20 @@ const saveSchema = z.object({
     .finite()
     .min(0, "Timeprisen kan ikke være negativ")
     .max(1_000_000, "Timeprisen er for høy"),
+  // Kostprisen er valgfri: den er bedriftens egen selvkost per time, og brukes
+  // til dekningsbidraget på prosjekt. `null` betyr «ikke satt», ikke «0 kr».
+  costRateNok: z
+    .number()
+    .finite()
+    .min(0, "Kostprisen kan ikke være negativ")
+    .max(1_000_000, "Kostprisen er for høy")
+    .nullable()
+    .optional(),
 })
 
-const FIELD_LABELS = { jobType: "Type jobb", hourlyRateNok: "Timepris" }
+const FIELD_LABELS = { jobType: "Type jobb", hourlyRateNok: "Timepris", costRateNok: "Kostpris" }
+
+const RATE_COLUMNS = "id, job_type, hourly_rate_nok, cost_rate_nok, sort_order, created_at, updated_at"
 
 export async function GET() {
   try {
@@ -25,7 +36,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from("hourly_rates")
-      .select("id, job_type, hourly_rate_nok, sort_order, created_at, updated_at")
+      .select(RATE_COLUMNS)
       .order("sort_order", { ascending: true })
       .order("job_type", { ascending: true })
 
@@ -80,9 +91,10 @@ export async function POST(request: Request) {
         company_id: companyId,
         job_type: parsed.data.jobType,
         hourly_rate_nok: parsed.data.hourlyRateNok,
+        cost_rate_nok: parsed.data.costRateNok ?? null,
         created_by: user.id,
       })
-      .select("id, job_type, hourly_rate_nok, sort_order, created_at, updated_at")
+      .select(RATE_COLUMNS)
       .single()
 
     if (error || !data) {

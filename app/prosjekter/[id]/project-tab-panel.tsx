@@ -16,7 +16,7 @@ type ProjectTabPanelProps = {
  * Lazy keep-alive replacement for <TabsContent> on the project page.
  *
  * - Lazy: a tab's body is not mounted until the user opens it the first time, so
- *   the four client-fetching tabs (oppgaver/timeforing/filer/etterkalkyle) don't
+ *   the four client-fetching tabs (oppgaver/timeforing/filer/lønnsomhet) don't
  *   all fire their fetches on the initial project load.
  * - Keep-alive: once visited, the body stays mounted (forceMount) and is hidden
  *   when inactive, so re-entering the tab is instant — no fetch spinner.
