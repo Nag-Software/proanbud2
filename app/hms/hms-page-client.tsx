@@ -267,7 +267,7 @@ export function HmsPageClient({
               return (
                 <Link
                   key={project.projectId}
-                  href={`/prosjekter/${project.projectId}?tab=avvik`}
+                  href={`/prosjekter/${project.projectId}?tab=kvalitet&sub=avvik`}
                   className="flex flex-wrap items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
                 >
                   <span className="min-w-0 flex-1 truncate font-medium">{project.projectName}</span>

@@ -24,8 +24,7 @@ import type { ProjectProfitability } from "@/lib/job-costing/types"
 import ModellTab from "./modell-tab"
 import OppgaverTab from "./oppgaver-tab"
 import DeltakereTab from "./deltakere-tab"
-import AvvikTab from "./avvik-tab"
-import KsTab from "./ks-tab"
+import KvalitetTab from "./kvalitet-tab"
 import { EditProjectDialog } from "./edit-project-dialog"
 import ProjectDocumentsTab from "./project-documents-tab"
 import TilbudTab from "./tilbud-tab"
@@ -157,6 +156,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const hasKs = hasFeature(plan, modules, "ks")
   const hasAvvik = hasFeature(plan, modules, "avvik")
   const hasTasks = hasFeature(plan, modules, "project_tasks")
+  // KS og Avvik deler «KS & Avvik»-fanen. KS er skjult for håndverkere, Avvik
+  // er ikke — fanen vises så lenge minst én av delene er tilgjengelig.
+  const showKsSub = !isWorker && hasKs
+  const showAvvikSub = hasAvvik
+  const showKvalitet = showKsSub || showAvvikSub
 
   // The three gated datasets are independent — fetch them concurrently. Each
   // keeps its own gate: timeføring (admin/manager only, matching the action's
@@ -259,8 +263,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
               { value: "timeforing", label: "Timeføring" },
               { value: "kjorebok", label: "Kjørebok" },
-              { value: "ks", label: "KS", hidden: isWorker || !hasKs },
-              { value: "avvik", label: "Avvik", hidden: !hasAvvik },
+              { value: "kvalitet", label: "KS & Avvik", hidden: !showKvalitet },
               { value: "deltakere", label: "Deltakere", hidden: isWorker },
             ]}
           >
@@ -377,29 +380,17 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               </ProjectTabPanel>
             )}
 
-            {!isWorker && (
-              <ProjectTabPanel value="ks">
-                {hasKs ? (
-                  <KsTab projectId={project.id} checklists={projectChecklists} />
-                ) : (
-                  <PlanGate
-                    featureName="KS"
-                    description="Kvalitetssikre prosjektet med sjekklister og maler."
-                  />
-                )}
+            {showKvalitet && (
+              <ProjectTabPanel value="kvalitet">
+                <KvalitetTab
+                  projectId={project.id}
+                  checklists={projectChecklists}
+                  deviations={projectDeviations}
+                  showChecklists={showKsSub}
+                  showDeviations={showAvvikSub}
+                />
               </ProjectTabPanel>
             )}
-
-            <ProjectTabPanel value="avvik">
-              {hasAvvik ? (
-                <AvvikTab projectId={project.id} deviations={projectDeviations} />
-              ) : (
-                <PlanGate
-                  featureName="Avvik"
-                  description="Registrer og følg opp avvik på prosjektet."
-                />
-              )}
-            </ProjectTabPanel>
 
             {!isWorker && (
               <ProjectTabPanel value="deltakere">
