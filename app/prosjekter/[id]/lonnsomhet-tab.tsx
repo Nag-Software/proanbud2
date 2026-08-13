@@ -100,27 +100,6 @@ function FieldLabel({
   )
 }
 
-function formatDecimal(value: number) {
-  return value.toFixed(1).replace(".", ",")
-}
-
-/**
- * «12. sep», men «12. sep 2027» når datoen ikke er i år.
- *
- * Uten årstallet leses en dato langt fram i tid som om den var i fortiden —
- * «ferdige 19. juni» i august er ren forvirring.
- */
-function formatShortDate(iso: string) {
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return iso
-  const sameYear = date.getFullYear() === new Date().getFullYear()
-  return date.toLocaleDateString("no-NO", {
-    day: "numeric",
-    month: "short",
-    ...(sameYear ? {} : { year: "numeric" }),
-  })
-}
-
 /** «1 akseptert tilbud + 2 tillegg» — tillegg nevnes bare når de finnes. */
 function revenueSourceLabel(data: ProjectProfitability) {
   const offers = `${data.acceptedOfferCount} akseptert${data.acceptedOfferCount === 1 ? "" : "e"} tilbud`
@@ -214,7 +193,7 @@ function ComparisonRow({
 }
 
 /**
- * Målet jobben skal styres mot, og hvor langt den er kommet.
+ * Målet jobben skal styres mot.
  *
  * Fastprisjobber har ingen kalkyle i tilbudet — tilbudet sier hva kunden
  * betaler, ikke hva jobben skal koste. Uten disse feltene har flertallet av
@@ -303,19 +282,16 @@ function BudgetForm({
   return (
     <div className="rounded-lg border">
       <SectionHeader
-        title="Mål og framdrift"
-        infoTitle="Mål og framdrift"
+        title="Budsjett for jobben"
+        infoTitle="Budsjett for jobben"
         info={
           <>
             <p>
               {fromOffer
-                ? "Kalkylen for denne jobben hentes fra tilbudslinjene. Setter du et budsjett her i tillegg, er det framdriften som brukes til prognosen."
+                ? "Kalkylen for denne jobben hentes fra tilbudslinjene. Setter du et budsjett her i tillegg, er det budsjettet som vises i kolonnen «Budsjett»."
                 : "Fastprisjobber har ingen kalkyle i tilbudet: tilbudet sier hva kunden betaler, ikke hva jobben skal koste. Målet du setter her er det jobben måles mot."}
             </p>
-            <p>
-              Framdrift er valgfri: har du satt budsjetterte timer, finner vi den fra førte timer,
-              ellers fra ferdige oppgaver. Fyller du den inn selv, er det ditt tall som gjelder.
-            </p>
+            <p>Begge feltene er valgfrie. Står de tomme, gjør vi ingen antakelser.</p>
           </>
         }
         right={
@@ -674,7 +650,7 @@ export function LonnsomhetTab({
 
       {/* Under KPI-ene går alt i to kolonner fra desktop.
           CSS-kolonner og ikke grid: kortene er svært ulike i høyde (tabellen mot
-          et lite prognosekort), og et grid ville låst dem til rader med store
+          et lite budsjettskjema), og et grid ville låst dem til rader med store
           hull. Kolonneflyten pakker dem tett og balanserer høyden selv.
           På mobil og nettbrett er det én kolonne — halv bredde gjør tabellen
           uleselig. `break-inside-avoid` hindrer at et kort deles i to. */}
@@ -794,7 +770,7 @@ export function LonnsomhetTab({
         ) : null}
       </div>
 
-      {/* Mål og framdrift */}
+      {/* Budsjett for jobben */}
       {canManage ? <BudgetForm projectId={projectId} data={data} onSaved={load} /> : null}
 
       {/* Forbruk mot totalramme */}
