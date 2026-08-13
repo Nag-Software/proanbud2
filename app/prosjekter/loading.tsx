@@ -1,12 +1,22 @@
+import { Loader2 } from "lucide-react"
+
 import { AppPageShell } from "@/components/app-page-shell"
 
 export default function Loading() {
   return (
     <AppPageShell segments={["Prosjekter"]}>
       <section className="space-y-8">
-        <div className="space-y-1">
-          <div className="h-7 w-52 animate-pulse rounded bg-muted" />
-          <div className="h-4 w-80 animate-pulse rounded bg-muted/60" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="h-7 w-52 animate-pulse rounded bg-muted" />
+            <div className="h-4 w-80 animate-pulse rounded bg-muted/60" />
+          </div>
+          {/* Tydelig «laster»-donut ved siden av tittelen, så det er åpenbart at
+              siden jobber selv før skjelettkortene rekker å registreres. */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+            <span>Laster prosjekter …</span>
+          </div>
         </div>
 
         {/* Filter bar */}

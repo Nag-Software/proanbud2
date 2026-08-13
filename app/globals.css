@@ -651,3 +651,18 @@
   }
 }
 
+/* Lister (f.eks. /prosjekter): tynn «jobber i bakgrunnen»-linje øverst mens
+   søk/filter henter nye data fra serveren. Uendelig glidende bånd — viser
+   aktivitet uten å love en prosent. Nøytraliseres av reduced-motion-blokken. */
+@keyframes pa-indeterminate {
+  0% {
+    transform: translateX(-100%) scaleX(0.35);
+  }
+  50% {
+    transform: translateX(0%) scaleX(0.6);
+  }
+  100% {
+    transform: translateX(100%) scaleX(0.35);
+  }
+}
+
