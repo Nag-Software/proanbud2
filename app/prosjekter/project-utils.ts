@@ -11,6 +11,9 @@ export type ProjectCustomer = {
   name?: string | null
   email?: string | null
   phone?: string | null
+  address?: string | null
+  postal_code?: string | null
+  city?: string | null
 }
 
 export type ProjectRow = {
@@ -21,6 +24,7 @@ export type ProjectRow = {
   budget_nok: number | null
   start_date: string | null
   end_date: string | null
+  site_address?: string | null
   customers?: ProjectCustomer | ProjectCustomer[] | null
 }
 
@@ -126,6 +130,26 @@ export function getProjectCustomer(project: ProjectRow) {
 
 export function getProjectCode(id: string) {
   return `PRJ-${id.replace(/-/g, "").slice(0, 6).toUpperCase()}`
+}
+
+/**
+ * Adressen til byggeplassen: prosjektets egen når den er satt, ellers kundens.
+ * Samme rekkefølge som /kart og bildruten bruker, så kortet viser adressen
+ * bildet faktisk er hentet fra.
+ */
+export function getProjectSiteAddress(project: ProjectRow): string | null {
+  const own = project.site_address?.trim()
+  if (own) return own
+
+  const customer = Array.isArray(project.customers) ? project.customers[0] : project.customers
+  const fromCustomer = [
+    customer?.address?.trim(),
+    [customer?.postal_code?.trim(), customer?.city?.trim()].filter(Boolean).join(" "),
+  ]
+    .filter(Boolean)
+    .join(", ")
+
+  return fromCustomer || null
 }
 
 export function getProjectPeriod(project: Pick<ProjectRow, "start_date" | "end_date">) {

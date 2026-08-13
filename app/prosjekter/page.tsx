@@ -33,7 +33,11 @@ export default async function Page({
     // Narrowed to the columns ProjectRow/ProjectCard actually use. The previous
     // `tasks(status)` embed was dead (no consumer reads it) and scaled the query
     // with task count, and `*` pulled unused wide columns on a primary nav target.
-    .select("id, name, status, customer_id, budget_nok, start_date, end_date, updated_at, customers(name,email,phone)")
+    // site_address + kundens adresse er med fordi kortene viser byggeplassen og
+    // bare ber om stedsbildet når det faktisk finnes en adresse å slå opp.
+    .select(
+      "id, name, status, customer_id, budget_nok, start_date, end_date, updated_at, site_address, customers(name,email,phone,address,postal_code,city)"
+    )
 
   if (params.status && params.status !== "all") {
     queryBuilder = queryBuilder.eq("status", params.status)

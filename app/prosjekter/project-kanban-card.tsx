@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Archive, MoreVertical } from "lucide-react"
+import { Archive, CalendarRange, MapPin, MoreVertical, User } from "lucide-react"
 import { toast } from "sonner"
 
 import { reportClientError } from "@/lib/errors/client"
@@ -18,11 +18,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { updateProjectAction } from "./actions"
+import { ProjectPhoto } from "./project-photo"
 import { ProjectStatusFooter } from "./project-status-footer"
 import {
-  getProjectCode,
   getProjectCustomer,
   getProjectPeriod,
+  getProjectSiteAddress,
   getStatusConfig,
   type ProjectRow,
 } from "./project-utils"
@@ -43,6 +44,7 @@ type ProjectKanbanCardProps = {
 export function ProjectKanbanCard({ project, onRemoved, onPatched }: ProjectKanbanCardProps) {
   const confirm = useConfirm()
   const customer = getProjectCustomer(project)
+  const siteAddress = getProjectSiteAddress(project)
   const current = project.status || "planning"
 
   // Menu moves are non-optimistic (await → then update state) to avoid the
@@ -94,7 +96,7 @@ export function ProjectKanbanCard({ project, onRemoved, onPatched }: ProjectKanb
               type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-muted-foreground hover:bg-muted/80 hover:text-foreground data-[state=open]:opacity-100"
+              className="h-7 w-7 rounded-full bg-background/80 text-foreground shadow-sm backdrop-blur-sm hover:bg-background data-[state=open]:opacity-100"
               onClick={(event) => event.preventDefault()}
               onPointerDown={(event) => event.stopPropagation()}
             >
@@ -127,16 +129,31 @@ export function ProjectKanbanCard({ project, onRemoved, onPatched }: ProjectKanb
       </div>
 
       <Link href={`/prosjekter/${project.id}`} className="flex flex-1 flex-col">
-        <div className="flex flex-1 flex-col p-3 pr-9">
-          <p className="truncate text-sm font-semibold leading-snug text-foreground group-hover:text-primary">
-            {project.name}
-          </p>
-          <p className="mt-0.5 truncate text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            {getProjectCode(project.id)}
-          </p>
-          <div className="mt-2.5 min-w-0 space-y-0.5 text-xs text-muted-foreground">
-            <p className="truncate">{customer.name}</p>
-            <p className="truncate tabular-nums">{getProjectPeriod(project)}</p>
+        {/* Flatere enn på kortvisningen — kanban-kolonnene skal vise flere kort
+            samtidig, så bildet får bare være et gjenkjenningsmerke. */}
+        <ProjectPhoto projectId={project.id} address={siteAddress} className="aspect-[16/7]" />
+
+        <div className="flex flex-1 flex-col gap-2 p-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-snug text-foreground group-hover:text-primary">
+              {project.name}
+            </p>
+            {siteAddress && (
+              <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <MapPin className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate">{siteAddress}</span>
+              </p>
+            )}
+          </div>
+          <div className="mt-auto min-w-0 space-y-1 border-t border-border/50 pt-2 text-xs text-muted-foreground">
+            <p className="flex min-w-0 items-center gap-1.5">
+              <User className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate text-foreground/80">{customer.name}</span>
+            </p>
+            <p className="flex min-w-0 items-center gap-1.5">
+              <CalendarRange className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate tabular-nums">{getProjectPeriod(project)}</span>
+            </p>
           </div>
         </div>
         <ProjectStatusFooter status={project.status} idPrefix={`${project.id}-kanban`} className="w-full" />

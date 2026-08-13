@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Archive, MoreVertical, Pencil, Users } from "lucide-react"
+import { Archive, CalendarRange, MapPin, MoreVertical, Pencil, User, Users } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
@@ -25,11 +25,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { ClientAutocomplete, type ClientOption } from "./ny/components/client-autocomplete"
 import { updateProjectAction } from "./actions"
+import { ProjectPhoto } from "./project-photo"
 import { ProjectStatusFooter } from "./project-status-footer"
 import {
-  getProjectCode,
   getProjectCustomer,
   getProjectPeriod,
+  getProjectSiteAddress,
   type ProjectRow,
 } from "./project-utils"
 
@@ -48,7 +49,7 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
   const [isSaving, setIsSaving] = React.useState(false)
 
   const customer = getProjectCustomer(project)
-  const projectCode = getProjectCode(project.id)
+  const siteAddress = getProjectSiteAddress(project)
   const periodLabel = getProjectPeriod(project)
 
   const closeDialog = () => {
@@ -126,7 +127,9 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground opacity-100 transition-opacity hover:bg-muted/80 hover:text-foreground md:opacity-0 md:group-hover:opacity-100 data-[state=open]:opacity-100"
+                // Knappen ligger nå over fotoet, så den trenger egen bakgrunn for
+                // å være synlig mot både lyse og mørke bilder.
+                className="h-8 w-8 rotate-90 rounded-full bg-background/80 text-foreground shadow-sm backdrop-blur-sm transition-opacity hover:bg-background md:opacity-0 md:group-hover:opacity-100 data-[state=open]:opacity-100"
                 onClick={(event) => event.preventDefault()}
               >
                 <MoreVertical className="h-4 w-4" />
@@ -151,19 +154,32 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
         </div>
 
         <Link href={`/prosjekter/${project.id}`} className="flex flex-1 flex-col">
-          <div className="flex flex-1 flex-col p-3.5 pr-10">
+          <ProjectPhoto projectId={project.id} address={siteAddress} />
+
+          <div className="flex flex-1 flex-col gap-2.5 p-3.5">
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold leading-snug text-foreground group-hover:text-primary">
                 {project.name}
               </p>
-              <p className="mt-0.5 truncate text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                {projectCode}
-              </p>
+              {siteAddress && (
+                <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                  <MapPin className="size-3.5 shrink-0" aria-hidden />
+                  <span className="truncate">{siteAddress}</span>
+                </p>
+              )}
             </div>
 
-            <div className="mt-3 min-w-0 space-y-0.5 text-xs text-muted-foreground">
-              <p className="truncate">{customer.name}</p>
-              <p className="truncate tabular-nums">{periodLabel}</p>
+            {/* mt-auto holder kunde/periode i bunn, så kortene får lik høyde
+                selv når adressen mangler på noen av dem. */}
+            <div className="mt-auto min-w-0 space-y-1 border-t border-border/50 pt-2.5 text-xs text-muted-foreground">
+              <p className="flex min-w-0 items-center gap-1.5">
+                <User className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate text-foreground/80">{customer.name}</span>
+              </p>
+              <p className="flex min-w-0 items-center gap-1.5">
+                <CalendarRange className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate tabular-nums">{periodLabel}</span>
+              </p>
             </div>
           </div>
 
