@@ -109,6 +109,11 @@ export async function createProjectChangeOrderAction(input: {
     billing_type: billingType,
     hourly_rate_nok: hourlyRateNok,
     estimated_hours: estimatedHours,
+    // Interne etterfaktura går ikke ut til kunden for godkjenning (sending er
+    // deaktivert), så de skal ikke ligge som «utkast». De er godkjent arbeid
+    // med en gang — og «accepted» er dessuten statusen lønnsomhet teller som
+    // omsetning.
+    status: "accepted",
     created_by: userId,
   })
   if (error) throw new Error(error.message)

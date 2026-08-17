@@ -21,9 +21,12 @@ import {
 } from "./etterfakturering-actions"
 
 const STATUS: Record<string, { label: string; cls: string }> = {
+  // Interne etterfaktura opprettes nå som «accepted» → «Godkjent». «draft»/«sent»
+  // dukker bare opp for tilleggsarbeid som er sendt til kunde fra et tilbud, og
+  // som også havner i denne oversikten.
   draft: { label: "Utkast", cls: "bg-neutral-100 text-neutral-600" },
   sent: { label: "Varslet", cls: "bg-amber-50 text-amber-700" },
-  accepted: { label: "Fakturert", cls: "bg-emerald-50 text-emerald-700" },
+  accepted: { label: "Godkjent", cls: "bg-emerald-50 text-emerald-700" },
   rejected: { label: "Avslått", cls: "bg-red-50 text-red-700" },
 }
 
