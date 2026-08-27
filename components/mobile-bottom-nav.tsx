@@ -61,13 +61,11 @@ export function MobileBottomNav() {
         paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
-      {/* Floating frosted-glass pill (iOS-native feel). */}
-      <div className="pointer-events-auto relative mx-3 mb-2 flex h-14 flex-1 items-stretch gap-0 rounded-[1.25rem] border border-border/50 bg-background/55 px-1 shadow-[0_8px_30px_rgba(0,0,0,0.14)] ring-1 ring-black/[0.04] backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-background/45 dark:ring-white/5 supports-[backdrop-filter]:bg-background/45">
-        {/* Top sheen — the "liquid glass" highlight. */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-[1.25rem] bg-gradient-to-b from-white/25 to-transparent opacity-70 dark:from-white/10"
-        />
+      {/* Flytende glasskapsel. Tre ting gjør at den leses som glass og ikke som
+          en hvit stripe: full kapselradius, ekte gjennomsiktighet med kraftig
+          blur + metning (innholdet skal skimtes rulle under), og lyskanten
+          øverst fra --shadow-glass. */}
+      <div className="pointer-events-auto relative mx-3 mb-2 flex h-14 flex-1 items-center gap-0.5 rounded-full border border-[color:var(--glass-border)] bg-[image:var(--glass-surface)] px-1.5 shadow-[var(--shadow-glass)] backdrop-blur-2xl backdrop-saturate-[1.8] not-supports-[backdrop-filter]:bg-background">
 
         {/* Rollen er ukjent ved aller første besøk (ingen cache ennå) — hold
             plassene med nøytrale skeletons i stedet for å blinke admin-fanene
@@ -78,9 +76,9 @@ export function MobileBottomNav() {
             <div
               key={i}
               aria-hidden
-              className="relative flex flex-1 flex-col items-center justify-center gap-1.5"
+              className="relative flex flex-1 flex-col items-center justify-center gap-1"
             >
-              <Skeleton className="size-[22px] rounded-md" />
+              <Skeleton className="h-7 w-9 rounded-full" />
               <Skeleton className="h-2 w-9 rounded-full" />
             </div>
           ))}
@@ -97,23 +95,29 @@ export function MobileBottomNav() {
               }
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "relative flex flex-1 flex-col items-center justify-center gap-1 rounded-[1.4rem] font-medium transition active:scale-90",
-                isCompact ? "px-1! text-[10px]" : "px-3! text-[11px]"
+                "relative flex flex-1 flex-col items-center justify-center gap-1 font-medium transition-transform active:scale-95",
+                isCompact ? "px-0.5 text-[10px]" : "px-2 text-[11px]"
               )}
             >
-              {isActive && (
-                <span
-                  aria-hidden
-                  className="absolute inset-x-1.5 inset-y-1 rounded-[1.1rem] bg-primary/8 backdrop-blur-2xl ring-1 ring-inset ring-primary/15 dark:bg-primary/20"
-                />
-              )}
-              <span className="relative flex items-center justify-center">
+              {/* Aktiv fane får en fylt brikke bak ikonet — samme mørke flate
+                  som primærknappen, så «her er du» leses på et blikk. Den
+                  gamle 8 %-tonen var praktisk talt usynlig. */}
+              <span
+                className={cn(
+                  "relative flex h-7 w-9 items-center justify-center rounded-full transition-colors",
+                  isActive &&
+                    "bg-primary bg-[image:var(--control-sheen)] shadow-[var(--shadow-raised)]"
+                )}
+              >
                 <Icon
-                  className={cn("size-[22px] transition-colors", isActive ? "text-primary" : "text-muted-foreground")}
-                  strokeWidth={isActive ? 2.2 : 1.8}
+                  className={cn(
+                    "size-[19px] transition-colors",
+                    isActive ? "text-primary-foreground" : "text-muted-foreground"
+                  )}
+                  strokeWidth={isActive ? 2.1 : 1.8}
                 />
                 {href === "/meldinger" && unreadCount > 0 && (
-                  <span className="absolute -right-1.5 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-bold text-primary-foreground ring-2 ring-background">
+                  <span className="absolute -right-1.5 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold text-white ring-2 ring-background">
                     {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
                 )}
@@ -126,7 +130,12 @@ export function MobileBottomNav() {
                   />
                 )}
               </span>
-              <span className={cn("relative leading-none", isActive ? "text-primary" : "text-muted-foreground")}>
+              <span
+                className={cn(
+                  "relative max-w-full truncate leading-none",
+                  isActive ? "font-semibold text-foreground" : "text-muted-foreground"
+                )}
+              >
                 {label}
               </span>
             </Link>
@@ -138,12 +147,12 @@ export function MobileBottomNav() {
           onClick={toggleSidebar}
           aria-label="Åpne meny"
           className={cn(
-            "relative flex flex-1 flex-col items-center justify-center gap-1 rounded-[1.4rem] font-medium text-muted-foreground transition active:scale-90",
-            isCompact ? "px-1 text-[10px]" : "text-[11px]"
+            "relative flex flex-1 flex-col items-center justify-center gap-1 font-medium text-muted-foreground transition-transform active:scale-95",
+            isCompact ? "px-0.5 text-[10px]" : "text-[11px]"
           )}
         >
-          <span className="relative flex items-center justify-center">
-            <MenuIcon className="size-[22px]" strokeWidth={1.8} />
+          <span className="relative flex h-7 w-9 items-center justify-center rounded-full">
+            <MenuIcon className="size-[19px]" strokeWidth={1.8} />
           </span>
           <span className="relative leading-none">Meny</span>
         </button>

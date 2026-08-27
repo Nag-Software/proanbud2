@@ -80,18 +80,18 @@ export function SuccessState({
         ) : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
           {onCreateOffer ? (
-            <Button className="h-9 rounded-lg px-4" onClick={onCreateOffer}>
+            <Button className="rounded-lg px-4" onClick={onCreateOffer}>
               Lag tilbud på prosjektet
             </Button>
           ) : null}
           <Button
             variant={onCreateOffer ? "outline" : "default"}
-            className="h-9 rounded-lg px-4"
+            className="rounded-lg px-4"
             onClick={onGoToProject}
           >
             Gå til prosjekt
           </Button>
-          <Button type="button" variant="outline" className="h-9 rounded-lg px-4" onClick={onCreateAnother}>
+          <Button type="button" variant="outline" className="rounded-lg px-4" onClick={onCreateAnother}>
             Opprett et nytt
           </Button>
         </div>

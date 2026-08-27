@@ -3,13 +3,16 @@
 import * as React from "react"
 import { usePathname, useSearchParams } from "next/navigation"
 
-import { ResponsiveTabs, type ResponsiveTabItem } from "@/components/responsive-tabs"
+import { Tabs } from "@/components/ui/tabs"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { cn } from "@/lib/utils"
 import { resolveProjectTabParam } from "./project-tab-aliases"
 
 const ProjectTabContext = React.createContext<(tab: string) => void>(() => {})
 const ProjectSubTabContext = React.createContext<(sub: string | null) => void>(() => {})
 
 type ProjectTabState = {
+  /** Bladet som vises nå — panelene sammenlikner mot denne. */
   activeTab: string
   visitedTabs: ReadonlySet<string>
 }
@@ -19,123 +22,219 @@ const ProjectTabStateContext = React.createContext<ProjectTabState>({
   visitedTabs: new Set(),
 })
 
+export type ProjectTabItem = {
+  value: string
+  label: string
+  shortLabel?: string
+  hidden?: boolean
+}
+
+export type ProjectTabGroup = ProjectTabItem & {
+  /** Uten underfaner er gruppa selv bladet (Oversikt). */
+  subs?: ProjectTabItem[]
+}
+
 type ProjectTabsShellProps = {
-  tabs: ResponsiveTabItem[]
+  groups: ProjectTabGroup[]
   defaultTab?: string
   children: React.ReactNode
 }
 
+const visible = <T extends { hidden?: boolean }>(items: T[] | undefined) =>
+  (items ?? []).filter((item) => !item.hidden)
+
+/**
+ * To nivåer i stedet for elleve faner på rad: gruppa i `?tab=`, siden i
+ * `?sub=` (se designlerretet «Prosjekt — 11 faner blir 3»).
+ *
+ * Panelene kjenner bare bladet sitt («oppgaver», «tilbud» …) og trenger ikke
+ * vite hvilken gruppe de havnet i — `activeTab` i konteksten er alltid bladet.
+ * Gamle adresser oversettes i project-tab-aliases.
+ */
 export function ProjectTabsShell({
-  tabs,
+  groups,
   defaultTab = "oversikt",
   children,
 }: ProjectTabsShellProps) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const visibleTabValues = tabs.filter((tab) => !tab.hidden).map((tab) => tab.value)
-  const tabParam = searchParams.get("tab")
-  // ?tab= kan være en alias for en sammenslått fane (f.eks. ks -> kvalitet).
-  const resolvedParam = resolveProjectTabParam(tabParam)
-  const resolvedDefault =
-    resolvedParam && visibleTabValues.includes(resolvedParam.tab)
-      ? resolvedParam.tab
-      : defaultTab
+  const isMobile = useIsMobile()
 
-  const [activeTab, setActiveTab] = React.useState(resolvedDefault)
-  // Tabs the user has opened at least once. Their bodies stay mounted (P1.2) so
-  // re-entering a client-fetching tab is instant instead of re-fetching.
-  const [visitedTabs, setVisitedTabs] = React.useState<ReadonlySet<string>>(
-    () => new Set([resolvedDefault])
+  const visibleGroups = visible(groups)
+  const tabParam = searchParams.get("tab")
+  const subParam = searchParams.get("sub")
+
+  const groupByValue = React.useMemo(() => {
+    const map = new Map<string, ProjectTabGroup>()
+    for (const group of groups) map.set(group.value, group)
+    return map
+  }, [groups])
+
+  const firstLeaf = React.useCallback(
+    (groupValue: string) => {
+      const group = groupByValue.get(groupValue)
+      const subs = visible(group?.subs)
+      return subs.length > 0 ? subs[0].value : groupValue
+    },
+    [groupByValue]
   )
 
+  const resolved = resolveProjectTabParam(tabParam, subParam)
+  const initialGroup =
+    resolved && groupByValue.has(resolved.tab) ? resolved.tab : defaultTab
+
+  const [activeGroup, setActiveGroup] = React.useState(initialGroup)
+  // Siste besøkte side per gruppe — bytter du til Arbeid og tilbake, lander du
+  // der du forlot, ikke på den første underfanen igjen.
+  const [subByGroup, setSubByGroup] = React.useState<Record<string, string>>(() =>
+    resolved?.sub ? { [initialGroup]: resolved.sub } : {}
+  )
+
+  const activeLeaf = React.useMemo(() => {
+    const group = groupByValue.get(activeGroup)
+    const subs = visible(group?.subs)
+    if (subs.length === 0) return activeGroup
+    const remembered = subByGroup[activeGroup]
+    if (remembered && subs.some((sub) => sub.value === remembered)) return remembered
+    return subs[0].value
+  }, [activeGroup, groupByValue, subByGroup])
+
+  const [visitedTabs, setVisitedTabs] = React.useState<ReadonlySet<string>>(
+    () => new Set([activeLeaf])
+  )
+
+  // Dyplenker, back/forward og navigateToTab() utenfra går alle gjennom ?tab=.
   React.useEffect(() => {
-    const resolved = resolveProjectTabParam(tabParam)
-    if (resolved && visibleTabValues.includes(resolved.tab)) {
-      setActiveTab(resolved.tab)
+    const next = resolveProjectTabParam(tabParam, subParam)
+    if (next && groupByValue.has(next.tab)) {
+      setActiveGroup(next.tab)
+      if (next.sub) setSubByGroup((prev) => ({ ...prev, [next.tab]: next.sub as string }))
       return
     }
-    if (!tabParam) {
-      setActiveTab(defaultTab)
-    }
-  }, [tabParam, visibleTabValues, defaultTab])
+    if (!tabParam) setActiveGroup(defaultTab)
+  }, [tabParam, subParam, groupByValue, defaultTab])
 
-  // Record every tab we land on so it gets kept-alive afterwards.
+  // Alt som har vært åpnet holdes montert (P1.2) så retur er umiddelbar.
   React.useEffect(() => {
     setVisitedTabs((prev) => {
-      if (prev.has(activeTab)) return prev
+      if (prev.has(activeLeaf)) return prev
       const next = new Set(prev)
-      next.add(activeTab)
+      next.add(activeLeaf)
       return next
     })
-  }, [activeTab])
+  }, [activeLeaf])
 
-  const handleTabChange = React.useCallback(
-    (value: string) => {
-      // Kall utenfra kan bruke en gammel alias ("ks"/"avvik") — da lander vi på
-      // den sammenslåtte fanen med riktig underfane forhåndsvalgt.
-      const resolved = resolveProjectTabParam(value)
-      const nextTab = resolved?.tab ?? value
-      const nextSub = resolved?.sub ?? null
-      setActiveTab(nextTab)
+  const writeUrl = React.useCallback(
+    (group: string, sub: string | null, ks?: string | null) => {
       const params = new URLSearchParams(searchParams.toString())
-      if (nextTab === defaultTab) {
-        params.delete("tab")
-      } else {
-        params.set("tab", nextTab)
-      }
-      // Underfanen hører til fanen vi forlot — nullstill med mindre aliaset
-      // peker på en bestemt underfane.
-      if (nextSub) {
-        params.set("sub", nextSub)
-      } else {
-        params.delete("sub")
-      }
+      if (group === defaultTab) params.delete("tab")
+      else params.set("tab", group)
+      if (sub) params.set("sub", sub)
+      else params.delete("sub")
+      if (ks) params.set("ks", ks)
+      else if (ks === null) params.delete("ks")
       const query = params.toString()
-      // Keep the URL shareable WITHOUT triggering a Next navigation. router.replace
-      // here would re-run the whole page.tsx server component (re-fetching every
-      // Supabase query) on each tab click; history.replaceState only rewrites the
-      // address bar. useSearchParams stays in sync, so deep-links + back/forward
-      // still select the right tab via the effect above.
+      // replaceState framfor router.replace: en fanebytte skal ikke kjøre hele
+      // server-komponenten (og alle Supabase-spørringene) på nytt.
       window.history.replaceState(null, "", query ? `${pathname}?${query}` : pathname)
     },
     [defaultTab, pathname, searchParams]
   )
 
-  // Underfaner (f.eks. Sjekklister/Avvik inne i Kvalitet) speiles i ?sub= med
-  // samme replaceState-triks som fanene, så dyplenker virker uten navigasjon.
-  const handleSubTabChange = React.useCallback(
-    (sub: string | null) => {
-      const params = new URLSearchParams(searchParams.toString())
-      // Normaliser ?tab= samtidig, slik at en alias-URL ikke blir liggende og
-      // peke på en annen underfane enn den som faktisk er valgt.
-      if (activeTab === defaultTab) {
-        params.delete("tab")
-      } else {
-        params.set("tab", activeTab)
-      }
-      if (sub) {
-        params.set("sub", sub)
-      } else {
-        params.delete("sub")
-      }
-      const query = params.toString()
-      window.history.replaceState(null, "", query ? `${pathname}?${query}` : pathname)
+  /** Tar imot både gruppe, blad og gamle aliaser («ks», «avvik», «tilbud» …). */
+  const handleTabChange = React.useCallback(
+    (value: string) => {
+      const target = groupByValue.has(value)
+        ? { tab: value, sub: undefined, ks: undefined }
+        : (resolveProjectTabParam(value) ?? { tab: value })
+      const group = groupByValue.has(target.tab) ? target.tab : defaultTab
+      const sub = target.sub ?? (groupByValue.has(value) ? subByGroup[group] : undefined)
+      const leaf = sub ?? firstLeaf(group)
+
+      setActiveGroup(group)
+      if (leaf !== group) setSubByGroup((prev) => ({ ...prev, [group]: leaf }))
+      writeUrl(group, leaf === group ? null : leaf, target.ks ?? null)
     },
-    [activeTab, defaultTab, pathname, searchParams]
+    [defaultTab, firstLeaf, groupByValue, subByGroup, writeUrl]
+  )
+
+  /** Bladnivået inne i KS & Avvik (?ks=). */
+  const handleSubTabChange = React.useCallback(
+    (ks: string | null) => {
+      writeUrl(activeGroup, activeLeaf === activeGroup ? null : activeLeaf, ks)
+    },
+    [activeGroup, activeLeaf, writeUrl]
   )
 
   const tabState = React.useMemo<ProjectTabState>(
-    () => ({ activeTab, visitedTabs }),
-    [activeTab, visitedTabs]
+    () => ({ activeTab: activeLeaf, visitedTabs }),
+    [activeLeaf, visitedTabs]
   )
+
+  const activeSubs = visible(groupByValue.get(activeGroup)?.subs)
 
   return (
     <ProjectTabContext.Provider value={handleTabChange}>
       <ProjectSubTabContext.Provider value={handleSubTabChange}>
         <ProjectTabStateContext.Provider value={tabState}>
-          <ResponsiveTabs value={activeTab} onValueChange={handleTabChange} tabs={tabs}>
+          <Tabs value={activeLeaf} className="w-full">
+            <div className="mb-3 flex flex-col gap-2.5">
+              {/* Gruppene */}
+              <div className="flex items-center gap-5 border-b">
+                {visibleGroups.map((group) => {
+                  const isActive = group.value === activeGroup
+                  return (
+                    <button
+                      key={group.value}
+                      type="button"
+                      onClick={() => handleTabChange(group.value)}
+                      className={cn(
+                        "-mb-px shrink-0 border-b-2 px-0.5 pb-2 text-sm transition-colors",
+                        isActive
+                          ? "border-foreground font-semibold text-foreground"
+                          : "border-transparent font-medium text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {isMobile ? (group.shortLabel ?? group.label) : group.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Sidene inne i gruppa */}
+              {activeSubs.length > 0 && (
+                <div className="relative -mx-4">
+                  <div className="overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <div className="flex w-max items-center gap-1.5">
+                      {activeSubs.map((sub) => {
+                        const isActive = sub.value === activeLeaf
+                        return (
+                          <button
+                            key={sub.value}
+                            type="button"
+                            onClick={() => handleTabChange(sub.value)}
+                            className={cn(
+                              "h-8 shrink-0 rounded-[var(--radius-control)] px-3 text-[13px] font-semibold transition-all",
+                              isActive
+                                ? "border border-[color:var(--control-border-soft)] bg-background bg-[image:var(--control-sheen-soft)] text-foreground shadow-[var(--shadow-surface)]"
+                                : "border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+                            )}
+                          >
+                            {isMobile ? (sub.shortLabel ?? sub.label) : sub.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent md:hidden"
+                  />
+                </div>
+              )}
+            </div>
             {children}
-          </ResponsiveTabs>
+          </Tabs>
         </ProjectTabStateContext.Provider>
       </ProjectSubTabContext.Provider>
     </ProjectTabContext.Provider>

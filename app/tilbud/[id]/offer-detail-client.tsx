@@ -603,7 +603,7 @@ export function OfferDetailClient({
             </div>
 
             <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-              <Button onClick={openSendDialog} disabled={isPending || isAutoSaving || lineItems.length === 0} className="h-11 sm:h-9">
+              <Button size="lg" onClick={openSendDialog} disabled={isPending || isAutoSaving || lineItems.length === 0} className="sm:">
                 <Send className="mr-2 h-4 w-4" />
                 Send tilbud
               </Button>
@@ -611,7 +611,7 @@ export function OfferDetailClient({
                 <Eye className="mr-2 h-4 w-4" />
                 Forhåndsvis tilbud
               </Button>
-              <Button variant="outline" onClick={handlePrintPdf} disabled={lineItems.length === 0} className="h-11 sm:h-9">
+              <Button size="lg" variant="outline" onClick={handlePrintPdf} disabled={lineItems.length === 0} className="sm:">
                 <Download className="mr-2 h-4 w-4" />
                 Last ned PDF
               </Button>

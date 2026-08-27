@@ -235,7 +235,7 @@ export function InboxClient() {
             </Button>
             <Button
               size="sm"
-              className="border border-accent bg-accent font-semibold text-accent-foreground hover:bg-accent/80"
+              variant="accent"
               onClick={() => setSearchOpen(true)}
             >
               <SearchIcon className="size-3.5" /> Søk i Brønnøysund
@@ -312,8 +312,9 @@ export function InboxClient() {
             {selected.size} valgt
             <div className="ml-auto flex gap-2">
               <Button
+                variant="accent"
                 size="sm"
-                className="h-7 border border-accent bg-accent text-xs text-accent-foreground hover:bg-accent/80"
+                className="h-7 text-xs"
                 onClick={() => void qualifyBulk()}
               >
                 Kvalifiser {selected.size} →
@@ -395,8 +396,9 @@ export function InboxClient() {
                   )}
                   <div className="flex gap-1.5">
                     <Button
+                      variant="accent"
                       size="sm"
-                      className="h-7 border border-accent bg-accent text-xs font-semibold text-accent-foreground hover:bg-accent/80"
+                      className="h-7 text-xs"
                       onClick={() => void qualifySingle(row)}
                     >
                       Kvalifiser →
@@ -563,8 +565,9 @@ function BrregSearchDialog({
                     </span>
                   ) : (
                     <Button
+                      variant="accent"
                       size="sm"
-                      className="h-7 border border-accent bg-accent text-xs font-semibold text-accent-foreground hover:bg-accent/80"
+                      className="h-7 text-xs"
                       onClick={() => void importOne(result)}
                     >
                       Importer

@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/client"
 import { reportClientError } from "@/lib/errors/client"
 import { useRouter } from "next/navigation"
 import { useUserRole } from "@/hooks/use-user-role"
+import { VenterPaDeg } from "@/components/dashboard/venter-pa-deg"
 import { useAuth } from "@/components/auth-provider"
 
 const formatNok = (val: number) =>
@@ -164,6 +165,8 @@ export default function DashboardPage() {
   // Feeds (recent/active offers, top projects) need extra name-lookup queries
   // after the KPIs are ready — tracked separately so the KPIs can paint first.
   const [feedsLoading, setFeedsLoading] = useState(true)
+  // Bedriften brukes av «Venter på deg», som kjører sine egne spørringer.
+  const [companyId, setCompanyId] = useState<string | null>(null)
 
   // Workers do not have access to the company dashboard — send them to projects.
   useEffect(() => {
@@ -260,6 +263,7 @@ export default function DashboardPage() {
         .eq("id", authUser.id)
         .single()
       const companyId = userData?.company_id
+      if (!cancelled) setCompanyId(companyId ?? null)
       const rawName = userData?.full_name
         || (authUser.user_metadata?.full_name as string | undefined)
         || (authUser.user_metadata?.name as string | undefined)
@@ -511,6 +515,10 @@ export default function DashboardPage() {
   return (
     <AppPageShell segments={["Dashbord"]}>
       <div className="flex flex-col max-w-[2000px] w-full mx-auto gap-5 pb-10">
+
+        {/* Det som står stille kommer først — før tallene, som bare beskriver
+            fortiden. Se designlerretet «Hjem — det som venter på deg». */}
+        <VenterPaDeg companyId={companyId} />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
           <div className="flex flex-col gap-4">

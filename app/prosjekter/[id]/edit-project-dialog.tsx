@@ -142,7 +142,7 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
   return (
     <ResponsiveDialog open={open} onOpenChange={setOpen}>
       <ResponsiveDialogTrigger asChild>
-        <Button variant="outline" className="h-9 gap-2">
+        <Button variant="outline" className="gap-2">
           <Settings2 className="h-4 w-4" />
           Innstillinger
         </Button>

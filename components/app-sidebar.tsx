@@ -4,6 +4,7 @@ import * as React from "react"
 import Image from "next/image"
 
 import { NavMain } from "@/components/nav-main"
+import { NavMoreMenu } from "@/components/nav-more-menu"
 import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import { useRouter } from "next/navigation"
@@ -14,12 +15,14 @@ import {
   SidebarGroup,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSkeleton,
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, CarIcon, FrameIcon, PieChartIcon, MapIcon, CalendarDays, ClockIcon, FolderIcon, FilesIcon, FileTextIcon, ShieldCheckIcon } from "lucide-react"
+import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, CarIcon, FrameIcon, PieChartIcon, MapIcon, CalendarDays, ClockIcon, FolderIcon, FilesIcon, FileTextIcon, ShieldCheckIcon, MoreHorizontalIcon } from "lucide-react"
 import { useUserRole } from "@/hooks/use-user-role"
 import { canInviteEmployees, canManageSubscription } from "@/lib/roles"
 import { useAuth } from "@/components/auth-provider"
@@ -57,6 +60,16 @@ type NavMainItem = {
 }
 
 // This is sample data.
+/**
+ * De fem destinasjonene som brukes hver dag. Alt annet ligger bak «Mer» —
+ * menyen skal beskrive arbeidsdagen, ikke katalogisere appen. Utvides denne
+ * lista, må «Mer» bli tilsvarende kortere, ikke motsatt.
+ *
+ * Håndverkere har allerede et bevisst lite sett (Prosjekter, Timeføring,
+ * Kart, Kjørebok, Kalender) og får derfor ingen «Mer»-inngang.
+ */
+const PRIMARY_NAV_TITLES = ["Dashbord", "Prosjekter", "Tilbud", "Timeføring", "Kunder"] as const
+
 const data: {
   user: {
     name: string
@@ -312,6 +325,37 @@ function AppSidebarHeader({
   )
 }
 
+/**
+ * «Mer»-raden i sidebaren. Ser ut som et vanlig menypunkt, men åpner
+ * grupperte snarveier (components/nav-more-menu) i stedet for å navigere.
+ */
+function NavMoreEntry({ badge, primaryHrefs }: { badge: number; primaryHrefs: string[] }) {
+  const [open, setOpen] = React.useState(false)
+
+  return (
+    <SidebarGroup className="pt-0">
+      <SidebarMenu className="gap-0.5">
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            tooltip="Mer"
+            onClick={() => setOpen(true)}
+            className="text-[14px] font-medium"
+          >
+            <MoreHorizontalIcon className="size-4" />
+            <span>Mer</span>
+          </SidebarMenuButton>
+          {badge > 0 && (
+            <SidebarMenuBadge className="rounded-full bg-primary text-[10px] text-primary-foreground">
+              {badge > 99 ? "99+" : badge}
+            </SidebarMenuBadge>
+          )}
+        </SidebarMenuItem>
+      </SidebarMenu>
+      <NavMoreMenu open={open} onOpenChange={setOpen} primaryHrefs={primaryHrefs} />
+    </SidebarGroup>
+  )
+}
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // isWorker/roleKnown er cache-seedet (per-bruker localStorage i
   // useUserRole), så gjenbesøk får riktig menysett fra første klientframe i
@@ -436,6 +480,28 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     return true;
   });
 
+  // Fem daglige punkter i menyen; resten (med badges intakt) bak «Mer».
+  const primaryNav = isWorker
+    ? filteredNavMain
+    : filteredNavMain.filter((item) =>
+        (PRIMARY_NAV_TITLES as readonly string[]).includes(item.title)
+      )
+  const secondaryNav = isWorker
+    ? []
+    : filteredNavMain.filter(
+        (item) => !(PRIMARY_NAV_TITLES as readonly string[]).includes(item.title)
+      )
+  // Uleste meldinger og åpne avvik havner bak «Mer» — da må tallet flyttes med,
+  // ellers forsvinner varselet ut av syne.
+  const moreBadge = secondaryNav.reduce(
+    (sum, item) =>
+      sum +
+      (item.badge ?? 0) +
+      (item.items?.reduce((subSum, subItem) => subSum + (subItem.badge ?? 0), 0) ?? 0),
+    0
+  )
+  const primaryHrefs = primaryNav.map((item) => item.url)
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <AppSidebarHeader
@@ -449,7 +515,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       />
       <SidebarContent>
         {roleKnown ? (
-          <NavMain items={filteredNavMain} />
+          <>
+            <NavMain items={primaryNav} />
+            {secondaryNav.length > 0 && (
+              <NavMoreEntry badge={moreBadge} primaryHrefs={primaryHrefs} />
+            )}
+          </>
         ) : (
           // Rollen er ukjent (aller første besøk uten cache) — vis nøytrale
           // skeleton-rader i stedet for å blinke hele admin-menyen for en

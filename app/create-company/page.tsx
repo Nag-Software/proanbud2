@@ -262,8 +262,8 @@ export default function CreateCompanyClient() {
             )}
           </div>
 
-          <Button
-            className="h-11 w-full"
+          <Button size="lg"
+            className="w-full"
             onClick={handleCreateCompany}
             disabled={loading || !companyName || !phoneValid}
           >

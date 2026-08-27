@@ -504,7 +504,7 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
                     <Button
                       type="button"
                       variant="outline"
-                      className="h-11 shrink-0 sm:h-9"
+                      className="shrink-0 sm:"
                       size="sm"
                       onClick={() => void recalcRoute(fromLat!, fromLng!, toLat!, toLng!)}
                       disabled={routing}
@@ -573,10 +573,10 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
         <p className="shrink-0 bg-background px-3 pt-2 text-center text-sm text-destructive lg:hidden">{error}</p>
       )}
       <div className="flex shrink-0 items-center gap-2 border-t bg-background p-3 lg:hidden">
-        <Button variant="outline" className="h-12" onClick={goBack} disabled={submitting}>
+        <Button size="lg" variant="outline" onClick={goBack} disabled={submitting}>
           Avbryt
         </Button>
-        <Button className="h-12 flex-1 text-base" onClick={handleSubmit} disabled={submitting}>
+        <Button size="lg" className="flex-1 text-base" onClick={handleSubmit} disabled={submitting}>
           {submitting ? <Loader2Icon className="size-4 animate-spin" /> : null}
           Lagre tur
         </Button>

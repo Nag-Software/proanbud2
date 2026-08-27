@@ -172,8 +172,8 @@ function OnboardingAbonnementContent() {
           </ul>
         </div>
 
-        <Button
-          className="h-11 w-full text-base"
+        <Button size="lg"
+          className="w-full text-base"
           onClick={trialUsed ? startPaidCheckout : startTrial}
           disabled={loading}
         >

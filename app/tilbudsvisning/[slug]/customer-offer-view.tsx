@@ -584,7 +584,7 @@ export function CustomerOfferView({
             >
               {statusText}
             </span>
-            <Button asChild variant="outline" size="sm" className="h-9 px-2.5 sm:px-3">
+            <Button asChild variant="outline" size="sm" className="px-2.5 sm:px-3">
               <a href={`/api/public/tilbud/${slug}/pdf`} target="_blank" rel="noopener noreferrer">
                 <Download className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Last ned PDF</span>
@@ -594,7 +594,7 @@ export function CustomerOfferView({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-9 px-2.5 sm:px-3 lg:hidden"
+                className="px-2.5 sm:px-3 lg:hidden"
                 onClick={() => setChatOpen(true)}
               >
                 <MessageSquare className="h-4 w-4 sm:mr-2" />
@@ -724,7 +724,7 @@ export function CustomerOfferView({
       {offer.canRespond ? (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_24px_rgba(0,0,0,0.06)] backdrop-blur supports-[backdrop-filter]:bg-white/90 lg:hidden">
           <div className="mx-auto flex max-w-lg gap-2">
-            <Button className="h-11 flex-1" onClick={openAcceptDialog} disabled={isResponding}>
+            <Button size="lg" className="flex-1" onClick={openAcceptDialog} disabled={isResponding}>
               {isResponding ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -732,7 +732,7 @@ export function CustomerOfferView({
               )}
               Godta
             </Button>
-            <Button variant="outline" className="h-11 flex-1" onClick={() => void reject()} disabled={isResponding}>
+            <Button size="lg" variant="outline" className="flex-1" onClick={() => void reject()} disabled={isResponding}>
               <X className="mr-2 h-4 w-4" />
               Avslå
             </Button>

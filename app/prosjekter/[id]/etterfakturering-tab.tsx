@@ -199,7 +199,7 @@ export function EtterfaktureringTab({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         {canManage ? (
-          <Button className="h-9 gap-2" onClick={() => setOpen(true)}>
+          <Button className="gap-2" onClick={() => setOpen(true)}>
             <Plus className="h-4 w-4" />
             Ny ekstrajobb
           </Button>

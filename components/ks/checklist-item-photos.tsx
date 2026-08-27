@@ -215,7 +215,7 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
           type="button"
           variant="outline"
           size="sm"
-          className="h-11 flex-1"
+          className="flex-1"
           disabled={uploading}
           onClick={() => cameraRef.current?.click()}
         >
@@ -230,7 +230,7 @@ export function ChecklistItemPhotos({ item, projectId, checklistId, onUpdated }:
           type="button"
           variant="outline"
           size="sm"
-          className="h-11 flex-1"
+          className="flex-1"
           disabled={uploading}
           onClick={() => galleryRef.current?.click()}
         >

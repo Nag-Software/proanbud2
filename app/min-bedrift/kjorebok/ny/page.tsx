@@ -24,7 +24,7 @@ export default async function Page({
   // Otherwise workers go back to their own overview (/kjorebok) — the company
   // overview under Min bedrift would just bounce them to /prosjekter.
   const returnTo = projectId
-    ? `/prosjekter/${projectId}?tab=kjorebok`
+    ? `/prosjekter/${projectId}?tab=okonomi&sub=kjorebok`
     : isWorker
       ? "/kjorebok"
       : undefined

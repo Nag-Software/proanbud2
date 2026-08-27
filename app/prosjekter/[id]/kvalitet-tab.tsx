@@ -31,8 +31,10 @@ type Props = {
  * arbeid (en sjekkliste som slår feil ender som et avvik), og som separate
  * faner tvang de frem to klikk for å se hele bildet.
  *
- * Underfanen ligger i ?sub=, og de gamle lenkene (?tab=ks / ?tab=avvik) mappes
- * hit via PROJECT_TAB_ALIASES.
+ * Underfanen ligger i ?ks= — ?sub= er tatt i bruk av gruppenivået (Arbeid /
+ * Økonomi) etter at fanene ble slått sammen til tre. Gamle lenker (?tab=ks,
+ * ?tab=avvik og ?tab=kvalitet&sub=avvik) oversettes hit av
+ * project-tab-aliases, så de lander fortsatt på riktig underfane.
  */
 export default function KvalitetTab({
   projectId,
@@ -69,24 +71,28 @@ export default function KvalitetTab({
 
   const fallback: KvalitetSubTab = options[0]?.value ?? "sjekklister"
   const availableValues = options.map((option) => option.value)
-  const subParam = searchParams.get("sub")
+  const ksParam = searchParams.get("ks")
   const tabParam = searchParams.get("tab")
+  // Mellomformen ?tab=kvalitet&sub=avvik finnes fortsatt i delte lenker.
+  const legacySub = searchParams.get("sub")
+  const leafParam =
+    ksParam ?? (availableValues.some((value) => value === legacySub) ? legacySub : null)
 
   const [active, setActive] = React.useState<KvalitetSubTab>(() => {
-    const candidate = subParam ?? aliasSubTab(tabParam)
+    const candidate = leafParam ?? aliasSubTab(tabParam)
     return availableValues.find((value) => value === candidate) ?? fallback
   })
 
-  // Dyplenker og navigateToTab("avvik") fra Oversikt skriver ?sub= — plukk det
+  // Dyplenker og navigateToTab("avvik") fra Oversikt skriver ?ks= — plukk det
   // opp også etter at fanen er montert (den holdes i live av ProjectTabPanel).
   React.useEffect(() => {
-    if (!subParam) return
-    const next = availableValues.find((value) => value === subParam)
+    if (!leafParam) return
+    const next = availableValues.find((value) => value === leafParam)
     if (next) setActive(next)
-    // availableValues er utledet av props som sjelden endrer seg; ?sub= er
+    // availableValues er utledet av props som sjelden endrer seg; ?ks= er
     // signalet vi faktisk reagerer på.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subParam])
+  }, [leafParam])
 
   // Mister vi tilgangen til den valgte underfanen (rolle-/planbytte), fall
   // tilbake til den som fortsatt finnes.

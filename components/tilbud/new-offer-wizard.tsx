@@ -639,7 +639,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-9 flex-1 text-sm"
+                  className="flex-1 text-sm"
                   onClick={() => {
                     // Samme validering som «Foreslå pris automatisk» — feilen
                     // vises her, ikke først ved lagring på siste steg.
@@ -654,7 +654,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 >
                   Fortsett manuelt
                 </Button>
-                <Button type="button" className="h-9 flex-1 text-sm" onClick={handleAnalyze} disabled={isPersisting || isUploadingDocuments}>
+                <Button type="button" className="flex-1 text-sm" onClick={handleAnalyze} disabled={isPersisting || isUploadingDocuments}>
                   Foreslå pris automatisk
                 </Button>
               </div>
@@ -833,14 +833,14 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
 
               <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:flex-row sm:space-x-3">
                 <div className="order-1 sm:basis-0 sm:flex-1">
-                  <Button type="button" variant="outline" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={() => setStep(2)}>
+                  <Button type="button" variant="outline" className="flex w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={() => setStep(2)}>
                     <ArrowLeft className="h-4 w-4" />
                     Tilbake
                   </Button>
                 </div>
 
                 <div className="order-2 sm:basis-0 sm:flex-1">
-                  <Button type="button" className="flex h-9 w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleOpenOffer} disabled={isPersisting || lineItems.length === 0}>
+                  <Button type="button" className="flex w-full min-w-0 items-center justify-center gap-2 text-sm" onClick={handleOpenOffer} disabled={isPersisting || lineItems.length === 0}>
                     {isPersisting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     {isPersisting ? "Lagrer..." : "Lagre og gå til sending"}
                   </Button>

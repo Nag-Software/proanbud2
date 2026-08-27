@@ -626,7 +626,7 @@ export default function InboxClient({ companyId, currentUserId, initialCustomerI
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 shrink-0 md:hidden"
+                    className="shrink-0 md:hidden"
                     onClick={() => setSelectedCustomerId(null)}
                   >
                     <ArrowLeft className="h-4 w-4" />
@@ -838,7 +838,7 @@ export default function InboxClient({ companyId, currentUserId, initialCustomerI
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-9 w-9 shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground"
                         onClick={() => imageInputRef.current?.click()}
                         disabled={isUploading}
                       >
@@ -856,7 +856,7 @@ export default function InboxClient({ companyId, currentUserId, initialCustomerI
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-9 w-9 shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="shrink-0 text-muted-foreground hover:bg-muted hover:text-foreground"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isUploading}
                       >
@@ -867,7 +867,7 @@ export default function InboxClient({ companyId, currentUserId, initialCustomerI
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-9 w-9 shrink-0 text-primary hover:bg-primary/10 hover:text-primary"
+                          className="shrink-0 text-primary hover:bg-primary/10 hover:text-primary"
                           onClick={requestSuggestion}
                           disabled={isSuggesting || isUploading}
                           title="Foreslå svar med KI"
@@ -899,7 +899,7 @@ export default function InboxClient({ companyId, currentUserId, initialCustomerI
                     <Button
                       type="submit"
                       size="sm"
-                      className="h-9 shrink-0 bg-primary px-4 text-primary-foreground hover:bg-primary/90"
+                      className="shrink-0 px-4"
                       disabled={(!newMessage.trim() && !attachedFile) || isUploading || isSending}
                     >
                       {isUploading || isSending ? (

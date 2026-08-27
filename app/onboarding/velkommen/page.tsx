@@ -96,8 +96,8 @@ function VelkommenContent() {
           </p>
         </div>
 
-        <Button
-          className="h-11 w-full"
+        <Button size="lg"
+          className="w-full"
           onClick={goToDashboard}
           disabled={!ready}
         >

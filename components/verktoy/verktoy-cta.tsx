@@ -14,7 +14,7 @@ export function VerktoyCta({ source, pitch }: { source: string; pitch: string })
     <section className="mx-auto mt-12 max-w-2xl rounded-2xl border border-primary/25 bg-primary/5 p-6 text-center sm:p-8">
       <h2 className="text-xl font-semibold tracking-tight">Slik gjør Proanbud dette automatisk</h2>
       <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">{pitch}</p>
-      <Button className="mt-5 h-11 px-6 text-base" asChild>
+      <Button size="lg" className="mt-5 px-6 text-base" asChild>
         <a
           href={signupUrl(source)}
           onClick={() => track("verktoy_cta_klikket", { verktoy: source, plassering: "bunn" })}

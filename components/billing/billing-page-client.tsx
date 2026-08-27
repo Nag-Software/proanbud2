@@ -240,8 +240,8 @@ export function BillingPageClient() {
               : "14 dager Proff gratis · uten kort · ingen belastning"}
           </p>
         </div>
-        <Button
-          className="mt-8 h-11 w-full"
+        <Button size="lg"
+          className="mt-8 w-full"
           onClick={() => (trialUsed ? submitPlanChange({}) : startCardFreeTrial())}
           disabled={actionLoading !== null}
         >

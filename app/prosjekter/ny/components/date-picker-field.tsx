@@ -23,11 +23,11 @@ export function DatePickerField({ label, value, onChange, error, placeholder = "
       <p className="text-sm font-medium text-foreground">{label}</p>
       <Popover>
         <PopoverTrigger asChild>
-          <Button
+          <Button size="lg"
             type="button"
             variant="outline"
             className={cn(
-              "h-12 w-full justify-between rounded-lg px-4 text-left text-base",
+              "w-full justify-between rounded-lg px-4 text-left text-base",
               !value && "text-muted-foreground",
               error && "border-destructive"
             )}

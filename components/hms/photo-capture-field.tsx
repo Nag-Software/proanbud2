@@ -191,7 +191,6 @@ export function PhotoCaptureField({
           type="button"
           variant="outline"
           size="sm"
-          className="h-11"
           disabled={disabled || compressing || photos.length >= maxPhotos}
           onClick={() => cameraInputRef.current?.click()}
         >
@@ -206,7 +205,6 @@ export function PhotoCaptureField({
           type="button"
           variant="outline"
           size="sm"
-          className="h-11"
           disabled={disabled || compressing || photos.length >= maxPhotos}
           onClick={() => galleryInputRef.current?.click()}
         >

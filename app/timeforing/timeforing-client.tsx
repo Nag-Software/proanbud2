@@ -435,10 +435,10 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
 
           {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
 
-          <Button
+          <Button size="xl"
             type="button"
             variant="destructive"
-            className="mt-5 h-14 w-full gap-2 text-base font-semibold"
+            className="mt-5 w-full gap-2 text-base font-semibold"
             onClick={handleStopp}
             disabled={isSubmitting}
           >
@@ -502,9 +502,9 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
           {error && <p className="text-sm text-destructive">{error}</p>}
 
           <div className="space-y-1">
-            <Button
+            <Button size="xl"
               type="button"
-              className="h-14 w-full gap-2 text-base font-semibold"
+              className="w-full gap-2 text-base font-semibold"
               onClick={handleGeofenceCheckIn}
               disabled={!selectedProjectId || isSubmitting || checkingIn}
             >
@@ -520,10 +520,10 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
             </p>
           </div>
 
-          <Button
+          <Button size="lg"
             type="button"
             variant="outline"
-            className="h-12 w-full gap-2"
+            className="w-full gap-2"
             onClick={handleStartWithoutGps}
             disabled={!selectedProjectId || isSubmitting || checkingIn}
           >
@@ -624,9 +624,9 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
 
               {manualError && <p className="text-sm text-destructive">{manualError}</p>}
 
-              <Button
+              <Button size="lg"
                 type="button"
-                className="h-12 w-full"
+                className="w-full"
                 onClick={handleSaveManual}
                 disabled={manualSubmitting}
               >

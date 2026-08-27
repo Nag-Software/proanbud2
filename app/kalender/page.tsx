@@ -651,9 +651,9 @@ function KalenderPage() {
                 ))}
               </div>
             )}
-            <Button
+            <Button size="lg"
               type="button"
-              className="h-12 w-full gap-2"
+              className="w-full gap-2"
               onClick={() => {
                 if (!daySheetDate) return
                 const { start, end } = defaultSlotTimes(daySheetDate)

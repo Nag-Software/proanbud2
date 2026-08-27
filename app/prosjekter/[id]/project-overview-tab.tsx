@@ -29,13 +29,11 @@ import { cn } from "@/lib/utils"
 import {
   formatProjectDate,
   getProjectPeriod,
-  getStatusConfig,
   getTimelineProgress,
   formatDaysRemaining,
   isPastDeadline,
 } from "@/app/prosjekter/project-utils"
 
-import { ProjectPhaseControl } from "./project-phase-control"
 import { useProjectTabNavigation } from "./project-tabs-shell"
 
 const statusToLabel: Record<string, string> = {
@@ -296,7 +294,6 @@ export function ProjectOverviewTab({
   flags,
 }: ProjectOverviewProps) {
   const navigateToTab = useProjectTabNavigation()
-  const statusConfig = getStatusConfig(project.status)
   const openDeviations = deviations.filter((d) => d.status === "open")
   const activeChecklists = checklists.filter(
     (c) => c.status === "in_progress" || c.status === "not_started"
@@ -322,21 +319,10 @@ export function ProjectOverviewTab({
   return (
     <div className="grid gap-3 lg:grid-cols-12">
       {/* KPI rail */}
-      <Card
-        className={cn(
-          "overflow-hidden rounded-lg border-l-4 lg:col-span-12",
-          statusConfig.railBorderClass
-        )}
-      >
+      {/* Fasen står i stripa over fanene (project-phase-stripe) — den skal ikke
+          gjentas her, og kortet trenger ingen farget kant for å si det samme. */}
+      <Card className="overflow-hidden rounded-lg lg:col-span-12">
         <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-          <div className="min-w-[200px] shrink-0 sm:pr-6 sm:border-r sm:border-border/60">
-            <ProjectPhaseControl
-              projectId={projectId}
-              status={project.status}
-              canEdit={flags.isProjectAdmin}
-            />
-          </div>
-
           <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
             <OverviewStat
               label="Oppgaver ferdig"

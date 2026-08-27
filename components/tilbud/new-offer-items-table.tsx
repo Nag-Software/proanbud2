@@ -998,17 +998,17 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
               <span className="font-semibold tabular-nums">{formatNok(calculateLineItemTotal(editingItem))}</span>
             </div>
             <div className="flex gap-2 pt-2">
-              <Button
+              <Button size="lg"
                 type="button"
                 variant="outline"
-                className="flex-1 h-11"
+                className="flex-1 "
                 onClick={() => setEditingItem(null)}
               >
                 Avbryt
               </Button>
-              <Button
+              <Button size="lg"
                 type="button"
-                className="flex-1 h-11"
+                className="flex-1 "
                 onClick={() => {
                   if (editingItem) {
                     updateRow(editingItem.id, editingItem)

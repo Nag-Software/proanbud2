@@ -184,8 +184,9 @@ function NyttLeadButton() {
     return (
       <div className="px-2 pt-2">
         <Button
+          variant="accent"
           size="icon"
-          className="size-8 border border-accent bg-accent text-accent-foreground hover:bg-accent/80"
+          className="size-8"
           onClick={() => router.push("/selger/leads?nytt=1")}
           title="Nytt lead"
           aria-label="Nytt lead"
@@ -199,8 +200,9 @@ function NyttLeadButton() {
   return (
     <div className="px-2 pt-2">
       <Button
+        variant="accent"
         size="sm"
-        className="w-full border border-accent bg-accent font-semibold text-accent-foreground hover:bg-accent/80"
+        className="w-full"
         onClick={() => router.push("/selger/leads?nytt=1")}
       >
         <PlusIcon className="size-4" />

@@ -292,8 +292,9 @@ export function LeadRecordClient({
                 </p>
                 <div className="mt-2.5 flex gap-2">
                   <Button
+                    variant="accent"
                     size="sm"
-                    className="flex-1 border border-accent bg-accent text-accent-foreground hover:bg-accent/80"
+                    className="flex-1"
                     onClick={() => {
                       setCompleteTaskId(openTask.id)
                       setPlanOpen(true)
@@ -798,7 +799,7 @@ function EmailPane({
         <Button
           size="sm"
           variant="outline"
-          className="h-7 gap-1.5 border-accent bg-accent/60 text-xs font-semibold hover:bg-accent"
+          className="h-7 gap-1.5 text-xs"
           disabled={drafting}
           onClick={() => void draft()}
         >

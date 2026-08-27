@@ -93,11 +93,11 @@ export function OfferDocumentViewer({
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button type="button" variant="outline" size="sm" className="h-9" onClick={openInNewTab}>
+        <Button type="button" variant="outline" size="sm" onClick={openInNewTab}>
           <ExternalLink className="mr-2 h-4 w-4" />
           Åpne i ny fane
         </Button>
-        <Button type="button" size="sm" className="h-9" onClick={downloadPdf}>
+        <Button type="button" size="sm" onClick={downloadPdf}>
           <Download className="mr-2 h-4 w-4" />
           Last ned PDF
         </Button>

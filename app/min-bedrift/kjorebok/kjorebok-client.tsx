@@ -218,14 +218,14 @@ export function KjorebokClient({ initialOverview, currentUserId }: Props) {
           </TabsList>
 
           <div className="flex w-full gap-2 lg:w-auto">
-            <Button
+            <Button size="lg"
               variant="outline"
-              className="h-11 flex-1 lg:h-9 lg:flex-initial"
+              className="flex-1 lg:lg:flex-initial"
               onClick={() => setTrackerOpen(true)}
             >
               <NavigationIcon className="size-4" /> Start kjøring
             </Button>
-            <Button className="h-11 flex-1 lg:h-9 lg:flex-initial" onClick={openNew}>
+            <Button size="lg" className="flex-1 lg:lg:flex-initial" onClick={openNew}>
               <PlusIcon className="size-4" /> Ny tur
             </Button>
           </div>

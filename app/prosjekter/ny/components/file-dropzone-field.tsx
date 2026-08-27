@@ -101,7 +101,6 @@ export function FileDropzoneField({ label, files, onChange, hint }: FileDropzone
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9"
                 onClick={() => removeFile(file)}
               >
                 <X className="h-4 w-4" />

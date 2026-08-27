@@ -198,8 +198,8 @@ export function KalkulatorClient() {
             </div>
           )}
 
-          <Button
-            className="mt-5 h-12 w-full text-base"
+          <Button size="lg"
+            className="mt-5 w-full text-base"
             onClick={generer}
             disabled={loading || beskrivelse.trim().length < 20}
           >
@@ -257,7 +257,7 @@ export function KalkulatorClient() {
                 Full KI-kalkulasjon med dine egne priser, din logo og digital signering.
                 14 dager gratis — uten kort.
               </p>
-              <Button className="mt-4 h-11 px-6 text-base" asChild>
+              <Button size="lg" className="mt-4 px-6 text-base" asChild>
                 <Link href={SIGNUP_URL} onClick={() => track("kalkulator_cta_klikket", { plassering: "resultat" })}>
                   Fullfør tilbudet gratis
                   <ArrowRightIcon className="ml-2 size-4" />

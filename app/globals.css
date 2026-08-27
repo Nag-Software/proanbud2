@@ -111,6 +111,46 @@
   --tone-violet: #7e62d9;
   --tone-violet-strong: #654dc0;
   --chart-axis-muted: #8a8a8a;
+
+  /* ── Kontroller ────────────────────────────────────────────────────────
+     Hevet knappeflate: lys kant øverst inni, mørk nederst, lav skygge under.
+     Gradienten er GJENNOMSIKTIG med vilje — da kan en knapp beholde sin egen
+     bakgrunnsfarge (bg-accent, bg-destructive …) og likevel få dybden.
+     Endres disse, endres hver eneste knapp i appen. */
+  --radius-control: 8px;
+  /* Kontrollhøyder — én skala for knapper, felter og select-triggere, slik at
+     de står på linje når de ligger side om side. Endre HER, ikke per knapp.
+     (Touch-gulvet i @media (pointer: coarse) nederst i fila står urørt: med
+     finger må målet fortsatt være 44 px.) */
+  --control-h-xs: 1.5rem;
+  --control-h-sm: 1.875rem;
+  --control-h: 2.125rem;
+  --control-h-lg: 2.5rem;
+  --control-h-xl: 3.25rem;
+  --control-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.04) 45%, rgba(0, 0, 0, 0.06) 100%);
+  --control-sheen-soft: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 55%, rgba(21, 21, 21, 0.045) 100%);
+  --control-border-soft: #dedede;
+  --shadow-raised: inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(0, 0, 0, 0.35), 0 1px 2px rgba(21, 21, 21, 0.3);
+  --shadow-raised-hover: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -1px 0 rgba(0, 0, 0, 0.35), 0 2px 5px rgba(21, 21, 21, 0.28);
+  --shadow-pressed: inset 0 2px 4px rgba(0, 0, 0, 0.45);
+  --shadow-surface: inset 0 1px 0 #ffffff, 0 1px 2px rgba(21, 21, 21, 0.07);
+  --shadow-surface-hover: inset 0 1px 0 #ffffff, 0 2px 5px rgba(21, 21, 21, 0.09);
+  --shadow-surface-pressed: inset 0 2px 3px rgba(21, 21, 21, 0.1);
+  --shadow-field: inset 0 1px 2px rgba(21, 21, 21, 0.05);
+  /* Menyer og popovere: samme familie som knappene, men løftet tydeligere fra
+     siden. Den lyse innerkanten øverst er det som knytter dem til chippen de
+     åpnes fra. */
+  --shadow-overlay: inset 0 1px 0 #ffffff, 0 10px 28px -10px rgba(21, 21, 21, 0.22), 0 2px 6px rgba(21, 21, 21, 0.07);
+  /* Flytende glassflate (mobilmenyen): den skarpe lyskanten øverst er det som
+     gjør at glasset ser ut som glass og ikke som en hvit boks. Nederste
+     innerkant gir tykkelse, og den vide skyggen løfter den fra innholdet som
+     ruller under. */
+  --shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -1px 0 rgba(21, 21, 21, 0.06), 0 1px 2px rgba(21, 21, 21, 0.06), 0 14px 34px -10px rgba(21, 21, 21, 0.26);
+  /* Selve glasset. Gradienten gjør at flaten fanger lys øverst og faller av
+     nedover — uten den blir en hvit kapsel på en hvit side usynlig. Fargene er
+     halvgjennomsiktige med vilje, ellers slutter blur-en å bety noe. */
+  --glass-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.82) 0%, rgba(250, 250, 250, 0.62) 100%);
+  --glass-border: rgba(21, 21, 21, 0.07);
 }
 
 .dark {
@@ -145,6 +185,23 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* Kontroller i mørk drakt: den lyse kanten må dempes kraftig, og skyggen
+     under må være mørkere for i det hele tatt å synes. */
+  --control-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 45%, rgba(0, 0, 0, 0.18) 100%);
+  --control-sheen-soft: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 55%, rgba(0, 0, 0, 0.16) 100%);
+  --control-border-soft: oklch(1 0 0 / 16%);
+  --shadow-raised: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-raised-hover: inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 -1px 0 rgba(0, 0, 0, 0.16), 0 2px 5px rgba(0, 0, 0, 0.5);
+  --shadow-pressed: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-surface: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-surface-hover: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 5px rgba(0, 0, 0, 0.5);
+  --shadow-surface-pressed: inset 0 2px 3px rgba(0, 0, 0, 0.4);
+  --shadow-field: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-overlay: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 12px 30px -10px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.45);
+  --shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 34px -10px rgba(0, 0, 0, 0.75);
+  --glass-surface: linear-gradient(180deg, rgba(42, 42, 42, 0.78) 0%, rgba(28, 28, 28, 0.62) 100%);
+  --glass-border: rgba(255, 255, 255, 0.1);
 }
 
 @layer base {
@@ -585,30 +642,35 @@
    so explicitly larger buttons (h-12/h-14) still win, and smaller explicit
    heights are floored up to a tappable size only where a finger is the pointer. */
 @media (pointer: coarse) {
+  /* Touch-gulv. Apple sier 44 px for frittstående mål, men med en basisskala
+     på 34 px ble spranget til 44 så stort at knappene så oppblåste ut ved
+     siden av alt annet på mobil. 40 px treffes fortsatt trygt med tommelen og
+     ligger nær nok basisen til at proporsjonene holder.
+     Går du lavere enn dette: mål på en ekte telefon først. */
   [data-slot="button"][data-size="default"],
   [data-slot="button"][data-size="lg"] {
-    min-height: 2.75rem; /* 44px — Apple HIG */
+    min-height: 2.5rem; /* 40px */
   }
   [data-slot="button"][data-size="sm"] {
-    min-height: 2.5rem;
+    min-height: 2.25rem; /* 36px */
   }
   [data-slot="button"][data-size="icon"],
   [data-slot="button"][data-size="icon-lg"] {
-    min-height: 2.75rem;
-    min-width: 2.75rem;
-  }
-  [data-slot="button"][data-size="icon-sm"] {
     min-height: 2.5rem;
     min-width: 2.5rem;
   }
+  [data-slot="button"][data-size="icon-sm"] {
+    min-height: 2.25rem;
+    min-width: 2.25rem;
+  }
   [data-slot="input"] {
-    min-height: 2.75rem;
+    min-height: 2.5rem;
   }
   [data-slot="select-trigger"] {
-    min-height: 2.75rem;
+    min-height: 2.5rem;
   }
   [data-slot="tabs-list"] {
-    min-height: 2.5rem;
+    min-height: 2.25rem;
   }
 }
 
@@ -665,4 +727,3 @@
     transform: translateX(100%) scaleX(0.35);
   }
 }
-

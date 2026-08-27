@@ -32,6 +32,7 @@ import { EtterfaktureringTab } from "./etterfakturering-tab"
 import TimeforingTab from "./timeforing-tab"
 import KjorebokTab from "./kjorebok-tab"
 import { ProjectOverviewTab, type OverviewTask } from "./project-overview-tab"
+import { ProjectPhaseStripe } from "./project-phase-stripe"
 import { ProjectTabsShell } from "./project-tabs-shell"
 import { LonnsomhetTab } from "./lonnsomhet-tab"
 
@@ -231,16 +232,27 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   return (
     <AppPageShell segments={["Prosjekter", project.name]}>
       <section className="space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="space-y-0.5">
+        {/* Tittel, fase og handlinger deler én rad. Fasen hadde sin egen rad
+            før, men tittelraden sto halvtom — og prosjektsiden hadde tre
+            navigasjonsrader på toppen. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
+          <div className="min-w-0 space-y-0.5">
             <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
               {project.project_type || "Ditt prosjekt"}
             </p>
-            <h1 className="text-xl font-semibold text-foreground">{project.name}</h1>
+            <h1 className="truncate text-xl font-semibold text-foreground">{project.name}</h1>
           </div>
+
+          <ProjectPhaseStripe
+            projectId={project.id}
+            status={project.status}
+            canEdit={isProjectAdmin}
+            className="w-full sm:ml-auto sm:w-auto"
+          />
+
           <div className="flex w-full flex-wrap items-start gap-2 sm:w-auto">
             {!isWorker && (
-              <Button asChild className="flex h-9 flex-row px-4">
+              <Button asChild className="flex flex-row px-4">
                 <Link href={`/nytt-tilbud?projectId=${project.id}`}>
                   <PlusCircle className="h-4 w-4" />
                   Nytt tilbud
@@ -253,18 +265,39 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
         <Suspense fallback={<div className="h-10 animate-pulse rounded-md bg-muted" />}>
           <ProjectTabsShell
-            tabs={[
+            // Tre grupper i stedet for elleve faner på rad. Hvem som ser hva
+            // er UENDRET — reglene er bare flyttet ned på hver underfane, så
+            // en håndverker fortsatt når Tilbud og Kjørebok, men ikke
+            // Lønnsomhet, Etterfakturering eller Deltakere.
+            groups={[
               { value: "oversikt", label: "Oversikt" },
-              { value: "modell", label: "3D-modell", shortLabel: "3D" },
-              { value: "lonnsomhet", label: "Lønnsomhet", hidden: isWorker },
-              { value: "tilbud", label: "Tilbud" },
-              { value: "etterfakturering", label: "Etterfakturering", hidden: isWorker },
-              { value: "oppgaver", label: "Oppgaver", hidden: !hasTasks },
-              { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
-              { value: "timeforing", label: "Timeføring" },
-              { value: "kjorebok", label: "Kjørebok" },
-              { value: "kvalitet", label: "KS & Avvik", hidden: !showKvalitet },
-              { value: "deltakere", label: "Deltakere", hidden: isWorker },
+              {
+                value: "arbeid",
+                label: "Arbeid",
+                subs: [
+                  { value: "oppgaver", label: "Oppgaver", hidden: !hasTasks },
+                  { value: "timeforing", label: "Timeføring", shortLabel: "Timer" },
+                  { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
+                  { value: "kvalitet", label: "KS & Avvik", hidden: !showKvalitet },
+                  { value: "modell", label: "3D-modell", shortLabel: "3D" },
+                  { value: "deltakere", label: "Deltakere", hidden: isWorker },
+                ],
+              },
+              {
+                value: "okonomi",
+                label: "Økonomi",
+                subs: [
+                  { value: "tilbud", label: "Tilbud" },
+                  {
+                    value: "etterfakturering",
+                    label: "Etterfakturering",
+                    shortLabel: "Etterfakt.",
+                    hidden: isWorker,
+                  },
+                  { value: "lonnsomhet", label: "Lønnsomhet", hidden: isWorker },
+                  { value: "kjorebok", label: "Kjørebok" },
+                ],
+              },
             ]}
           >
             <ProjectTabPanel value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">

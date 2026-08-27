@@ -565,7 +565,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
                 <h1 className="text-2xl font-bold tracking-tight text-foreground">Nytt prosjekt</h1>
                 <p className="text-sm text-muted-foreground">Steg {step + 1} av 2</p>
               </div>
-              <Button asChild variant="ghost" className="h-9 rounded-lg px-4">
+              <Button asChild variant="ghost" className="rounded-lg px-4">
                 <Link href="/prosjekter">Avbryt</Link>
               </Button>
             </div>
@@ -790,7 +790,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-9 rounded-lg px-4"
+                  className="rounded-lg px-4"
                   onClick={handleBack}
                   disabled={form.formState.isSubmitting}
                 >
@@ -801,7 +801,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
               {step < 1 ? (
                 <Button
                   type="button"
-                  className="h-9 rounded-lg px-4"
+                  className="rounded-lg px-4"
                   onClick={() => {
                     void handleNext()
                   }}
@@ -812,7 +812,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
               ) : (
                 <Button
                   type="submit"
-                  className="h-9 rounded-lg px-4"
+                  className="rounded-lg px-4"
                   disabled={form.formState.isSubmitting}
                   onClick={requestSubmit}
                 >

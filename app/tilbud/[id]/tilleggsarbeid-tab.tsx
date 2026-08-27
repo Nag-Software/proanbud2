@@ -116,7 +116,7 @@ export function TilleggsarbeidTab({ offerId }: { offerId: string }) {
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">Ekstraarbeid utenfor tilbudet — send til kunden for godkjenning.</p>
         {!showForm ? (
-          <Button size="sm" className="h-9 shrink-0" onClick={() => setShowForm(true)}>
+          <Button size="sm" className="shrink-0" onClick={() => setShowForm(true)}>
             <Plus className="mr-1.5 h-4 w-4" />
             Nytt tillegg
           </Button>
@@ -143,10 +143,10 @@ export function TilleggsarbeidTab({ offerId }: { offerId: string }) {
             <Input id="co-amount" inputMode="decimal" value={form.amountNok} placeholder="0" onChange={(e) => setForm((f) => ({ ...f, amountNok: e.target.value }))} />
           </div>
           <div className="flex gap-2">
-            <Button onClick={handleCreate} disabled={saving} className="h-11 flex-1">
+            <Button size="lg" onClick={handleCreate} disabled={saving} className="flex-1">
               {saving ? "Lagrer …" : "Lagre tillegg"}
             </Button>
-            <Button variant="outline" className="h-11" onClick={() => setShowForm(false)}>
+            <Button size="lg" variant="outline" onClick={() => setShowForm(false)}>
               Avbryt
             </Button>
           </div>
@@ -174,19 +174,19 @@ export function TilleggsarbeidTab({ offerId }: { offerId: string }) {
                   <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${s.cls}`}>{s.label}</span>
                   <div className="ml-auto flex gap-2">
                     {co.status === "draft" ? (
-                      <Button size="sm" variant="outline" className="h-9" disabled={busyId === co.id} onClick={() => handleSend(co.id)}>
+                      <Button size="sm" variant="outline" disabled={busyId === co.id} onClick={() => handleSend(co.id)}>
                         <Send className="mr-1.5 h-4 w-4" />
                         {busyId === co.id ? "Sender …" : "Send til kunde"}
                       </Button>
                     ) : null}
                     {co.public_slug && co.status !== "draft" ? (
-                      <Button size="sm" variant="ghost" className="h-9" onClick={() => copyLink(co.public_slug!)}>
+                      <Button size="sm" variant="ghost" onClick={() => copyLink(co.public_slug!)}>
                         <Copy className="mr-1.5 h-4 w-4" />
                         Kopier lenke
                       </Button>
                     ) : null}
                     {co.status === "draft" ? (
-                      <Button size="icon" variant="ghost" className="h-9 w-9 text-muted-foreground" disabled={busyId === co.id} onClick={() => handleDelete(co.id)}>
+                      <Button size="icon" variant="ghost" className="text-muted-foreground" disabled={busyId === co.id} onClick={() => handleDelete(co.id)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     ) : null}

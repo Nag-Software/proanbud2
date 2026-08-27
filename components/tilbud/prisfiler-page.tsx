@@ -1045,11 +1045,11 @@ export function PrisfilerPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Prisfiler</h1>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Button variant="outline" className="px-4 h-9" onClick={() => openManualCreate()}>
+          <Button variant="outline" className="px-4 " onClick={() => openManualCreate()}>
             <PencilLine className="mr-2 h-4 w-4" />
             Legg til pris manuelt
           </Button>
-          <Button className="px-4 h-9" onClick={() => { resetWizard(); setOpen(true) }}>
+          <Button className="px-4 " onClick={() => { resetWizard(); setOpen(true) }}>
             <Plus className="mr-2 h-4 w-4" />
             Last opp prisfil
           </Button>
