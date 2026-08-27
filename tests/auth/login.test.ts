@@ -26,16 +26,16 @@ describe('auth UI', () => {
   const signupForm = readFileSync(resolve(__dirname, '../../components/signup-form.tsx'), 'utf-8')
   const middleware = readFileSync(resolve(__dirname, '../../lib/supabase/middleware.ts'), 'utf-8')
 
-  it('login form offers Apple login behind the dark-deploy flag', () => {
-    expect(loginForm).toContain('AppleLoginButton')
-    expect(loginForm).toContain('APPLE_LOGIN_ENABLED')
+  it('login form does not offer Apple login', () => {
+    expect(loginForm).not.toContain('AppleLoginButton')
+    expect(loginForm).not.toContain('APPLE_LOGIN_ENABLED')
     expect(loginForm).toContain('completeClientLogin')
     expect(loginForm).not.toContain('getSession')
   })
 
-  it('signup form offers Apple login behind the dark-deploy flag', () => {
-    expect(signupForm).toContain('AppleLoginButton')
-    expect(signupForm).toContain('APPLE_LOGIN_ENABLED')
+  it('signup form does not offer Apple login', () => {
+    expect(signupForm).not.toContain('AppleLoginButton')
+    expect(signupForm).not.toContain('APPLE_LOGIN_ENABLED')
     expect(signupForm).toContain('completeClientLogin')
   })
 
@@ -60,10 +60,6 @@ describe('auth OAuth routes', () => {
     expect(googleCallback).toContain('user_profiles')
   })
 
-  const appleButton = readFileSync(
-    resolve(__dirname, '../../components/apple-login-button.tsx'),
-    'utf-8'
-  )
   const appleStart = readFileSync(
     resolve(__dirname, '../../app/api/auth/apple/start/route.ts'),
     'utf-8'
@@ -72,10 +68,6 @@ describe('auth OAuth routes', () => {
     resolve(__dirname, '../../app/api/auth/apple/callback/route.ts'),
     'utf-8'
   )
-
-  it('apple button stays dark until NEXT_PUBLIC_APPLE_LOGIN is set', () => {
-    expect(appleButton).toContain('NEXT_PUBLIC_APPLE_LOGIN')
-  })
 
   it('apple login start uses signInWithOAuth', () => {
     expect(appleStart).toContain('signInWithOAuth')

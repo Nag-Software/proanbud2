@@ -9,7 +9,6 @@ import { completeClientLogin } from "@/lib/auth/client-login"
 import { reportClientError } from "@/lib/errors/client"
 import { authErrorMessage } from "@/lib/errors/user-message"
 import { startGoogleLogin } from "@/lib/native-bridge"
-import { APPLE_LOGIN_ENABLED, AppleLoginButton } from "@/components/apple-login-button"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -79,19 +78,12 @@ function LoginFormInner({
         <CardHeader className="text-center">
           <CardTitle className="text-xl">Velkommen tilbake</CardTitle>
           <CardDescription>
-            {APPLE_LOGIN_ENABLED
-              ? "Logg inn med Apple, Google eller e-post"
-              : "Logg inn med Google eller e-post"}
+            Logg inn med Google eller e-post
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit}>
             <FieldGroup>
-              {APPLE_LOGIN_ENABLED ? (
-                <Field>
-                  <AppleLoginButton label="Logg inn med Apple" disabled={loading} />
-                </Field>
-              ) : null}
               <Field>
                 <Button
                   variant="outline"

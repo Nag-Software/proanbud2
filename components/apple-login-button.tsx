@@ -4,11 +4,13 @@ import { startAppleLogin } from "@/lib/native-bridge"
 import { Button } from "@/components/ui/button"
 
 /**
- * «Logg inn med Apple» — kreves av App Review 4.8 (apper som tilbyr
- * tredjeparts-innlogging som Google må også tilby Apple). Flagget lar oss
- * deploye mørkt: knappen vises først når Apple-provideren er konfigurert i
- * Supabase (Services ID + nøkkel fra Apple Developer-kontoen) og
- * NEXT_PUBLIC_APPLE_LOGIN=1 er satt i Vercel. Inlines ved build.
+ * IKKE I BRUK: knappen er fjernet fra /login og /registrer fordi Apple-
+ * provideren ennå ikke er satt opp (Services ID + nøkkel fra Apple
+ * Developer-kontoen mangler i Supabase), så innlogging med Apple ville
+ * feilet. Filen og /api/auth/apple/* står igjen slik at valget kan settes
+ * inn igjen i login-form.tsx og signup-form.tsx den dagen provideren er
+ * konfigurert — App Review 4.8 krever Apple-innlogging i iOS-appen så lenge
+ * vi tilbyr Google.
  */
 export const APPLE_LOGIN_ENABLED = process.env.NEXT_PUBLIC_APPLE_LOGIN === "1"
 
