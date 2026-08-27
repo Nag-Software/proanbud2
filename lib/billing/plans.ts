@@ -65,7 +65,8 @@ export const MODULE_CATALOG: Array<{
   {
     key: "timeforing",
     label: "Timeføring",
-    description: "Registrer og følg opp timer på prosjekter og ansatte.",
+    description:
+      "Registrer og følg opp timer på prosjekter og ansatte. Inkludert i Proff; tillegg på Mini.",
     monthlyNok: MODULE_PRICING.timeforing,
   },
   {
@@ -239,14 +240,16 @@ export function intervalFromPriceMetadata(metadata: PriceMetadata): BillingInter
 //
 // Mini = "vinn jobben": tilbud, KI-tilbud, kunder, prosjekt-kjerne, priser.
 // Proff = "lever jobben": adds the compliance bundle (HMS/KS/avvik),
-// project tasks, messaging and integrations.
+// timeføring, project tasks, messaging and integrations.
 //
 // `kalender` (the built-in Proanbud calendar) is included in EVERY plan, and
 // the optional Google/Outlook connection on top of it is free — no module.
 //
-// This is separate from the à-la-carte MODULE system (timeforing/dokumenter
-// stay independent add-ons on BOTH plans). `integrasjoner` is special: it is
-// included in Proff AND still purchasable as a module on Mini — see hasFeature.
+// This is separate from the à-la-carte MODULE system. `dokumenter` and
+// `kjorebok` stay independent add-ons on BOTH plans. `timeforing` is included
+// in Proff (see MODULES_INCLUDED_IN_PROFF / hasModule) and still purchasable
+// as a module on Mini. `integrasjoner` is special: it is included in Proff
+// AND still purchasable as a module on Mini — see hasFeature.
 // ---------------------------------------------------------------------------
 
 export type FeatureKey =
@@ -279,7 +282,34 @@ const FEATURE_MODULE_FALLBACK: Partial<Record<FeatureKey, ModuleKey>> = {
 }
 
 /** Modules whose value is already bundled into Proff — shown as "Inkludert i Proff". */
-export const MODULES_INCLUDED_IN_PROFF: ModuleKey[] = ["integrasjoner", "meldinger_ki"]
+export const MODULES_INCLUDED_IN_PROFF: ModuleKey[] = [
+  "timeforing",
+  "integrasjoner",
+  "meldinger_ki",
+]
+
+export function isModuleIncludedInProff(moduleKey: string): boolean {
+  return (MODULES_INCLUDED_IN_PROFF as readonly string[]).includes(moduleKey)
+}
+
+/**
+ * Pure resolver: does a company on `plan` owning `modules` have `moduleKey`?
+ * Honors Proff-bundled modules (timeføring, integrasjoner, KI-svar) so Proff
+ * never needs a purchased company_modules row for those. Mini still requires
+ * the purchased row. Trial unlocking is handled by the callers (they
+ * short-circuit on isTrialStatus before calling this).
+ */
+export function hasModule(
+  plan: PlanKey | null | undefined,
+  modules: Iterable<string>,
+  moduleKey: string
+): boolean {
+  if (plan === "proff" && isModuleIncludedInProff(moduleKey)) return true
+  for (const m of modules) {
+    if (m === moduleKey) return true
+  }
+  return false
+}
 
 /**
  * Pure resolver: does a company on `plan` owning `modules` have `feature`?
@@ -318,11 +348,16 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
  * the marketing site. Compliance keys are bundled into one display line.
  */
 export const PROFF_INCLUDED_FEATURES: Array<{
-  key: FeatureKey
+  key: FeatureKey | ModuleKey
   label: string
   description: string
 }> = [
   { key: "hms", label: "HMS, KS og avvik", description: "HMS-håndbok, KS-sjekklister og avvikshåndtering." },
+  {
+    key: "timeforing",
+    label: "Timeføring",
+    description: "Registrer og følg opp timer på prosjekter og ansatte — uten eget tillegg.",
+  },
   {
     key: "project_tasks",
     label: "Oppgaver i prosjekter",

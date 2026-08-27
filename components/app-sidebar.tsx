@@ -90,9 +90,9 @@ const data: {
       tourId: "tilbud",
     },
     {
-      // Timeføring er en modul (ikke en plan-feature) — nav-konvensjonen er at
-      // modulbaserte sider (jf. Dokumenter) alltid vises; siden selv håndterer
-      // manglende modul med en oppgraderingsflate.
+      // Timeføring er inkludert i Proff og et Mini-tillegg. Nav-konvensjonen er
+      // at modulbaserte sider (jf. Dokumenter) alltid vises; siden selv
+      // håndterer manglende modul med en oppgraderingsflate.
       title: "Timeføring",
       url: "/timeforing",
       icon: <ClockIcon className="size-4" />,

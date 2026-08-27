@@ -3,6 +3,7 @@ import { cache } from "react"
 import {
   hasBillableAccess,
   hasFeature,
+  hasModule,
   isTrialStatus,
   type FeatureKey,
   type PlanKey,
@@ -32,10 +33,9 @@ export async function companyHasModule(companyId: string, moduleKey: string): Pr
   // Status-aware: a company_modules row can outlive a lapsed subscription during
   // drift, so require the subscription to still be active/trialing.
   const { plan, modules, status } = await getCompanyPlanAndModules(companyId)
-  void plan
   if (isTrialStatus(status)) return true // trial = every module unlocked
   if (!hasBillableAccess(status)) return false
-  return modules.includes(moduleKey)
+  return hasModule(plan, modules, moduleKey)
 }
 
 // `cache()`-wrapped (keyed by userId): several pages resolve the company id and

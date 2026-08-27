@@ -193,24 +193,29 @@ export async function syncModulesFromSubscription(
     const moduleKey = item.price.metadata?.module_key
     if (!moduleKey) continue
 
-    // Integrasjoner is bundled into Proff. If a company upgraded to Proff while
-    // still carrying the paid integrasjoner module item, remove that item so they
-    // are not double-charged for a feature the plan already includes.
+    // Integrasjoner and timeføring are bundled into Proff. If a company
+    // upgraded to Proff (or was already on Proff) while still carrying the
+    // paid module item, remove that item so they are not double-charged for a
+    // feature the plan already includes.
     // Not adding it to enabledKeys lets the cleanup loop below drop the stale
     // company_modules row too. (Re-runs are idempotent: the item is already gone.)
-    if (moduleKey === "integrasjoner" && planKey === "proff") {
+    // Access is granted via hasModule / MODULES_INCLUDED_IN_PROFF, so dropping
+    // the Stripe item does not revoke timeføring.
+    // meldinger_ki is also bundled in Proff but is NOT auto-removed here —
+    // leftover KI add-on billing is out of scope for this change.
+    if ((moduleKey === "integrasjoner" || moduleKey === "timeforing") && planKey === "proff") {
       try {
         const stripe = getStripe()
         await stripe.subscriptionItems.del(item.id)
       } catch (error) {
-        console.error("Kunne ikke fjerne integrasjoner-modulledd på Proff", error)
+        console.error(`Kunne ikke fjerne ${moduleKey}-modulledd på Proff`, error)
         void logServerError({
-          message: "Kunne ikke fjerne integrasjoner-modulledd på Proff-abonnement",
+          message: `Kunne ikke fjerne ${moduleKey}-modulledd på Proff-abonnement`,
           error,
           level: "warning",
           source: "server",
           route: "syncModulesFromSubscription",
-          context: { companyId, subscriptionId: subscription.id, itemId: item.id },
+          context: { companyId, subscriptionId: subscription.id, itemId: item.id, moduleKey },
         })
       }
       continue

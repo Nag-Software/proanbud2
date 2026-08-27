@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server"
 
-import { isActiveSubscriptionStatus, isTrialStatus, type FeatureKey, type PlanKey } from "@/lib/billing/plans"
+import {
+  hasModule,
+  isActiveSubscriptionStatus,
+  isTrialStatus,
+  type FeatureKey,
+  type PlanKey,
+} from "@/lib/billing/plans"
 import { companyHasFeature } from "@/lib/billing/server-modules"
 import type { BillingStatus, UsageSummary } from "@/lib/billing/types"
 import { isAdmin } from "@/lib/roles"
@@ -132,6 +138,10 @@ export async function requireModule(moduleKey: string): Promise<
   // During the free trial every module is unlocked — don't require a purchased
   // company_modules row. Mirrors companyHasModule.
   if (isTrialStatus(result.context.status)) return result
+
+  // Proff-bundled modules (timeføring, integrasjoner, KI-svar) do not need a
+  // purchased company_modules row.
+  if (hasModule(result.context.planKey, [], moduleKey)) return result
 
   const admin = createAdminClient()
   const { data } = await admin

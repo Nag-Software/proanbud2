@@ -12,7 +12,7 @@ import { ProjectTabPanel } from "./project-tab-panel"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { getCompanyPlanAndModules, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
-import { MODULE_PRICING, hasFeature } from "@/lib/billing/plans"
+import { MODULE_PRICING, hasFeature, hasModule, isTrialStatus } from "@/lib/billing/plans"
 import { canManageProjects, getRoleDisplayName } from "@/lib/roles"
 import { fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import { getDeviationsAction } from "@/app/avvik/actions"
@@ -147,15 +147,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   // Resolve plan + enabled modules in ONE read, then derive every gate
   // in-memory. Previously companyHasModule + 3× companyHasFeature issued ~8
   // separate admin reads for data that is identical across the calls.
-  const { plan, modules } = companyId
+  const { plan, modules, status } = companyId
     ? await getCompanyPlanAndModules(companyId)
-    : { plan: null, modules: [] as string[] }
-  const hasTimeforing = modules.includes("timeforing")
-  const hasKjorebok = modules.includes("kjorebok")
+    : { plan: null, modules: [] as string[], status: null }
+  const trialing = isTrialStatus(status)
+  const hasTimeforing = trialing || hasModule(plan, modules, "timeforing")
+  const hasKjorebok = trialing || hasModule(plan, modules, "kjorebok")
   // Proff-only feature flags for the embedded tabs (KS, Avvik, Oppgaver).
-  const hasKs = hasFeature(plan, modules, "ks")
-  const hasAvvik = hasFeature(plan, modules, "avvik")
-  const hasTasks = hasFeature(plan, modules, "project_tasks")
+  const hasKs = trialing || hasFeature(plan, modules, "ks")
+  const hasAvvik = trialing || hasFeature(plan, modules, "avvik")
+  const hasTasks = trialing || hasFeature(plan, modules, "project_tasks")
   // KS og Avvik deler «KS & Avvik»-fanen. KS er skjult for håndverkere, Avvik
   // er ikke — fanen vises så lenge minst én av delene er tilgjengelig.
   const showKsSub = !isWorker && hasKs
@@ -349,7 +350,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 <ModuleGate
                   moduleName="Timeføring"
                   monthlyPriceNok={MODULE_PRICING.timeforing}
-                  description="Registrer og følg arbeidstimer direkte på prosjektet."
+                  description="Registrer og følg arbeidstimer direkte på prosjektet. Inkludert i Proff; 39 kr/mnd tillegg på Mini."
                 />
               )}
             </ProjectTabPanel>

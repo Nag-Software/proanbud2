@@ -6,7 +6,12 @@ import { getRoleDisplayName, normalizeRole, type CanonicalRole } from "@/lib/rol
 import { useRoleContext } from "@/components/role-provider"
 import { useAuth } from "@/components/auth-provider"
 import { readMockRoleFromDocument } from "@/lib/auth/role-mock"
-import { hasFeature as resolveFeature, isTrialStatus, type FeatureKey } from "@/lib/billing/plans"
+import {
+  hasFeature as resolveFeature,
+  hasModule as resolveModule,
+  isTrialStatus,
+  type FeatureKey,
+} from "@/lib/billing/plans"
 
 /**
  * Rolle-cache i localStorage så nav/sidebar kan vise riktig meny fra første
@@ -130,7 +135,7 @@ export function useUserRole() {
     // so a missing migration / transient RPC error never hides paid Proff features.
     isProff: planKnown ? isTrialing || planKey === "proff" : true,
     hasModule: (moduleKey: string) =>
-      planKnown ? isTrialing || enabledModules.includes(moduleKey) : true,
+      planKnown ? isTrialing || resolveModule(planKey, enabledModules, moduleKey) : true,
     hasFeature: (feature: FeatureKey) =>
       planKnown ? isTrialing || resolveFeature(planKey, enabledModules, feature) : true,
   }

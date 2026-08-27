@@ -3,7 +3,7 @@ import { z } from "zod"
 
 import { toggleModuleOnSubscription } from "@/lib/billing/checkout"
 import { requireActiveSubscription, requireCompanyAdmin } from "@/lib/billing/guards"
-import type { ModuleKey } from "@/lib/billing/plans"
+import { MODULE_CATALOG, isModuleIncludedInProff, type ModuleKey } from "@/lib/billing/plans"
 import { SubscriptionMissingError } from "@/lib/billing/stripe-helpers"
 import { logServerError } from "@/lib/errors/log"
 
@@ -25,16 +25,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Ugyldig forespørsel." }, { status: 400 })
     }
 
-    // Integrasjoner is bundled into Proff — never let a Proff company add the
-    // paid 19 kr module on top (the UI hides the toggle, but enforce it here too
-    // so a direct POST cannot create a duplicate, double-charging subscription item).
+    // Modules bundled into Proff (timeføring, integrasjoner, KI-svar) must never
+    // be added as a paid subscription item on top. The UI hides the toggle, but
+    // enforce it here so a direct POST cannot create a double-charging item.
+    // Disabling remains allowed so a leftover 39 kr-line can still be turned off.
     if (
       parsed.data.enabled &&
-      parsed.data.moduleKey === "integrasjoner" &&
-      auth.context.planKey === "proff"
+      auth.context.planKey === "proff" &&
+      isModuleIncludedInProff(parsed.data.moduleKey)
     ) {
+      const label =
+        MODULE_CATALOG.find((m) => m.key === parsed.data.moduleKey)?.label ?? parsed.data.moduleKey
       return NextResponse.json(
-        { error: "Integrasjoner er allerede inkludert i Proff-abonnementet." },
+        { error: `${label} er allerede inkludert i Proff-abonnementet.` },
         { status: 400 }
       )
     }
