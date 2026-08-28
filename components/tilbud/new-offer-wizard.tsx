@@ -59,20 +59,20 @@ type NewOfferWizardProps = {
 const steps = [
   {
     id: 1,
-    title: "Nytt tilbud",
-    description: "Beskriv jobben og last opp bilder",
+    title: "Kunde og jobb",
+    description: "Beskriv jobben med dine egne ord",
     icon: Sparkles,
   },
   {
     id: 2,
-    title: "Rediger prisforslag",
-    description: "Juster pris med automatisk prisforslag",
+    title: "Hva skal gjøres",
+    description: "Se over postene og rett det som ikke stemmer",
     icon: Zap,
   },
   {
     id: 3,
-    title: "Forhåndsvisning",
-    description: "Gjennomgå og bekreft prising",
+    title: "Se over og send",
+    description: "Slik ser tilbudet ut for kunden",
     icon: Calculator,
   },
 ] as const
@@ -534,7 +534,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                         {isCompleted ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : <span>{item.id}</span>}
                       </div>
                       <span
-                        className={`text-[11px] font-medium transition-colors duration-200 whitespace-nowrap ${
+                        className={`hidden text-[11px] font-medium whitespace-nowrap transition-colors duration-200 sm:block ${
                           isActive ? "text-primary" : isCompleted ? "text-muted-foreground" : "text-muted-foreground/40"
                         }`}
                       >
@@ -542,7 +542,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                       </span>
                     </button>
                     {index < steps.length - 1 && (
-                      <div className="relative mx-3 mb-5 h-px w-16 sm:w-24">
+                      <div className="relative mx-2 h-px w-10 sm:mx-3 sm:mb-5 sm:w-24">
                         <div className="absolute inset-0 bg-border" />
                         <div
                           className="absolute inset-y-0 left-0 bg-primary transition-all duration-500 ease-out"
@@ -554,6 +554,11 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 )
               })}
             </div>
+            {/* Mobil: navnet på steget som tekst i stedet for tre etiketter
+                som ikke får plass ved siden av hverandre. */}
+            <p className="text-xs font-semibold text-foreground sm:hidden">
+              Steg {step} av {steps.length} · {steps[step - 1]?.title}
+            </p>
             <div className="flex w-full justify-center sm:justify-end">
               <Button type="button" variant="outline" size="sm" onClick={handleSaveDraft} disabled={isPersisting}>
                 {isPersisting ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
@@ -569,7 +574,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <div className="space-y-4">
                   <div>
-                    <label className="theme-text-label mb-2 block text-sm font-medium">Tilbudsnavn</label>
+                    <label className="theme-text-label mb-2 block text-sm font-medium">Hva skal tilbudet hete?</label>
                     <Input
                       className="h-9 text-sm"
                       value={title}
@@ -606,7 +611,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                               <p className="theme-upload-item-meta text-xs">
                                 {Math.round(documentItem.sizeBytes / 1024)} KB
                                 {documentItem.uploadStatus === "uploading" ? " • laster opp" : null}
-                                {documentItem.uploadStatus === "ready" ? " • klar for KI" : null}
+                                {documentItem.uploadStatus === "ready" ? " • klar" : null}
                                 {documentItem.uploadStatus === "failed" ? " • feil" : null}
                               </p>
                             </div>
@@ -622,11 +627,11 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
 
                 <div className="space-y-4">
                   <div className="h-[90%]">
-                    <label className="theme-text-label mb-2 block text-sm font-medium">Jobbeskrivelse</label>
+                    <label className="theme-text-label mb-2 block text-sm font-medium">Hva skal gjøres?</label>
                     <Textarea
                       value={description}
                       onChange={(event) => setDescription(event.target.value)}
-                      placeholder="Beskriv spesifikt jobben som skal utføres..."
+                      placeholder="Skriv med dine egne ord, som om du forklarte jobben til en kollega. Vi setter opp postene — du retter det som ikke stemmer."
                       className="h-full resize-none text-sm"
                     />
                   </div>
@@ -667,7 +672,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
               <div className="border-b pb-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h2 className="theme-heading-strong text-xl font-bold">Prisforslag</h2>
+                    <h2 className="theme-heading-strong text-xl font-bold">Forslag til poster</h2>
                     {analysisResult ? (
                       <p className="mt-1 max-w-prose text-sm text-muted-foreground">{analysisResult.summary}</p>
                     ) : null}
@@ -790,7 +795,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   }}
                   disabled={lineItems.length === 0}
                 >
-                  Videre til forhåndsvisning
+                  Se over og send
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </div>

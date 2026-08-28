@@ -22,6 +22,7 @@ import { updateCustomerAction } from "@/app/kunder/actions"
 import { toast } from "sonner"
 import { reportClientError } from "@/lib/errors/client"
 import { CustomerProjectsTab } from "./customer-projects-tab"
+import { CustomerTimelineTab } from "./customer-timeline-tab"
 
 interface CustomerDrawerProps {
   customer: Customer | null
@@ -184,8 +185,9 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
             </form>
           ) : (
             <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsList className="grid w-full grid-cols-3 mb-6">
               <TabsTrigger value="overview">Oversikt</TabsTrigger>
+              <TabsTrigger value="history">Historikk</TabsTrigger>
               <TabsTrigger value="projects">Prosjekter</TabsTrigger>
             </TabsList>
             
@@ -288,6 +290,12 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
               </div>
             </TabsContent>
           
+          {/* Alt som har skjedd med kunden i én strøm — tilbud, prosjekter og
+              meldinger. Henter selv, så den koster ingenting før du åpner den. */}
+          <TabsContent value="history">
+            <CustomerTimelineTab customerId={customer.id} />
+          </TabsContent>
+
           <TabsContent value="projects">
             <CustomerProjectsTab
               customerId={customer.id}
