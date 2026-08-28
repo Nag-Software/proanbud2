@@ -4,31 +4,10 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
 import { enqueueFikenJob } from "@/lib/integrations/fiken/jobs"
 import { processFikenQueueInBackground } from "@/lib/integrations/fiken/sync"
-import { createClient as createServerSupabase } from "@/lib/supabase/server"
-
-async function isAuthorized(request: Request) {
-  const configured = process.env.INTEGRATION_WORKER_SECRET
-  if (configured && request.headers.get("x-integration-worker-secret") === configured) {
-    return true
-  }
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && request.headers.get("authorization") === `Bearer ${cronSecret}`) {
-    return true
-  }
-
-  const supabase = await createServerSupabase()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return false
-
-  const admin = createAdminClient()
-  const { data: userRow } = await admin.from("users").select("role").eq("id", user.id).maybeSingle()
-  return userRow?.role === "admin"
-}
+import { isAuthorizedIntegrationWorker } from "@/lib/integrations/worker-auth"
 
 async function runReconcile(request: Request) {
-  if (!(await isAuthorized(request))) {
+  if (!(await isAuthorizedIntegrationWorker(request))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

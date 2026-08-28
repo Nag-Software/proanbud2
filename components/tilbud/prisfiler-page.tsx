@@ -253,51 +253,57 @@ function parseCSV(text: string): ParsedData {
   }
 }
 
-// ── Excel (.xlsx / .xls) ─────────────────────────────────────────────────────
+// ── Excel (.xlsx / .xlsm) ────────────────────────────────────────────────────
 // Parses the FIRST sheet into the same ParsedData shape as parseCSV, so the
 // rest of the wizard (auto-detect, mapping, applyMapping) is reused unchanged.
-// xlsx is imported dynamically so CSV users never download the library.
+// exceljs is imported dynamically so CSV users never download the library.
 
-const EXCEL_EXT = /\.(xlsx|xlsm|xls)$/i
+const EXCEL_EXT = /\.(xlsx|xlsm)$/i
 
 async function parseExcel(buffer: ArrayBuffer): Promise<{ parsed: ParsedData; sheetNames: string[] }> {
-  const XLSX = await import("xlsx")
-  const workbook = XLSX.read(buffer, { type: "array" })
-  const sheetNames = workbook.SheetNames
-  const sheet = sheetNames.length > 0 ? workbook.Sheets[sheetNames[0]] : undefined
+  const { Workbook } = await import("exceljs")
+  const workbook = new Workbook()
+  await workbook.xlsx.load(buffer)
+  const sheetNames = workbook.worksheets.map((worksheet) => worksheet.name)
+  const sheet = workbook.worksheets[0]
   if (!sheet) return { parsed: { headers: [], rows: [] }, sheetNames }
 
-  // Prosent-formaterte celler lagres som brøk i Excel («25 %» = 0.25). Skaler
-  // dem opp til prosenttall, slik at en rabattkolonne tolkes likt som i CSV
-  // (der cellen kommer som teksten «25 %»). Formatert tekst (cell.w) er den
-  // eneste pålitelige indikatoren; mangler den, brukes råverdien uendret.
-  for (const [address, cell] of Object.entries(sheet)) {
-    if (address.startsWith("!")) continue
-    const c = cell as { t?: string; v?: unknown; w?: unknown }
-    if (c.t === "n" && typeof c.v === "number" && typeof c.w === "string" && c.w.includes("%")) {
-      // Rund av for å unngå flyttallsstøy (0.253 * 100 = 25.300000000000004)
-      c.v = Math.round(c.v * 100 * 1e8) / 1e8
+  const toText = (value: unknown, numFmt: string): string => {
+    if (value == null) return ""
+    if (value instanceof Date) return value.toISOString().slice(0, 10)
+    if (typeof value === "number") {
+      const normalized = numFmt.includes("%") ? Math.round(value * 100 * 1e8) / 1e8 : value
+      return String(normalized)
     }
+    if (typeof value === "string" || typeof value === "boolean") return String(value).trim()
+    if (typeof value === "object") {
+      if ("result" in value) return toText(value.result, numFmt)
+      if ("text" in value && typeof value.text === "string") return value.text.trim()
+      if ("richText" in value && Array.isArray(value.richText)) {
+        return value.richText
+          .map((part) =>
+            part && typeof part === "object" && "text" in part && typeof part.text === "string"
+              ? part.text
+              : ""
+          )
+          .join("")
+          .trim()
+      }
+    }
+    return ""
   }
 
-  // raw: true → numeric cells come back as real numbers (dot-decimal, no
-  // thousands separators), which is exactly what applyMapping's number
-  // normalization expects. Formula cells yield their cached computed value.
-  const matrix = XLSX.utils.sheet_to_json<(string | number | boolean | Date | null)[]>(sheet, {
-    header: 1,
-    raw: true,
-    defval: "",
-    blankrows: false,
-  })
-
-  const toText = (cell: string | number | boolean | Date | null): string => {
-    if (cell == null) return ""
-    if (cell instanceof Date) return cell.toISOString().slice(0, 10)
-    if (typeof cell === "number") return String(cell)
-    return String(cell).trim()
+  const rows: string[][] = []
+  const columnCount = sheet.actualColumnCount
+  for (let rowNumber = 1; rowNumber <= sheet.actualRowCount; rowNumber++) {
+    const row: string[] = []
+    for (let columnNumber = 1; columnNumber <= columnCount; columnNumber++) {
+      const cell = sheet.getCell(rowNumber, columnNumber)
+      row.push(toText(cell.value, cell.numFmt))
+    }
+    if (row.some((cell) => cell !== "")) rows.push(row)
   }
 
-  const rows = matrix.map((r) => r.map(toText)).filter((r) => r.some((c) => c !== ""))
   if (rows.length === 0) return { parsed: { headers: [], rows: [] }, sheetNames }
 
   return {
@@ -734,7 +740,6 @@ export function PrisfilerPage() {
       "text/plain": [".txt"],
       "text/tab-separated-values": [".tsv"],
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-      "application/vnd.ms-excel": [".xls"],
       "application/vnd.ms-excel.sheet.macroEnabled.12": [".xlsm"],
     },
     maxFiles: 1,

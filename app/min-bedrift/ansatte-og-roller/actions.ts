@@ -226,16 +226,38 @@ export async function setEmployeeActiveState(userId: string, active: boolean) {
     return { error: "Ikke autorisert til å endre denne brukeren" }
   }
 
+  if (!active) {
+    const { error: banError } = await admin.auth.admin.updateUserById(userId, {
+      ban_duration: "876000h",
+    })
+    if (banError) {
+      return { error: "Kunne ikke sperre brukerens innlogging. Prøv igjen." }
+    }
+  }
+
   const { error: updateError } = await admin
     .from("users")
     .update({ is_active: active })
     .eq("id", userId)
 
   if (updateError) {
+    if (!active) {
+      await admin.auth.admin.updateUserById(userId, { ban_duration: "none" })
+    }
     return {
       error: active
         ? "Kunne ikke aktivere den ansatte. Prøv igjen."
         : "Kunne ikke deaktivere den ansatte. Prøv igjen.",
+    }
+  }
+
+  if (active) {
+    const { error: unbanError } = await admin.auth.admin.updateUserById(userId, {
+      ban_duration: "none",
+    })
+    if (unbanError) {
+      await admin.from("users").update({ is_active: false }).eq("id", userId)
+      return { error: "Brukeren er fortsatt sperret i innloggingen. Prøv igjen." }
     }
   }
 

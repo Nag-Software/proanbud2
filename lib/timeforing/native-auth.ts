@@ -20,10 +20,10 @@ export async function userFromBearer(
   const admin = createAdminClient()
   const { data: u } = await admin
     .from("users")
-    .select("company_id, role")
+    .select("company_id, role, is_active")
     .eq("id", data.user.id)
     .maybeSingle()
-  if (!u?.company_id) return null
+  if (!u?.company_id || u.is_active !== true) return null
 
   return { userId: data.user.id, companyId: u.company_id as string, role: (u.role as string) ?? null }
 }

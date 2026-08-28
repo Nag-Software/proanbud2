@@ -47,6 +47,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Ugyldig melding" }, { status: 400 })
   }
 
+  const [customerResult, offerResult] = await Promise.all([
+    supabase
+      .from("customers")
+      .select("id")
+      .eq("id", parsed.data.customerId)
+      .eq("company_id", userRow.company_id)
+      .maybeSingle(),
+    parsed.data.offerId
+      ? supabase
+          .from("offers")
+          .select("id, customer_id")
+          .eq("id", parsed.data.offerId)
+          .eq("company_id", userRow.company_id)
+          .eq("customer_id", parsed.data.customerId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ])
+
+  if (customerResult.error || !customerResult.data) {
+    return NextResponse.json({ error: "Kunden finnes ikke" }, { status: 404 })
+  }
+  if (parsed.data.offerId && (offerResult.error || !offerResult.data)) {
+    return NextResponse.json({ error: "Tilbudet finnes ikke for denne kunden" }, { status: 404 })
+  }
+
   const payload = {
     company_id: userRow.company_id,
     customer_id: parsed.data.customerId,

@@ -1,45 +1,11 @@
 import { NextResponse } from "next/server"
 
 import { runTripletexWorker } from "@/lib/integrations/tripletex/worker"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { isAuthorizedIntegrationWorker } from "@/lib/integrations/worker-auth"
 import { logServerError } from "@/lib/errors/log"
-import { createClient as createServerSupabase } from "@/lib/supabase/server"
-
-async function isAuthorizedWorker(request: Request) {
-  const configured = process.env.INTEGRATION_WORKER_SECRET
-  if (configured) {
-    if (request.headers.get("x-integration-worker-secret") === configured) {
-      return true
-    }
-  }
-
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization")
-    if (authHeader === `Bearer ${cronSecret}`) {
-      return true
-    }
-  }
-
-  const supabase = await createServerSupabase()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) return false
-
-  const admin = createAdminClient()
-  const { data: userRow } = await admin
-    .from("users")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle()
-
-  return userRow?.role === "admin"
-}
 
 export async function POST(request: Request) {
-  if (!(await isAuthorizedWorker(request))) {
+  if (!(await isAuthorizedIntegrationWorker(request))) {
     return NextResponse.json({ error: "Unauthorized worker" }, { status: 401 })
   }
 
