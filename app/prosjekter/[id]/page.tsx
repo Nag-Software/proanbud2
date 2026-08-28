@@ -302,7 +302,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           >
             <ProjectTabPanel value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
               <ProjectOverviewTab
-                projectId={project.id}
                 project={{
                   status: project.status,
                   description: project.description,

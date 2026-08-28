@@ -593,10 +593,17 @@ function SidebarMenuSkeleton({
 }: React.ComponentProps<"div"> & {
   showIcon?: boolean
 }) {
-  // Random width between 50 to 90%.
-  const [width] = React.useState(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`
-  })
+  // Bredde mellom 50 og 90 %. Math.random() ga ulik verdi på server og klient
+  // og dermed hydration-feil i konsollen ved hver app-last; useId er stabil på
+  // tvers av begge, så vi utleder bredden deterministisk fra den i stedet.
+  const id = React.useId()
+  const width = React.useMemo(() => {
+    let hash = 0
+    for (let i = 0; i < id.length; i++) {
+      hash = (hash * 31 + id.charCodeAt(i)) | 0
+    }
+    return `${(Math.abs(hash) % 40) + 50}%`
+  }, [id])
 
   return (
     <div

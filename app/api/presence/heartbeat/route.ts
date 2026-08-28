@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { logServerError } from "@/lib/errors/log"
 
@@ -16,7 +17,9 @@ export async function POST() {
       return new NextResponse(null, { status: 204 })
     }
 
-    await supabase
+    // last_seen_at er ikke skrivbar for rollen `authenticated` (db/80), så
+    // pinget går via service_role – låst til den verifiserte sesjonens egen id.
+    await createAdminClient()
       .from("users")
       .update({ last_seen_at: new Date().toISOString() })
       .eq("id", user.id)

@@ -99,7 +99,7 @@ export default async function Page({
   return (
     <AppPageShell segments={["Prosjekter"]} hideMobileTitle>
       <ProjectsViewProvider initialView={initialView}>
-      <section className="space-y-8">
+      <section className="space-y-4">
         <div className="grid grid-cols-2 items-center justify-between gap-2 sm:flex sm:justify-between w-full">
           <div className="space-y-0">
             <h1 className="text-2xl font-semibold text-foreground">Prosjektoversikt</h1>

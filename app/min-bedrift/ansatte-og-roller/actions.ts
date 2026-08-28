@@ -60,7 +60,10 @@ export async function updateUserRole(userId: string, newRoleName: string) {
   }
 
   try {
-    await assignUserRole(supabase, {
+    // Rollen `authenticated` har ikke UPDATE på users.role (db/80) – ingen skal
+    // kunne forfremme seg selv. Selve skrivingen går derfor via service_role,
+    // etter admin- og samme-bedrift-sjekkene over.
+    await assignUserRole(createAdminClient(), {
       userId,
       companyId: targetUser.company_id,
       roleName: newRoleName,

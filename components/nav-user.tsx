@@ -208,12 +208,11 @@ export function NavUser() {
     if (!user || !profile) return
     setIsSaving(true)
     try {
+      // Innlogget bruker har kun UPDATE(full_name) på users (db/80).
+      // updated_at settes av set_updated_at_users-triggeren.
       const { error } = await supabase
         .from("users")
-        .update({
-          full_name: editName,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ full_name: editName })
         .eq("id", user.id)
 
       if (error) {
