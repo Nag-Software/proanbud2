@@ -133,7 +133,7 @@ export async function sendOfferToCustomer(input: SendOfferInput) {
   const publicSlug = await ensureOfferPublicSlug(input.offerId, input.companyId)
 
   const totals = calculateOfferTotals(lineItems)
-  const { totalInclVatNok } = getOfferDocumentTotals(lineItems)
+  const { totalInclVatNok } = getOfferDocumentTotals(lineItems, input.company?.vatRegistered !== false)
   const validUntil = computeValidUntilDate(offerRecord.created_at, offerRecord.quote_valid_until)
 
   const emailHtml = buildOfferSentCustomerEmail({

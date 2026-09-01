@@ -173,7 +173,11 @@ function OfferChatPanel({
 
 function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOfferPayload; totalInclVat: number }) {
   const grouped = useMemo(() => groupLineItemsBySubproject(offer.lineItems), [offer.lineItems])
-  const { totals, vatAmountNok } = useMemo(() => getOfferDocumentTotals(offer.lineItems), [offer.lineItems])
+  const vatRegistered = offer.company?.vatRegistered !== false
+  const { totals, vatAmountNok } = useMemo(
+    () => getOfferDocumentTotals(offer.lineItems, vatRegistered),
+    [offer.lineItems, vatRegistered]
+  )
   const validityDays =
     offer.validityDays ?? computeValidityDays(String(offer.createdAt || ""), offer.quoteValidUntil)
   const validUntil = computeValidUntilDate(offer.createdAt, offer.quoteValidUntil, validityDays)
@@ -269,11 +273,13 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
             </>
           ) : null}
           <div className="flex justify-between text-neutral-600">
-            <span>Mva (25 %)</span>
-            <span className="tabular-nums">{formatDocumentCurrency(vatAmountNok)}</span>
+            <span>Mva{vatRegistered ? " (25 %)" : ""}</span>
+            <span className="tabular-nums">
+              {vatRegistered ? formatDocumentCurrency(vatAmountNok) : "Ikke mva-pliktig"}
+            </span>
           </div>
           <div className="mt-1 flex items-baseline justify-between border-t border-neutral-900 pt-2 font-semibold text-neutral-900">
-            <span>Totalt inkl. mva</span>
+            <span>{vatRegistered ? "Totalt inkl. mva" : "Totalt"}</span>
             <span className="tabular-nums">{formatDocumentCurrency(totalInclVat)}</span>
           </div>
         </div>
@@ -528,7 +534,7 @@ export function CustomerOfferView({
 
   const totalInclVat = useMemo(() => {
     if (!offer) return 0
-    return getOfferDocumentTotals(offer.lineItems).totalInclVatNok
+    return getOfferDocumentTotals(offer.lineItems, offer.company?.vatRegistered !== false).totalInclVatNok
   }, [offer])
 
   const chatPanelProps: OfferChatPanelProps = {

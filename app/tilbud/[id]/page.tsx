@@ -310,6 +310,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
           recipientName: offer.recipient_name || "",
           recipientEmail: offer.recipient_email || customer?.email || "",
           recipientPhone: offer.recipient_phone || "",
+          projectId: offer.project_id,
           projectName: project?.name || "",
           sourceSummary: offer.source_summary || "",
           sourceDocuments,

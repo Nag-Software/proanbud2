@@ -28,7 +28,7 @@ import KvalitetTab from "./kvalitet-tab"
 import { EditProjectDialog } from "./edit-project-dialog"
 import ProjectDocumentsTab from "./project-documents-tab"
 import TilbudTab from "./tilbud-tab"
-import { EtterfaktureringTab } from "./etterfakturering-tab"
+import { FaktureringSeksjon } from "./fakturering-seksjon"
 import TimeforingTab from "./timeforing-tab"
 import KjorebokTab from "./kjorebok-tab"
 import { ProjectOverviewTab, type OverviewTask } from "./project-overview-tab"
@@ -290,7 +290,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   { value: "tilbud", label: "Tilbud" },
                   {
                     value: "etterfakturering",
-                    label: "Etterfakturering",
+                    label: "Fakturering",
                     shortLabel: "Etterfakt.",
                     hidden: isWorker,
                   },
@@ -355,7 +355,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
             {!isWorker && (
               <ProjectTabPanel value="etterfakturering">
-                <EtterfaktureringTab projectId={project.id} canManage={isProjectAdmin} initialItems={changeOrders} />
+                <FaktureringSeksjon
+                  projectId={project.id}
+                  canManage={isProjectAdmin}
+                  initialChangeOrders={changeOrders}
+                />
               </ProjectTabPanel>
             )}
 

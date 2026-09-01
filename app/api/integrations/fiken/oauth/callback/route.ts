@@ -58,11 +58,19 @@ export async function GET(request: Request) {
 
     const token = await exchangeFikenCode(code, stateRow.code_verifier)
     const companies = await getFikenCompanies(token.accessToken)
-    const company = companies.find((c) => c.slug) || companies[0]
+    const withSlug = companies.filter((c) => c.slug)
 
-    if (!company?.slug) {
+    if (withSlug.length === 0) {
       return NextResponse.redirect(`${redirectTo}?fiken_error=no_company`)
     }
+
+    // A Fiken user very often has access to several companies (own AS, test company,
+    // clients if they are an accountant). Auto-picking the first one would silently
+    // bind ProAnbud to the wrong books, so we only auto-select when there is exactly
+    // one candidate. Otherwise we persist the tokens WITHOUT a slug and let the user
+    // choose; `getFikenConnectionState` treats a slug-less connection as not-ready, so
+    // nothing syncs in the meantime.
+    const company = withSlug.length === 1 ? withSlug[0] : null
 
     const update: Record<string, unknown> = {
       company_id: companyId,
@@ -70,9 +78,9 @@ export async function GET(request: Request) {
       access_token_enc: encryptFikenToken(token.accessToken),
       token_expires_at: token.expiresAt,
       personal_token_enc: null,
-      fiken_company_slug: company.slug,
-      fiken_company_name: company.name || null,
-      is_test_company: company.testCompany === true,
+      fiken_company_slug: company?.slug ?? null,
+      fiken_company_name: company?.name ?? null,
+      is_test_company: company?.testCompany === true,
       sync_state: "connected",
       last_success_at: new Date().toISOString(),
       last_error_at: null,
@@ -88,6 +96,12 @@ export async function GET(request: Request) {
 
     if (upsertError) {
       return NextResponse.redirect(`${redirectTo}?fiken_error=save_failed`)
+    }
+
+    // Still waiting on the user to pick which Fiken company to bind: skip the initial
+    // reconcile entirely and send them to the picker.
+    if (!company) {
+      return NextResponse.redirect(`${redirectTo}?fiken_select_company=1`)
     }
 
     // Kick off the initial reconcile through the serialized worker (not inline here).

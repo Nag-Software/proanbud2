@@ -48,7 +48,7 @@ export default async function FikenPage() {
         supabase
           .from("fiken_connections")
           .select(
-            "company_id, sync_state, token_expires_at, fiken_company_slug, fiken_company_name, is_test_company, last_success_at, last_error_at, last_error_message, last_payment_poll_date, scope_config"
+            "company_id, sync_state, token_expires_at, fiken_company_slug, fiken_company_name, is_test_company, last_success_at, last_error_at, last_error_message, last_payment_poll_date, scope_config, default_bank_account_number"
           )
           .eq("company_id", companyId)
           .maybeSingle(),
@@ -58,7 +58,8 @@ export default async function FikenPage() {
           .eq("company_id", companyId)
           .eq("provider", "fiken")
           .order("created_at", { ascending: false })
-          .limit(15),
+          // Fetch a few pages worth; the client reveals 10 at a time.
+          .limit(50),
         supabase
           .from("tripletex_connections")
           .select("sync_state")
@@ -76,11 +77,11 @@ export default async function FikenPage() {
       <div className="flex flex-col gap-6 pb-8">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Fiken</h1>
-          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900">
-            Beta
+          <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-900">
+            Aktiv
           </span>
           {connectionResult.data?.is_test_company && (
-            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900">
+            <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-900">
               Testselskap
             </span>
           )}

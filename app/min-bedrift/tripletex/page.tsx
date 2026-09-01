@@ -76,7 +76,7 @@ export default async function TripletexPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Tripletex</h1>
           {getTripletexApiBaseUrl().includes("api-test.tripletex.tech") && (
             <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900">
-              Test
+              Beta
             </span>
           )}
         </div>

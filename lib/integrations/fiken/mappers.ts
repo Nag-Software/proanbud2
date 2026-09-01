@@ -1,4 +1,9 @@
 import { calculateLineItemUnitPriceWithMarkupBeforeDiscount, type OfferLineItem } from "@/lib/tilbud/types"
+import {
+  effectiveIncomeAccountCategory,
+  normalizeIncomeAccountCategory,
+  resolveIncomeAccountCode,
+} from "@/lib/tilbud/income-accounts"
 import type {
   FikenContactPayload,
   FikenDraftLinePayload,
@@ -97,6 +102,9 @@ function normalizeOfferLineItems(input: unknown): OfferLineItem[] {
         unitPriceNok: Number(item.unitPriceNok || 0),
         markupPercent: Number(item.markupPercent || 0),
         discountPercent: Number(item.discountPercent || 0),
+        // MÅ tas med: denne normaliseringen bygger objektet på nytt, så et felt som
+        // ikke nevnes her forsvinner stille — og da ville per-linje-kontoen aldri nå Fiken.
+        incomeAccountCategory: normalizeIncomeAccountCategory(item.incomeAccountCategory),
       } satisfies OfferLineItem
     })
     .filter((item) => item.title.trim().length > 0 && item.quantity > 0)
@@ -114,6 +122,14 @@ export function toFikenNetUnitPriceOre(exVatNok: number): number {
   return Math.round(exVatNok * 100)
 }
 
+/** Fikens invoiceishDraftLine.description har maxLength 200 — lengre gir HTTP 400. */
+const FIKEN_LINE_DESCRIPTION_MAX = 200
+
+function truncateForFiken(value: string): string {
+  if (value.length <= FIKEN_LINE_DESCRIPTION_MAX) return value
+  return `${value.slice(0, FIKEN_LINE_DESCRIPTION_MAX - 1).trimEnd()}…`
+}
+
 function lineDescription(item: OfferLineItem): string {
   const parts = [item.title.trim()]
   if (item.description.trim()) {
@@ -122,7 +138,7 @@ function lineDescription(item: OfferLineItem): string {
   if (item.subproject && item.subproject !== "Generelt") {
     parts.unshift(`[${item.subproject}]`)
   }
-  return parts.join(" – ")
+  return truncateForFiken(parts.join(" – "))
 }
 
 export function buildFikenDraftLines(
@@ -133,10 +149,23 @@ export function buildFikenDraftLines(
     amount_nok: number | null
     line_items?: unknown
   },
-  options: { vatType: FikenVatType; incomeAccount?: string | null }
+  options: { vatType: FikenVatType; vatRegistered: boolean; incomeAccount?: string | null }
 ): FikenDraftLinePayload[] {
   const items = normalizeOfferLineItems(offer.line_items)
-  const incomeAccount = options.incomeAccount || undefined
+  // Fiken rejects ANY free-text line without an incomeAccount (HTTP 400). Every line we
+  // build is free-text, so this must never be undefined.
+  //
+  // Precedence: an explicit connection-level override wins (one account for everything),
+  // otherwise each line resolves its own account from its category — which is what Fiken's
+  // own tilbud dialog asks for, and what keeps varesalg and tjenestesalg on separate
+  // accounts in the ledger instead of collapsing into one.
+  const overrideAccount = options.incomeAccount?.trim()
+  // vatRegistered kommer ALLTID inn eksplisitt. Å utlede den fra vatType (f.eks.
+  // `!== "NONE"`) er feil: en ikke-registrert bedrift sender OUTSIDE, som da ville
+  // blitt lest som «registrert» og gitt 30xx-konti i stedet for 32xx.
+  const vatRegistered = options.vatRegistered
+  const accountFor = (item: (typeof items)[number]) =>
+    overrideAccount || resolveIncomeAccountCode(effectiveIncomeAccountCategory(item), vatRegistered)
 
   if (items.length > 0) {
     return items.map((item) => {
@@ -150,9 +179,7 @@ export function buildFikenDraftLines(
       if (item.discountPercent > 0) {
         line.discount = item.discountPercent
       }
-      if (incomeAccount) {
-        line.incomeAccount = incomeAccount
-      }
+      line.incomeAccount = accountFor(item)
       return line
     })
   }
@@ -164,9 +191,9 @@ export function buildFikenDraftLines(
     quantity: 1,
     vatType: options.vatType,
   }
-  if (incomeAccount) {
-    line.incomeAccount = incomeAccount
-  }
+  // Samlelinja har ingen vare/tjeneste-identitet å gjette fra, så den bruker
+  // standardkategorien — men fortsatt mva-riktig konto (3020 vs 3220).
+  line.incomeAccount = overrideAccount || resolveIncomeAccountCode(undefined, vatRegistered)
   return [line]
 }
 
@@ -183,7 +210,13 @@ export function mapOfferDraftFromOffer(
     line_items?: unknown
   },
   customerId: number,
-  options: { projectId?: number | null; vatType: FikenVatType; incomeAccount?: string | null; daysUntilDueDate?: number }
+  options: {
+    projectId?: number | null
+    vatType: FikenVatType
+    vatRegistered: boolean
+    incomeAccount?: string | null
+    daysUntilDueDate?: number
+  }
 ): Record<string, unknown> {
   return {
     type: "offer",
@@ -194,7 +227,19 @@ export function mapOfferDraftFromOffer(
   }
 }
 
-/** Body for POST /invoices/drafts (invoiceishDraftRequest). */
+/**
+ * Body for POST /invoices/drafts (invoiceishDraftRequest).
+ *
+ * ⚠️ BANKKONTO: tre felt heter nesten det samme, og bare ETT virker her.
+ *   `bankAccountCode`  → finnes ikke i draft-skjemaet (kun invoiceRequest). Ignorert
+ *                        stille → konto ble null.
+ *   `paymentAccount`   → «Draft of type INVOICE cannot have a payment account
+ *                        specified. A payment account is only allowed for drafts of
+ *                        type CASH_INVOICE.»
+ *   `bankAccountNumber`→ ✅ RIKTIG. Selve kontonummeret, f.eks. «15035646830».
+ * Uten det svarer Fiken 403: «The bank account number null has not been verified as
+ * belonging to this company.» Kontoen må i tillegg være Altinn-bekreftet i Fiken.
+ */
 export function mapInvoiceDraftFromOffer(
   offer: {
     id: string
@@ -207,9 +252,11 @@ export function mapInvoiceDraftFromOffer(
   options: {
     projectId?: number | null
     vatType: FikenVatType
+    vatRegistered: boolean
     incomeAccount?: string | null
-    bankAccountCode?: string | null
     daysUntilDueDate?: number
+    /** Kontonummeret pengene skal til, f.eks. «15035646830». */
+    bankAccountNumber?: string | null
   }
 ): Record<string, unknown> {
   const issueDate = new Date().toISOString().slice(0, 10)
@@ -219,8 +266,70 @@ export function mapInvoiceDraftFromOffer(
     issueDate,
     daysUntilDueDate: options.daysUntilDueDate ?? 14,
     ...(options.projectId ? { projectId: options.projectId } : {}),
-    ...(options.bankAccountCode ? { bankAccountCode: options.bankAccountCode } : {}),
-    cash: false,
+    ...(options.bankAccountNumber ? { bankAccountNumber: options.bankAccountNumber } : {}),
     lines: buildFikenDraftLines(offer, options),
+  }
+}
+
+/**
+ * Faktura bygget fra et prosjektfaktura-utvalg (project_invoice_lines) i stedet for fra
+ * et helt tilbud. Hver linje bærer sin egen inntektskonto-kategori, så a-konto,
+ * sluttfaktura og separat tilleggsfaktura alle havner på riktige konti i regnskapet.
+ */
+export function mapInvoiceDraftFromProjectInvoice(
+  lines: Array<{
+    description: string
+    quantity: number | null
+    unit_price_nok: number | null
+    income_account_category?: string | null
+  }>,
+  customerId: number,
+  options: {
+    projectId?: number | null
+    vatType: FikenVatType
+    vatRegistered: boolean
+    incomeAccount?: string | null
+    daysUntilDueDate?: number
+    /**
+     * Vår egen UUID for utkastet. Fiken lagrer den, og `GET /invoices?invoiceDraftUuid=`
+     * lar oss senere finne fakturaen som ble laget av nettopp dette utkastet. Det er
+     * det som gjør en tvetydig ferdigstilling gjenopprettbar i stedet for farlig.
+     */
+    draftUuid?: string | null
+    /** Melding til kunden — skrives over fakturalinjene. */
+    invoiceText?: string | null
+    /** Vår referanse, så fakturaen kan spores tilbake til prosjektet. */
+    ourReference?: string | null
+    /** Kontonummeret pengene skal til, f.eks. «15035646830». Se doc over. */
+    bankAccountNumber?: string | null
+  }
+): Record<string, unknown> {
+  const overrideAccount = options.incomeAccount?.trim()
+  // Samme regel som for tilbudslinjene: mva-status er et faktum om bedriften og
+  // sendes inn eksplisitt — den kan ikke leses ut av vatType.
+  const vatRegistered = options.vatRegistered
+
+  return {
+    type: "invoice",
+    customerId,
+    issueDate: new Date().toISOString().slice(0, 10),
+    daysUntilDueDate: options.daysUntilDueDate ?? 14,
+    ...(options.projectId ? { projectId: options.projectId } : {}),
+    ...(options.bankAccountNumber ? { bankAccountNumber: options.bankAccountNumber } : {}),
+    ...(options.draftUuid ? { uuid: options.draftUuid } : {}),
+    ...(options.invoiceText?.trim() ? { invoiceText: options.invoiceText.trim() } : {}),
+    ...(options.ourReference?.trim() ? { ourReference: options.ourReference.trim() } : {}),
+    lines: lines.map((line) => ({
+      description: truncateForFiken(line.description),
+      unitPrice: toFikenNetUnitPriceOre(Number(line.unit_price_nok || 0)),
+      quantity: Number(line.quantity || 1),
+      vatType: options.vatType,
+      incomeAccount:
+        overrideAccount ||
+        resolveIncomeAccountCode(
+          normalizeIncomeAccountCategory(line.income_account_category),
+          vatRegistered
+        ),
+    })),
   }
 }

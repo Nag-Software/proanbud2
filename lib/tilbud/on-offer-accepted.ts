@@ -40,8 +40,12 @@ export async function handleOfferAccepted(input: {
 
   if (offer.customer_id) {
     // Only one accounting provider is connected at a time; each enqueue no-ops when
-    // its provider isn't the active one. For Fiken, phase "order" creates the invoice
-    // (Fiken has no mutable order — the quote→order→invoice flow collapses).
+    // its provider isn't the active one.
+    //
+    // Fiken oppretter IKKE faktura her lenger: fakturering skjer når arbeidet er
+    // utført, fra Fakturering-fanen på prosjektet. Aksepten sørger kun for at kunden
+    // (og eventuelt prosjektet) finnes i Fiken, slik at fakturaen går rett gjennom
+    // når den kommer.
     const tripletexEnqueued = await enqueueOfferTripletexSyncAndProcess({
       companyId: input.companyId,
       offerId: input.offerId,
@@ -69,7 +73,7 @@ export async function handleOfferAccepted(input: {
           companyId: input.companyId,
           actorUserId: input.actorUserId || null,
           eventType: OFFER_ACTIVITY.ERP_ORDER_SYNCED,
-          title: fikenEnqueued ? "Faktura opprettes i Fiken" : "Ordre opprettes i Tripletex",
+          title: fikenEnqueued ? "Kunde klargjort i Fiken" : "Ordre opprettes i Tripletex",
           metadata: { source: input.source || "offer-accepted", provider: fikenEnqueued ? "fiken" : "tripletex" },
         },
         // Reached from the unauthenticated public-accept path — cookie client has no

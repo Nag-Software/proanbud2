@@ -287,7 +287,7 @@ export async function acceptOfferWithCode(input: {
   // e-mail must not fail the request.
   try {
     const companyName = record.company.name || "bedriften"
-    const { totalInclVatNok } = getOfferDocumentTotals(record.lineItems)
+    const { totalInclVatNok } = getOfferDocumentTotals(record.lineItems, record.company?.vatRegistered !== false)
     await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <post@proanbud.no>",
       to: acceptedEmail,

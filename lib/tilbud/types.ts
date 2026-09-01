@@ -42,6 +42,11 @@ export type OfferLineItem = {
    * kvalitetsinfo for håndverkeren, og vises aldri i kundens tilbudsdokument.
    */
   priceSource?: "prisfil" | "lagret-jobb" | "anslag"
+  /**
+   * Inntektskonto-kategori for regnskapet (speiler Fikens fire valg). Udefinert betyr
+   * «ikke valgt» — da gjettes kategorien fra linja, se lib/tilbud/income-accounts.ts.
+   */
+  incomeAccountCategory?: "vare_videresalg" | "vare_egenprodusert" | "tjeneste" | "annet"
 }
 
 export type OfferAnalysisResult = {
@@ -104,6 +109,12 @@ export type OfferCompanyContext = {
   quoteValidityDays?: number
   priceLevel?: "low" | "normal" | "high"
   industry?: string | null
+  /**
+   * Registrert i Merverdiavgiftsregisteret. Når false skal dokumentet verken vise
+   * eller beregne mva — en ikke-registrert bedrift har ikke lov å kreve den inn.
+   * Udefinert behandles som true (dagens oppførsel).
+   */
+  vatRegistered?: boolean
 }
 
 export type SaveOfferPayload = {

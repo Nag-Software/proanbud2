@@ -19,21 +19,21 @@ export const integrations = [
         logo: "/integrasjoner-logo/tripletex.png"
     },
     {
-        name: "DocuSign",
-        description: "Send og signer kontrakter elektronisk via DocuSign.",
-        url: "/innstillinger/integrasjoner/docusign",
-        // Siden bak lenken er foreløpig en intern testside — vis kortet som
-        // «Kommer senere» til det finnes et kundevendt oppsett.
-        status: "coming",
-        logo: "https://brandlogos.net/wp-content/uploads/2024/04/docusign-logo_brandlogos.net_5wujv.png"
-    },
-    {
         name: "Fiken",
         description: "Koble til Fiken via sikker innlogging (OAuth). Synkroniser kunder, prosjekter, tilbud og fakturaer.",
         url: "/min-bedrift/fiken",
-        status: "beta",
+        status: "active",
         logo: "/integrasjoner-logo/fiken.png"
-    }
+    },
+    {
+      name: "DocuSign",
+      description: "Send og signer kontrakter elektronisk via DocuSign.",
+      url: "/innstillinger/integrasjoner/docusign",
+      // Siden bak lenken er foreløpig en intern testside — vis kortet som
+      // «Kommer senere» til det finnes et kundevendt oppsett.
+      status: "coming",
+      logo: "https://brandlogos.net/wp-content/uploads/2024/04/docusign-logo_brandlogos.net_5wujv.png"
+  },
 ];
 
 export default async function IntegrasjonerPage() {
@@ -100,6 +100,8 @@ export default async function IntegrasjonerPage() {
             Her vises alle tilgjengelige integrasjoner. Nye integrasjoner legges til fortløpende.
           </p>
         </div>
+
+    
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {integrations.map((integration) => {

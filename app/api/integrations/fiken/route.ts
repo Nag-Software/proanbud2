@@ -5,13 +5,63 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
 import { companyHasFeature } from "@/lib/billing/server-modules"
 import { encryptSecret } from "@/lib/integrations/shared/crypto"
-import { getFikenCompanies } from "@/lib/integrations/fiken/connector"
+import {
+  getFikenCompanies,
+  listFikenBankAccounts,
+  resolveFikenAccessToken,
+} from "@/lib/integrations/fiken/connector"
 import { enqueueFikenJob } from "@/lib/integrations/fiken/jobs"
+import { getFreshFikenConnection } from "@/lib/integrations/fiken/session"
 import { buildFikenScopeConfig } from "@/lib/integrations/fiken/scopes"
 import { processFikenQueueInBackground } from "@/lib/integrations/fiken/sync"
 
 function encryptFikenToken(value: string) {
   return encryptSecret(value, ["FIKEN_ENCRYPTION_KEY", "TRIPLETEX_ENCRYPTION_KEY"])
+}
+
+/**
+ * Resolve a usable Fiken access token for company-selection actions. Deliberately does
+ * NOT require `fiken_company_slug`: these are the very actions that set it, and they
+ * run against the slug-less `/companies` endpoint. Refreshes an expired OAuth token.
+ */
+async function getFreshFikenConnectionForSelection(
+  companyId: string
+): Promise<{ accessToken: string } | { error: NextResponse }> {
+  let connection
+  try {
+    connection = await getFreshFikenConnection(companyId)
+  } catch (error) {
+    await logServerError({
+      message: "Fiken token refresh failed during company selection",
+      error,
+      level: "warning",
+      source: "api",
+      route: "PATCH /api/integrations/fiken",
+    })
+    return {
+      error: NextResponse.json(
+        { error: "Fiken-tilgangen er utløpt. Koble til på nytt.", code: "token_expired" },
+        { status: 400 }
+      ),
+    }
+  }
+
+  if (!connection) {
+    return {
+      error: NextResponse.json({ error: "Fant ingen Fiken-tilkobling.", code: "connection_missing" }, { status: 400 }),
+    }
+  }
+
+  try {
+    return { accessToken: resolveFikenAccessToken(connection) }
+  } catch {
+    return {
+      error: NextResponse.json(
+        { error: "Fiken-tilgangen mangler. Koble til på nytt.", code: "token_missing" },
+        { status: 400 }
+      ),
+    }
+  }
 }
 
 async function resolveCompanyContext() {
@@ -298,6 +348,150 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: error.message, code: "scope_update_failed" }, { status: 500 })
       }
       return NextResponse.json({ ok: true, scopeConfig })
+    }
+
+    // Lists the Fiken companies the stored OAuth token grants access to, so the user
+    // can bind ProAnbud to the right one. Also usable to CHANGE company later.
+    if (action === "list_companies") {
+      const connection = await getFreshFikenConnectionForSelection(ctx.companyId)
+      if ("error" in connection) return connection.error
+
+      let companies: Awaited<ReturnType<typeof getFikenCompanies>>
+      try {
+        companies = await getFikenCompanies(connection.accessToken)
+      } catch (error) {
+        await logServerError({
+          message: "Fiken company listing failed",
+          error,
+          level: "warning",
+          source: "api",
+          route: "PATCH /api/integrations/fiken",
+        })
+        return NextResponse.json(
+          { error: "Kunne ikke hente selskaper fra Fiken. Prøv å koble til på nytt.", code: "listing_failed" },
+          { status: 400 }
+        )
+      }
+
+      const withSlug = companies.filter((c) => c.slug)
+      if (withSlug.length === 0) {
+        return NextResponse.json({ error: "Fant ingen Fiken-selskap.", code: "no_company" }, { status: 400 })
+      }
+
+      return NextResponse.json({
+        ok: true,
+        companies: withSlug.map((c) => ({
+          slug: c.slug,
+          name: c.name || c.slug,
+          testCompany: c.testCompany === true,
+          hasApiAccess: c.hasApiAccess !== false,
+        })),
+      })
+    }
+
+    // Binds (or re-binds) the connection to one Fiken company and starts the first sync.
+    if (action === "select_company") {
+      const slug = String(body?.slug || "").trim()
+      if (!slug) {
+        return NextResponse.json({ error: "Mangler valg av selskap.", code: "missing_slug" }, { status: 400 })
+      }
+
+      const connection = await getFreshFikenConnectionForSelection(ctx.companyId)
+      if ("error" in connection) return connection.error
+
+      let companies: Awaited<ReturnType<typeof getFikenCompanies>>
+      try {
+        companies = await getFikenCompanies(connection.accessToken)
+      } catch {
+        return NextResponse.json(
+          { error: "Kunne ikke bekrefte selskapet mot Fiken.", code: "listing_failed" },
+          { status: 400 }
+        )
+      }
+
+      // Never trust a slug from the client: it must be one this token actually grants.
+      const chosen = companies.find((c) => c.slug === slug)
+      if (!chosen?.slug) {
+        return NextResponse.json({ error: "Ugyldig valg av Fiken-selskap.", code: "invalid_company" }, { status: 400 })
+      }
+
+      const { error: updateError } = await admin
+        .from("fiken_connections")
+        .update({
+          fiken_company_slug: chosen.slug,
+          fiken_company_name: chosen.name || null,
+          is_test_company: chosen.testCompany === true,
+          sync_state: "connected",
+          last_error_at: null,
+          last_error_message: null,
+        })
+        .eq("company_id", ctx.companyId)
+
+      if (updateError) {
+        return NextResponse.json({ error: updateError.message, code: "save_failed" }, { status: 500 })
+      }
+
+      await enqueueFikenJob({
+        companyId: ctx.companyId,
+        jobType: "reconcile.full",
+        payload: { source: "select_company" },
+        idempotencyKey: `fiken:reconcile:${ctx.companyId}:${new Date().toISOString()}`,
+      })
+      processFikenQueueInBackground({ batchSize: 5, maxBatches: 10 })
+
+      return NextResponse.json({
+        ok: true,
+        company: { slug: chosen.slug, name: chosen.name || chosen.slug, hasApiAccess: chosen.hasApiAccess !== false },
+      })
+    }
+
+    // Bankkontoene i Fiken. Kontonummeret må sendes på fakturautkastet — uten det
+    // svarer Fiken 403 «bank account number null has not been verified».
+    if (action === "list_bank_accounts") {
+      const connection = await getFreshFikenConnection(ctx.companyId)
+      if (!connection) {
+        return NextResponse.json({ error: "Fant ingen Fiken-tilkobling.", code: "connection_missing" }, { status: 400 })
+      }
+      try {
+        const accounts = await listFikenBankAccounts(connection)
+        return NextResponse.json({
+          ok: true,
+          selected: connection.default_bank_account_number,
+          accounts: accounts
+            .filter((account) => account.bankAccountNumber && account.inactive !== true)
+            .map((account) => ({
+              bankAccountNumber: account.bankAccountNumber,
+              name: account.name || account.bankAccountNumber,
+            })),
+        })
+      } catch (error) {
+        await logServerError({
+          message: "Fiken bank account listing failed",
+          error,
+          level: "warning",
+          source: "api",
+          route: "PATCH /api/integrations/fiken",
+        })
+        return NextResponse.json(
+          { error: "Kunne ikke hente bankkontoer fra Fiken.", code: "bank_listing_failed" },
+          { status: 400 }
+        )
+      }
+    }
+
+    if (action === "set_bank_account") {
+      const number = String(body?.bankAccountNumber || "").replace(/\s|\./g, "")
+      if (!/^\d{11}$/.test(number)) {
+        return NextResponse.json({ error: "Ugyldig kontonummer.", code: "invalid_account" }, { status: 400 })
+      }
+      const { error } = await admin
+        .from("fiken_connections")
+        .update({ default_bank_account_number: number })
+        .eq("company_id", ctx.companyId)
+      if (error) {
+        return NextResponse.json({ error: error.message, code: "save_failed" }, { status: 500 })
+      }
+      return NextResponse.json({ ok: true, bankAccountNumber: number })
     }
 
     if (action === "sync_now") {

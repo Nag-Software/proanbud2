@@ -19,6 +19,15 @@ export type FikenScopeConfig = {
   invoices: boolean
   products: boolean
   inbox: boolean
+  /**
+   * Når true sender FIKEN fakturaen til kunden (POST /invoices/send) — utløst herfra,
+   * uten innlogging på fiken.no. Standard true: Fiken er betalingsmottaker og eier
+   * fakturanummer, KID og EHF.
+   *
+   * Gjelder KUN faktura. Tilbud sendes alltid fra ProAnbud, som eier kundedialogen og
+   * den digitale aksepten — Fikens tilbud har ingen aksept-flyt.
+   */
+  sendInvoiceFromFiken: boolean
 }
 
 export type FikenConnectionRow = {
@@ -35,6 +44,8 @@ export type FikenConnectionRow = {
   default_vat_type: string | null
   default_income_account: string | null
   default_bank_account_code: string | null
+  /** Kontonummer som sendes som `bankAccountNumber` på fakturautkast. */
+  default_bank_account_number: string | null
   sync_state: FikenSyncState
   last_success_at: string | null
   last_error_at: string | null

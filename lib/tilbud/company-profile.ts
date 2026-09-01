@@ -18,6 +18,8 @@ export type CompanyProfile = {
   quoteValidityDays: number
   priceLevel: CompanyPriceLevel
   industry: string
+  /** Registrert i Merverdiavgiftsregisteret — styrer mva på tilbud og vatType mot Fiken. */
+  vatRegistered: boolean
 }
 
 export type CompanyProfileRow = {
@@ -34,10 +36,11 @@ export type CompanyProfileRow = {
   quote_validity_days?: number | null
   price_level?: CompanyPriceLevel | null
   industry?: string | null
+  vat_registered?: boolean | null
 }
 
 export const COMPANY_PROFILE_SELECT =
-  "id, name, org_number, logo_url, email, phone, address, postal_code, city, website, quote_validity_days, price_level, industry"
+  "id, name, org_number, logo_url, email, phone, address, postal_code, city, website, quote_validity_days, price_level, industry, vat_registered"
 
 export const COMPANY_BASIC_SELECT = "id, name, org_number"
 
@@ -72,6 +75,8 @@ export function mapCompanyRowToProfile(row: CompanyProfileRow): CompanyProfile {
     quoteValidityDays: Math.min(365, Math.max(1, Number(row.quote_validity_days || 30))),
     priceLevel: row.price_level === "low" || row.price_level === "high" ? row.price_level : "normal",
     industry: row.industry?.trim() || "",
+    // Default true: matcher DB-defaulten og dagens oppførsel (alltid 25 %).
+    vatRegistered: row.vat_registered !== false,
   }
 }
 
@@ -97,6 +102,7 @@ export function mapCompanyRowToOfferContext(
     quoteValidityDays: profile.quoteValidityDays,
     priceLevel: profile.priceLevel,
     industry: profile.industry || null,
+    vatRegistered: profile.vatRegistered,
   }
 }
 

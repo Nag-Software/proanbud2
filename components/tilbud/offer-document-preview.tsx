@@ -293,13 +293,15 @@ export function OfferDocumentPreview({
               </>
             ) : null}
             <div className="flex justify-between gap-4 py-[3px]">
-              <span className="text-[11.5px] text-gray-500">Mva (25 %)</span>
+              <span className="text-[11.5px] text-gray-500">Mva{m.vatRegistered ? " (25 %)" : ""}</span>
               <span className="whitespace-nowrap text-[11.5px] tabular-nums text-gray-900">
-                {formatDocumentCurrency(m.vatAmountNok)}
+                {m.vatRegistered ? formatDocumentCurrency(m.vatAmountNok) : "Ikke mva-pliktig"}
               </span>
             </div>
             <div className="mt-1.5 flex items-baseline justify-between gap-4 border-t border-gray-900 pt-[7px]">
-              <span className="text-[12px] font-bold text-gray-900">Totalt inkl. mva</span>
+              <span className="text-[12px] font-bold text-gray-900">
+                {m.vatRegistered ? "Totalt inkl. mva" : "Totalt"}
+              </span>
               <span className="whitespace-nowrap text-[14px] font-bold tabular-nums text-gray-900">
                 {formatDocumentCurrency(m.totalInclVatNok)}
               </span>

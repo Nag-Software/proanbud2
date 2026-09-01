@@ -1,23 +1,32 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+
+import { useConfirm } from "@/components/ui/confirm-dialog"
+import { invoiceOfferAction } from "@/app/prosjekter/[id]/fakturering-actions"
 import {
-  CalendarClock,
-  Download,
+  ChevronDown,
   Eye,
   FileImage,
   FileText,
+  FolderKanban,
   Plus,
+  Receipt,
   Send,
 } from "lucide-react"
 
 import { track } from "@/lib/analytics/track"
 import { reportClientError } from "@/lib/errors/client"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -28,11 +37,13 @@ import {
 } from "@/components/ui/responsive-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { ResponsiveTabs, TabsContent } from "@/components/responsive-tabs"
-import { TilleggsarbeidTab } from "./tilleggsarbeid-tab"
 import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
+import {
+  AiOfferEditor,
+  type OfferEditProposal,
+} from "@/components/tilbud/ai-offer-editor"
 import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
@@ -51,7 +62,6 @@ import {
   calculateOfferTotals,
   formatNok,
 } from "@/lib/tilbud/types"
-
 
 type OfferActivityItem = OfferActivityEvent
 
@@ -99,6 +109,7 @@ type OfferPageModel = {
   recipientName: string
   recipientEmail: string
   recipientPhone: string
+  projectId: string | null
   projectName: string
   sourceSummary: string
   sourceDocuments: OfferSourceDocument[]
@@ -126,49 +137,6 @@ type OfferSaveSnapshot = {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-function customerField(value: string) {
-  return value.trim() || "—"
-}
-
-function CustomerInfoDisplay({ customer }: { customer: LinkedCustomer }) {
-  const addressLine = [customer.address, customer.postalCode, customer.city].filter(Boolean).join(", ")
-
-  return (
-    <div className="space-y-3 text-sm">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Kunde</p>
-        <p className="mt-1 font-medium text-[15px] text-foreground">{customerField(customer.name)}</p>
-      </div>
-      <div className="space-y-2">
-        {customer.orgNumber ? (
-        <div className="grid grid-cols-[88px_1fr] gap-2">
-            <p className="text-muted-foreground">Org.nr</p>
-            <p className="text-foreground">{customerField(customer.orgNumber)}</p>
-          </div>
-        ) : null}
-        <div className="grid grid-cols-[88px_1fr] gap-2">
-          <p className="text-muted-foreground">Adresse</p>
-          <p className="text-foreground">{addressLine || "—"}</p>
-        </div>
-        <div className="grid grid-cols-[88px_1fr] gap-2">
-          <p className="text-muted-foreground">E-post</p>
-          <p className="text-foreground">{customerField(customer.email)}</p>
-        </div>
-        <div className="grid grid-cols-[88px_1fr] gap-2">
-          <p className="text-muted-foreground">Telefon</p>
-          <p className="text-foreground">{customerField(customer.phone)}</p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function formatFileSize(sizeBytes: number) {
-  if (sizeBytes < 1024) return `${sizeBytes} B`
-  if (sizeBytes < 1024 * 1024) return `${Math.round(sizeBytes / 1024)} KB`
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
 const statusOptions: Array<{
   value: OfferPageModel["status"]
   label: string
@@ -179,6 +147,16 @@ const statusOptions: Array<{
   { value: "accepted", label: "Godkjent" },
   { value: "rejected", label: "Avvist" },
 ]
+
+function customerField(value: string) {
+  return value.trim() || "—"
+}
+
+function formatFileSize(sizeBytes: number) {
+  if (sizeBytes < 1024) return `${sizeBytes} B`
+  if (sizeBytes < 1024 * 1024) return `${Math.round(sizeBytes / 1024)} KB`
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 function dateLabel(value?: string | null) {
   if (!value) return "-"
@@ -205,21 +183,130 @@ function toInputDate(value?: string | null) {
   return value.slice(0, 10)
 }
 
-function statusBadge(status: string) {
-  if (status === "accepted") return <Badge className="theme-badge-status-accepted">Godkjent</Badge>
-  if (status === "sent") return <Badge className="theme-badge-status-sent">Tilbud sendt</Badge>
-  if (status === "rejected") return <Badge variant="destructive">Avvist</Badge>
-  return <Badge variant="secondary">Tilbud – utkast</Badge>
+const STATUS_DOT: Record<OfferPageModel["status"], string> = {
+  draft: "bg-muted-foreground",
+  sent: "bg-[var(--tone-warning)]",
+  accepted: "bg-[var(--tone-success)]",
+  rejected: "bg-[var(--tone-danger)]",
 }
 
-function tripletexSyncBadge(sync: TripletexSyncLink) {
-  if (!sync?.external_id) {
-    return <Badge variant="secondary">Ikke synket</Badge>
-  }
-  if (sync.sync_status === "synced") {
-    return <Badge className="theme-badge-status-accepted">Synket</Badge>
-  }
-  return <Badge variant="outline">{sync.sync_status || "Ukjent"}</Badge>
+const statusChipClass =
+  "inline-flex h-8 shrink-0 items-center gap-2 rounded-[var(--radius-control)] border border-[color:var(--control-border-soft)] bg-background bg-[image:var(--control-sheen-soft)] px-2.5 text-[13px] font-bold shadow-[var(--shadow-surface)]"
+
+function OfferStatusChip({
+  status,
+  onChange,
+}: {
+  status: OfferPageModel["status"]
+  onChange: (value: OfferPageModel["status"]) => void
+}) {
+  const current = statusOptions.find((item) => item.value === status)
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            statusChipClass,
+            "cursor-pointer transition-all hover:shadow-[var(--shadow-surface-hover)] active:translate-y-px active:shadow-[var(--shadow-surface-pressed)]"
+          )}
+        >
+          <span className={cn("size-2 shrink-0 rounded-full", STATUS_DOT[status])} />
+          {current?.label ?? "Utkast"}
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {statusOptions.map((item) => (
+          <DropdownMenuItem
+            key={item.value}
+            disabled={item.disabled}
+            onSelect={() => onChange(item.value)}
+            className={cn(item.value === status && "font-semibold")}
+          >
+            {item.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function SidebarSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="border border-border bg-background">
+      <h3 className="border-b border-border bg-muted/30 px-3 py-2 text-sm font-semibold text-foreground">
+        {title}
+      </h3>
+      <div className="p-3">{children}</div>
+    </section>
+  )
+}
+
+function CustomerInfoDisplay({
+  customer,
+  projectName,
+  projectSummary,
+  isGeneratingSummary,
+}: {
+  customer: LinkedCustomer
+  projectName?: string
+  projectSummary?: string
+  isGeneratingSummary?: boolean
+}) {
+  const addressLine = [customer.address, customer.postalCode, customer.city].filter(Boolean).join(", ")
+  const customerHref = customer.id
+    ? `/kunder?sok=${encodeURIComponent(customer.name)}`
+    : null
+
+  return (
+    <div className="space-y-3 text-sm">
+      {customerHref ? (
+        <Link
+          href={customerHref}
+          className="block font-medium text-[15px] text-foreground underline-offset-2 hover:underline"
+        >
+          {customerField(customer.name)}
+        </Link>
+      ) : (
+        <p className="font-medium text-[15px] text-foreground">{customerField(customer.name)}</p>
+      )}
+      <div className="space-y-2">
+        {customer.orgNumber ? (
+          <div className="grid grid-cols-[88px_1fr] gap-2">
+            <p className="text-muted-foreground">Org.nr</p>
+            <p className="text-foreground">{customerField(customer.orgNumber)}</p>
+          </div>
+        ) : null}
+        <div className="grid grid-cols-[88px_1fr] gap-2">
+          <p className="text-muted-foreground">Adresse</p>
+          <p className="text-foreground">{addressLine || "—"}</p>
+        </div>
+        <div className="grid grid-cols-[88px_1fr] gap-2">
+          <p className="text-muted-foreground">E-post</p>
+          <p className="text-foreground">{customerField(customer.email)}</p>
+        </div>
+        <div className="grid grid-cols-[88px_1fr] gap-2">
+          <p className="text-muted-foreground">Telefon</p>
+          <p className="text-foreground">{customerField(customer.phone)}</p>
+        </div>
+      </div>
+      {projectName ? (
+        <div className="theme-divider-soft space-y-2 border-t pt-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Tilknyttet prosjekt
+          </p>
+          <p className="font-medium text-[15px] text-foreground">{projectName}</p>
+          {projectSummary?.trim() ? (
+            <p className="text-sm leading-relaxed text-muted-foreground">{projectSummary}</p>
+          ) : isGeneratingSummary ? (
+            <p className="text-sm text-muted-foreground">Genererer oppsummering...</p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 export function OfferDetailClient({
@@ -237,11 +324,50 @@ export function OfferDetailClient({
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const confirm = useConfirm()
+  const [isInvoicing, setIsInvoicing] = useState(false)
+
+  // «Fakturer jobben» er en snarvei inn i prosjektfakturamodellen: den lager samme
+  // faktura som Fakturering-fanen, med tilbudet og tilleggene som hører til det.
+  // Delfakturering (a-konto) gjøres fra prosjektet — her er handlingen bevisst
+  // én knapp uten valg, fordi «jobben er ferdig, send faktura» er normaltilfellet.
+  async function handleInvoiceOffer() {
+    const ok = await confirm({
+      title: "Fakturere jobben?",
+      description:
+        "Alt som gjenstår på dette tilbudet — og tilleggsarbeid knyttet til det — faktureres nå. Er Fiken tilkoblet, opprettes og sendes fakturaen derfra; ellers registreres den her så du beholder oversikten. Skal du fakturere bare en del, gjør du det fra Fakturering-fanen på prosjektet.",
+      confirmText: "Fakturer",
+    })
+    if (!ok) return
+
+    setIsInvoicing(true)
+    try {
+      const result = await invoiceOfferAction({ offerId: offer.id })
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+      const beløp =
+        result.amountNok > 0
+          ? ` på ${new Intl.NumberFormat("no-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(result.amountNok)}`
+          : ""
+      toast.success(
+        result.queuedTo === "fiken"
+          ? `Faktura${beløp} opprettet. Fiken sender den til kunden.`
+          : `Faktura${beløp} registrert i ProAnbud. Send den fra regnskapssystemet ditt.`
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Kunne ikke opprette faktura")
+    } finally {
+      setIsInvoicing(false)
+    }
+  }
   const [offer, setOffer] = useState(initialOffer)
   const [lineItems, setLineItems] = useState<OfferLineItem[]>(initialOffer.lineItems)
-  const [tripletexSync, setTripletexSync] = useState<TripletexSyncState>(initialTripletexSync)
+  const [, setTripletexSync] = useState<TripletexSyncState>(initialTripletexSync)
   const [activityLog, setActivityLog] = useState<OfferActivityItem[]>(activity)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [isMessageOpen, setIsMessageOpen] = useState(false)
   const [isSendDialogOpen, setIsSendDialogOpen] = useState(false)
   const [sendEmail, setSendEmail] = useState("")
   const [sendDialogError, setSendDialogError] = useState<string | null>(null)
@@ -418,12 +544,6 @@ export function OfferDetailClient({
     }
   }, [offer.id, refreshActivity])
 
-  const handlePrintPdf = useCallback(() => {
-    void logPdfExport()
-    // Server-rendrer en ekte A4-PDF av tilbudet og åpner den i ny fane.
-    window.open(`/api/tilbud/${offer.id}/pdf`, "_blank")
-  }, [offer.id, logPdfExport])
-
   const triggerTripletexSyncInBackground = useCallback(async () => {
     try {
       const response = await fetch(`/api/offers/${offer.id}/tripletex-sync`, {
@@ -503,6 +623,17 @@ export function OfferDetailClient({
     })
   }
 
+  const applyAiEdit = useCallback((proposal: OfferEditProposal) => {
+    setOffer((previous) => ({
+      ...previous,
+      title: proposal.title,
+      description: proposal.description,
+      sourceSummary: proposal.sourceSummary,
+    }))
+    setLineItems(proposal.lineItems)
+    toast.success("KI-forslaget er lagt inn og lagres automatisk")
+  }, [])
+
   useEffect(() => {
     setActivityLog(activity)
   }, [activity])
@@ -563,340 +694,272 @@ export function OfferDetailClient({
     }
   }, [offer.id, offer.projectSummary])
 
+  const hasCustomerMessage = offer.sourceSummary.trim().length > 0
+
   return (
     <div className="space-y-5 pb-10">
-      <section className={`relative border bg-card border-l-4 ${
-        offer.status === "accepted" ? "border-l-green-500" :
-        offer.status === "sent" ? "border-l-blue-500" :
-        offer.status === "rejected" ? "border-l-red-500" :
-        "border-l-muted-foreground/30"
-      }`}>
-        <div className="grid gap-0 divide-y divide-border lg:grid-cols-[1.2fr_0.8fr] lg:divide-x lg:divide-y-0">
+      <section className="border border-border bg-card">
+        <div className="grid divide-y divide-border lg:grid-cols-2 lg:divide-x lg:divide-y-0">
           <div className="space-y-4 p-4 sm:p-5">
-            <div className="flex flex-wrap items-center gap-2">
-              {statusBadge(offer.status)}
-              <span className="ml-auto text-[11px] text-muted-foreground">#{formatOfferReference(offer.id)}</span>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <h1 className="min-w-0 text-xl font-semibold text-foreground">
+                {offer.title?.trim() || "Tilbud uten tittel"}
+              </h1>
+              <OfferStatusChip
+                status={offer.status}
+                onChange={(value) =>
+                  setOffer((previous) => ({ ...previous, status: value }))
+                }
+              />
             </div>
-
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <h2 className="text-xl font-semibold leading-tight text-foreground">
-                {offer.title?.trim() || `Tilbud #${formatOfferReference(offer.id)}`}
-              </h2>
-              <div className="shrink-0 text-right">
-                <p className="text-2xl font-bold tabular-nums text-foreground">{formatNok(totals.totalNok)}</p>
-                <p className="text-[11px] text-muted-foreground">eks. mva</p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={offer.status} onValueChange={(value) => setOffer((prev) => ({ ...prev, status: value as OfferPageModel["status"] }))}>
-                <SelectTrigger className="h-8 w-32 bg-background text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map((item) => (
-                    <SelectItem key={item.value} value={item.value} disabled={Boolean(item.disabled)}>{item.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input type="date" className="h-8 w-36 bg-background text-xs" value={toInputDate(offer.quoteValidUntil)} onChange={(e) => setOffer((prev) => ({ ...prev, quoteValidUntil: e.target.value || null }))} />
-            </div>
-
-            <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-              <Button size="lg" onClick={openSendDialog} disabled={isPending || isAutoSaving || lineItems.length === 0} className="sm:">
-                <Send className="mr-2 h-4 w-4" />
-                Send tilbud
-              </Button>
-              <Button variant="outline" onClick={() => setIsPreviewOpen(true)} className="h-11 sm:h-9">
-                <Eye className="mr-2 h-4 w-4" />
-                Forhåndsvis tilbud
-              </Button>
-              <Button size="lg" variant="outline" onClick={handlePrintPdf} disabled={lineItems.length === 0} className="sm:">
-                <Download className="mr-2 h-4 w-4" />
-                Last ned PDF
-              </Button>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              {isAutoSaving
-                ? "Lagrer automatisk..."
-                : `Lagret${lastAutoSaveAt ? ` ${dateTimeLabel(lastAutoSaveAt)}` : ""}`}
-            </p>
 
             <div>
-              <Label htmlFor="header-quote-message" className="text-[11px] text-muted-foreground">
-                Melding til kunde
-              </Label>
-              <Textarea
-                id="header-quote-message"
-                className="mt-1 min-h-[64px] bg-background text-xs"
-                value={offer.sourceSummary}
-                onChange={(event) => setOffer((prev) => ({ ...prev, sourceSummary: event.target.value }))}
-                placeholder="Valgfri melding som følger med tilbudet"
+              <p className="text-2xl font-semibold tabular-nums text-foreground">
+                {formatNok(totals.totalNok)}
+              </p>
+              <p className="text-xs text-muted-foreground">eks. mva</p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <div className="flex items-center gap-2">
+                <Label
+                  htmlFor="valid-until"
+                  className="text-xs text-muted-foreground"
+                >
+                  Gyldig til
+                </Label>
+                <Input
+                  id="valid-until"
+                  type="date"
+                  className="h-8 w-36 bg-background text-xs"
+                  value={toInputDate(offer.quoteValidUntil)}
+                  onChange={(event) =>
+                    setOffer((previous) => ({
+                      ...previous,
+                      quoteValidUntil: event.target.value || null,
+                    }))
+                  }
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {isAutoSaving
+                  ? "Lagrer automatisk…"
+                  : `Lagret${lastAutoSaveAt ? ` ${dateTimeLabel(lastAutoSaveAt)}` : ""}`}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+              <Button
+                onClick={openSendDialog}
+                disabled={
+                  isPending || isAutoSaving || lineItems.length === 0
+                }
+              >
+                <Send className="h-4 w-4" />
+                Send tilbud
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setIsPreviewOpen(true)}
+              >
+                <Eye className="h-4 w-4" />
+                Forhåndsvis
+              </Button>
+              <AiOfferEditor
+                offerId={offer.id}
+                editable={offer.status === "draft"}
+                onApply={applyAiEdit}
               />
+              {offer.status === "accepted" ? (
+                <Button variant="outline" onClick={handleInvoiceOffer} disabled={isInvoicing || isPending}>
+                  <Receipt className="h-4 w-4" />
+                  Fakturer jobben
+                </Button>
+              ) : null}
+              {offer.projectId ? (
+                <Button variant="outline" asChild>
+                  <Link href={`/prosjekter/${offer.projectId}`}>
+                    <FolderKanban className="h-4 w-4" />
+                    Til prosjekt
+                  </Link>
+                </Button>
+              ) : null}
             </div>
           </div>
 
-          <div className="p-4 sm:p-5">
-            <article className="theme-surface-document flex h-full flex-col gap-4 p-4">
-              <CustomerInfoDisplay customer={linkedCustomer} />
+          <div className="space-y-4 p-4 sm:p-5">
+            <h2 className="text-sm font-semibold text-foreground">
+              Kunde og prosjekt
+            </h2>
 
-              {offer.projectName ? (
-                <div className="theme-divider-soft space-y-2 border-t pt-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tilknyttet prosjekt</p>
-                  <p className="font-medium text-[15px] text-foreground">{offer.projectName}</p>
-                  {offer.projectSummary.trim() ? (
-                    <p className="text-sm leading-relaxed text-muted-foreground">{offer.projectSummary}</p>
-                  ) : isGeneratingSummary ? (
-                    <p className="text-sm text-muted-foreground">Genererer oppsummering...</p>
-                  ) : null}
-                </div>
+            <CustomerInfoDisplay
+              customer={linkedCustomer}
+              projectName={offer.projectName}
+              projectSummary={offer.projectSummary}
+              isGeneratingSummary={isGeneratingSummary}
+            />
+
+            <div className="border-t border-border pt-4">
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto p-0 text-xs"
+                onClick={() => setIsMessageOpen((open) => !open)}
+              >
+                {hasCustomerMessage
+                  ? "Rediger melding til kunde"
+                  : "Legg til melding til kunde"}
+              </Button>
+
+              {isMessageOpen ? (
+                <Textarea
+                  id="header-quote-message"
+                  autoFocus
+                  className="mt-3 min-h-[72px] bg-background text-sm"
+                  value={offer.sourceSummary}
+                  onChange={(event) =>
+                    setOffer((previous) => ({
+                      ...previous,
+                      sourceSummary: event.target.value,
+                    }))
+                  }
+                  placeholder="Valgfri melding som følger med tilbudet"
+                />
               ) : null}
-            </article>
+            </div>
           </div>
         </div>
       </section>
 
-      <ResponsiveTabs
-        defaultValue="komponenter"
-        tabs={[
-          { value: "komponenter", label: "Komponenter" },
-          { value: "tillegg", label: "Tillegg" },
-          { value: "kunde", label: "Kundeinfo" },
-          { value: "dokumenter", label: "Dokumenter" },
-          { value: "hendelser", label: "Hendelser" },
-        ]}
-      >
-
-        <TabsContent value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-          <Card className="theme-surface-info overflow-hidden">
-            <CardHeader>
-              <CardTitle>Oversikt</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 lg:grid-cols-12">
-              <div className="space-y-3 lg:col-span-8">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="offer-status">Status</Label>
-                    <Select
-                      value={offer.status}
-                      onValueChange={(value) => setOffer((prev) => ({ ...prev, status: value as OfferPageModel["status"] }))}
-                    >
-                      <SelectTrigger id="offer-status" className="mt-1 w-full bg-background">
-                        <SelectValue placeholder="Velg status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {statusOptions.map((item) => (
-                          <SelectItem key={item.value} value={item.value} disabled={Boolean(item.disabled)}>
-                            {item.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="valid-until">Gyldig til</Label>
-                    <Input
-                      id="valid-until"
-                      type="date"
-                      className="mt-1 bg-background"
-                      value={toInputDate(offer.quoteValidUntil)}
-                      onChange={(event) => setOffer((prev) => ({ ...prev, quoteValidUntil: event.target.value || null }))}
-                    />
-                  </div>
-
-                </div>
-
-                <div>
-                  <Label htmlFor="source-summary">Notat</Label>
-                  <Textarea
-                    id="source-summary"
-                    className="mt-1 min-h-[94px] bg-background"
-                    value={offer.sourceSummary}
-                    onChange={(event) => setOffer((prev) => ({ ...prev, sourceSummary: event.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-3 lg:col-span-4">
-                <Card className="theme-badge-violet">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <CalendarClock className="h-4 w-4 theme-badge-violet" />
-                      Tidslinje
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Opprettet</span><strong>{dateLabel(offer.createdAt)}</strong></div>
-                    <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Sendt</span><strong>{dateLabel(offer.sentAt)}</strong></div>
-                    <div className="flex items-center justify-between rounded-md border bg-background px-2.5 py-2"><span>Gyldig</span><strong>{dateLabel(offer.quoteValidUntil)}</strong></div>
-                  </CardContent>
-                </Card>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="komponenter" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-          <div className="flex flex-col border border-border bg-background">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-3">
-              <h3 className="text-sm font-semibold tracking-tight text-foreground">Tilbudskomponenter</h3>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-8 text-xs font-medium"
-                  onClick={handleAddCategory}
-                >
-                  <Plus className="mr-1.5 h-3.5 w-3.5" />
-                  Legg til kategori
-                </Button>
-                <AddOfferLineItemMenu
-                  onAddItems={addLineItems}
-                  defaultSubproject={defaultSubproject}
-                  companyName={company?.name}
-                />
-              </div>
-            </div>
-
-            <NewOfferItemsTable
-              ref={itemsTableRef}
-              items={lineItems}
-              onItemsChange={setLineItems}
-              supplierSuggestions={[]}
-            />
-            <div className="bg-muted/5 p-5">
-              <div className="ml-auto flex w-full max-w-sm flex-col gap-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Delsum</span>
-                  <span className="font-medium tabular-nums">{formatNok(totals.subtotalNok)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Rabatt</span>
-                  <span className="theme-text-danger font-medium tabular-nums">-{formatNok(totals.discountNok)}</span>
-                </div>
-                <div className="my-1 border-t border-border/80"></div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-foreground">Total eks. mva</span>
-                  <span className="font-medium tabular-nums">{formatNok(totals.totalNok)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">MVA (25%)</span>
-                  <span className="font-medium tabular-nums">{formatNok(totals.totalNok * 0.25)}</span>
-                </div>
-                <div className="my-1 border-t border-foreground/30"></div>
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-foreground">Totalsum inkl. mva</span>
-                  <span className="text-xl font-bold tracking-tight text-foreground tabular-nums">{formatNok(totals.totalNok * 1.25)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="kunde" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-          <div className="border border-border bg-background">
-            <div className="border-b border-border bg-muted/30 px-4 py-3">
-              <h3 className="text-sm font-semibold text-foreground">Kundeinfo</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Hentes fra kunden koblet til prosjektet. Rediger kunden under Kunder.
-              </p>
-            </div>
-            <div className="p-4">
-              <article className="theme-surface-document mx-auto max-w-2xl p-4">
-                <CustomerInfoDisplay customer={linkedCustomer} />
-                {offer.projectName ? (
-                  <div className="theme-divider-soft mt-4 space-y-2 border-t pt-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tilknyttet prosjekt</p>
-                    <p className="font-medium text-foreground">{offer.projectName}</p>
-                  </div>
-                ) : null}
-              </article>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="dokumenter" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-          <div className="border border-border bg-background">
-            <div className="border-b border-border bg-muted/30 px-4 py-3">
-              <h3 className="text-sm font-semibold text-foreground">Vedlegg til tilbudet</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Dokumenter lastet opp som grunnlag da tilbudet ble opprettet.
-              </p>
-            </div>
-            <div className="p-4">
-              {offer.sourceDocuments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Ingen dokumenter er knyttet til dette tilbudet.</p>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {offer.sourceDocuments.map((document) => (
-                    <div key={document.id} className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-3">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <div className="mt-0.5 rounded-md border bg-muted/40 p-2">
-                          {document.previewKind === "image" ? (
-                            <FileImage className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <FileText className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-foreground">{document.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatFileSize(document.sizeBytes)}
-                            {document.uploadedAt ? ` • ${dateLabel(document.uploadedAt)}` : ""}
-                          </p>
-                        </div>
-                      </div>
-                      {document.signedUrl ? (
-                        <Button variant="outline" size="sm" asChild>
-                          <a href={document.signedUrl} target="_blank" rel="noreferrer">
-                            <Download className="mr-1.5 h-3.5 w-3.5" />
-                            Åpne
-                          </a>
-                        </Button>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="hendelser" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-          <div className="border border-border bg-background">
-            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
-              <h3 className="text-sm font-semibold text-foreground">Hendelser</h3>
-              <Button variant="outline" size="sm" onClick={handlePrintPdf} disabled={lineItems.length === 0}>
-                <Download className="mr-2 h-4 w-4" />
-                Last ned PDF
+      <div className="w-full min-w-0">
+        <div className="flex flex-col border border-border bg-background">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-3">
+            <h3 className="text-sm font-semibold tracking-tight text-foreground">Tilbudskomponenter</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs font-medium"
+                onClick={handleAddCategory}
+              >
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Legg til kategori
               </Button>
+              <AddOfferLineItemMenu
+                onAddItems={addLineItems}
+                defaultSubproject={defaultSubproject}
+                companyName={company?.name}
+              />
             </div>
-            <div className="p-4">
-              <div className="space-y-2">
-                {activityLog.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Ingen aktivitet enda.</p>
-                ) : (
-                  activityLog.map((item) => (
-                    <div key={item.id} className={`border p-3 text-sm ${getOfferActivityTone(item.eventType)}`}>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <strong>{item.title}</strong>
-                        <span className="text-xs text-muted-foreground">{dateTimeLabel(item.createdAt)}</span>
-                      </div>
-                      {item.description ? <p className="mt-1 text-xs text-muted-foreground">{item.description}</p> : null}
-                    </div>
-                  ))
-                )}
+          </div>
+
+          <NewOfferItemsTable
+            ref={itemsTableRef}
+            items={lineItems}
+            onItemsChange={setLineItems}
+            supplierSuggestions={[]}
+          />
+          <div className="bg-muted/5 p-5">
+            <div className="ml-auto flex w-full max-w-sm flex-col gap-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Delsum</span>
+                <span className="font-medium tabular-nums">{formatNok(totals.subtotalNok)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Rabatt</span>
+                <span className="theme-text-danger font-medium tabular-nums">-{formatNok(totals.discountNok)}</span>
+              </div>
+              <div className="my-1 border-t border-border/80"></div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium text-foreground">Total eks. mva</span>
+                <span className="font-medium tabular-nums">{formatNok(totals.totalNok)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">MVA (25%)</span>
+                <span className="font-medium tabular-nums">{formatNok(totals.totalNok * 0.25)}</span>
+              </div>
+              <div className="my-1 border-t border-foreground/30"></div>
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-foreground">Totalsum inkl. mva</span>
+                <span className="text-xl font-bold tracking-tight text-foreground tabular-nums">
+                  {formatNok(totals.totalNok * 1.25)}
+                </span>
               </div>
             </div>
           </div>
-        </TabsContent>
+        </div>
+      </div>
 
-        <TabsContent value="tillegg" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-          <TilleggsarbeidTab offerId={offer.id} />
-        </TabsContent>
-      </ResponsiveTabs>
+      <div className="grid gap-5 md:grid-cols-2">
+        <SidebarSection title="Dokumenter">
+          {offer.sourceDocuments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Ingen dokumenter er knyttet til dette tilbudet.</p>
+          ) : (
+            <div className="space-y-1">
+              {offer.sourceDocuments.map((document) => (
+                <div
+                  key={document.id}
+                  className="flex min-h-10 items-center justify-between gap-2 border bg-background px-2.5 py-1.5"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="text-muted-foreground">
+                      {document.previewKind === "image" ? (
+                        <FileImage className="h-3.5 w-3.5" />
+                      ) : (
+                        <FileText className="h-3.5 w-3.5" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-medium text-foreground">
+                        {document.name}
+                      </p>
+                      <p className="text-[11px] leading-4 text-muted-foreground">
+                        {formatFileSize(document.sizeBytes)}
+                        {document.uploadedAt ? ` • ${dateLabel(document.uploadedAt)}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                  {document.signedUrl ? (
+                    <Button variant="outline" size="xs" asChild>
+                      <a href={document.signedUrl} target="_blank" rel="noreferrer">
+                        Åpne
+                      </a>
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </SidebarSection>
+
+        <SidebarSection title="Hendelser">
+          {activityLog.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Ingen aktivitet enda.</p>
+          ) : (
+            <div className="space-y-1">
+              {activityLog.map((item) => (
+                <div
+                  key={item.id}
+                  className={`border px-2.5 py-2 text-xs ${getOfferActivityTone(item.eventType)}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <strong className="min-w-0 truncate">{item.title}</strong>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {dateTimeLabel(item.createdAt)}
+                    </span>
+                  </div>
+                  {item.description ? (
+                    <p className="mt-0.5 line-clamp-1 text-[11px] leading-4 text-muted-foreground">
+                      {item.description}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </SidebarSection>
+      </div>
 
       <ResponsiveDialog
         open={isSendDialogOpen}
@@ -906,7 +969,7 @@ export function OfferDetailClient({
         }}
       >
         <ResponsiveDialogContent className="px-4 md:p-4 sm:max-w-md">
-          <ResponsiveDialogHeader className="px-0">
+          <ResponsiveDialogHeader>
             <ResponsiveDialogTitle>Send tilbudet?</ResponsiveDialogTitle>
             <ResponsiveDialogDescription>Kunden får en e-post med lenke til tilbudet.</ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
@@ -932,7 +995,7 @@ export function OfferDetailClient({
             ) : null}
             {sendDialogError ? <p className="theme-text-danger text-sm">{sendDialogError}</p> : null}
           </div>
-          <ResponsiveDialogFooter className="px-0">
+          <ResponsiveDialogFooter>
             <Button variant="outline" onClick={() => setIsSendDialogOpen(false)} disabled={isPending}>
               Avbryt
             </Button>
@@ -941,7 +1004,7 @@ export function OfferDetailClient({
                 "Sender..."
               ) : (
                 <>
-                  <Send className="mr-2 h-4 w-4" />
+                  <Send className="h-4 w-4" />
                   Send tilbud
                 </>
               )}
@@ -951,19 +1014,13 @@ export function OfferDetailClient({
       </ResponsiveDialog>
 
       <Sheet open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <SheetContent className="theme-preview-shell !max-w-[min(1100px,96vw)] w-[96vw] overflow-y-auto p-4 sm:!max-w-[min(1100px,96vw)]">
-          <SheetHeader className="space-y-1">
-            <SheetTitle>Forhåndsvisning av tilbud</SheetTitle>
-            <SheetDescription>Slik ser tilbudet ut for kunden.</SheetDescription>
-          </SheetHeader>
+        <SheetContent className="theme-preview-shell !max-w-[min(1100px,96vw)] w-[96vw] overflow-y-auto p-4 sm:!max-w-[min(700px,96vw)]">
 
-          <div className="mt-4">
-            <OfferDocumentViewer
-              {...documentData}
-              pdfUrl={`/api/tilbud/${offer.id}/pdf`}
-              onDownload={() => void logPdfExport()}
-            />
-          </div>
+          <OfferDocumentViewer
+            {...documentData}
+            pdfUrl={`/api/tilbud/${offer.id}/pdf`}
+            onDownload={() => void logPdfExport()}
+          />
         </SheetContent>
       </Sheet>
     </div>
