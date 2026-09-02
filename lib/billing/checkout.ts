@@ -420,8 +420,8 @@ export async function changeSubscriptionPlan(input: {
       customerId: billing.stripe_customer_id,
       subscription: fresh,
     })
-    // Drops the standalone integrasjoner module item when upgrading to Proff
-    // (bundled in the plan) so it is not billed on top.
+    // Drops the standalone integrasjoner / timeføring module item when upgrading
+    // to Proff (bundled in the plan) so it is not billed on top.
     await syncModulesFromSubscription(input.companyId, fresh)
     // Included seats differ between plans (Mini 0 / Proff 5) → recompute charges.
     await syncSeatQuantity(input.companyId)

@@ -29,7 +29,7 @@ export default async function Page() {
         <ModuleGate
           moduleName="Timeføring"
           monthlyPriceNok={MODULE_PRICING.timeforing}
-          description="Registrer og følg arbeidstimer for ansatte og prosjekter."
+          description="Registrer og følg arbeidstimer for ansatte og prosjekter. Inkludert i Proff; 39 kr/mnd tillegg på Mini."
         />
       </AppPageShell>
     )

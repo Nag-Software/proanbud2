@@ -694,14 +694,15 @@ function ModuleMissingState({ role }: { role: CanonicalRole | null }) {
           <CardTitle>Timeføring er ikke aktivert</CardTitle>
           <CardDescription>
             Med Timeføring stempler du inn og ut rett fra mobilen, og timene havner automatisk på
-            riktig prosjekt.
+            riktig prosjekt. Inkludert i Proff; 39 kr/mnd tillegg på Mini.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {isAdmin ? (
             <>
               <p className="text-sm text-muted-foreground">
-                Aktiver Timeføring under Min bedrift → Betaling.
+                Aktiver Timeføring under Min bedrift → Betaling, eller oppgrader til Proff der det
+                inngår.
               </p>
               <Button asChild>
                 <Link href="/innstillinger/betaling">Gå til abonnement</Link>

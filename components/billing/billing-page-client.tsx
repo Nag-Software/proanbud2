@@ -256,7 +256,7 @@ export function BillingPageClient() {
 
   const trialEnd = formatDate(summary?.trial_ends_at ?? null)
   const interval = intervalLabel(summary?.billing_interval ?? null)
-  const isProff = summary?.plan_key === "proff"
+  const isProff = summary?.plan_key === "proff" || summary?.status === "trialing"
   const cancelDate = summary?.cancel_at_period_end
     ? formatDate(summary?.cancel_at ?? summary?.period_end ?? null)
     : null
