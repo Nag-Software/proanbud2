@@ -4,12 +4,24 @@ import * as React from "react"
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { AppPageShell } from "@/components/app-page-shell"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  DashboardEmpty,
+  DashboardSection,
+} from "@/components/dashboard/dashboard-section"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import dynamic from "next/dynamic"
-import { TrendingUp, FileText, FolderKanban, Users, MoreHorizontal, ArrowRight } from "lucide-react"
+import { MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +34,11 @@ import { useRouter } from "next/navigation"
 import { useUserRole } from "@/hooks/use-user-role"
 import { VenterPaDeg } from "@/components/dashboard/venter-pa-deg"
 import { useAuth } from "@/components/auth-provider"
+import { DashboardKpiCard } from "./dashboard-kpi-card"
+import {
+  getDashboardProjectHealthAction,
+  type DashboardProjectHealthResult,
+} from "./dashboard-actions"
 
 const formatNok = (val: number) =>
   new Intl.NumberFormat("no-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(val)
@@ -57,7 +74,6 @@ function OfferRowActions({ offerId }: { offerId: string }) {
           type="button"
           size="icon-sm"
           variant="ghost"
-          className="h-7 w-7"
           onClick={(event) => event.stopPropagation()}
         >
           <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
@@ -82,8 +98,8 @@ function OfferRowActions({ offerId }: { offerId: string }) {
 // Charts live in a separate chunk so recharts is not in the dashboard's
 // first-load JS — loaded on demand once the page mounts (ssr:false: data is
 // fetched client-side anyway). Fixed-height placeholders avoid layout shift.
-const RevenueAreaChart = dynamic(
-  () => import("./dashboard-charts").then((m) => m.RevenueAreaChart),
+const ProjectHealthChart = dynamic(
+  () => import("./dashboard-charts").then((m) => m.ProjectHealthChart),
   { ssr: false, loading: () => <div className="h-[240px] w-full animate-pulse bg-muted/40" /> }
 )
 const PerformanceGauge = dynamic(
@@ -103,6 +119,7 @@ interface DashboardData {
   todayOmsetning: number
   yesterdayOmsetning: number
   chartData: Array<{ date: string; omsetning: number; tilbud: number }>
+  projectHealth: DashboardProjectHealthResult
   recentOffers: Array<{ id: string; title: string; kunde: string; prosjekt: string; tid: string }>
   tableOffers: Array<{ id: string; navn: string; shortId: string; kunde: string; verdi: number; status: string }>
   topProjects: Array<{ id: string; navn: string; offers: number; pst: number }>
@@ -118,7 +135,7 @@ interface DashboardData {
 // som rollecachen i role-provider. Kun visning: RLS + middleware er fortsatt
 // sikkerhetsgrensen, og nøkkelen er per bruker-id. Bump versjonen i prefikset
 // hvis DashboardData endrer form.
-const DASH_CACHE_PREFIX = "pa_dash_v1:"
+const DASH_CACHE_PREFIX = "pa_dash_v4:"
 
 type DashSnapshot = {
   data: DashboardData
@@ -134,6 +151,8 @@ function readDashSnapshot(userId: string): DashSnapshot | null {
       !d ||
       typeof d.omsetning !== "number" ||
       !Array.isArray(d.chartData) ||
+      !d.projectHealth ||
+      !Array.isArray(d.projectHealth.rows) ||
       !Array.isArray(d.recentOffers) ||
       !Array.isArray(d.tableOffers) ||
       !Array.isArray(d.topProjects)
@@ -165,6 +184,7 @@ export default function DashboardPage() {
   // Feeds (recent/active offers, top projects) need extra name-lookup queries
   // after the KPIs are ready — tracked separately so the KPIs can paint first.
   const [feedsLoading, setFeedsLoading] = useState(true)
+  const [projectHealthLoading, setProjectHealthLoading] = useState(true)
   // Bedriften brukes av «Venter på deg», som kjører sine egne spørringer.
   const [companyId, setCompanyId] = useState<string | null>(null)
 
@@ -212,6 +232,25 @@ export default function DashboardPage() {
             { id: "p2", navn: "Fasade 2026", offers: 9, pst: 75 },
             { id: "p3", navn: "Kundeoppgradering", offers: 6, pst: 50 },
           ]
+          const projectHealth: DashboardProjectHealthResult = {
+            rows: [
+              {
+                id: "p2", name: "Fasade 2026", hoursUsedPercent: 111,
+                overrunHours: 40, loggedHours: 400, plannedHours: 360, tone: "danger",
+              },
+              {
+                id: "p1", name: "Loftprosjekt", hoursUsedPercent: 94,
+                overrunHours: 0, loggedHours: 282, plannedHours: 300, tone: "warning",
+              },
+              {
+                id: "p3", name: "Kundeoppgradering", hoursUsedPercent: 49,
+                overrunHours: 0, loggedHours: 147, plannedHours: 300, tone: "normal",
+              },
+            ],
+            totalActive: 3,
+            missingCount: 0,
+            firstMissingProjectId: null,
+          }
 
           const mock: DashboardData = {
             omsetning: chartData.reduce((s, r) => s + r.omsetning, 0),
@@ -225,6 +264,7 @@ export default function DashboardPage() {
             todayOmsetning: rand(12000, 0.2),
             yesterdayOmsetning: rand(8500, 0.25),
             chartData,
+            projectHealth,
             recentOffers,
             tableOffers,
             topProjects,
@@ -236,6 +276,7 @@ export default function DashboardPage() {
           setData(mock)
           setLoading(false)
           setFeedsLoading(false)
+          setProjectHealthLoading(false)
           return
         }
       } catch (e) {
@@ -245,7 +286,11 @@ export default function DashboardPage() {
       // Wait for the shared session to resolve; reuse it instead of a fresh
       // network getUser() (middleware + AuthProvider already validated it).
       if (authLoading) return
-      if (!authUser) { setLoading(false); return }
+      if (!authUser) {
+        setLoading(false)
+        setProjectHealthLoading(false)
+        return
+      }
 
       // Gjenbesøk: mal siste kjente dashboard med en gang — de ferske
       // spørringene under kjører uansett og erstatter alt når de lander.
@@ -254,6 +299,7 @@ export default function DashboardPage() {
         setData(snapshot.data)
         setLoading(false)
         setFeedsLoading(false)
+        setProjectHealthLoading(false)
       }
 
       const supabase = createClient()
@@ -269,7 +315,11 @@ export default function DashboardPage() {
         || (authUser.user_metadata?.name as string | undefined)
         || (authUser.email?.split("@")[0] ?? "")
       const firstName = rawName.split(" ")[0]
-      if (!companyId) { setLoading(false); return }
+      if (!companyId) {
+        setLoading(false)
+        setProjectHealthLoading(false)
+        return
+      }
 
       const now = new Date()
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
@@ -278,6 +328,16 @@ export default function DashboardPage() {
       const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
       const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toISOString()
       const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString()
+      // Server-actionen batchlaster alle aktive prosjekter og kostnadsradene
+      // deres. Den startes samtidig med KPI-ene, men får ikke blokkere første
+      // maling dersom prosjektøkonomien bruker litt lenger tid.
+      const projectHealthPromise = getDashboardProjectHealthAction().catch((error) => {
+        reportClientError(error, {
+          context: { action: "hente prosjektkontroll til dashboard" },
+          level: "warning",
+        })
+        return null
+      })
 
       const [
         omsetningRes, omsetningPrevRes,
@@ -363,6 +423,12 @@ export default function DashboardPage() {
         kunders, kundersPrev,
         todayOmsetning, yesterdayOmsetning,
         chartData,
+        projectHealth: prev?.projectHealth ?? {
+          rows: [],
+          totalActive: activeProjects,
+          missingCount: 0,
+          firstMissingProjectId: null,
+        },
         recentOffers: prev?.recentOffers ?? [],
         tableOffers: prev?.tableOffers ?? [],
         topProjects: prev?.topProjects ?? [],
@@ -374,13 +440,14 @@ export default function DashboardPage() {
       // names WITH their customer name (nested select over the customer FK)
       // and the offer tally for top-projects — previously three serial queries.
       const topProjectIds = (topProjectsRes.data || []).map(p => p.id)
-      const [projLookupRes, topOffersRes] = await Promise.all([
+      const [projLookupRes, topOffersRes, projectHealthResult] = await Promise.all([
         uniqueProjectIds.length
           ? supabase.from("projects").select("id, name, customer_id, customers(name)").in("id", uniqueProjectIds)
           : Promise.resolve({ data: null }),
         topProjectIds.length
           ? supabase.from("offers").select("project_id").in("project_id", topProjectIds)
           : Promise.resolve({ data: null }),
+        projectHealthPromise,
       ])
       type ProjLookupRow = { id: string; name: string; customer_id: string | null; customers: { name: string } | null }
       for (const p of (projLookupRes.data as ProjLookupRow[] | null) || []) {
@@ -448,11 +515,20 @@ export default function DashboardPage() {
         kunders, kundersPrev,
         todayOmsetning, yesterdayOmsetning,
         chartData,
+        projectHealth:
+          projectHealthResult ??
+          snapshot?.data.projectHealth ?? {
+            rows: [],
+            totalActive: activeProjects,
+            missingCount: activeProjects,
+            firstMissingProjectId: null,
+          },
         recentOffers, tableOffers, topProjects,
         userName, companyName, companyLogo, companyStatus,
       }
       setData(fullData)
       setFeedsLoading(false)
+      setProjectHealthLoading(false)
       writeDashSnapshot(authUser.id, { data: fullData })
     }
     load()
@@ -478,32 +554,48 @@ export default function DashboardPage() {
 
   const kpiCards = data ? [
     {
-      label: "Total Omsetning",
+      label: "Total omsetning",
       value: `${formatter.format(data.omsetning)}`,
-      icon: TrendingUp,
       change: pctChange(data.omsetning, data.omsetningPrev),
       up: isUp(data.omsetning, data.omsetningPrev),
+      href: "/tilbud",
+      points: data.chartData.map((point) => ({
+        label: point.date,
+        value: point.omsetning,
+      })),
     },
     {
-      label: "Aktive Prosjekter",
+      label: "Aktive prosjekter",
       value: `${data.activeProjects}`,
-      icon: FolderKanban,
       change: pctChange(data.activeProjects, data.activeProjectsPrev),
       up: isUp(data.activeProjects, data.activeProjectsPrev),
+      href: "/prosjekter",
+      points: [
+        { label: "Forrige", value: data.activeProjectsPrev },
+        { label: "Nå", value: data.activeProjects },
+      ],
     },
     {
       label: "Tilbud sendt",
       value: `${data.tilbudSendt}`,
-      icon: FileText,
       change: pctChange(data.tilbudSendt, data.tilbudSentPrev),
       up: isUp(data.tilbudSendt, data.tilbudSentPrev),
+      href: "/tilbud",
+      points: [
+        { label: "Forrige", value: data.tilbudSentPrev },
+        { label: "Nå", value: data.tilbudSendt },
+      ],
     },
     {
       label: "Kunder totalt",
       value: `${data.kunders}`,
-      icon: Users,
       change: pctChange(data.kunders, data.kundersPrev),
       up: isUp(data.kunders, data.kundersPrev),
+      href: "/kunder",
+      points: [
+        { label: "Forrige", value: data.kundersPrev },
+        { label: "Nå", value: data.kunders },
+      ],
     },
   ] : []
 
@@ -514,341 +606,264 @@ export default function DashboardPage() {
 
   return (
     <AppPageShell segments={["Dashbord"]}>
-      <div className="flex flex-col max-w-[2000px] w-full mx-auto gap-5 pb-10">
+      <div className="mx-auto flex w-full max-w-[2000px] flex-col gap-4 pb-10">
 
         {/* Det som står stille kommer først — før tallene, som bare beskriver
             fortiden. Se designlerretet «Hjem — det som venter på deg». */}
         <VenterPaDeg companyId={companyId} />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
-          <div className="flex flex-col gap-4">
-            {/* KPI row */}
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="flex min-w-0 flex-col gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {loading
                 ? Array.from({ length: 4 }).map((_, i) => (
                   <Card key={i} className="animate-pulse">
-                    <CardContent className="p-0 space-y-1">
-                      <div className="h-8 w-8 bg-muted" />
-                      <div className="h-3 w-2/3 bg-muted" />
-                      <div className="h-6 w-1/2 bg-muted" />
-                      <div className="h-3 w-3/4 bg-muted" />
+                    <CardHeader>
+                      <div className="h-5 w-28 rounded bg-muted" />
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="h-7 w-1/2 rounded bg-muted" />
+                      <div className="h-16 rounded-md bg-muted" />
                     </CardContent>
                   </Card>
                 ))
                 : kpiCards.map((k) => (
-                  <Card key={k.label} className="overflow-hidden bg-card/85">
-                    <CardContent className="flex flex-col gap-3 px-5 py-0">
-                      <div className="flex flex-row items-center gap-3">
-                        <div className="hidden flex h-9 w-9 items-center justify-center border border-border bg-secondary">
-                          <k.icon className="h-4 w-4 text-primary" strokeWidth={1.8} />
-                        </div>
-                        <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">{k.label}</p>
-                      </div>
-                      <p className="text-2xl font-medium leading-none text-foreground tracking-tight">{k.value}</p>
-                      <div className="flex flex-row items-center gap-1.5 mt-1">
-                        <div className={cn(
-                          "border px-1.5 py-1 w-fit! flex flex-cols-2 gap-2 items-center text-[10px] font-medium uppercase tracking-[0.16em]",
-                          k.up
-                            ? "theme-trend-positive"
-                            : "theme-trend-negative"
-                        )}>
-                          <div className="m-0 p-0">
-                            {k.up ? "↑" : "↓"}
-                          </div>
-                          <div className="m-0 p-0">
-                            {k.change}
-                          </div>
-                        </div>
-                        <span className="hidden text-[10px] uppercase tracking-[0.16em] text-muted-foreground sm:inline">Denne måneden</span>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <DashboardKpiCard key={k.label} {...k} />
                 ))
               }
             </div>
 
-            {/* Chart + Live feed */}
-            <div className="grid gap-4 lg:grid-cols-1">
-              <Card className="bg-card/85">
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Omsetning vs tilbud</CardTitle>
-                  <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <span className="inline-block h-2.5 w-2.5 bg-primary" />Omsetning
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="inline-block h-2.5 w-2.5 bg-accent" />Tilbud
-                    </span>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-2 pb-0 pt-2">
-                  <RevenueAreaChart chartData={data?.chartData || []} />
-                </CardContent>
-              </Card>
-            </div>
+            <DashboardSection
+              title="Timeforbruk mot kalkyle"
+              action={{ href: "/prosjekter", label: "Alle prosjekter" }}
+            >
+              {projectHealthLoading && !data?.projectHealth.rows.length ? (
+                <div className="h-[240px] w-full animate-pulse rounded-md bg-muted/40" />
+              ) : data?.projectHealth.rows.length ? (
+                <>
+                  <ProjectHealthChart rows={data.projectHealth.rows} />
+                  {data.projectHealth.missingCount > 0 ? (
+                    <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
+                      {data.projectHealth.missingCount} aktive{" "}
+                      {data.projectHealth.missingCount === 1 ? "prosjekt mangler" : "prosjekter mangler"}{" "}
+                      kalkulerte timer i akseptert tilbud.{" "}
+                      <Link
+                        href={
+                          data.projectHealth.firstMissingProjectId
+                            ? `/prosjekter/${data.projectHealth.firstMissingProjectId}?tab=tilbud`
+                            : "/prosjekter"
+                        }
+                        className="font-medium text-foreground underline underline-offset-2"
+                      >
+                        Se tilbud
+                      </Link>
+                    </p>
+                  ) : null}
+                </>
+              ) : data?.projectHealth.totalActive === 0 ? (
+                <DashboardEmpty href="/prosjekter/ny" action="Opprett prosjekt">
+                  Ingen aktive prosjekter
+                </DashboardEmpty>
+              ) : (
+                <DashboardEmpty
+                  href={
+                    data?.projectHealth.firstMissingProjectId
+                      ? `/prosjekter/${data.projectHealth.firstMissingProjectId}?tab=tilbud`
+                      : "/prosjekter"
+                  }
+                  action="Se tilbud"
+                >
+                  Prosjektene mangler kalkulerte timer i aksepterte tilbud
+                </DashboardEmpty>
+              )}
+            </DashboardSection>
           </div>
 
-          {/* Månedens ytelse */}
-          <Card className="flex flex-col bg-card/85">
-            <CardHeader className="">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Månedens ytelse</CardTitle>
-                <Link
-                  href="/prosjekter"
-                  className="text-[10px] font-medium uppercase tracking-[0.18em] text-primary hover:underline"
-                >
-                  Detaljer
-                </Link>
+          <DashboardSection
+            title="Månedens ytelse"
+            action={{ href: "/prosjekter", label: "Detaljer" }}
+            className="self-start h-full"
+          >
+            <div className="relative my-1 flex w-full justify-center">
+              <PerformanceGauge value={loading ? 0 : gaugeValue} />
+              <div className="absolute bottom-4 flex flex-col items-center">
+                <span className="text-2xl font-semibold tabular-nums tracking-tight">
+                  {loading ? "—" : formatNok(data?.omsetning ?? 0)}
+                </span>
+                <span className="text-xs text-muted-foreground">Månedsomsetning</span>
               </div>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center px-5 gap-0 flex-1">
-              <div className="relative w-full flex justify-center my-1">
-                <PerformanceGauge value={loading ? 0 : gaugeValue} />
-                <div className="absolute bottom-4 flex flex-col items-center">
-                  <span className="text-2xl font-medium">{loading ? "—" : formatNok(data?.omsetning ?? 0)}</span>
-                  <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Måneds omsetning</span>
-                </div>
+            </div>
+            <div className="mt-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="size-2.5 bg-primary" />Omsetning
+                </span>
+                <span className="font-semibold tabular-nums">
+                  {loading || !data ? "—" : pctChange(data.omsetning, data.omsetningPrev)}
+                </span>
               </div>
-              <div className="w-full space-y-2 mt-2">
-                <div className="flex justify-between text-xs">
-                  <span className="flex items-center gap-1.5 text-muted-foreground uppercase tracking-[0.14em]">
-                    <span className="inline-block h-2 w-2 bg-primary" />Omsetning
-                  </span>
-                  <span className="font-semibold">
-                    {loading || !data ? "—" : pctChange(data.omsetning, data.omsetningPrev)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="flex items-center gap-1.5 text-muted-foreground uppercase tracking-[0.14em]">
-                    <span className="inline-block h-2 w-2 bg-accent" />Tilbud
-                  </span>
-                  <span className="font-semibold">
-                    {loading || !data ? "—" : pctChange(data.tilbudSendt, data.tilbudSentPrev)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs border-t pt-2 mt-1">
-                  <span className="text-muted-foreground">Forrige måned</span>
-                  <span className="font-semibold">{loading ? "—" : formatNok(data?.omsetningPrev ?? 0)}</span>
-                </div>
+              <div className="flex justify-between text-sm">
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="size-2.5 bg-accent" />Tilbud
+                </span>
+                <span className="font-semibold tabular-nums">
+                  {loading || !data ? "—" : pctChange(data.tilbudSendt, data.tilbudSentPrev)}
+                </span>
               </div>
-            </CardContent>
-          </Card>
+              <div className="mt-1 flex justify-between border-t pt-2 text-sm">
+                <span className="text-xs text-muted-foreground">Forrige måned</span>
+                <span className="font-semibold tabular-nums">
+                  {loading ? "—" : formatNok(data?.omsetningPrev ?? 0)}
+                </span>
+              </div>
+            </div>
+          </DashboardSection>
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
-
-          <Card className="bg-card/85">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Siste tilbud</CardTitle>
-              <Link
-                href="/tilbud"
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Se alle
-                <ArrowRight className="h-3 w-3" />
-              </Link>
-            </CardHeader>
-            <CardContent className="px-5 pb-5">
-              <div className="hidden w-full overflow-x-auto md:block">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b text-muted-foreground">
-                      <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.18em]">Tilbudsnavn</th>
-                      <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.18em]">ID</th>
-                      <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.18em]">Kunde</th>
-                      <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.18em]">Verdi</th>
-                      <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-[0.18em]">Status</th>
-                      <th className="text-right pb-2 font-medium"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/50">
-                    {feedsLoading
-                      ? Array.from({ length: 4 }).map((_, i) => (
-                        <tr key={i}>
-                          {Array.from({ length: 6 }).map((_, j) => (
-                            <td key={j} className="py-2.5 pr-3">
-                              <div className="h-3 bg-muted animate-pulse" style={{ width: j === 5 ? "20px" : "70%" }} />
-                            </td>
-                          ))}
-                        </tr>
-                      ))
-                      : data?.tableOffers.map((row) => (
-                        <tr key={row.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="py-2.5 font-medium text-foreground pr-3 max-w-[140px] truncate">
-                            <Link href={`/tilbud/${row.id}`} className="hover:text-primary hover:underline">
-                              {row.navn}
-                            </Link>
-                          </td>
-                          <td className="py-2.5 text-muted-foreground pr-3 whitespace-nowrap font-mono text-[10px]">{row.shortId}</td>
-                          <td className="py-2.5 text-muted-foreground pr-3 max-w-[100px] truncate">{row.kunde}</td>
-                          <td className="py-2.5 font-semibold pr-3 whitespace-nowrap">{formatNok(row.verdi)}</td>
-                          <td className="py-2.5 pr-3">
-                            <Badge variant="outline" className={cn("text-[10px] font-medium", statusColor[row.status])}>
-                              {statusLabel[row.status] ?? row.status}
-                            </Badge>
-                          </td>
-                          <td className="py-2.5 text-right">
-                            <OfferRowActions offerId={row.id} />
-                          </td>
-                        </tr>
-                      ))
-                    }
-                  </tbody>
-                </table>
-                {!feedsLoading && data?.tableOffers.length === 0 && (
-                  <div className="py-6 text-center">
-                    <p className="text-xs text-muted-foreground">Ingen tilbud ennå</p>
-                    <Link href="/nytt-tilbud" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                      Lag ditt første tilbud
-                      <ArrowRight className="h-3 w-3" />
-                    </Link>
-                  </div>
-                )}
-              </div>
-              <div className="divide-y md:hidden">
-                {feedsLoading
-                  ? Array.from({ length: 4 }).map((_, i) => (
-                      <div key={i} className="py-3">
-                        <div className="h-4 w-2/3 animate-pulse bg-muted" />
-                        <div className="mt-2 h-3 w-1/2 animate-pulse bg-muted" />
-                      </div>
+          <DashboardSection
+            title="Siste tilbud"
+            action={{ href: "/tilbud", label: "Se alle" }}
+          >
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs text-muted-foreground">Tilbudsnavn</TableHead>
+                    <TableHead className="text-xs text-muted-foreground">ID</TableHead>
+                    <TableHead className="text-xs text-muted-foreground">Kunde</TableHead>
+                    <TableHead className="text-xs text-muted-foreground">Verdi</TableHead>
+                    <TableHead className="text-xs text-muted-foreground">Status</TableHead>
+                    <TableHead className="w-10" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {feedsLoading
+                    ? Array.from({ length: 4 }).map((_, i) => (
+                      <TableRow key={i}>
+                        {Array.from({ length: 6 }).map((_, j) => (
+                          <TableCell key={j}>
+                            <div
+                              className="h-3 animate-pulse rounded bg-muted"
+                              style={{ width: j === 5 ? "20px" : "70%" }}
+                            />
+                          </TableCell>
+                        ))}
+                      </TableRow>
                     ))
-                  : data?.tableOffers.map((row) => (
-                      <Link
-                        key={row.id}
-                        href={`/tilbud/${row.id}`}
-                        className="block py-3 transition-colors hover:bg-muted/30"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate font-medium text-foreground">{row.navn}</p>
-                            <p className="mt-1 truncate text-xs text-muted-foreground">{row.kunde}</p>
-                            <p className="mt-1 font-mono text-[10px] text-muted-foreground">{row.shortId}</p>
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <p className="text-sm font-semibold">{formatNok(row.verdi)}</p>
-                            <Badge
-                              variant="outline"
-                              className={cn("mt-1 text-[10px] font-medium", statusColor[row.status])}
-                            >
-                              {statusLabel[row.status] ?? row.status}
-                            </Badge>
-                          </div>
-                        </div>
-                      </Link>
-                    ))}
-                {!feedsLoading && data?.tableOffers.length === 0 && (
-                  <div className="py-6 text-center">
-                    <p className="text-xs text-muted-foreground">Ingen tilbud ennå</p>
-                    <Link href="/nytt-tilbud" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                      Lag ditt første tilbud
-                      <ArrowRight className="h-3 w-3" />
-                    </Link>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="flex flex-col bg-card/85">
-            <CardHeader className="border-b mt-0">
-              <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Aktive tilbud</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 flex-1 overflow-auto">
-              {feedsLoading ? (
-                <div className="divide-y">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="px-4 py-3 space-y-1.5 animate-pulse">
-                      <div className="h-3 w-1/2 bg-muted" />
-                      <div className="h-2.5 w-3/4 bg-muted" />
-                      <div className="h-2 w-1/3 bg-muted" />
-                    </div>
-                  ))}
-                </div>
-              ) : data?.recentOffers.length === 0 ? (
-                <div className="py-8 text-center">
-                  <p className="text-xs text-muted-foreground">Ingen aktive tilbud</p>
-                  <Link href="/nytt-tilbud" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                    Lag ditt første tilbud
-                    <ArrowRight className="h-3 w-3" />
-                  </Link>
-                </div>
-              ) : (
-                <div className="divide-y">
-                  {data?.recentOffers.map((t) => (
-                    <div key={t.id} className="flex items-start justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
-                      <Link href={`/tilbud/${t.id}`} className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-foreground truncate">{t.kunde}</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{t.title}</p>
-                        <p className="text-[10px] text-muted-foreground/70 mt-0.5">{t.tid}</p>
-                      </Link>
-                      <Link
-                        href={`/tilbud/${t.id}`}
-                        className="ml-3 mt-0.5 shrink-0 text-[10px] font-medium uppercase tracking-[0.18em] text-primary hover:underline"
-                      >
-                        Vis
-                      </Link>
-                    </div>
-                  ))}
-                </div>
+                    : data?.tableOffers.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="max-w-[160px] truncate font-medium">
+                          <Link href={`/tilbud/${row.id}`} className="hover:underline">
+                            {row.navn}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {row.shortId}
+                        </TableCell>
+                        <TableCell className="max-w-[120px] truncate text-muted-foreground">
+                          {row.kunde}
+                        </TableCell>
+                        <TableCell className="font-semibold tabular-nums">
+                          {formatNok(row.verdi)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={cn(statusColor[row.status])}>
+                            {statusLabel[row.status] ?? row.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <OfferRowActions offerId={row.id} />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  }
+                </TableBody>
+              </Table>
+              {!feedsLoading && data?.tableOffers.length === 0 && (
+                <DashboardEmpty href="/nytt-tilbud" action="Lag ditt første tilbud">
+                  Ingen tilbud ennå
+                </DashboardEmpty>
               )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Table + Top projects */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
-          <Card className="bg-card/85">
-            <CardHeader className="border-b mt-0 py-0">
-              <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">Topp prosjekter</CardTitle>
-            </CardHeader>
-            <CardContent className="px-5 py-4 space-y-4">
-              <div className="flex justify-between border-b pb-1 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                <span>Prosjektnavn</span>
-                <span>Tilbud sendt</span>
-              </div>
+            </div>
+            <div className="divide-y md:hidden">
               {feedsLoading
-                ? Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="space-y-1.5 animate-pulse">
-                    <div className="flex justify-between">
-                      <div className="h-3 w-2/3 bg-muted" />
-                      <div className="h-3 w-12 bg-muted" />
-                    </div>
-                    <div className="h-1.5 w-full bg-muted" />
-                  </div>
-                ))
-                : data?.topProjects.length === 0
-                  ? (
-                    <div className="py-4 text-center">
-                      <p className="text-xs text-muted-foreground">Ingen aktive prosjekter</p>
-                      <Link href="/prosjekter/ny" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                        Opprett prosjekt
-                        <ArrowRight className="h-3 w-3" />
-                      </Link>
-                    </div>
-                  )
-                  : data?.topProjects.map((p) => (
-                    <div key={p.id} className="space-y-1.5">
-                      <div className="flex justify-between items-center">
-                        <Link
-                          href={`/prosjekter/${p.id}`}
-                          className="text-xs font-medium text-foreground truncate max-w-[140px] hover:text-primary hover:underline"
-                        >
-                          {p.navn}
-                        </Link>
-                        <span className="text-xs text-muted-foreground shrink-0 ml-2">{p.offers} tilbud</span>
-                      </div>
-                      <div className="h-1.5 w-full overflow-hidden bg-muted">
-                        <div className="h-full bg-primary transition-all" style={{ width: `${p.pst}%` }} />
-                      </div>
-                      <p className="text-[10px] text-muted-foreground text-right">{p.pst}%</p>
+                ? Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="py-3">
+                      <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+                      <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-muted" />
                     </div>
                   ))
-              }
-            </CardContent>
-          </Card>
-        </div>
+                : data?.tableOffers.map((row) => (
+                    <Link
+                      key={row.id}
+                      href={`/tilbud/${row.id}`}
+                      className="block py-3 transition-colors hover:bg-muted/30"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">{row.navn}</p>
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">{row.kunde}</p>
+                          <p className="mt-0.5 font-mono text-xs text-muted-foreground">{row.shortId}</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-semibold tabular-nums">{formatNok(row.verdi)}</p>
+                          <Badge
+                            variant="outline"
+                            className={cn("mt-1", statusColor[row.status])}
+                          >
+                            {statusLabel[row.status] ?? row.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+              {!feedsLoading && data?.tableOffers.length === 0 && (
+                <DashboardEmpty href="/nytt-tilbud" action="Lag ditt første tilbud">
+                  Ingen tilbud ennå
+                </DashboardEmpty>
+              )}
+            </div>
+          </DashboardSection>
 
+          <DashboardSection title="Aktive tilbud" className="min-w-0">
+            {feedsLoading ? (
+              <div className="divide-y">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="space-y-1.5 py-3 first:pt-0 last:pb-0 animate-pulse">
+                    <div className="h-3.5 w-1/2 rounded bg-muted" />
+                    <div className="h-3 w-3/4 rounded bg-muted" />
+                    <div className="h-3 w-1/3 rounded bg-muted" />
+                  </div>
+                ))}
+              </div>
+            ) : data?.recentOffers.length === 0 ? (
+              <DashboardEmpty href="/nytt-tilbud" action="Lag ditt første tilbud">
+                Ingen aktive tilbud
+              </DashboardEmpty>
+            ) : (
+              <ul className="divide-y">
+                {data?.recentOffers.map((t) => (
+                  <li key={t.id} className="py-3 first:pt-0 last:pb-0">
+                    <Link
+                      href={`/tilbud/${t.id}`}
+                      className="flex items-start justify-between gap-3"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-foreground">{t.kunde}</span>
+                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">{t.title}</span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">{t.tid}</span>
+                      </span>
+                      <span className="mt-0.5 shrink-0 text-xs font-medium text-muted-foreground">
+                        Vis
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </DashboardSection>
+        </div>
       </div>
     </AppPageShell>
   )

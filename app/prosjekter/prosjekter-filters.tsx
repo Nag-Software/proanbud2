@@ -121,7 +121,6 @@ export function ProsjekterFilters() {
       <TopProgressBar active={isBusy} />
       <div className="grid gap-2 md:grid-cols-[1fr_auto] md:items-end">
         <div className="sm:space-y-1">
-          <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Søk</p>
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -140,7 +139,6 @@ export function ProsjekterFilters() {
         </div>
 
         <div className="sm:space-y-1">
-          <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Sorter</p>
           <div className="flex items-stretch gap-2">
             <Select value={currentSort} onValueChange={handleSortChange} disabled={isPending}>
               <SelectTrigger className="h-9 w-1/2 md:w-[180px]">

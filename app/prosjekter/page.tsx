@@ -70,7 +70,7 @@ export default async function Page({
 
   const [{ data: projects }, { data: customers }] = await Promise.all([
     queryBuilder,
-    supabase.from("customers").select("id, name, city").order("name"),
+    supabase.from("customers").select("id%, name, city").order("name"),
   ])
   const allProjects = (projects || []) as ProjectRow[]
   const customerOptions = customers || []
@@ -99,20 +99,23 @@ export default async function Page({
   return (
     <AppPageShell segments={["Prosjekter"]} hideMobileTitle>
       <ProjectsViewProvider initialView={initialView}>
-      <section className="space-y-4">
-        <div className="grid grid-cols-2 items-center justify-between gap-2 sm:flex sm:justify-between w-full">
-          <div className="space-y-0">
-            <h1 className="text-2xl font-semibold text-foreground">Prosjektoversikt</h1>
-          </div>
-          {canCreateProject && (
-            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-              <CreateProjectDrawer variant="outline" />
+      <section className="space-y-5">
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-nowrap items-center justify-between gap-2 w-full">
+            <div className="space-y-0">
+              <h1 className="text-2xl font-semibold text-foreground">Prosjektoversikt</h1>
             </div>
-          )}
-        </div>
+            </div>
+            {canCreateProject && (
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                <CreateProjectDrawer variant="outline" />
+              </div>
+            )}
+          </div>
 
-        {/* Søk/filter skjules når det ikke finnes noe å filtrere i det hele tatt. */}
-        {!isCompletelyEmpty && <ProsjekterFilters />}
+          {/* Søk/filter skjules når det ikke finnes noe å filtrere i det hele tatt. */}
+          {!isCompletelyEmpty && <ProsjekterFilters />}
+        </div>
 
         {isCompletelyEmpty ? (
           <ProjectsEmptyState canCreate={canCreateProject} />
