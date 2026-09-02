@@ -6,7 +6,7 @@ import Link from "next/link"
 import { AppPageShell } from "@/components/app-page-shell"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import dynamic from "next/dynamic"
-import { TrendingUp, FileText, FolderKanban, Users, MoreHorizontal, ArrowRight } from "lucide-react"
+import { MoreHorizontal, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,6 +22,7 @@ import { useRouter } from "next/navigation"
 import { useUserRole } from "@/hooks/use-user-role"
 import { VenterPaDeg } from "@/components/dashboard/venter-pa-deg"
 import { useAuth } from "@/components/auth-provider"
+import { DashboardKpiCard } from "./dashboard-kpi-card"
 
 const formatNok = (val: number) =>
   new Intl.NumberFormat("no-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(val)
@@ -478,32 +479,48 @@ export default function DashboardPage() {
 
   const kpiCards = data ? [
     {
-      label: "Total Omsetning",
+      label: "Total omsetning",
       value: `${formatter.format(data.omsetning)}`,
-      icon: TrendingUp,
       change: pctChange(data.omsetning, data.omsetningPrev),
       up: isUp(data.omsetning, data.omsetningPrev),
+      href: "/tilbud",
+      points: data.chartData.map((point) => ({
+        label: point.date,
+        value: point.omsetning,
+      })),
     },
     {
-      label: "Aktive Prosjekter",
+      label: "Aktive prosjekter",
       value: `${data.activeProjects}`,
-      icon: FolderKanban,
       change: pctChange(data.activeProjects, data.activeProjectsPrev),
       up: isUp(data.activeProjects, data.activeProjectsPrev),
+      href: "/prosjekter",
+      points: [
+        { label: "Forrige", value: data.activeProjectsPrev },
+        { label: "Nå", value: data.activeProjects },
+      ],
     },
     {
       label: "Tilbud sendt",
       value: `${data.tilbudSendt}`,
-      icon: FileText,
       change: pctChange(data.tilbudSendt, data.tilbudSentPrev),
       up: isUp(data.tilbudSendt, data.tilbudSentPrev),
+      href: "/tilbud",
+      points: [
+        { label: "Forrige", value: data.tilbudSentPrev },
+        { label: "Nå", value: data.tilbudSendt },
+      ],
     },
     {
       label: "Kunder totalt",
       value: `${data.kunders}`,
-      icon: Users,
       change: pctChange(data.kunders, data.kundersPrev),
       up: isUp(data.kunders, data.kundersPrev),
+      href: "/kunder",
+      points: [
+        { label: "Forrige", value: data.kundersPrev },
+        { label: "Nå", value: data.kunders },
+      ],
     },
   ] : []
 
@@ -523,46 +540,24 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
           <div className="flex flex-col gap-4">
             {/* KPI row */}
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 min-[1900px]:grid-cols-4">
               {loading
                 ? Array.from({ length: 4 }).map((_, i) => (
-                  <Card key={i} className="animate-pulse">
-                    <CardContent className="p-0 space-y-1">
-                      <div className="h-8 w-8 bg-muted" />
-                      <div className="h-3 w-2/3 bg-muted" />
-                      <div className="h-6 w-1/2 bg-muted" />
-                      <div className="h-3 w-3/4 bg-muted" />
+                  <Card key={i} className="animate-pulse gap-0 rounded-[22px] py-0">
+                    <CardContent className="space-y-7 px-5 py-5 sm:px-6 sm:py-6">
+                      <div className="flex items-center justify-between">
+                        <div className="h-5 w-28 rounded bg-muted" />
+                        <div className="size-10 rounded-xl bg-muted" />
+                      </div>
+                      <div className="space-y-3">
+                        <div className="h-9 w-2/3 rounded bg-muted" />
+                        <div className="h-[116px] rounded-2xl bg-muted" />
+                      </div>
                     </CardContent>
                   </Card>
                 ))
                 : kpiCards.map((k) => (
-                  <Card key={k.label} className="overflow-hidden bg-card/85">
-                    <CardContent className="flex flex-col gap-3 px-5 py-0">
-                      <div className="flex flex-row items-center gap-3">
-                        <div className="hidden flex h-9 w-9 items-center justify-center border border-border bg-secondary">
-                          <k.icon className="h-4 w-4 text-primary" strokeWidth={1.8} />
-                        </div>
-                        <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">{k.label}</p>
-                      </div>
-                      <p className="text-2xl font-medium leading-none text-foreground tracking-tight">{k.value}</p>
-                      <div className="flex flex-row items-center gap-1.5 mt-1">
-                        <div className={cn(
-                          "border px-1.5 py-1 w-fit! flex flex-cols-2 gap-2 items-center text-[10px] font-medium uppercase tracking-[0.16em]",
-                          k.up
-                            ? "theme-trend-positive"
-                            : "theme-trend-negative"
-                        )}>
-                          <div className="m-0 p-0">
-                            {k.up ? "↑" : "↓"}
-                          </div>
-                          <div className="m-0 p-0">
-                            {k.change}
-                          </div>
-                        </div>
-                        <span className="hidden text-[10px] uppercase tracking-[0.16em] text-muted-foreground sm:inline">Denne måneden</span>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <DashboardKpiCard key={k.label} {...k} />
                 ))
               }
             </div>
