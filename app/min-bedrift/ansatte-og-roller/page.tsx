@@ -81,9 +81,6 @@ export default async function Page() {
       <div className="w-full mx-auto">
         <div className="flex flex-col mb-6 sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
-            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              Administrer ansatte og roller
-            </p>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
               Ansatte og Roller
             </h1>

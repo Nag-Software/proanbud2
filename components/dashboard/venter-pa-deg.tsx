@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
 import { reportClientError } from "@/lib/errors/client"
 import { useUserRole } from "@/hooks/use-user-role"
@@ -259,61 +260,69 @@ export function VenterPaDeg({ companyId }: { companyId: string | null }) {
 
   if (loadingRole || items === null) {
     return (
-      <div className="rounded-lg border bg-card p-4">
-        <Skeleton className="h-5 w-40" />
-        <Skeleton className="mt-4 h-10 w-full" />
-        <Skeleton className="mt-2 h-10 w-full" />
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Venter på deg</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Skeleton className="!h-8 w-full" />
+        </CardContent>
+      </Card>
     )
   }
 
   return (
-    <section className="overflow-hidden rounded-lg border bg-card">
-      <header className="flex items-center gap-2.5 border-b px-4 py-3">
-        <h2 className="text-sm font-semibold">Venter på deg</h2>
-        {items.length > 0 && (
-          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-bold text-accent-foreground">
-            {items.length}
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2.5">
+          Venter på deg
+          {items.length > 0 && (
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-xs font-semibold text-accent-foreground">
+              {items.length}
+            </span>
+          )}
+        </CardTitle>
+        <CardAction className="self-center">
+          <span className="hidden text-xs text-muted-foreground sm:inline">
+            Forsvinner av seg selv når det er gjort
           </span>
-        )}
-        <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">
-          Forsvinner av seg selv når det er gjort
-        </span>
-      </header>
-
-      {items.length === 0 ? (
-        <p className="flex items-center gap-2 px-4 py-4 text-sm text-muted-foreground">
-          <CheckIcon className="size-4 text-[color:var(--tone-success)]" />
-          Ingenting står og venter. Alt er ajour.
-        </p>
-      ) : (
-        <ul className="divide-y">
-          {items.map((item) => {
-            const tone = TONE_STYLE[item.tone]
-            const Icon = item.icon
-            return (
-              <li
-                key={item.key}
-                className="flex flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap"
-              >
-                <span
-                  className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-control)]"
-                  style={{ background: tone.bg }}
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {items.length === 0 ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <CheckIcon className="size-4 text-[color:var(--tone-success)]" />
+            Ingenting står og venter. Alt er ajour.
+          </p>
+        ) : (
+          <ul className="divide-y">
+            {items.map((item) => {
+              const tone = TONE_STYLE[item.tone]
+              const Icon = item.icon
+              return (
+                <li
+                  key={item.key}
+                  className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0 sm:flex-nowrap"
                 >
-                  <Icon className="size-4" style={{ color: tone.fg }} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">{item.title}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{item.meta}</span>
-                </span>
-                <Button asChild size="sm" className="shrink-0">
-                  <Link href={item.href}>{item.action}</Link>
-                </Button>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </section>
+                  <span
+                    className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-control)]"
+                    style={{ background: tone.bg }}
+                  >
+                    <Icon className="size-4" style={{ color: tone.fg }} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{item.title}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{item.meta}</span>
+                  </span>
+                  <Button asChild size="sm" className="shrink-0">
+                    <Link href={item.href}>{item.action}</Link>
+                  </Button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   )
 }
