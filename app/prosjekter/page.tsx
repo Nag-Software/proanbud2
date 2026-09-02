@@ -70,7 +70,7 @@ export default async function Page({
 
   const [{ data: projects }, { data: customers }] = await Promise.all([
     queryBuilder,
-    supabase.from("customers").select("id%, name, city").order("name"),
+    supabase.from("customers").select("id, name, city").order("name"),
   ])
   const allProjects = (projects || []) as ProjectRow[]
   const customerOptions = customers || []
@@ -104,7 +104,6 @@ export default async function Page({
           <div className="flex flex-nowrap items-center justify-between gap-2 w-full">
             <div className="space-y-0">
               <h1 className="text-2xl font-semibold text-foreground">Prosjektoversikt</h1>
-            </div>
             </div>
             {canCreateProject && (
               <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">

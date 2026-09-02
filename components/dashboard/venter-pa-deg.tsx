@@ -765,7 +765,7 @@ export function VenterPaDeg({ companyId }: { companyId: string | null }) {
           <ul className="divide-y">
             {items.map((item) => {
               const tone = TONE_STYLE[item.tone]
-              const Icon = (ICONS && ICONS[item.iconName]) ?? item.icon ?? AlertTriangleIcon
+              const Icon = ICONS[item.iconName] ?? AlertTriangleIcon
               return (
                 <li
                   key={item.key}
