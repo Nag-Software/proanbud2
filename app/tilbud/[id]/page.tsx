@@ -14,6 +14,7 @@ import {
   type OfferSourceDocument,
 } from "@/lib/tilbud/types"
 import { OfferDetailClient } from "./offer-detail-client"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 type Params = {
   id: string
@@ -221,9 +222,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
   const { id } = await params
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
 
   if (!user) {
     notFound()

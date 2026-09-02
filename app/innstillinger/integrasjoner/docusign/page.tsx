@@ -3,14 +3,13 @@ import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 
 import { DocusignTesterClient } from "./docusign-tester-client"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 export default async function DocusignPage() {
   await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
 
   let canManageIntegration = false
   let companyId = ""

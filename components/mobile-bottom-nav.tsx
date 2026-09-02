@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -7,7 +8,7 @@ import {
   FolderIcon,
   FileTextIcon,
   InboxIcon,
-  MenuIcon,
+  MoreHorizontalIcon,
   MapIcon,
   CalendarDays,
   CarIcon,
@@ -15,7 +16,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useSidebar } from "@/components/ui/sidebar"
+import { NavMoreMenu } from "@/components/nav-more-menu"
 import { useUnreadMessages } from "@/hooks/use-unread-messages"
 import { useNavItems } from "@/hooks/use-nav-items"
 import { useIsNativeApp } from "@/hooks/use-is-native-app"
@@ -35,128 +36,124 @@ const NAV_ICONS: Record<NavIconKey, typeof LayoutDashboardIcon> = {
   calendar: CalendarDays,
 }
 
+/** Barens høyde uten safe-area. Delt med spacer-en i app-shell-layout. */
+export const MOBILE_NAV_HEIGHT = "3.75rem"
+
 export function MobileBottomNav() {
   const pathname = usePathname()
-  const { toggleSidebar } = useSidebar()
   const unreadCount = useUnreadMessages()
   const { hasActiveSession } = useActiveWorkSession()
   const { navItems, roleKnown } = useNavItems()
+  const [moreOpen, setMoreOpen] = React.useState(false)
   // Inside the native app the tab bar is native (fed via native-nav-bridge) —
-  // the web pill must not render a second menu.
+  // the web bar must not render a second menu.
   const isNative = useIsNativeApp()
-  // Med 5 nav-punkter + Meny blir det 6 kolonner — stram inn padding og
-  // skriftstørrelse litt så «Prosjekter»/«Meldinger» ikke kolliderer på smale
-  // skjermer. Fire eller færre punkter beholder dagens romslige layout.
-  // Skeleton-tilstanden har 5 plasser og bruker derfor også kompakt layout.
-  const isCompact = !roleKnown || navItems.length >= 5
+
+  // Meldinger ligger ikke lenger i baren, så ulest-varselet ville forsvunnet
+  // ut av syne på mobil. Det følger med til «Mer», der meldinger nå bor.
+  const moreBadge = unreadCount
+
+  const primaryHrefs = React.useMemo(() => navItems.map((item) => item.href), [navItems])
 
   if (isNative) return null
 
   return (
-    <nav
-      aria-label="Hovednavigasjon"
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex items-end md:hidden"
-      style={{
-        height: "calc(4rem + env(safe-area-inset-bottom))",
-        paddingBottom: "env(safe-area-inset-bottom)",
-      }}
-    >
-      {/* Flytende glasskapsel. Tre ting gjør at den leses som glass og ikke som
-          en hvit stripe: full kapselradius, ekte gjennomsiktighet med kraftig
-          blur + metning (innholdet skal skimtes rulle under), og lyskanten
-          øverst fra --shadow-glass. */}
-      <div className="pointer-events-auto relative mx-3 mb-2 flex h-14 flex-1 items-center gap-0.5 rounded-full border border-[color:var(--glass-border)] bg-[image:var(--glass-surface)] px-1.5 shadow-[var(--shadow-glass)] backdrop-blur-2xl backdrop-saturate-[1.8] not-supports-[backdrop-filter]:bg-background">
-
+    <>
+      {/* Dokket, flat bar — ikke en flytende pille. Den deler flate og
+          hårlinje med resten av appen, så den leses som en del av verktøyet
+          og ikke som et objekt som svever over det. Ingen radius, ingen blur:
+          appen kjører --radius 5px, og en 999px-kapsel motsier den. */}
+      <nav
+        aria-label="Hovednavigasjon"
+        className="fixed inset-x-0 bottom-0 z-50 flex items-stretch border-t border-border bg-background md:hidden"
+        style={{
+          height: `calc(${MOBILE_NAV_HEIGHT} + env(safe-area-inset-bottom))`,
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}
+      >
         {/* Rollen er ukjent ved aller første besøk (ingen cache ennå) — hold
             plassene med nøytrale skeletons i stedet for å blinke admin-fanene
-            for en håndverker. Begge rollevariantene har 5 faner + Meny, så
+            for en håndverker. Begge rollevariantene har 3 faner + Mer, så
             layouten står i ro når rollen lander. */}
         {!roleKnown &&
-          Array.from({ length: 5 }).map((_, i) => (
+          Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
               aria-hidden
-              className="relative flex flex-1 flex-col items-center justify-center gap-1"
+              className="flex flex-1 flex-col items-center justify-center gap-1.5"
             >
-              <Skeleton className="h-7 w-9 rounded-full" />
-              <Skeleton className="h-2 w-9 rounded-full" />
+              <Skeleton className="size-[23px] rounded-full" />
+              <Skeleton className="h-2.5 w-11 rounded-full" />
             </div>
           ))}
 
-        {roleKnown && navItems.map(({ href, icon, label, exact }) => {
-          const Icon = NAV_ICONS[icon]
-          const isActive = exact ? pathname === href : pathname === href || pathname.startsWith(href + "/")
-          return (
-            <Link
-              key={href}
-              href={href}
-              aria-label={
-                href === "/timeforing" && hasActiveSession ? `${label} – stemplet inn` : label
-              }
-              aria-current={isActive ? "page" : undefined}
-              className={cn(
-                "relative flex flex-1 flex-col items-center justify-center gap-1 font-medium transition-transform active:scale-95",
-                isCompact ? "px-0.5 text-[10px]" : "px-2 text-[11px]"
-              )}
-            >
-              {/* Aktiv fane får en fylt brikke bak ikonet — samme mørke flate
-                  som primærknappen, så «her er du» leses på et blikk. Den
-                  gamle 8 %-tonen var praktisk talt usynlig. */}
-              <span
+        {roleKnown &&
+          navItems.map(({ href, icon, label, exact }) => {
+            const Icon = NAV_ICONS[icon]
+            const isActive = exact
+              ? pathname === href
+              : pathname === href || pathname.startsWith(href + "/")
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-label={
+                  href === "/timeforing" && hasActiveSession ? `${label} – stemplet inn` : label
+                }
+                aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "relative flex h-7 w-9 items-center justify-center rounded-full transition-colors",
-                  isActive &&
-                    "bg-primary bg-[image:var(--control-sheen)] shadow-[var(--shadow-raised)]"
-                )}
-              >
-                <Icon
-                  className={cn(
-                    "size-[19px] transition-colors",
-                    isActive ? "text-primary-foreground" : "text-muted-foreground"
-                  )}
-                  strokeWidth={isActive ? 2.1 : 1.8}
-                />
-                {href === "/meldinger" && unreadCount > 0 && (
-                  <span className="absolute -right-1.5 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold text-white ring-2 ring-background">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </span>
-                )}
-                {/* Pulserende grønn dot når brukeren er stemplet inn — samme
-                    visuelle språk som unread-badgen på Meldinger. */}
-                {href === "/timeforing" && hasActiveSession && (
-                  <span
-                    aria-hidden
-                    className="absolute -right-1 -top-0.5 size-2 animate-pulse rounded-full bg-emerald-500 ring-2 ring-background"
-                  />
-                )}
-              </span>
-              <span
-                className={cn(
-                  "relative max-w-full truncate leading-none",
+                  "flex flex-1 flex-col items-center justify-center gap-1.5 text-[11px] font-medium leading-none transition-transform active:scale-95",
                   isActive ? "font-semibold text-foreground" : "text-muted-foreground"
                 )}
               >
-                {label}
-              </span>
-            </Link>
-          )
-        })}
+                {/* Aktiv tilstand er tyngden i ikonet og teksten — ingen brikke
+                    bak. Baren skal trekke seg tilbake så innholdet eier
+                    skjermen; markøren trenger bare å være tydelig, ikke tung. */}
+                <span className="relative flex items-center justify-center">
+                  <Icon className="size-[23px]" strokeWidth={isActive ? 2.2 : 1.7} />
+                  {href === "/timeforing" && hasActiveSession && (
+                    <span
+                      aria-hidden
+                      className="absolute -right-1.5 -top-0.5 size-2.5 animate-pulse rounded-full bg-emerald-500 ring-2 ring-background"
+                    />
+                  )}
+                </span>
+                <span className="max-w-full truncate">{label}</span>
+              </Link>
+            )
+          })}
 
+        {/* «Mer» er tre prikker i en ring, ikke en hamburger: en hamburger
+            lover «hovedmenyen», ••• lover «flere valg» — og det siste er det
+            arket faktisk inneholder. */}
         <button
           type="button"
-          onClick={toggleSidebar}
-          aria-label="Åpne meny"
+          onClick={() => setMoreOpen(true)}
+          aria-label="Mer"
+          aria-haspopup="dialog"
+          aria-expanded={moreOpen}
           className={cn(
-            "relative flex flex-1 flex-col items-center justify-center gap-1 font-medium text-muted-foreground transition-transform active:scale-95",
-            isCompact ? "px-0.5 text-[10px]" : "text-[11px]"
+            "flex flex-1 flex-col items-center justify-center gap-1.5 text-[11px] font-medium leading-none transition-transform active:scale-95",
+            moreOpen ? "text-foreground" : "text-muted-foreground"
           )}
         >
-          <span className="relative flex h-7 w-9 items-center justify-center rounded-full">
-            <MenuIcon className="size-[19px]" strokeWidth={1.8} />
+          <span className="relative flex items-center justify-center">
+            <span className="flex size-[23px] items-center justify-center rounded-full border-[1.5px] border-current">
+              <MoreHorizontalIcon className="size-4" strokeWidth={2.4} />
+            </span>
+            {moreBadge > 0 && (
+              <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold text-white ring-2 ring-background">
+                {moreBadge > 9 ? "9+" : moreBadge}
+              </span>
+            )}
           </span>
-          <span className="relative leading-none">Meny</span>
+          <span>Mer</span>
         </button>
-      </div>
-    </nav>
+      </nav>
+
+      {/* Samme ark som sidebarens «Mer» — gruppert, søkbart og bygget av
+          lib/app-nav, så en ny side dukker opp her av seg selv. */}
+      <NavMoreMenu open={moreOpen} onOpenChange={setMoreOpen} primaryHrefs={primaryHrefs} />
+    </>
   )
 }

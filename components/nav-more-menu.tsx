@@ -20,6 +20,7 @@ import {
   ResponsiveDialogTitle,
 } from "@/components/ui/responsive-dialog"
 import { useUserRole } from "@/hooks/use-user-role"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 
 /**
@@ -41,6 +42,10 @@ export type NavMoreMenuProps = {
 export function NavMoreMenu({ open, onOpenChange, primaryHrefs }: NavMoreMenuProps) {
   const pathname = usePathname()
   const { role, hasFeature, loadingRole, isWorker } = useUserRole()
+  // Arket åpnes fra bunnbaren med tommelen. Autofokus ville sprettet opp
+  // tastaturet og spist halve listen før man har rukket å se den — søk er
+  // en utvei på mobil, ikke inngangen.
+  const isMobile = useIsMobile()
   const [query, setQuery] = React.useState("")
 
   // Nullstill søket mellom åpninger — ellers møter du forrige søk neste gang.
@@ -82,7 +87,7 @@ export function NavMoreMenu({ open, onOpenChange, primaryHrefs }: NavMoreMenuPro
         <div className="relative px-4 sm:px-0">
           <SearchIcon className="pointer-events-none absolute left-6.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground sm:left-2.5" />
           <Input
-            autoFocus
+            autoFocus={!isMobile}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Søk etter side"

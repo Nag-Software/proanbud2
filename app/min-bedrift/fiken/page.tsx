@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 
 import { FikenClient } from "./fiken-client"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 // Fikens vanlige hjelpesider (ikke API-/utviklerdokumentasjonen fra
 // FIKEN_HELP_URL i lib/integrations/fiken/config — den er for utviklere).
@@ -14,9 +15,7 @@ export default async function FikenPage() {
   await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
 
   let companyId: string | null = null
   let canManageIntegration = false

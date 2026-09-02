@@ -5,7 +5,7 @@ import { type ReactNode } from "react"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppShellProvider, useAppShell } from "@/components/app-shell-context"
-import { MobileBottomNav } from "@/components/mobile-bottom-nav"
+import { MobileBottomNav, MOBILE_NAV_HEIGHT } from "@/components/mobile-bottom-nav"
 import { GlobalSearch, GlobalSearchTrigger } from "@/components/search/global-search"
 import { TutorialWizard } from "@/components/onboarding/tutorial-wizard"
 import { NativeNavBridge, NativeNavState } from "@/components/native-nav-bridge"
@@ -53,13 +53,11 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
         <TrialBanner />
         <header className="flex h-14 shrink-0 items-center gap-2 transition-[width,height] ease-linear md:h-16 group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
           <div className="flex min-w-0 flex-1 items-center gap-2 px-4">
-            {/* On mobile the bottom-nav "Meny" tab opens the sidebar, so the
-                header hamburger is redundant — hide it to save vertical space.
-                EXCEPT in the native iOS app: there the tab bar is the system's
-                (no Meny tab), so the hamburger is the way into the sidebar. */}
-            <SidebarTrigger
-              className={cn("-ml-1", nativePlatform === "ios" ? "flex" : "hidden md:flex")}
-            />
+            {/* Bunnmenyen har ikke lenger en «Meny»-fane (den plassen gikk til
+                en ekte destinasjon), så hamburgeren er igjen veien inn til
+                sidebaren på mobil — der profil, varsler og prosjektsnarveier
+                bor. «Mer»-arket i bunnbaren dekker sidene, ikke kontoen. */}
+            <SidebarTrigger className="-ml-1" />
             <Separator
               orientation="vertical"
               className="mr-2 hidden data-vertical:h-4 data-vertical:self-auto md:block"
@@ -82,7 +80,7 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
         {nativePlatform !== "android" && (
           <div
             className="shrink-0 md:hidden"
-            style={{ height: "calc(4rem + env(safe-area-inset-bottom))" }}
+            style={{ height: `calc(${MOBILE_NAV_HEIGHT} + env(safe-area-inset-bottom))` }}
             aria-hidden="true"
           />
         )}

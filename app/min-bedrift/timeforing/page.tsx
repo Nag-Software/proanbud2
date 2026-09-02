@@ -8,20 +8,19 @@ import {
 import { ApprovalsPanel } from "@/components/timeforing/approvals-panel"
 import { AutoCloseSettings } from "@/components/timeforing/auto-close-settings"
 import { checkRoleAccess } from "@/lib/auth-utils"
-import { companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
+import { companyHasFeature, companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import { MODULE_PRICING } from "@/lib/billing/plans"
 import { createClient } from "@/lib/supabase/server"
 import { TimeforingClient } from "./timeforing-client"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 export default async function Page() {
   await checkRoleAccess(["admin", "manager"])
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
   const companyId = user ? await getCurrentCompanyIdForUser(user.id) : null
-  const hasTimeforing = companyId ? await companyHasModule(companyId, "timeforing") : false
+  const hasTimeforing = companyId ? await companyHasFeature(companyId, "timeforing") : false
 
   if (!hasTimeforing) {
     return (

@@ -85,15 +85,19 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const supabase = await createClient()
   const { user, canonicalRole } = await checkRoleAccess(["admin", "manager", "worker"])
 
-  // companyId only needs user.id (known above), so resolve it alongside the
-  // project reads instead of after them.
+  // companyId er nå gratis: den delte auth-konteksten (checkRoleAccess over) har
+  // allerede lest brukerens profil, så dette koster ingen spørring i normaltilfellet.
+  // Det lar oss flytte plan/modul-oppslaget INN i bølgen under — før lå det som en
+  // egen, fjerde rundtur mellom de to Promise.all-ene.
+  const companyId = await getCurrentCompanyIdForUser(user.id)
+
   const [
     { data: project },
     { data: tasksData },
     { data: offersData },
     { data: changeOrdersData },
     { data: membersData },
-    companyId,
+    planAndModules,
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -120,7 +124,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       .from("project_members")
       .select("access_level, users(id, email, full_name, role)")
       .eq("project_id", resolvedParams.id),
-    getCurrentCompanyIdForUser(user.id),
+    companyId
+      ? getCompanyPlanAndModules(companyId)
+      : Promise.resolve({ plan: null, modules: [] as string[] }),
   ])
 
   if (!project) {
@@ -148,10 +154,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   // Resolve plan + enabled modules in ONE read, then derive every gate
   // in-memory. Previously companyHasModule + 3× companyHasFeature issued ~8
   // separate admin reads for data that is identical across the calls.
-  const { plan, modules } = companyId
-    ? await getCompanyPlanAndModules(companyId)
-    : { plan: null, modules: [] as string[] }
-  const hasTimeforing = modules.includes("timeforing")
+  const { plan, modules } = planAndModules
+  const hasTimeforing = hasFeature(plan, modules, "timeforing")
   const hasKjorebok = modules.includes("kjorebok")
   // Proff-only feature flags for the embedded tabs (KS, Avvik, Oppgaver).
   const hasKs = hasFeature(plan, modules, "ks")

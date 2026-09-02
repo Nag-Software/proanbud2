@@ -12,10 +12,16 @@ import { LOGIN_PATH } from '@/lib/constants'
 import { isPlatformAdminEmail, isSjefenApiRoute, isSjefenRoute } from '@/lib/auth/platform-admin'
 import { canAccessSelger, isSelgerApiRoute, isSelgerRoute } from '@/lib/auth/platform-seller'
 import { MOCK_ROLE_COOKIE, isRoleMockEnabled, resolveMockRoleParam } from '@/lib/auth/role-mock'
+import { signGateCookie, verifyGateCookie } from '@/lib/auth/gate-cookie'
 
 // Short-lived, per-user cache so steady-state navigation can skip the
 // onboarding/subscription RPCs. Only ever skips the already-verified "pass"
 // case — it can never introduce a redirect, and re-verifies after TTL.
+//
+// The value is HMAC-signed and bound to (user, session, expiry) — see
+// lib/auth/gate-cookie.ts. It used to be the bare user id, which the user knows
+// from their own JWT and could set by hand to skip the subscription gate for
+// good (httpOnly stops JS from reading a cookie, not a human from setting one).
 const GATE_COOKIE = 'pa_gate_ok'
 // The TTL bounds the window where a just-lapsed subscription could still pass
 // the cached fast-path. The cookie is only ever written after a verified-active
@@ -68,6 +74,9 @@ export async function updateSession(request: NextRequest) {
   const user = claims?.sub
     ? { id: claims.sub, email: typeof claims.email === 'string' ? claims.email : undefined }
     : null
+  // Binds the gate cookie to this session so it dies on sign-out. Falls back to
+  // '' if the claim is ever absent — the signature still covers user + expiry.
+  const sessionId = typeof claims?.session_id === 'string' ? claims.session_id : ''
 
   const pathname = request.nextUrl.pathname
   const isPublic = isPublicAuthRoute(pathname)
@@ -186,7 +195,12 @@ export async function updateSession(request: NextRequest) {
       pathname !== '/create-company'
 
     // Recently verified this exact user is fully onboarded + active → skip RPCs.
-    if (cacheableGate && request.cookies.get(GATE_COOKIE)?.value === user.id) {
+    // A forged or expired cookie simply fails verification and falls through to
+    // the full checks below.
+    if (
+      cacheableGate &&
+      (await verifyGateCookie(request.cookies.get(GATE_COOKIE)?.value, user.id, sessionId))
+    ) {
       return supabaseResponse
     }
 
@@ -336,12 +350,18 @@ export async function updateSession(request: NextRequest) {
     // and only for users WITH a company, so a company-less or lapsed user is
     // never allowed to skip the redirect.
     if (cacheableGate && companyId && subscriptionVerifiedActive) {
-      supabaseResponse.cookies.set(GATE_COOKIE, user.id, {
-        path: '/',
-        maxAge: GATE_TTL_SECONDS,
-        httpOnly: true,
-        sameSite: 'lax',
-      })
+      const signed = await signGateCookie(user.id, sessionId, GATE_TTL_SECONDS)
+      // null = no secret configured. Skip the cookie entirely rather than write
+      // an unverifiable one; navigation just keeps running the full checks.
+      if (signed) {
+        supabaseResponse.cookies.set(GATE_COOKIE, signed, {
+          path: '/',
+          maxAge: GATE_TTL_SECONDS,
+          httpOnly: true,
+          sameSite: 'lax',
+          secure: process.env.NODE_ENV === 'production',
+        })
+      }
     }
   }
 

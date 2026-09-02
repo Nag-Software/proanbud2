@@ -28,6 +28,22 @@ const nextConfig: NextConfig = {
       "./node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
     ],
   },
+  // /min-bedrift er bare en inngang til bedriftsprofilen. Som `page.tsx` med
+  // redirect() kostet den en full serverless-invokasjon bare for å svare 307;
+  // her håndteres den på edge, uten å starte en funksjon. Porten består:
+  // nettleseren gjør en NY forespørsel til destinasjonen, som går gjennom
+  // middleware som alle andre.
+  async redirects() {
+    return [
+      {
+        source: "/min-bedrift",
+        destination: "/min-bedrift/bedriftsprofil",
+        // 307, ikke 308: nettleseren skal ikke cache denne permanent hvis
+        // landingsfanen for «Min bedrift» endres senere.
+        permanent: false,
+      },
+    ]
+  },
   experimental: {
     // Client router cache: reuse a page's RSC payload for 30s after visiting it
     // (Next 14's old default; 15+ set it to 0 = refetch on every navigation).

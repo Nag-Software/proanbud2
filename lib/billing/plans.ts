@@ -244,13 +244,15 @@ export function intervalFromPriceMetadata(metadata: PriceMetadata): BillingInter
 // `kalender` (the built-in Proanbud calendar) is included in EVERY plan, and
 // the optional Google/Outlook connection on top of it is free — no module.
 //
-// This is separate from the à-la-carte MODULE system (timeforing/dokumenter
-// stay independent add-ons on BOTH plans). `integrasjoner` is special: it is
-// included in Proff AND still purchasable as a module on Mini — see hasFeature.
+// This is separate from the à-la-carte MODULE system. `dokumenter` and
+// `kjorebok` stay independent add-ons on BOTH plans. `integrasjoner`,
+// `meldinger_ki` and `timeforing` are hybrids: included in Proff AND still
+// purchasable as a module on Mini — see hasFeature + FEATURE_MODULE_FALLBACK.
 // ---------------------------------------------------------------------------
 
 export type FeatureKey =
   | "hms"
+  | "timeforing"
   | "ks"
   | "avvik"
   | "kalender"
@@ -261,7 +263,17 @@ export type FeatureKey =
 
 export const PLAN_FEATURES: Record<PlanKey, FeatureKey[]> = {
   mini: ["kalender"],
-  proff: ["hms", "ks", "avvik", "kalender", "project_tasks", "meldinger", "meldinger_ki", "integrasjoner"],
+  proff: [
+    "hms",
+    "ks",
+    "avvik",
+    "kalender",
+    "project_tasks",
+    "meldinger",
+    "meldinger_ki",
+    "integrasjoner",
+    "timeforing",
+  ],
 }
 
 /**
@@ -274,12 +286,13 @@ export const PLAN_FEATURES: Record<PlanKey, FeatureKey[]> = {
  */
 const FEATURE_MODULE_FALLBACK: Partial<Record<FeatureKey, ModuleKey>> = {
   integrasjoner: "integrasjoner",
+  timeforing: "timeforing",
   meldinger: "meldinger_ki",
   meldinger_ki: "meldinger_ki",
 }
 
 /** Modules whose value is already bundled into Proff — shown as "Inkludert i Proff". */
-export const MODULES_INCLUDED_IN_PROFF: ModuleKey[] = ["integrasjoner", "meldinger_ki"]
+export const MODULES_INCLUDED_IN_PROFF: ModuleKey[] = ["integrasjoner", "meldinger_ki", "timeforing"]
 
 /**
  * Pure resolver: does a company on `plan` owning `modules` have `feature`?
@@ -310,6 +323,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   meldinger: "Meldinger",
   meldinger_ki: "KI-svar i meldinger",
   integrasjoner: "Integrasjoner",
+  timeforing: "Timeføring",
 }
 
 /**
@@ -323,6 +337,11 @@ export const PROFF_INCLUDED_FEATURES: Array<{
   description: string
 }> = [
   { key: "hms", label: "HMS, KS og avvik", description: "HMS-håndbok, KS-sjekklister og avvikshåndtering." },
+  {
+    key: "timeforing",
+    label: "Timeføring inkludert",
+    description: "Stemple inn og ut, og få timene rett på riktig prosjekt — uten modulkostnad.",
+  },
   {
     key: "project_tasks",
     label: "Oppgaver i prosjekter",

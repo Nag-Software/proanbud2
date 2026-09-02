@@ -8,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 import { RegnskapClient } from "./regnskap-client"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 /**
  * Felles regnskapsside.
@@ -21,9 +22,7 @@ export default async function RegnskapPage() {
   await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
 
   let companyId: string | null = null
   let canManage = false

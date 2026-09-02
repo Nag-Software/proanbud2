@@ -1,52 +1,37 @@
 import { cache } from "react"
 
-import { createClient } from "@/lib/supabase/server"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
 import { hasRoleAccess, normalizeRole, type CanonicalRole } from "@/lib/roles"
 import { MOCK_ROLE_COOKIE, canonicalMockRole, isRoleMockEnabled } from "@/lib/auth/role-mock"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
-// `cache()` dedupes this within a single render: the layout and the page both
-// call checkRoleAccess, and several pages re-resolve the role — without this the
-// getUser + user_roles + users reads run 2-3× per request. Per-user/per-request
-// only (the result never crosses requests), so no cross-tenant leakage.
+// Delegates to the shared per-request auth context, so a page's role check and
+// the server actions it calls resolve the user ONCE instead of each re-reading
+// user_roles + users (and each paying an auth round-trip). See
+// lib/auth/server-context.ts for the measurements that motivated it.
+//
+// Still `cache()`-wrapped in its own right: the redirect decisions and the role
+// mock below are this function's own contract, and layouts + pages both call it.
 export const getCurrentUserRole = cache(async function getCurrentUserRole(): Promise<{
   user: { id: string; email?: string }
   userRole: string | null
   canonicalRole: CanonicalRole | null
 }> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
+  const context = await getServerAuthContext()
 
-  if (authError || !user) {
+  if (!context) {
     redirect("/login")
   }
 
-  // Both reads key only on user.id and are independent — run them concurrently.
-  const [{ data: userRoleData }, { data: userTableData }] = await Promise.all([
-    supabase
-      .from("user_roles")
-      .select("roles(name)")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-    supabase
-      .from("users")
-      .select("role, is_active")
-      .eq("id", user.id)
-      .maybeSingle(),
-  ])
-
   // Deaktiverte kontoer skal ikke inn i appen i det hele tatt.
-  if (userTableData?.is_active === false) {
+  if (!context.isActive) {
     redirect("/konto-deaktivert")
   }
 
-  // @ts-expect-error Supabase nested relation typing
-  const userRole = userRoleData?.roles?.name || userTableData?.role || null
+  const user = context.user
+  const userRole = context.role
   const canonicalRole = normalizeRole(userRole)
 
   // Dev role mock (?mock=worker|pm|admin) — overrides role gating only.

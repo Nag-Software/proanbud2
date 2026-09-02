@@ -8,6 +8,7 @@ import {
   type PlanKey,
 } from "@/lib/billing/plans"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 /**
  * Kastes av plan-/modulveggene så actions kan kjenne igjen veggen og returnere
@@ -44,6 +45,18 @@ export async function companyHasModule(companyId: string, moduleKey: string): Pr
 export const getCurrentCompanyIdForUser = cache(async function getCurrentCompanyIdForUser(
   userId: string
 ): Promise<string | null> {
+  // Fast path: the shared auth context already read this user's profile in the
+  // same render (pages call checkRoleAccess immediately before this), so the
+  // company id is usually in hand and this costs zero queries. Only trust it for
+  // the SAME user id the caller asked about.
+  const context = await getServerAuthContext()
+  if (context && context.user.id === userId && context.companyId) {
+    return context.companyId
+  }
+
+  // Fallback keeps the admin client on purpose: it bypasses RLS, so a user whose
+  // own `users` row is not selectable still resolves their company instead of
+  // being bounced to /create-company.
   const admin = createAdminClient()
   const { data, error } = await admin
     .from("users")

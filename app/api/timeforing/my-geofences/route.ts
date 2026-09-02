@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
-import { companyHasModule } from "@/lib/billing/server-modules"
+import { companyHasFeature, companyHasModule } from "@/lib/billing/server-modules"
 import { userFromBearer } from "@/lib/timeforing/native-auth"
 
 export const runtime = "nodejs"
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const auth = await userFromBearer(request)
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  if (!(await companyHasModule(auth.companyId, "timeforing"))) {
+  if (!(await companyHasFeature(auth.companyId, "timeforing"))) {
     return NextResponse.json({ geofences: [] })
   }
 

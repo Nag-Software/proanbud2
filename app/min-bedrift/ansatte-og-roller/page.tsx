@@ -2,13 +2,15 @@ import { AppPageShell } from "@/components/app-page-shell"
 import { AnsatteClient } from "./ansatte-client"
 import { createClient } from "@/lib/supabase/server"
 import { getRoleDisplayName } from "@/lib/roles"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 export default async function Page() {
   const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser()
-  const user = userData?.user
-  const { data: userProfile } = await supabase.from('users').select('company_id').eq('id', user?.id || '').single()
-  const companyId = userProfile?.company_id || ''
+  // Den delte konteksten har allerede både brukeren og company_id fra layoutens
+  // rollesjekk — dette sparte et auth-nettverkskall og et ekstra users-oppslag.
+  const context = await getServerAuthContext()
+  const user = context?.user ?? null
+  const companyId = context?.companyId || ''
   
   // Hent ansatte (brukere) og hvilke roller de har via user_roles og roles
   const { data: usersData } = await supabase

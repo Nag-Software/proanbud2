@@ -10,6 +10,7 @@ import {
 import { assertPlanFeature } from "@/lib/billing/server-modules"
 import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
+import { requireServerAuthContext } from "@/lib/auth/server-context"
 import { OPEN_DEVIATION_STATUSES } from "@/lib/hms/constants"
 import type { DeviationStats, DeviationWithRelations } from "@/lib/hms/types"
 import { canManageProjects } from "@/lib/roles"
@@ -38,24 +39,19 @@ function isMissingRelationError(error: { code?: string; message?: string }) {
   )
 }
 
+// Delegerer til den delte, per-request-cachede konteksten. Denne siden kaller
+// tre actions i Promise.all; før betalte hver av dem sitt eget getUser()-
+// nettverkskall + eget users-oppslag. Nå deler alle tre ett oppslag som siden
+// allerede har gjort i checkRoleAccess. `profileRole` (rå users.role) beholdes
+// som rollekilde, så tilgangsvurderingene er bit-for-bit uendret.
 async function getAuthContext() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser()
-
-  if (error || !user) throw new Error("Du må være innlogget")
-
-  const { data: profile } = await supabase
-    .from("users")
-    .select("company_id, role")
-    .eq("id", user.id)
-    .maybeSingle()
-
-  if (!profile?.company_id) throw new Error("Fant ikke bedrift")
-
-  return { supabase, user, companyId: profile.company_id, role: profile.role }
+  const context = await requireServerAuthContext()
+  return {
+    supabase: context.supabase,
+    user: context.user,
+    companyId: context.companyId,
+    role: context.profileRole,
+  }
 }
 
 async function assertCanManageDeviation(

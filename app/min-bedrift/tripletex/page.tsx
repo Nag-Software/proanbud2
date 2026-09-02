@@ -7,14 +7,13 @@ import { getTripletexApiBaseUrl, TRIPLETEX_HELP_URL } from "@/lib/integrations/t
 
 import { TripletexClient } from "./tripletex-client"
 import { TripletexEmployeeMapping } from "@/components/integrations/tripletex-employee-mapping"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 export default async function TripletexPage() {
   await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
 
   let companyId: string | null = null
   let canManageIntegration = false

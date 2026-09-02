@@ -25,6 +25,7 @@ import {
   DEVIATION_TYPE_LABELS,
 } from "@/lib/hms/constants"
 import type { DeviationStats, DeviationWithRelations } from "@/lib/hms/types"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 
 type Props = {
   deviations: DeviationWithRelations[]
@@ -233,23 +234,20 @@ export function AvvikClient({ deviations, stats, projects }: Props) {
         </Select>
 
         {projects.length > 1 && (
-          <Select value={projectFilter} onValueChange={setProjectFilter}>
-            <SelectTrigger className="min-w-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Alle prosjekter</SelectItem>
-              {projects.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            className="min-w-0"
+            value={projectFilter}
+            onChange={setProjectFilter}
+            searchPlaceholder="Søk etter prosjekt…"
+            options={[
+              { value: "all", label: "Alle prosjekter" },
+              ...projects.map((p) => ({ value: p.id, label: p.name })),
+            ]}
+          />
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2 items-center">
+      <div className="flex flex-wrap gap-2 max-w-xl items-center">
         <DatePicker
           value={dateFrom}
           onChange={setDateFrom}

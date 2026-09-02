@@ -9,6 +9,7 @@ import { companyHasFeature, getCurrentCompanyIdForUser } from "@/lib/billing/ser
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import Image from "next/image"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 export const integrations = [
     {
@@ -40,9 +41,7 @@ export default async function IntegrasjonerPage() {
   await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
 
   const companyId = user ? await getCurrentCompanyIdForUser(user.id) : null
 

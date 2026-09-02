@@ -5,6 +5,7 @@ import { isActiveProject } from "@/app/prosjekter/project-utils"
 import { getActiveAccountingProvider } from "@/lib/regnskap/registry"
 import { getAdapter } from "@/lib/regnskap/registry"
 import { createClient } from "@/lib/supabase/server"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -12,7 +13,7 @@ export const revalidate = 0;
 
 export default async function Page() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
   
   // Hent kun kunder for den innloggede brukeren (RLS håndterer filtrering via company_id)
   let dbCustomers = []

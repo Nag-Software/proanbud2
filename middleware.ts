@@ -10,9 +10,9 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones below. `updateSession` does a
-     * supabase.auth.getUser() round-trip on every match, so we also skip routes
-     * that authenticate via signature/secret and never read the user cookie:
+     * Match all request paths except for the ones below. `updateSession` runs
+     * the auth/onboarding/subscription gate on every match, so we also skip
+     * routes that authenticate via signature/secret and never read the user cookie:
      * - _next/static / _next/image (build assets)
      * - favicon.ico and static asset extensions
      * - the api/webhooks folder and any route ending in "webhook" (Stripe, Resend, DocuSign, Tripletex…)
