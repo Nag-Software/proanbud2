@@ -109,12 +109,21 @@ export function selectUnsentInvoices(rows: InvoiceRow[], now: number = Date.now(
  * av selv, og fakturaen går uansett gjennom uten prosjekt-tag. Å varsle om den ville
  * vært ren mas. Det som derimot MÅ fram: en faktura eller et tilbud som aldri nådde
  * kunden, uten at noen fikk vite det.
+ *
+ * Listen dekker BEGGE kø-vokabularene. Fiken kaller tilbudsjobben
+ * `offer.create_from_offer`, Tripletex kaller den `offer.upsert` og har i tillegg
+ * ordresteget — uten Tripletex-navnene her ville en Tripletex-bedrift aldri fått
+ * varsel om en faktura som stoppet.
  */
 const MONEY_BLOCKING_JOB_TYPES = new Set([
   "invoice.create_from_project_invoice",
   "invoice.create_from_offer",
   "invoice.send",
+  // Fiken
   "offer.create_from_offer",
+  // Tripletex
+  "offer.upsert",
+  "order.create_from_offer",
 ])
 
 export function isMoneyBlockingJobType(jobType: string): boolean {

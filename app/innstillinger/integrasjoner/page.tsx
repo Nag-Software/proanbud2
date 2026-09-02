@@ -13,14 +13,14 @@ import Image from "next/image"
 export const integrations = [
     {
         name: "Tripletex",
-        description: "Koble til Tripletex med én API-brukernøkkel. Synkroniser kunder, prosjekter, tilbud og fakturaer.",
+        description: "Koble til Tripletex med én API-brukernøkkel. Kunder, prosjekter, tilbud og fakturaer synkroniseres.",
         url: "/min-bedrift/tripletex",
         status: "active",
         logo: "/integrasjoner-logo/tripletex.png"
     },
     {
         name: "Fiken",
-        description: "Koble til Fiken via sikker innlogging (OAuth). Synkroniser kunder, prosjekter, tilbud og fakturaer.",
+        description: "Koble til Fiken via sikker innlogging (OAuth). Kunder, prosjekter, tilbud og fakturaer synkroniseres.",
         url: "/min-bedrift/fiken",
         status: "active",
         logo: "/integrasjoner-logo/fiken.png"

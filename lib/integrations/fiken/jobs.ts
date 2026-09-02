@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logServerError } from "@/lib/errors/log"
 import type { FikenConnectionRow } from "@/lib/integrations/fiken/types"
 import type { IntegrationJobRow } from "@/lib/integrations/tripletex/types"
 
@@ -243,4 +244,38 @@ export async function tryAcquireFikenWorkerLock(workerId: string, ttlSeconds = 3
 export async function releaseFikenWorkerLock(workerId: string) {
   const supabase = createAdminClient()
   await supabase.rpc("integration_release_worker_lock", { p_provider: PROVIDER, p_worker: workerId })
+}
+
+/**
+ * Rydder jobber som ble foreldreløse i status='processing' av en worker som døde
+ * midt i kjøringen.
+ *
+ * Uten dette blir de liggende for alltid: `integration_claim_jobs` plukker kun
+ * 'pending' og 'retry'. Tripletex har hatt denne siden db/44 — Fiken hadde den
+ * ikke, og to `reconcile.full`-jobber sto låst i over elleve timer i produksjon.
+ *
+ * RPC-en avgjør hva som er trygt (se db/88): jobber som OPPRETTER noe vi ikke kan
+ * søke oss tilbake til — faktura, tilbud, kunde, prosjekt, reiseregning — feiler
+ * synlig i stedet for å kjøres om igjen. Vi vet ikke om POST-en rakk fram, og
+ * Fiken har ingen idempotency-nøkkel.
+ *
+ * Best effort: en feil her skal aldri blokkere selve kjøringen.
+ */
+export async function reapStuckFikenJobs(staleSeconds = 900) {
+  const supabase = createAdminClient()
+  const { error } = await supabase.rpc("integration_reap_stuck_jobs", {
+    p_provider: PROVIDER,
+    p_stale_seconds: staleSeconds,
+  })
+  if (error) {
+    console.error("[fiken] reapStuckFikenJobs feilet (fortsetter):", error.message)
+    await logServerError({
+      message: "Fiken reapStuckJobs RPC feilet",
+      error,
+      level: "warning",
+      source: "worker",
+      route: "reapStuckFikenJobs",
+      context: { provider: PROVIDER, staleSeconds },
+    })
+  }
 }

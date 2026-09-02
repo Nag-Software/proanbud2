@@ -1,6 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin"
-import { enqueueOfferTripletexSyncAndProcess } from "@/lib/integrations/tripletex/sync"
-import { enqueueOfferFikenSyncAndProcess } from "@/lib/integrations/fiken/sync"
+import { enqueueOfferSync } from "@/lib/regnskap/sync"
 import { notifyCompanyAdminsAboutAcceptedOffer } from "@/lib/tilbud/notify-accepted-offer"
 import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 
@@ -39,14 +38,15 @@ export async function handleOfferAccepted(input: {
   }
 
   if (offer.customer_id) {
-    // Only one accounting provider is connected at a time; each enqueue no-ops when
-    // its provider isn't the active one.
+    // Ett kall, uansett regnskapssystem. Registeret vet hvilken integrasjon som er
+    // aktiv — tidligere kalte vi begge og stolte på at den passive no-opet, noe som
+    // gjorde det umulig å se hva som faktisk skjedde.
     //
-    // Fiken oppretter IKKE faktura her lenger: fakturering skjer når arbeidet er
-    // utført, fra Fakturering-fanen på prosjektet. Aksepten sørger kun for at kunden
-    // (og eventuelt prosjektet) finnes i Fiken, slik at fakturaen går rett gjennom
+    // Akseptert tilbud oppretter IKKE faktura: håndverkere fakturerer etter utført
+    // arbeid, fra Fakturering-fanen på prosjektet. Aksepten sørger kun for at kunden
+    // (og eventuelt prosjektet) finnes i regnskapet, så fakturaen går rett gjennom
     // når den kommer.
-    const tripletexEnqueued = await enqueueOfferTripletexSyncAndProcess({
+    const syncedTo = await enqueueOfferSync({
       companyId: input.companyId,
       offerId: input.offerId,
       customerId: String(offer.customer_id),
@@ -56,25 +56,16 @@ export async function handleOfferAccepted(input: {
       waitForCompletion: false,
     })
 
-    const fikenEnqueued = await enqueueOfferFikenSyncAndProcess({
-      companyId: input.companyId,
-      offerId: input.offerId,
-      customerId: String(offer.customer_id),
-      projectId: offer.project_id ? String(offer.project_id) : null,
-      source: input.source || "offer-accepted",
-      phase: "order",
-      waitForCompletion: false,
-    })
-
-    if (tripletexEnqueued || fikenEnqueued) {
+    if (syncedTo) {
       await logOfferActivity(
         {
           offerId: input.offerId,
           companyId: input.companyId,
           actorUserId: input.actorUserId || null,
           eventType: OFFER_ACTIVITY.ERP_ORDER_SYNCED,
-          title: fikenEnqueued ? "Kunde klargjort i Fiken" : "Ordre opprettes i Tripletex",
-          metadata: { source: input.source || "offer-accepted", provider: fikenEnqueued ? "fiken" : "tripletex" },
+          title:
+            syncedTo === "fiken" ? "Kunde klargjort i Fiken" : "Ordre opprettes i Tripletex",
+          metadata: { source: input.source || "offer-accepted", provider: syncedTo },
         },
         // Reached from the unauthenticated public-accept path — cookie client has no
         // company and RLS would silently drop this insert; use the admin client.

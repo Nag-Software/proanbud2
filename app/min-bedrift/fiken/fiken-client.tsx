@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ExternalLink, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
@@ -10,19 +11,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 
 type CompanyChoice = { slug: string; name: string; testCompany: boolean; hasApiAccess: boolean }
 type BankAccount = { bankAccountNumber: string; name: string }
-
-type JobRow = {
-  id: number
-  status: string
-  job_type: string
-  created_at: string
-  last_error_message: string | null
-}
 
 type FikenConnection = {
   company_id: string
@@ -51,50 +42,14 @@ type ScopeConfig = {
 
 type FikenClientProps = {
   initialConnection: FikenConnection | null
-  initialJobs: JobRow[]
   canManage: boolean
   tripletexConnected: boolean
   helpUrl: string
 }
 
-const SCOPE_LABELS: Array<{ key: keyof ScopeConfig; label: string; description: string }> = [
-  // Kjernen: Fiken er betalingsmottaker.
-  { key: "contacts", label: "Kunder", description: "Synkroniser kunder til Fiken-kontakter." },
-  { key: "invoices", label: "Fakturaer", description: "Opprett faktura i Fiken når tilbud aksepteres." },
-  {
-    key: "sendInvoiceFromFiken",
-    label: "Send faktura fra Fiken",
-    description:
-      "Fiken sender fakturaen til kunden — utløst herfra, uten innlogging på fiken.no. Slå av hvis dere sender faktura selv.",
-  },
-  // Valgfritt. Tilbud og kundedialog eies av ProAnbud.
-  {
-    key: "offers",
-    label: "Tilbud (kopi til regnskap)",
-    description:
-      "Legg tilbudet i Fiken som regnskapskopi. Tilbudet sendes alltid fra ProAnbud — det er her digital aksept skjer.",
-  },
-  {
-    key: "projects",
-    label: "Prosjekter",
-    description: "Krever Fikens prosjektmodul (69 kr/mnd). Slås av automatisk hvis modulen mangler.",
-  },
-  { key: "products", label: "Produkter", description: "Synkroniser produkter/varer (valgfritt)." },
-  { key: "inbox", label: "Dokumenter", description: "Last opp vedlegg til faktura/innboks." },
-]
 
 
-const JOBS_PAGE_SIZE = 10
 
-const DEFAULT_SCOPE: ScopeConfig = {
-  contacts: true,
-  projects: false,
-  offers: false,
-  invoices: true,
-  products: false,
-  inbox: false,
-  sendInvoiceFromFiken: true,
-}
 
 const ERROR_MESSAGES: Record<string, string> = {
   unauthorized: "Du må være innlogget for å koble til Fiken.",
@@ -129,35 +84,10 @@ function formatSyncState(state: string | null | undefined) {
   return labels[key] || key || "—"
 }
 
-function formatJobType(jobType: string) {
-  const labels: Record<string, string> = {
-    "contact.upsert": "Synkroniserte kunde",
-    "project.upsert": "Synkroniserte prosjekt",
-    "offer.create_from_offer": "La tilbudskopi i Fiken",
-    "invoice.create_from_offer": "Opprettet faktura",
-    "invoice.send": "Sendte faktura",
-    "document.upload": "Lastet opp dokument",
-    "reconcile.full": "Avstemming",
-    poll_payments: "Sjekket betalinger",
-  }
-  return labels[jobType] || jobType
-}
 
-function formatJobStatus(status: string) {
-  const labels: Record<string, string> = {
-    pending: "Venter",
-    processing: "Behandles",
-    retry: "Nytt forsøk",
-    completed: "Fullført",
-    failed: "Feilet",
-    dead_letter: "Avbrutt",
-  }
-  return labels[status] || status
-}
 
 export function FikenClient({
   initialConnection,
-  initialJobs,
   canManage,
   tripletexConnected,
   helpUrl,
@@ -172,10 +102,6 @@ export function FikenClient({
   React.useEffect(() => {
     setConnection(initialConnection)
   }, [initialConnection])
-  const [jobs] = React.useState<JobRow[]>(initialJobs)
-  const [scope, setScope] = React.useState<ScopeConfig>(
-    initialConnection?.scope_config ? { ...DEFAULT_SCOPE, ...initialConnection.scope_config } : DEFAULT_SCOPE
-  )
   const [busy, setBusy] = React.useState(false)
   const [personalToken, setPersonalToken] = React.useState("")
   const [companyChoices, setCompanyChoices] = React.useState<CompanyChoice[] | null>(null)
@@ -184,7 +110,6 @@ export function FikenClient({
   const [showManual, setShowManual] = React.useState(false)
   const [bankAccounts, setBankAccounts] = React.useState<BankAccount[] | null>(null)
   // Activity is paged 10 at a time rather than dumping the whole job history.
-  const [visibleJobs, setVisibleJobs] = React.useState(JOBS_PAGE_SIZE)
 
   const connected = Boolean(connection && connection.sync_state !== "disconnected")
   // Authorised in Fiken, but not yet bound to one of the user's Fiken companies.
@@ -354,28 +279,6 @@ export function FikenClient({
     }
   }
 
-  async function handleScopeChange(key: keyof ScopeConfig, value: boolean) {
-    const next = { ...scope, [key]: value }
-    setScope(next)
-    try {
-      await call("PATCH", {
-        action: "update_scope",
-        scopeContacts: next.contacts,
-        scopeProjects: next.projects,
-        scopeOffers: next.offers,
-        scopeInvoices: next.invoices,
-        scopeProducts: next.products,
-        scopeInbox: next.inbox,
-        scopeSendInvoiceFromFiken: next.sendInvoiceFromFiken,
-      })
-      toast.success("Synkomfang oppdatert.")
-    } catch (error) {
-      reportClientError(error, { context: { action: "fiken_update_scope" } })
-      setScope(scope)
-      toast.error(error instanceof Error ? error.message : "Kunne ikke oppdatere")
-    }
-  }
-
   async function handleDisconnect() {
     setBusy(true)
     try {
@@ -405,11 +308,9 @@ export function FikenClient({
     }
   }
 
-  const shownJobs = jobs.slice(0, visibleJobs)
-  const hasMoreJobs = jobs.length > visibleJobs
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       {/* ---------- Kolonne 1: koble til ---------- */}
       <div className="flex flex-col gap-6">
         <Card>
@@ -690,70 +591,20 @@ export function FikenClient({
         {connected && (
           <Card>
             <CardHeader>
-              <CardTitle>Synkomfang</CardTitle>
-              <CardDescription>Velg hva som synkroniseres til Fiken.</CardDescription>
+              <CardTitle>Hva synkroniseres, og hvordan går det?</CardTitle>
+              <CardDescription>
+                Synkomfang og aktivitetslogg er felles for Fiken og Tripletex, og ligger samlet på
+                Regnskap-siden.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              {SCOPE_LABELS.map((item) => (
-                <div key={item.key} className="flex items-center justify-between gap-4">
-                  <div className="space-y-0.5">
-                    <Label htmlFor={`scope-${item.key}`}>{item.label}</Label>
-                    <p className="text-xs text-muted-foreground">{item.description}</p>
-                  </div>
-                  <Switch
-                    id={`scope-${item.key}`}
-                    checked={scope[item.key]}
-                    onCheckedChange={(value) => handleScopeChange(item.key, value)}
-                    disabled={!canManage}
-                  />
-                </div>
-              ))}
+            <CardContent>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/min-bedrift/regnskap">Gå til Regnskap</Link>
+              </Button>
             </CardContent>
           </Card>
         )}
       </div>
-
-      {/* ---------- Kolonne 2: aktivitet ---------- */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Aktivitet</CardTitle>
-          <CardDescription>Siste synkroniseringsjobber.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {jobs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Ingen jobber ennå.</p>
-          ) : (
-            <>
-              <ul className="flex flex-col gap-2">
-                {shownJobs.map((job) => (
-                  <li key={job.id} className="flex items-center justify-between gap-3 text-sm">
-                    <span>{formatJobType(job.job_type)}</span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <Badge
-                        variant={job.status === "failed" || job.status === "dead_letter" ? "destructive" : "secondary"}
-                      >
-                        {formatJobStatus(job.status)}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">{formatDate(job.created_at)}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-
-              {hasMoreJobs && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-3"
-                  onClick={() => setVisibleJobs((n) => n + JOBS_PAGE_SIZE)}
-                >
-                  Vis flere
-                </Button>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
     </div>
   )
 }

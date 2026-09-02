@@ -4,9 +4,11 @@ import {
   claimFikenJobs,
   enqueueFikenJob,
   getFikenLink,
+  getFikenLocalByExternal,
   markFikenJobCompleted,
   markFikenJobFailed,
   markFikenJobRetry,
+  reapStuckFikenJobs,
   releaseFikenWorkerLock,
   tryAcquireFikenWorkerLock,
   updateFikenConnectionHealth,
@@ -18,12 +20,15 @@ import {
   createFikenInvoiceFromDraft,
   createFikenInvoiceCounter,
   deleteFikenInvoiceDraft,
+  deleteFikenOfferDraft,
   findFikenInvoiceByDraftUuid,
   createFikenOfferCounter,
   createFikenOfferDraft,
   createFikenOfferFromDraft,
   createFikenProject,
   findFikenContactByOrgNumber,
+  listFikenContacts,
+  listFikenTimeUsers,
   sendFikenInvoice,
   updateFikenContact,
   updateFikenProject,
@@ -47,6 +52,7 @@ import { resolveFikenVatType } from "@/lib/integrations/fiken/vat"
 import {
   isAmbiguousFikenFailure,
   isDraftMissingBankAccount,
+  isDraftVatMismatch,
   isMissingNumberSeries,
 } from "@/lib/integrations/fiken/failure-classification"
 import type { FikenConnectionRow, FikenVatType } from "@/lib/integrations/fiken/types"
@@ -478,9 +484,28 @@ async function processOfferCreate(job: IntegrationJobRow) {
   // Non-idempotent finalize. En TVETYDIG feil dead-letter'es (kan ha laget tilbudet),
   // mens en ren avvisning kastes videre og kan retryes. Mangler nummerserien,
   // initialiseres den automatisk og finalize prøves én gang til.
-  const offerResponse = await finalizeFikenDraft(connection, "offer", () =>
-    createFikenOfferFromDraft(connection, draftId as number)
-  )
+  let offerResponse
+  try {
+    offerResponse = await finalizeFikenDraft(connection, "offer", () =>
+      createFikenOfferFromDraft(connection, draftId as number)
+    )
+  } catch (error) {
+    // Tilbudskladden gjenbrukes på samme måte som fakturakladden, og hadde til nå
+    // ingen opprydding i det hele tatt — en kladd laget med feil mva eller slettet i
+    // Fiken ville blokkert tilbudet for alltid. To slike lå foreldreløse i produksjon.
+    const unusable = describeUnusableDraft(error)
+    if (unusable) {
+      await discardStaleFikenDraft({
+        connection,
+        companyId: job.company_id,
+        entityType: "offer_draft",
+        localId: offerId,
+        draftId,
+      })
+      throw new Error(unusable)
+    }
+    throw error
+  }
   const externalId = offerResponse.locationId
   if (!externalId || !Number.isFinite(externalId)) {
     throw nonRetryableFikenError(new Error("Fiken offer id missing in response"))
@@ -590,6 +615,64 @@ async function processInvoiceCreate(job: IntegrationJobRow) {
       idempotencyKey: `offer:${offerId}:invoice-send`,
     })
   }
+}
+
+/**
+ * Er kladden ubrukelig for alltid, slik at den må kastes og lages på nytt?
+ *
+ * Fiken lagrer felt som `bankAccountNumber` og linjenes `vatType` PÅ kladden. Retter
+ * du innstillingen i ProAnbud, påvirker det bare NYE kladder — et nytt forsøk på den
+ * gamle sender fortsatt de gamle verdiene og feiler likt hver gang.
+ *
+ * Returnerer forklaringen brukeren skal se, eller null når feilen ikke er av denne
+ * typen og skal behandles etter vanlige regler.
+ */
+function describeUnusableDraft(error: unknown): string | null {
+  if ((error as FikenKnownError)?.status === 404) {
+    // Kladden er borte fra Fiken (slettet manuelt, eller aldri fullført). Den lagrede
+    // lenken peker i tomme luften og ville feilet ved hvert forsøk.
+    return "Fiken-kladden fantes ikke lenger — lager en ny ved neste forsøk"
+  }
+  if (isDraftMissingBankAccount(error)) {
+    return "Kladden manglet bankkonto (laget før kontoen ble valgt) — lager en ny ved neste forsøk"
+  }
+  if (isDraftVatMismatch(error)) {
+    return "Kladden hadde feil mva-behandling (laget før mva-innstillingen ble rettet) — lager en ny ved neste forsøk"
+  }
+  return null
+}
+
+/**
+ * Kaster en ubrukelig kladd — både lenken hos oss og utkastet hos Fiken, så det ikke
+ * hoper seg opp foreldreløse utkast der. Neste kjøring lager en ny.
+ */
+async function discardStaleFikenDraft(input: {
+  connection: FikenConnectionRow
+  companyId: string
+  entityType: "invoice_draft" | "offer_draft"
+  localId: string
+  draftId: number | null
+}) {
+  if (input.draftId) {
+    try {
+      // Tilbud og faktura har hver sin kladd-ressurs med hver sin id-serie i Fiken.
+      if (input.entityType === "offer_draft") {
+        await deleteFikenOfferDraft(input.connection, input.draftId)
+      } else {
+        await deleteFikenInvoiceDraft(input.connection, input.draftId)
+      }
+    } catch {
+      // Klarer vi ikke å slette den hos Fiken, er verste utfall et foreldreløst utkast.
+    }
+  }
+
+  await createAdminClient()
+    .from("external_entity_links")
+    .delete()
+    .eq("company_id", input.companyId)
+    .eq("provider", "fiken")
+    .eq("entity_type", input.entityType)
+    .eq("local_id", input.localId)
 }
 
 // --- invoice.create_from_project_invoice ------------------------------------
@@ -729,36 +812,16 @@ async function processProjectInvoiceCreate(job: IntegrationJobRow) {
       projectInvoiceId
     )
   } catch (error) {
-    const dropStaleDraft = async () =>
-      supabase
-        .from("external_entity_links")
-        .delete()
-        .eq("company_id", job.company_id)
-        .eq("provider", "fiken")
-        .eq("entity_type", "invoice_draft")
-        .eq("local_id", projectInvoiceId)
-
-    // «No invoice draft found with provided id» — kladden er borte fra Fiken (slettet
-    // manuelt, eller aldri fullført). Den lagrede lenken peker i tomme luften og ville
-    // feilet ved hvert forsøk. Rydd den, så lager neste kjøring en ny kladd.
-    if ((error as FikenKnownError)?.status === 404) {
-      await dropStaleDraft()
-      throw new Error("Fiken-kladden fantes ikke lenger — lager en ny ved neste forsøk")
-    }
-
-    // Kladden ble laget FØR bankkontoen var valgt. Fiken lagrer kontoen på kladden, så
-    // et nytt forsøk på SAMME kladd sender aldri det nye feltet og feiler evig. Kast
-    // kladden — både hos oss og i Fiken, så det ikke hoper seg opp utkast der.
-    if (isDraftMissingBankAccount(error) && draftId) {
-      try {
-        await deleteFikenInvoiceDraft(connection, draftId)
-      } catch {
-        // Klarer vi ikke å slette den hos Fiken, er det verste et foreldreløst utkast.
-      }
-      await dropStaleDraft()
-      throw new Error(
-        "Kladden manglet bankkonto (laget før kontoen ble valgt) — lager en ny ved neste forsøk"
-      )
+    const unusable = describeUnusableDraft(error)
+    if (unusable) {
+      await discardStaleFikenDraft({
+        connection,
+        companyId: job.company_id,
+        entityType: "invoice_draft",
+        localId: projectInvoiceId,
+        draftId,
+      })
+      throw new Error(unusable)
     }
 
     throw error
@@ -1014,6 +1077,168 @@ async function processFullReconciliation(job: IntegrationJobRow) {
   await insertJob("poll_payments", { source: "reconcile" }, `${runKey}:poll_payments`)
 }
 
+// --- customer.pull_all -------------------------------------------------------
+/**
+ * Importer kunder FRA Fiken.
+ *
+ * Tripletex-kundene har hatt dette hele tiden; Fiken-kundene måtte taste kundene
+ * sine inn på nytt. Matching skjer først på lagret lenke, deretter på org.nr —
+ * samme regel som Tripletex-importen — slik at en kunde som allerede finnes i
+ * ProAnbud blir oppdatert i stedet for duplisert.
+ *
+ * Kall er serielle med vilje: Fiken tåler kun én samtidig forespørsel.
+ */
+async function processCustomerPullAll(job: IntegrationJobRow) {
+  const connection = await requireConnection(job.company_id)
+  // `contacts` er Fikens gamle navn på kunde-omfanget; lib/regnskap/scopes.ts
+  // skriver nå også den kanoniske `customers`. Vi leser begge.
+  const scopes = normalizeFikenScopeConfig(connection.scope_config)
+  if (scopes.contacts === false) {
+    return
+  }
+
+  const supabase = createAdminClient()
+  const PAGE_SIZE = 100
+  const MAX_PAGES = 50
+
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const contacts = await listFikenContacts(connection, { page, pageSize: PAGE_SIZE })
+    if (contacts.length === 0) break
+
+    for (const contact of contacts) {
+      const externalId = Number(contact.contactId)
+      const name = String(contact.name || "").trim()
+      if (!Number.isFinite(externalId) || !name) continue
+
+      const address = (contact.address || {}) as Record<string, unknown>
+      const payload = {
+        name,
+        email: (contact.email as string | null) || null,
+        phone: (contact.phoneNumber as string | null) || null,
+        org_number: (contact.organizationNumber as string | null) || null,
+        address: (address.streetAddress as string | null) || null,
+        postal_code: (address.postCode as string | null) || null,
+        city: (address.city as string | null) || null,
+        updated_at: new Date().toISOString(),
+      }
+
+      const link = await getFikenLocalByExternal({
+        companyId: job.company_id,
+        entityType: "contact",
+        externalId,
+      })
+      let localId = link?.local_id ? String(link.local_id) : null
+
+      if (!localId && payload.org_number) {
+        const { data: existingByOrg } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("company_id", job.company_id)
+          .eq("org_number", payload.org_number)
+          .maybeSingle()
+        if (existingByOrg?.id) localId = String(existingByOrg.id)
+      }
+
+      if (!localId) {
+        const inserted = await supabase
+          .from("customers")
+          .insert({ company_id: job.company_id, ...payload })
+          .select("id")
+          .single()
+        if (inserted.error || !inserted.data?.id) {
+          throw new Error(
+            `Kunne ikke importere kunde ${externalId}: ${inserted.error?.message || "insert feilet"}`
+          )
+        }
+        localId = String(inserted.data.id)
+      } else {
+        const updated = await supabase
+          .from("customers")
+          .update(payload)
+          .eq("id", localId)
+          .eq("company_id", job.company_id)
+        if (updated.error) {
+          throw new Error(`Kunne ikke oppdatere kunde ${localId}: ${updated.error.message}`)
+        }
+      }
+
+      await upsertFikenLink({
+        companyId: job.company_id,
+        entityType: "contact",
+        localId,
+        externalId,
+        syncStatus: "synced",
+        externalUrl: connection.fiken_company_slug
+          ? fikenContactUrl(connection.fiken_company_slug, externalId)
+          : null,
+      })
+    }
+
+    if (contacts.length < PAGE_SIZE) break
+  }
+}
+
+// --- employee.sync_all -------------------------------------------------------
+/**
+ * Koble ProAnbud-brukere til Fikens timebrukere.
+ *
+ * Fiken har ingen ansatt-ressurs — `/timeUsers` er nærmeste motstykke, og den er
+ * LESE-only: personen må allerede finnes i Fiken. Vi kan derfor bare koble på
+ * e-post, aldri opprette.
+ *
+ * Deler e-post av to personer, lar vi den være UKOBLET i stedet for å gjette.
+ * Samme regel som Tripletex-siden: en feil kobling ville ført én persons timer
+ * eller utlegg under en annens navn.
+ */
+async function processEmployeeSyncAll(job: IntegrationJobRow) {
+  const connection = await requireConnection(job.company_id)
+  const supabase = createAdminClient()
+
+  const byEmail = new Map<string, number>()
+  const ambiguous = new Set<string>()
+  const PAGE_SIZE = 100
+
+  for (let page = 0; page < 20; page += 1) {
+    const timeUsers = await listFikenTimeUsers(connection, { page, pageSize: PAGE_SIZE })
+    if (timeUsers.length === 0) break
+
+    for (const user of timeUsers) {
+      const id = Number(user.timeUserId)
+      const email = String(user.email || "").trim().toLowerCase()
+      if (!Number.isFinite(id) || !email) continue
+
+      const existing = byEmail.get(email)
+      if (existing !== undefined && existing !== id) {
+        ambiguous.add(email)
+        continue
+      }
+      byEmail.set(email, id)
+    }
+
+    if (timeUsers.length < PAGE_SIZE) break
+  }
+
+  const { data: users } = await supabase
+    .from("users")
+    .select("id, email")
+    .eq("company_id", job.company_id)
+
+  for (const user of users || []) {
+    const email = (user.email as string | null)?.toLowerCase()
+    if (!email || ambiguous.has(email)) continue
+    const timeUserId = byEmail.get(email)
+    if (!timeUserId) continue
+
+    await upsertFikenLink({
+      companyId: job.company_id,
+      entityType: "employee",
+      localId: user.id as string,
+      externalId: timeUserId,
+      syncStatus: "synced",
+    })
+  }
+}
+
 async function processJob(job: IntegrationJobRow) {
   switch (job.job_type) {
     case "contact.upsert":
@@ -1064,6 +1289,12 @@ async function processJob(job: IntegrationJobRow) {
     case "reconcile.full":
       await processFullReconciliation(job)
       return
+    case "customer.pull_all":
+      await processCustomerPullAll(job)
+      return
+    case "employee.sync_all":
+      await processEmployeeSyncAll(job)
+      return
     default:
       throw new Error(`Unsupported Fiken job type: ${job.job_type}`)
   }
@@ -1087,6 +1318,11 @@ export async function runFikenWorker(input?: { workerId?: string; batchSize?: nu
   let failed = 0
 
   try {
+    // Rydd foreldreløse 'processing'-jobber FØR vi claimer. Claim-RPC-en plukker kun
+    // 'pending'/'retry', så en jobb etterlatt av en død worker ville ellers ligget
+    // låst for alltid — det skjedde i produksjon, i over elleve timer.
+    await reapStuckFikenJobs()
+
     for (let batch = 0; batch < maxBatches; batch += 1) {
       const jobs = await claimFikenJobs(workerId, batchSize)
       if (jobs.length === 0) {

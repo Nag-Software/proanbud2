@@ -14,6 +14,8 @@ import {
 import {
   createTripletexInvoiceFromOrder,
   createTripletexMileageAllowance,
+  listTripletexInvoices,
+  sendTripletexInvoice,
   createTripletexProjectActivity,
   deleteTripletexMileageAllowance,
   deleteTripletexTravelExpense,
@@ -35,6 +37,7 @@ import {
   mapCustomerToTripletex,
   mapMileageAllowanceFromTrip,
   mapOrderFromOffer,
+  mapOrderFromProjectInvoice,
   mapProjectOfferFromOffer,
   mapTilbudOrderLinesFromOffer,
   mapProjectToTripletex,
@@ -1033,6 +1036,16 @@ async function processFullReconciliation(job: IntegrationJobRow) {
   const offersEnabled = scopes.offers !== false
   const reconcileRunKey = `reconcile-run:${job.id}`
 
+  // Betalingsstatus. Tripletex har webhook for betalt faktura, men den krever
+  // manuelt oppsett hos kunden — uten dette pollet ser en bedrift som ikke har
+  // satt den opp aldri at fakturaen er betalt. Fiken har hatt det hele tiden.
+  await enqueueIntegrationJob({
+    companyId: job.company_id,
+    jobType: "poll_payments",
+    payload: { source: "reconcile" },
+    idempotencyKey: `${reconcileRunKey}:poll-payments:${job.company_id}`,
+  })
+
   if (customersEnabled) {
     const { error: pullError } = await supabase.from("integration_jobs").insert({
       company_id: job.company_id,
@@ -1502,6 +1515,367 @@ async function processEmployeeSyncAll(job: IntegrationJobRow) {
   }
 }
 
+/**
+ * Henter listen ut av et Tripletex-listesvar.
+ *
+ * Tripletex svarer noen ganger {values:[…]} og noen ganger {value:{values:[…]}}.
+ * Resten av kodebasen håndterer begge; denne samler regelen ett sted.
+ */
+function readTripletexValueList(response: unknown): Array<Record<string, unknown>> {
+  const record = response as Record<string, unknown> | null | undefined
+  if (!record || typeof record !== "object") return []
+
+  if (Array.isArray(record.values)) {
+    return record.values as Array<Record<string, unknown>>
+  }
+
+  const wrapped = record.value as Record<string, unknown> | undefined
+  if (wrapped && Array.isArray(wrapped.values)) {
+    return wrapped.values as Array<Record<string, unknown>>
+  }
+
+  return []
+}
+
+// --- invoice.create_from_project_invoice -------------------------------------
+/**
+ * Fakturer et UTVALG av fakturerbare linjer på et prosjekt (`project_invoices`).
+ *
+ * Dette er samme modell som Fiken bruker, og den erstatter antakelsen om at et
+ * akseptert tilbud = én faktura. Håndverkere fakturerer etter utført arbeid, og
+ * tilleggene kommer underveis — derfor kan ett prosjekt ha flere fakturaer.
+ *
+ * Tripletex har ingen fakturakladd: vi lager en ORDRE som bærer akkurat de valgte
+ * linjene, og gjør den om til faktura med `PUT /order/{id}/:invoice`. Ordren nøkles
+ * på prosjektfaktura-id-en, ikke på tilbudet, slik at faktura nummer to på samme
+ * prosjekt får sin egen ordre i stedet for å overskrive den første.
+ */
+async function processProjectInvoiceCreate(job: IntegrationJobRow) {
+  const projectInvoiceId = String(job.payload.projectInvoiceId || "")
+  if (!projectInvoiceId) {
+    throw new Error("projectInvoiceId missing in payload")
+  }
+
+  const connection = await getFreshTripletexConnection(job.company_id)
+  if (!connection) {
+    throw new Error("Tripletex connection missing for company")
+  }
+  if (connection.scope_config?.invoices === false) {
+    return
+  }
+
+  const supabase = createAdminClient()
+  const { data: invoice } = await supabase
+    .from("project_invoices")
+    .select(
+      "id, project_id, customer_id, status, message, reference, project_invoice_lines(description, quantity, unit_price_nok, amount_nok, sort_order)"
+    )
+    .eq("id", projectInvoiceId)
+    .eq("company_id", job.company_id)
+    .maybeSingle()
+
+  if (!invoice) {
+    throw new Error("Project invoice not found")
+  }
+  // En kansellert faktura skal aldri nå Tripletex.
+  if (invoice.status === "cancelled") {
+    return
+  }
+  if (!invoice.customer_id) {
+    throw new Error("Fakturaen mangler kunde")
+  }
+
+  const lines = [...((invoice.project_invoice_lines as Array<Record<string, unknown>>) ?? [])].sort(
+    (a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)
+  )
+  if (lines.length === 0) {
+    throw new Error("Fakturaen har ingen linjer")
+  }
+
+  const sendToCustomer = job.payload.sendToCustomer === true
+
+  // Allerede fakturert? Da er jobben gjort — send eventuelt bare.
+  const existingInvoiceLink = await getExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "invoice",
+    localId: projectInvoiceId,
+  })
+  if (existingInvoiceLink?.external_id) {
+    if (
+      sendToCustomer &&
+      existingInvoiceLink.sync_status !== "sent" &&
+      existingInvoiceLink.sync_status !== "paid"
+    ) {
+      await enqueueIntegrationJob({
+        companyId: job.company_id,
+        jobType: "invoice.send",
+        payload: { localId: projectInvoiceId },
+        idempotencyKey: `tripletex:project-invoice:${projectInvoiceId}:send`,
+      })
+    }
+    return
+  }
+
+  const [customerLink, projectLink] = await Promise.all([
+    getExternalEntityLink({
+      companyId: job.company_id,
+      entityType: "customer",
+      localId: String(invoice.customer_id),
+    }),
+    invoice.project_id
+      ? getExternalEntityLink({
+          companyId: job.company_id,
+          entityType: "project",
+          localId: String(invoice.project_id),
+        })
+      : Promise.resolve(null),
+  ])
+
+  if (!customerLink?.external_id) {
+    await enqueueIntegrationJob({
+      companyId: job.company_id,
+      jobType: "customer.upsert",
+      payload: { customerId: invoice.customer_id },
+      idempotencyKey: `tripletex:project-invoice:${projectInvoiceId}:customer:${invoice.customer_id}`,
+    })
+    throw new Error("Kunden er ikke synket til Tripletex ennå")
+  }
+
+  const orderPayload = mapOrderFromProjectInvoice(
+    lines as never,
+    customerLink.external_id,
+    projectLink?.external_id || null,
+    {
+      defaultVatTypeId: connection.default_vat_type_id,
+      defaultAccountId: connection.default_account_id,
+      // Kunden ser denne — den skal ikke røpe hvilket system som lagde fakturaen.
+      reference: projectInvoiceId.slice(0, 8),
+      invoiceComment: (invoice.message as string | null) ?? null,
+    }
+  )
+
+  const existingOrderLink = await getExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "order",
+    localId: projectInvoiceId,
+  })
+
+  let orderResponse
+  try {
+    orderResponse = await upsertTripletexOrder(
+      connection,
+      orderPayload as Record<string, unknown>,
+      existingOrderLink?.external_id || undefined
+    )
+  } catch (err) {
+    // PUT mot en kjent ordre er idempotent; en POST er det ikke. Tripletex har ingen
+    // idempotency-nøkkel, så en tvetydig feil på create må aldri retryes automatisk.
+    throw existingOrderLink?.external_id ? err : nonRetryableIfAmbiguous(err)
+  }
+
+  const orderExternalId = Number(
+    orderResponse?.value?.id || orderResponse?.id || existingOrderLink?.external_id
+  )
+  if (!Number.isFinite(orderExternalId)) {
+    throw missingIdError("Tripletex order id missing in response")
+  }
+
+  await upsertExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "order",
+    localId: projectInvoiceId,
+    externalId: orderExternalId,
+    syncStatus: "synced",
+    externalUrl: tripletexOrderUrl(orderExternalId),
+  })
+
+  // Fakturering fra ordre er IKKE idempotent og kan ikke søkes tilbake (GET /invoice
+  // har ingen ordre-filter, og fakturanummer tildeles automatisk). En tvetydig feil
+  // må derfor til manuell gjennomgang — ellers ville et kall som egentlig lyktes,
+  // men timet ut, laget en ekte faktura nummer to på neste forsøk.
+  let invoiceResponse
+  try {
+    invoiceResponse = await createTripletexInvoiceFromOrder(connection, orderExternalId, {
+      sendToCustomer,
+    })
+  } catch (err) {
+    throw nonRetryableIfAmbiguous(err)
+  }
+
+  const externalId = Number(invoiceResponse?.value?.id || invoiceResponse?.id)
+  if (!Number.isFinite(externalId)) {
+    throw missingIdError("Tripletex invoice id missing in response")
+  }
+
+  await upsertExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "invoice",
+    localId: projectInvoiceId,
+    externalId,
+    syncStatus: sendToCustomer ? "sent" : "synced",
+    externalUrl: tripletexInvoiceUrl(externalId),
+  })
+
+  const now = new Date().toISOString()
+  await supabase
+    .from("project_invoices")
+    .update({
+      status: sendToCustomer ? "sent" : "queued",
+      issued_at: now,
+      ...(sendToCustomer ? { sent_at: now } : {}),
+      reference: String(externalId),
+    })
+    .eq("id", projectInvoiceId)
+    .eq("company_id", job.company_id)
+}
+
+// --- invoice.send ------------------------------------------------------------
+/**
+ * Send en allerede opprettet faktura.
+ *
+ * Normalt sendes fakturaen i samme kall som den opprettes
+ * (`/order/{id}/:invoice?sendToCustomer=true`). Denne jobben finnes for de tilfellene
+ * der fakturaen ble laget uten sending, og brukeren skrur på «send automatisk» etterpå.
+ */
+async function processInvoiceSend(job: IntegrationJobRow) {
+  const localId = String(job.payload.localId || job.payload.projectInvoiceId || "")
+  if (!localId) {
+    throw new Error("localId missing in payload")
+  }
+
+  const connection = await getFreshTripletexConnection(job.company_id)
+  if (!connection) {
+    throw new Error("Tripletex connection missing for company")
+  }
+
+  const link = await getExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "invoice",
+    localId,
+  })
+  if (!link?.external_id) {
+    throw new Error("Fakturaen finnes ikke i Tripletex ennå")
+  }
+  // Allerede sendt eller betalt — ikke send den samme fakturaen to ganger til kunden.
+  if (link.sync_status === "sent" || link.sync_status === "paid") {
+    return
+  }
+
+  await sendTripletexInvoice(connection, link.external_id)
+
+  await upsertExternalEntityLink({
+    companyId: job.company_id,
+    entityType: "invoice",
+    localId,
+    externalId: link.external_id,
+    syncStatus: "sent",
+    externalUrl: link.external_url || tripletexInvoiceUrl(link.external_id),
+  })
+
+  const supabase = createAdminClient()
+  await supabase
+    .from("project_invoices")
+    .update({ status: "sent", sent_at: new Date().toISOString() })
+    .eq("id", localId)
+    .eq("company_id", job.company_id)
+    .in("status", ["draft", "queued"])
+}
+
+// --- poll_payments -----------------------------------------------------------
+/**
+ * Hent betalingsstatus fra Tripletex.
+ *
+ * Tripletex HAR en webhook for betalt faktura, men den krever manuelt oppsett hos
+ * kunden. Uten dette pollet ville en bedrift som ikke har satt opp webhooken aldri
+ * se at en faktura er betalt — Fiken-kundene fikk det automatisk, Tripletex-kundene
+ * ikke. Pollet er derfor et supplement, ikke en erstatning: begge veier ender i
+ * samme `sync_status='paid'`, og den som kommer først vinner.
+ *
+ * `GET /invoice` krever et datovindu (til-dato er ekskluderende), så vi holder en
+ * markør i `tripletex_connections.last_payment_poll_date`.
+ */
+async function processPollPayments(job: IntegrationJobRow) {
+  const connection = await getFreshTripletexConnection(job.company_id)
+  if (!connection) {
+    throw new Error("Tripletex connection missing for company")
+  }
+
+  const supabase = createAdminClient()
+  const today = new Date()
+  const toDate = new Date(today.getTime() + 86_400_000).toISOString().slice(0, 10)
+
+  // Uten markør ser vi 90 dager tilbake. Ubetalte fakturaer eldre enn det er en
+  // inkassosak, ikke noe dette pollet skal rydde opp i.
+  const cursor = (connection as { last_payment_poll_date?: string | null }).last_payment_poll_date
+  const fromDate =
+    cursor || new Date(today.getTime() - 90 * 86_400_000).toISOString().slice(0, 10)
+
+  const paidExternalIds = new Set<number>()
+  const MAX_PAGES = 20
+  const PAGE_SIZE = 100
+
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const response = await listTripletexInvoices(connection, {
+      fromDate,
+      toDate,
+      from: page * PAGE_SIZE,
+      count: PAGE_SIZE,
+    })
+
+    // Tripletex pakker lister inkonsistent: noen endepunkter svarer {values:[…]},
+    // andre {value:{values:[…]}}. Leser vi bare den ene, finner pollet stille null
+    // betalte fakturaer og markerer aldri noe som betalt — en feil uten feilmelding.
+    const rows = readTripletexValueList(response)
+    for (const row of rows) {
+      const id = Number(row.id)
+      const outstanding = Number(row.amountOutstanding ?? 0)
+      if (Number.isFinite(id) && outstanding === 0) {
+        paidExternalIds.add(id)
+      }
+    }
+
+    if (rows.length < PAGE_SIZE) break
+  }
+
+  if (paidExternalIds.size > 0) {
+    const { data: links } = await supabase
+      .from("external_entity_links")
+      .select("local_id, external_id, sync_status")
+      .eq("company_id", job.company_id)
+      .eq("provider", "tripletex")
+      .eq("entity_type", "invoice")
+      .in("external_id", Array.from(paidExternalIds))
+
+    const now = new Date().toISOString()
+    for (const link of links || []) {
+      if (link.sync_status === "paid") continue
+
+      await supabase
+        .from("external_entity_links")
+        .update({ sync_status: "paid", last_synced_at: now })
+        .eq("company_id", job.company_id)
+        .eq("provider", "tripletex")
+        .eq("entity_type", "invoice")
+        .eq("local_id", link.local_id)
+
+      await supabase
+        .from("project_invoices")
+        .update({ status: "paid", paid_at: now })
+        .eq("id", link.local_id)
+        .eq("company_id", job.company_id)
+        .neq("status", "cancelled")
+    }
+  }
+
+  // Flytt markøren litt tilbake i tid: en faktura kan betales dager etter at den ble
+  // datert, og vinduet filtrerer på FAKTURADATO, ikke betalingsdato.
+  const nextCursor = new Date(today.getTime() - 30 * 86_400_000).toISOString().slice(0, 10)
+  await supabase
+    .from("tripletex_connections")
+    .update({ last_payment_poll_date: nextCursor })
+    .eq("company_id", job.company_id)
+}
+
 async function processJob(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
   switch (job.job_type) {
     case "customer.pull_all":
@@ -1542,6 +1916,15 @@ async function processJob(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
       return
     case "employee.sync_all":
       await processEmployeeSyncAll(job)
+      return
+    case "invoice.create_from_project_invoice":
+      await processProjectInvoiceCreate(job)
+      return
+    case "invoice.send":
+      await processInvoiceSend(job)
+      return
+    case "poll_payments":
+      await processPollPayments(job)
       return
     default:
       throw new Error(`Unsupported job type: ${job.job_type}`)

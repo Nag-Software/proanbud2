@@ -2,9 +2,8 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { logServerError } from "@/lib/errors/log"
+import { enqueueOfferSync } from "@/lib/regnskap/sync"
 import { resolveOfferSendCompany, sendOfferToCustomer } from "@/lib/tilbud/send-offer"
-import { enqueueOfferTripletexSyncAndProcess } from "@/lib/integrations/tripletex/sync"
-import { enqueueOfferFikenSyncAndProcess } from "@/lib/integrations/fiken/sync"
 import { createClient } from "@/lib/supabase/server"
 
 const sendPayloadSchema = z.object({
@@ -49,17 +48,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .maybeSingle()
 
     if (offerRow?.customer_id) {
-      // Only one accounting provider is connected at a time; each enqueue no-ops if
-      // its provider isn't the connected one.
-      await enqueueOfferTripletexSyncAndProcess({
-        companyId: context.companyId,
-        offerId: id,
-        customerId: offerRow.customer_id,
-        projectId: offerRow.project_id || null,
-        source: "offer-send",
-        phase: "quote",
-      })
-      await enqueueOfferFikenSyncAndProcess({
+      // Ett kall — registeret vet hvilket regnskapssystem som er tilkoblet.
+      await enqueueOfferSync({
         companyId: context.companyId,
         offerId: id,
         customerId: offerRow.customer_id,

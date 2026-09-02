@@ -10,10 +10,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils"
 
 type DatePickerProps = {
+  id?: string
   value?: string
   onChange: (value: string) => void
   placeholder?: string
   className?: string
+  maxDate?: string
 }
 
 function parseDateValue(value?: string): Date | undefined {
@@ -23,17 +25,21 @@ function parseDateValue(value?: string): Date | undefined {
 }
 
 export function DatePicker({
+  id,
   value,
   onChange,
   placeholder = "Velg dato",
   className,
+  maxDate,
 }: DatePickerProps) {
   const selected = parseDateValue(value)
+  const maximum = parseDateValue(maxDate)
 
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button
+          id={id}
           type="button"
           variant="outline"
           className={cn(
@@ -51,6 +57,7 @@ export function DatePicker({
           mode="single"
           selected={selected}
           onSelect={(date) => onChange(date ? format(date, "yyyy-MM-dd") : "")}
+          disabled={maximum ? { after: maximum } : undefined}
           locale={nb}
         />
       </PopoverContent>

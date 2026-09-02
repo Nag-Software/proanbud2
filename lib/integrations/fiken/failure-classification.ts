@@ -68,3 +68,23 @@ export function isDraftMissingBankAccount(error: unknown): boolean {
   const message = fikenErrorMessage(error).toLowerCase()
   return message.includes("bank account number null has not been verified")
 }
+
+/**
+ * Kladden har feil mva-behandling — den ble laget FØR bedriften ble satt til «ikke
+ * mva-pliktig».
+ *
+ * Nøyaktig samme mekanikk som den manglende bankkontoen: `vatType` ligger PÅ hver
+ * kladdlinje i Fiken. Retter du `vat_registered` i ProAnbud, påvirker det bare NYE
+ * kladder — et nytt forsøk på den GAMLE kladden sender aldri den rettede verdien og
+ * feiler likt hver gang. Kladden må kastes og lages på nytt.
+ *
+ * Sett i produksjon: seks fakturajobber feilet på dette, og brukeren måtte
+ * kansellere fakturaene og lage dem om igjen fordi «prøv på nytt» aldri kunne virke.
+ */
+export function isDraftVatMismatch(error: unknown): boolean {
+  const message = fikenErrorMessage(error).toLowerCase()
+  return (
+    message.includes("vat charged when the company is not vat registered") ||
+    (message.includes("only vat type accepted") && message.includes("outside"))
+  )
+}

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   isAmbiguousFikenFailure,
   isDraftMissingBankAccount,
+  isDraftVatMismatch,
   isMissingNumberSeries,
 } from "../../lib/integrations/fiken/failure-classification"
 
@@ -111,5 +112,35 @@ describe("isDraftMissingBankAccount", () => {
       false
     )
     expect(isDraftMissingBankAccount(fikenError(500))).toBe(false)
+  })
+})
+
+describe("isDraftVatMismatch", () => {
+  // Ordrett fra produksjon: seks fakturajobber feilet på denne, og brukeren måtte
+  // kansellere fakturaene fordi «prøv på nytt» gjenbrukte den samme ubrukelige kladden.
+  const ekte = "VAT charged when the company is not VAT registered. The only VAT type accepted is OUTSIDE."
+
+  it("kjenner igjen produksjonsfeilen", () => {
+    expect(isDraftVatMismatch({ status: 400, body: { message: ekte } })).toBe(true)
+    expect(isDraftVatMismatch(new Error(ekte))).toBe(true)
+  })
+
+  it("er ufølsom for store og små bokstaver", () => {
+    expect(isDraftVatMismatch(new Error(ekte.toUpperCase()))).toBe(true)
+  })
+
+  it("forveksler ikke med andre feil", () => {
+    expect(isDraftVatMismatch(new Error("Offer counter not initialized"))).toBe(false)
+    expect(isDraftVatMismatch(new Error("bank account number null has not been verified"))).toBe(false)
+    expect(isDraftVatMismatch(new Error("Project/time-tracking module not activated"))).toBe(false)
+    expect(isDraftVatMismatch(null)).toBe(false)
+  })
+
+  it("holdes atskilt fra bankkonto-regelen", () => {
+    // De to utløser samme opprydding, men må klassifiseres hver for seg — ellers
+    // blir feilmeldingen brukeren ser feil.
+    const bank = new Error("bank account number null has not been verified")
+    expect(isDraftMissingBankAccount(bank)).toBe(true)
+    expect(isDraftVatMismatch(bank)).toBe(false)
   })
 })

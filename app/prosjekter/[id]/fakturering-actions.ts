@@ -11,30 +11,15 @@ import {
   type BillableItem,
   type InvoiceSelection,
 } from "@/lib/fakturering/billable"
-import {
-  enqueueOfferFikenSyncAndProcess,
-  enqueueProjectInvoiceFikenSync,
-} from "@/lib/integrations/fiken/sync"
+import { enqueueOfferSync, enqueueProjectInvoiceSync, resolveAccountingProviderId } from "@/lib/regnskap/sync"
+import type { AccountingProviderId } from "@/lib/regnskap/types"
 
 /** Hvilket regnskapssystem som faktisk kan ta imot fakturaen. */
-export type AccountingProvider = "fiken" | "tripletex" | null
-
-async function resolveAccountingProvider(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  companyId: string
-): Promise<AccountingProvider> {
-  const [fiken, tripletex] = await Promise.all([
-    supabase.from("fiken_connections").select("sync_state").eq("company_id", companyId).maybeSingle(),
-    supabase.from("tripletex_connections").select("sync_state").eq("company_id", companyId).maybeSingle(),
-  ])
-  if (fiken.data && fiken.data.sync_state !== "disconnected") return "fiken"
-  if (tripletex.data && tripletex.data.sync_state !== "disconnected") return "tripletex"
-  return null
-}
+export type AccountingProvider = AccountingProviderId | null
 
 export async function getAccountingProviderAction(projectId: string): Promise<AccountingProvider> {
-  const { supabase, companyId } = await resolveContext(projectId)
-  return resolveAccountingProvider(supabase, companyId)
+  const { companyId } = await resolveContext(projectId)
+  return resolveAccountingProviderId(companyId)
 }
 
 export type ProjectInvoiceLine = {
@@ -197,7 +182,7 @@ export async function createProjectInvoiceAction(input: {
   // Fakturaen er registrert i ProAnbud uansett — den holder dobbeltfaktura-regnskapet
   // riktig og teller i lønnsomhet. Men vi må si SANT om den faktisk er sendt videre:
   // de fleste bedrifter har ingen regnskapsintegrasjon, og da skjer det ingenting mer.
-  const queued = await enqueueProjectInvoiceFikenSync({
+  const queuedTo = await enqueueProjectInvoiceSync({
     companyId,
     projectInvoiceId: invoice.id,
     projectId: input.projectId,
@@ -205,7 +190,7 @@ export async function createProjectInvoiceAction(input: {
   })
 
   revalidatePath(`/prosjekter/${input.projectId}`)
-  return { ok: true, invoiceId: invoice.id, queuedTo: queued ? "fiken" : null }
+  return { ok: true, invoiceId: invoice.id, queuedTo }
 }
 
 /** Kansellering frigjør beløpet, slik at arbeidet kan faktureres på nytt. */
@@ -294,23 +279,23 @@ export async function invoiceOfferAction(input: {
   // Tilbud uten prosjekt kan ikke bli en prosjektfaktura (project_id er påkrevd).
   // Da brukes den gamle veien: hele tilbudet faktureres i ett.
   if (!offer.project_id) {
-    const enqueued = await enqueueOfferFikenSyncAndProcess({
+    const queuedTo = await enqueueOfferSync({
       companyId,
       offerId: offer.id,
       customerId: String(offer.customer_id || ""),
       projectId: null,
       source: "offer-invoice-button",
       phase: "order",
-      sendToCustomer: true,
+      includeInvoice: true,
     })
-    if (!enqueued) {
+    if (!queuedTo) {
       return {
         ok: false,
         error:
-          "Tilbudet har ikke prosjekt, og Fiken er ikke tilkoblet. Legg tilbudet på et prosjekt, eller fakturer i regnskapssystemet ditt.",
+          "Tilbudet har ikke prosjekt, og ingen regnskapsintegrasjon er tilkoblet. Legg tilbudet på et prosjekt, eller fakturer i regnskapssystemet ditt.",
       }
     }
-    return { ok: true, amountNok: 0, lines: 1, queuedTo: "fiken" }
+    return { ok: true, amountNok: 0, lines: 1, queuedTo }
   }
 
   const projectId = String(offer.project_id)

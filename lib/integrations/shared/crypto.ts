@@ -2,12 +2,13 @@ import crypto from "crypto"
 
 /**
  * Provider-agnostic AES-256-GCM secret encryption, serialized as `iv.tag.ciphertext`
- * (all base64). Promoted from lib/integrations/tripletex/crypto.ts so Fiken (and any
- * future integration) can share one implementation.
+ * (all base64). Den eneste implementasjonen — Tripletex-wrapperen i
+ * lib/integrations/tripletex/crypto.ts pinner bare nøkkelen sin og kaller hit.
  *
- * Key resolution order: FIKEN_ENCRYPTION_KEY, then TRIPLETEX_ENCRYPTION_KEY. Pass an
- * explicit `envVar` to pin a single key. Fails loudly if no 32-byte base64 key is set —
- * a mismatched/missing key silently bricks every stored connection, so we never default.
+ * Key resolution order: FIKEN_ENCRYPTION_KEY, then TRIPLETEX_ENCRYPTION_KEY. Kallsteder
+ * som eier eksisterende krypterte data MÅ pinne nøkkelen sin via `envVars` — er de to
+ * nøklene ulike, vil rekkefølgen ellers dekryptere med feil nøkkel og brikke hver
+ * lagrede tilkobling. Feiler høylytt hvis ingen 32-byte base64-nøkkel er satt.
  */
 function getEncryptionKey(envVars: string[]) {
   for (const name of envVars) {

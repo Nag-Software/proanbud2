@@ -25,14 +25,25 @@ import {
   type ProjectInvoice,
 } from "./fakturering-actions"
 
-const STATUS_LABELS: Record<ProjectInvoice["status"], string> = {
-  // 'draft' betyr «registrert her, ikke sendt videre» — enten fordi ingen integrasjon
-  // er tilkoblet, eller fordi jobben ikke har rukket å kjøre ennå.
-  draft: "Registrert",
-  queued: "Opprettet i Fiken",
-  sent: "Sendt",
-  paid: "Betalt",
-  cancelled: "Kansellert",
+const PROVIDER_LABELS: Record<string, string> = { fiken: "Fiken", tripletex: "Tripletex" }
+
+// 'draft' betyr «registrert her, ikke sendt videre» — enten fordi ingen integrasjon
+// er tilkoblet, eller fordi jobben ikke har rukket å kjøre ennå. Statusene er de
+// samme uansett regnskapssystem; bare navnet på systemet varierer.
+function statusLabel(status: ProjectInvoice["status"], provider: AccountingProvider) {
+  const system = provider ? PROVIDER_LABELS[provider] : "regnskapet"
+  switch (status) {
+    case "draft":
+      return "Registrert"
+    case "queued":
+      return `Opprettet i ${system}`
+    case "sent":
+      return "Sendt"
+    case "paid":
+      return "Betalt"
+    case "cancelled":
+      return "Kansellert"
+  }
 }
 
 function formatDate(value: string | null) {
@@ -129,8 +140,8 @@ export function FaktureringPanel({
         return
       }
       toast.success(
-        result.queuedTo === "fiken"
-          ? "Faktura opprettet. Fiken sender den til kunden."
+        result.queuedTo
+          ? `Faktura opprettet. ${PROVIDER_LABELS[result.queuedTo]} sender den til kunden.`
           : "Faktura registrert i ProAnbud. Send den fra regnskapssystemet ditt."
       )
       setMessage("")
@@ -170,8 +181,8 @@ export function FaktureringPanel({
         return
       }
       toast.success(
-        result.queuedTo === "fiken"
-          ? "Faktura opprettet. Fiken sender den til kunden."
+        result.queuedTo
+          ? `Faktura opprettet. ${PROVIDER_LABELS[result.queuedTo]} sender den til kunden.`
           : "Faktura registrert i ProAnbud. Send den fra regnskapssystemet ditt."
       )
       setMessage("")
@@ -213,16 +224,10 @@ export function FaktureringPanel({
             <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               Ingen regnskapsintegrasjon er tilkoblet. Fakturaen registreres her — så du beholder oversikten og
               slipper å fakturere det samme to ganger — men den må sendes fra regnskapssystemet ditt.{" "}
-              <a href="/min-bedrift/fiken" className="font-medium underline">
-                Koble til Fiken
+              <a href="/min-bedrift/regnskap" className="font-medium underline">
+                Koble til regnskap
               </a>{" "}
               for å sende den herfra.
-            </p>
-          )}
-          {!loading && provider === "tripletex" && (
-            <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Tripletex er tilkoblet. Ordren opprettes der når tilbudet aksepteres, og fakturaen sendes fra
-              Tripletex — fakturaer herfra registreres foreløpig kun i ProAnbud.
             </p>
           )}
           {loading ? (
@@ -241,7 +246,7 @@ export function FaktureringPanel({
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <Button onClick={handleInvoiceAll} disabled={!canManage || busy} className="gap-2">
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                    {provider === "fiken" ? "Fakturer alt" : "Registrer faktura"} — {formatNok(remainingTotal)}
+                    {provider ? "Fakturer alt" : "Registrer faktura"} — {formatNok(remainingTotal)}
                   </Button>
                   <Button variant="ghost" size="sm" disabled={!canManage} onClick={() => setCustomising(true)}>
                     Fakturer bare deler
@@ -415,7 +420,7 @@ export function FaktureringPanel({
                           }
                           className={invoice.status === "paid" ? "bg-green-100 text-green-900 border-green-300" : undefined}
                         >
-                          {due.isOverdue ? "Forfalt" : STATUS_LABELS[invoice.status]}
+                          {due.isOverdue ? "Forfalt" : statusLabel(invoice.status, provider)}
                         </Badge>
                         {canManage && (invoice.status === "draft" || invoice.status === "queued") && (
                           <Button

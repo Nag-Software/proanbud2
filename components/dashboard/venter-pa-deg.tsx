@@ -288,12 +288,13 @@ export function VenterPaDeg({ companyId }: { companyId: string | null }) {
           .in("status", ["draft", "sent"])
           .is("paid_at", null)
           .limit(50),
-        // Kun feil som stopper penger — se selectBlockingSyncFailures.
+        // Kun feil som stopper penger — se selectBlockingSyncFailures. Ingen
+        // provider-filter: en bedrift har kun ett regnskapssystem tilkoblet om
+        // gangen, og hardkodet 'fiken' gjorde Tripletex-feil usynlige på dashbordet.
         supabase
           .from("integration_jobs")
           .select("id, job_type, last_error_message")
           .eq("company_id", company)
-          .eq("provider", "fiken")
           .in("status", ["failed", "dead_letter"])
           .limit(50),
         supabase
@@ -584,10 +585,10 @@ export function VenterPaDeg({ companyId }: { companyId: string | null }) {
             iconName: "plug",
             title:
               blocking.length === 1
-                ? "En faktura nådde ikke Fiken"
-                : `${blocking.length} dokumenter nådde ikke Fiken`,
+                ? "En faktura nådde ikke regnskapet"
+                : `${blocking.length} dokumenter nådde ikke regnskapet`,
             meta: "Synkroniseringen stoppet — kunden har ikke fått dem",
-            href: "/min-bedrift/fiken",
+            href: "/min-bedrift/regnskap",
             action: "Se hva som feilet",
           })
         }

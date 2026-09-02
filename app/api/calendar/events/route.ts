@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { ensureValidToken } from "@/lib/oauth"
-import { enqueueCalendarTripletexSync } from "@/lib/integrations/tripletex/sync"
+import { enqueueCalendarSync } from "@/lib/regnskap/sync"
 import { requirePlanFeature } from "@/lib/billing/guards"
 import {
   createProviderEvent,
@@ -294,7 +294,7 @@ async function enqueueTripletexCalendarEvent(input: {
     return
   }
 
-  void enqueueCalendarTripletexSync({
+  void enqueueCalendarSync({
     companyId: userRow.company_id,
     eventId: input.eventId,
     projectId,

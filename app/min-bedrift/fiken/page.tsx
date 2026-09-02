@@ -43,7 +43,7 @@ export default async function FikenPage() {
     )
   }
 
-  const [connectionResult, jobsResult, tripletexResult] = companyId
+  const [connectionResult, tripletexResult] = companyId
     ? await Promise.all([
         supabase
           .from("fiken_connections")
@@ -53,20 +53,12 @@ export default async function FikenPage() {
           .eq("company_id", companyId)
           .maybeSingle(),
         supabase
-          .from("integration_jobs")
-          .select("id, status, job_type, created_at, last_error_message")
-          .eq("company_id", companyId)
-          .eq("provider", "fiken")
-          .order("created_at", { ascending: false })
-          // Fetch a few pages worth; the client reveals 10 at a time.
-          .limit(50),
-        supabase
           .from("tripletex_connections")
           .select("sync_state")
           .eq("company_id", companyId)
           .maybeSingle(),
       ])
-    : [{ data: null as any }, { data: [] as any[] }, { data: null as any }]
+    : ([{ data: null }, { data: null }] as const)
 
   const tripletexConnected = Boolean(
     tripletexResult.data && tripletexResult.data.sync_state !== "disconnected"
@@ -89,7 +81,6 @@ export default async function FikenPage() {
 
         <FikenClient
           initialConnection={connectionResult.data}
-          initialJobs={jobsResult.data || []}
           canManage={canManageIntegration}
           tripletexConnected={tripletexConnected && !connectionResult.data}
           helpUrl={FIKEN_HJELPESIDER_URL}

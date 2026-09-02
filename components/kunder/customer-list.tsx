@@ -44,10 +44,10 @@ interface CustomerListProps {
   data: Customer[]
   onRowClick: (customer: Customer) => void
   /** Show a small Tripletex sync chip per row. Only when Tripletex is connected. */
-  tripletexEnabled?: boolean
+  syncEnabled?: boolean
 }
 
-export function CustomerList({ data, onRowClick, tripletexEnabled = false }: CustomerListProps) {
+export function CustomerList({ data, onRowClick, syncEnabled = false }: CustomerListProps) {
   const [query, setQuery] = React.useState("")
   const [typeFilter, setTypeFilter] = React.useState<TypeFilter>("alle")
   const [page, setPage] = React.useState(0)
@@ -132,7 +132,7 @@ export function CustomerList({ data, onRowClick, tripletexEnabled = false }: Cus
               key={customer.id}
               customer={customer}
               onRowClick={onRowClick}
-              tripletexEnabled={tripletexEnabled}
+              syncEnabled={syncEnabled}
             />
           ))}
         </div>
@@ -170,11 +170,11 @@ export function CustomerList({ data, onRowClick, tripletexEnabled = false }: Cus
 function CustomerRow({
   customer,
   onRowClick,
-  tripletexEnabled,
+  syncEnabled,
 }: {
   customer: Customer
   onRowClick: (customer: Customer) => void
-  tripletexEnabled: boolean
+  syncEnabled: boolean
 }) {
   const isBusiness = customer.type === "bedrift"
   const tone = getTone(customer.name)
@@ -225,9 +225,9 @@ function CustomerRow({
         </div>
       </div>
 
-      {tripletexEnabled && customer.syncStatus && customer.syncStatus !== "none" && (
+      {syncEnabled && customer.syncStatus && customer.syncStatus !== "none" && (
         <span className="hidden lg:inline-flex">
-          <TripletexBadge status={customer.syncStatus} />
+          <SyncBadge status={customer.syncStatus} />
         </span>
       )}
 
@@ -293,7 +293,7 @@ function ContactButton({
   )
 }
 
-function TripletexBadge({ status }: { status: NonNullable<Customer["syncStatus"]> }) {
+function SyncBadge({ status }: { status: NonNullable<Customer["syncStatus"]> }) {
   if (status === "synced") return <Badge variant="outline">Synkronisert</Badge>
   if (status === "syncing") return <Badge variant="secondary">Synker …</Badge>
   if (status === "attention") return <Badge variant="destructive">Krever handling</Badge>

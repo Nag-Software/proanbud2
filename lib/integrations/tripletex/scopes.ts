@@ -7,6 +7,12 @@ export type TripletexScopeConfig = {
   documents: boolean
   /** Kjørebok → reiseregning (kjøregodtgjørelse). Opt-in, default off. */
   travelExpenses: boolean
+  /**
+   * Når true sender TRIPLETEX fakturaen til kunden med én gang den opprettes
+   * (`PUT /order/{id}/:invoice?sendToCustomer=true`). Samme bryter som Fiken —
+   * kanonisk navn, se lib/regnskap/scopes.ts.
+   */
+  sendInvoiceFromAccounting?: boolean
 }
 
 export function buildTripletexScopeConfig(body: Record<string, unknown>): TripletexScopeConfig {

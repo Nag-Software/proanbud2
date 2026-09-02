@@ -346,6 +346,20 @@ export async function deleteFikenInvoiceDraft(connection: FikenConnectionRow, dr
 }
 
 /**
+ * DELETE /offers/drafts/{id}
+ *
+ * Egen funksjon fordi tilbud og faktura har HVER SIN kladd-ressurs i Fiken, med hver
+ * sin id-serie. Å slette en tilbudskladd via /invoices/drafts ville i beste fall gitt
+ * 404 — og i verste fall truffet en helt annen fakturakladd med samme tall.
+ */
+export async function deleteFikenOfferDraft(connection: FikenConnectionRow, draftId: number) {
+  return fikenRequest(connection, {
+    method: "DELETE",
+    path: companyPath(connection, `/offers/drafts/${draftId}`),
+  })
+}
+
+/**
  * Bankkontoene Fiken kjenner for firmaet.
  *
  * Vi trenger `bankAccountNumber` (selve kontonummeret) — det er feltet et fakturautkast
@@ -499,4 +513,44 @@ export async function uploadFikenInboxDocument(
     })
     return parseFikenResponse(response)
   })
+}
+
+/**
+ * GET /contacts?customer=true — kundeimport fra Fiken.
+ *
+ * Fiken sideler med `page` (0-indeksert) + `pageSize` (maks 100), og BEGGE må
+ * settes for at sidedelingen skal slå inn. Kall serielt: Fiken tåler kun én
+ * samtidig forespørsel per credential.
+ */
+export async function listFikenContacts(
+  connection: FikenConnectionRow,
+  input: { page: number; pageSize?: number }
+) {
+  const pageSize = Math.min(input.pageSize ?? 100, 100)
+  const response = await fikenRequest(connection, {
+    path: companyPath(
+      connection,
+      `/contacts?customer=true&page=${input.page}&pageSize=${pageSize}`
+    ),
+  })
+  return Array.isArray(response.json) ? (response.json as Record<string, unknown>[]) : []
+}
+
+/**
+ * GET /timeUsers — Fikens motstykke til Tripletex' ansatte.
+ *
+ * MERK: dette er en LESE-only ressurs. Fiken har intet endepunkt for å opprette
+ * en timebruker, så personen må finnes i Fiken fra før; vi kan bare koble den mot
+ * en ProAnbud-bruker på e-post. Det er også grunnen til at ansatt-koblingen har en
+ * manuell utvei i UI-et.
+ */
+export async function listFikenTimeUsers(
+  connection: FikenConnectionRow,
+  input: { page: number; pageSize?: number }
+) {
+  const pageSize = Math.min(input.pageSize ?? 100, 100)
+  const response = await fikenRequest(connection, {
+    path: companyPath(connection, `/timeUsers?page=${input.page}&pageSize=${pageSize}`),
+  })
+  return Array.isArray(response.json) ? (response.json as Record<string, unknown>[]) : []
 }

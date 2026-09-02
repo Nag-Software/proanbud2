@@ -595,3 +595,45 @@ export async function getTripletexProjectManagerEmployeeIds(connection: Triplete
 
   return Array.from(new Set(ids))
 }
+
+/** PUT /invoice/{id}/:send — sender en allerede opprettet faktura til kunden. */
+export async function sendTripletexInvoice(
+  connection: TripletexConnectionRow,
+  invoiceExternalId: number,
+  options?: { sendType?: string; overrideEmailAddress?: string | null }
+) {
+  const sendType = options?.sendType || "EMAIL"
+  const params = new URLSearchParams({ sendType })
+  if (options?.overrideEmailAddress) {
+    params.set("overrideEmailAddress", options.overrideEmailAddress)
+  }
+
+  return tripletexRequest(connection, {
+    method: "PUT",
+    path: `/invoice/${invoiceExternalId}/:send?${params.toString()}`,
+  })
+}
+
+/**
+ * GET /invoice — brukes til betalingspolling.
+ *
+ * `invoiceDateFrom`/`invoiceDateTo` er PÅKREVD, og «to» er ekskluderende. Vi henter
+ * bare feltene vi trenger; `amountOutstanding` = 0 betyr betalt.
+ */
+export async function listTripletexInvoices(
+  connection: TripletexConnectionRow,
+  input: { fromDate: string; toDate: string; from?: number; count?: number }
+) {
+  const params = new URLSearchParams({
+    invoiceDateFrom: input.fromDate,
+    invoiceDateTo: input.toDate,
+    from: String(input.from ?? 0),
+    count: String(input.count ?? 100),
+    fields: "id,invoiceNumber,amount,amountOutstanding,isCharged",
+  })
+
+  return tripletexRequest(connection, {
+    method: "GET",
+    path: `/invoice?${params.toString()}`,
+  })
+}

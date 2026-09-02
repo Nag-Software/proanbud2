@@ -10,10 +10,10 @@ import { PlusCircle } from "lucide-react"
 
 interface KunderClientProps {
   initialData: Customer[]
-  tripletexEnabled?: boolean
+  syncEnabled?: boolean
 }
 
-export function KunderClient({ initialData, tripletexEnabled = false }: KunderClientProps) {
+export function KunderClient({ initialData, syncEnabled = false }: KunderClientProps) {
   const [selectedCustomer, setSelectedCustomer] = React.useState<Customer | null>(null)
   const [isCustomerDrawerOpen, setIsCustomerDrawerOpen] = React.useState(false)
   const [isAddDrawerOpen, setIsAddDrawerOpen] = React.useState(false)
@@ -52,7 +52,7 @@ export function KunderClient({ initialData, tripletexEnabled = false }: KunderCl
 
       
       <div>
-        <CustomerList data={data} onRowClick={handleRowClick} tripletexEnabled={tripletexEnabled} />
+        <CustomerList data={data} onRowClick={handleRowClick} syncEnabled={syncEnabled} />
       </div>
 
       <CustomerDrawer 

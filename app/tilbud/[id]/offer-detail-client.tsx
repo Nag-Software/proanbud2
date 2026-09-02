@@ -65,21 +65,23 @@ import {
 
 type OfferActivityItem = OfferActivityEvent
 
-type TripletexSyncLink = {
-  external_id?: number
-  external_url?: string | null
-  sync_status?: string
-  last_synced_at?: string | null
+type AccountingSyncLink = {
+  externalId?: number | string | null
+  externalUrl?: string | null
+  syncStatus?: string | null
+  lastSyncedAt?: string | null
 } | null
 
-type TripletexSyncState = {
+type AccountingSyncState = {
   connected: boolean
-  customer: TripletexSyncLink
-  project: TripletexSyncLink
-  offer: TripletexSyncLink
-  order: TripletexSyncLink
-  invoice: TripletexSyncLink
-  pendingJobs: Array<{ job_type: string; status: string; last_error_message: string | null }>
+  provider: "fiken" | "tripletex" | null
+  customer: AccountingSyncLink
+  project: AccountingSyncLink
+  offer: AccountingSyncLink
+  /** Kun Tripletex har et ordre-mellomledd; null for Fiken. */
+  order: AccountingSyncLink
+  invoice: AccountingSyncLink
+  pendingJobs: Array<{ jobType: string; status: string; errorMessage: string | null }>
 } | null
 
 type LinkedCustomer = {
@@ -320,7 +322,7 @@ export function OfferDetailClient({
   linkedCustomer: LinkedCustomer
   activity: OfferActivityItem[]
   company: OfferCompanyContext | null
-  tripletexSync?: TripletexSyncState
+  tripletexSync?: AccountingSyncState
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -335,7 +337,7 @@ export function OfferDetailClient({
     const ok = await confirm({
       title: "Fakturere jobben?",
       description:
-        "Alt som gjenstår på dette tilbudet — og tilleggsarbeid knyttet til det — faktureres nå. Er Fiken tilkoblet, opprettes og sendes fakturaen derfra; ellers registreres den her så du beholder oversikten. Skal du fakturere bare en del, gjør du det fra Fakturering-fanen på prosjektet.",
+        "Alt som gjenstår på dette tilbudet — og tilleggsarbeid knyttet til det — faktureres nå. Er regnskapssystemet ditt tilkoblet, opprettes og sendes fakturaen derfra; ellers registreres den her så du beholder oversikten. Skal du fakturere bare en del, gjør du det fra Fakturering-fanen på prosjektet.",
       confirmText: "Fakturer",
     })
     if (!ok) return
@@ -351,9 +353,10 @@ export function OfferDetailClient({
         result.amountNok > 0
           ? ` på ${new Intl.NumberFormat("no-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(result.amountNok)}`
           : ""
+      const system = result.queuedTo === "tripletex" ? "Tripletex" : "Fiken"
       toast.success(
-        result.queuedTo === "fiken"
-          ? `Faktura${beløp} opprettet. Fiken sender den til kunden.`
+        result.queuedTo
+          ? `Faktura${beløp} opprettet. ${system} sender den til kunden.`
           : `Faktura${beløp} registrert i ProAnbud. Send den fra regnskapssystemet ditt.`
       )
     } catch (error) {
@@ -364,7 +367,7 @@ export function OfferDetailClient({
   }
   const [offer, setOffer] = useState(initialOffer)
   const [lineItems, setLineItems] = useState<OfferLineItem[]>(initialOffer.lineItems)
-  const [, setTripletexSync] = useState<TripletexSyncState>(initialTripletexSync)
+  const [accountingSync, setAccountingSync] = useState<AccountingSyncState>(initialTripletexSync)
   const [activityLog, setActivityLog] = useState<OfferActivityItem[]>(activity)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isMessageOpen, setIsMessageOpen] = useState(false)
@@ -544,22 +547,26 @@ export function OfferDetailClient({
     }
   }, [offer.id, refreshActivity])
 
-  const triggerTripletexSyncInBackground = useCallback(async () => {
+  // Én rute for begge regnskapssystemene — den vet selv hvilket som er tilkoblet.
+  const triggerAccountingSyncInBackground = useCallback(async () => {
     try {
-      const response = await fetch(`/api/offers/${offer.id}/tripletex-sync`, {
+      const response = await fetch(`/api/offers/${offer.id}/regnskap-sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
       if (!response.ok) return
 
-      const statusResponse = await fetch(`/api/offers/${offer.id}/tripletex-sync`)
+      const statusResponse = await fetch(`/api/offers/${offer.id}/regnskap-sync`)
       if (statusResponse.ok) {
         const payload = await statusResponse.json()
-        setTripletexSync(payload)
+        setAccountingSync(payload)
       }
     } catch (error) {
-      // Non-blocking background sync.
-      reportClientError(error, { level: "warning", context: { action: "background Tripletex sync", offerId: offer.id } })
+      // Bakgrunnssynk skal aldri blokkere utsending av tilbudet.
+      reportClientError(error, {
+        level: "warning",
+        context: { action: "background accounting sync", offerId: offer.id },
+      })
     }
   }, [offer.id])
 
@@ -612,7 +619,7 @@ export function OfferDetailClient({
           recipientName: payload.offer.recipientName,
         }))
         setIsSendDialogOpen(false)
-        void triggerTripletexSyncInBackground()
+        void triggerAccountingSyncInBackground()
         toast.success("Tilbud sendt til kunde på e-post")
         track("tilbud_sendt")
         void refreshActivity()
@@ -933,6 +940,12 @@ export function OfferDetailClient({
           )}
         </SidebarSection>
 
+        {accountingSync?.connected && (
+          <SidebarSection title="I regnskapet">
+            <AccountingSyncSection sync={accountingSync} />
+          </SidebarSection>
+        )}
+
         <SidebarSection title="Hendelser">
           {activityLog.length === 0 ? (
             <p className="text-sm text-muted-foreground">Ingen aktivitet enda.</p>
@@ -1023,6 +1036,67 @@ export function OfferDetailClient({
           />
         </SheetContent>
       </Sheet>
+    </div>
+  )
+}
+
+const ACCOUNTING_LABEL: Record<string, string> = { fiken: "Fiken", tripletex: "Tripletex" }
+
+/**
+ * «Hvor er dette tilbudet i regnskapet?»
+ *
+ * Statusen ble hentet fra serveren, men aldri vist — brukeren hadde ingen måte å se
+ * om tilbudet faktisk kom fram. Ordrelinjen finnes kun for Tripletex; Fiken går rett
+ * fra tilbud til faktura, og da utelates raden i stedet for å vise en tom plass.
+ */
+function AccountingSyncSection({ sync }: { sync: NonNullable<AccountingSyncState> }) {
+  const system = sync.provider ? ACCOUNTING_LABEL[sync.provider] : "regnskapet"
+  const rows: Array<{ label: string; link: AccountingSyncLink }> = [
+    { label: "Kunde", link: sync.customer },
+    { label: "Prosjekt", link: sync.project },
+    { label: "Tilbud", link: sync.offer },
+    { label: "Ordre", link: sync.order },
+    { label: "Faktura", link: sync.invoice },
+  ].filter((row) => row.link)
+
+  const failing = sync.pendingJobs.filter((job) => job.status === "retry" && job.errorMessage)
+
+  if (rows.length === 0 && sync.pendingJobs.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Ingenting er sendt til {system} for dette tilbudet ennå.
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-1">
+      {rows.map((row) => (
+        <div key={row.label} className="flex items-center justify-between gap-2 border px-2.5 py-2 text-xs">
+          <span className="text-muted-foreground">{row.label}</span>
+          {row.link?.externalUrl ? (
+            <a
+              href={row.link.externalUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="min-w-0 truncate font-medium underline"
+            >
+              Åpne i {system}
+            </a>
+          ) : (
+            <span className="font-medium">{row.link?.syncStatus === "paid" ? "Betalt" : "Synkronisert"}</span>
+          )}
+        </div>
+      ))}
+
+      {sync.pendingJobs.length > 0 && (
+        <p className="px-0.5 pt-1 text-[11px] text-muted-foreground">
+          {sync.pendingJobs.length} {sync.pendingJobs.length === 1 ? "jobb" : "jobber"} på vei til {system}.
+        </p>
+      )}
+      {failing.length > 0 && (
+        <p className="px-0.5 text-[11px] text-destructive">{failing[0].errorMessage}</p>
+      )}
     </div>
   )
 }

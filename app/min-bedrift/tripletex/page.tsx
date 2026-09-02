@@ -41,33 +41,15 @@ export default async function TripletexPage() {
     )
   }
 
-  const [connectionResult, jobsResult, eventsResult] = companyId
-    ? await Promise.all([
-        supabase
-          .from("tripletex_connections")
-          .select("company_id, sync_state, session_expires_at, default_account_id, last_success_at, last_error_at, last_error_message, scope_config")
-          .eq("company_id", companyId)
-          .maybeSingle(),
-        supabase
-          .from("integration_jobs")
-          .select("id, status, job_type, created_at, last_error_message")
-          .eq("company_id", companyId)
-          .eq("provider", "tripletex")
-          .order("created_at", { ascending: false })
-          .limit(15),
-        supabase
-          .from("integration_webhook_events")
-          .select("id, event_type, process_status, received_at")
-          .eq("company_id", companyId)
-          .eq("provider", "tripletex")
-          .order("received_at", { ascending: false })
-          .limit(15),
-      ])
-    : [
-        { data: null as any },
-        { data: [] as any[] },
-        { data: [] as any[] },
-      ]
+  // Jobber og webhook-hendelser hentes ikke lenger her: aktivitetsloggen er felles
+  // for begge regnskapssystemene og bor på /min-bedrift/regnskap.
+  const connectionResult = companyId
+    ? await supabase
+        .from("tripletex_connections")
+        .select("company_id, sync_state, session_expires_at, default_account_id, last_success_at, last_error_at, last_error_message, scope_config")
+        .eq("company_id", companyId)
+        .maybeSingle()
+    : { data: null }
 
   return (
     <AppPageShell segments={["Min bedrift", "Tripletex"]}>
@@ -83,8 +65,6 @@ export default async function TripletexPage() {
 
         <TripletexClient
           initialConnection={connectionResult.data}
-          initialJobs={jobsResult.data || []}
-          initialEvents={eventsResult.data || []}
           canManage={canManageIntegration}
           helpUrl={TRIPLETEX_HELP_URL}
         />

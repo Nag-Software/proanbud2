@@ -4,7 +4,7 @@ import { logServerError } from "@/lib/errors/log"
 import { AppPageShell } from "@/components/app-page-shell"
 import { fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
 import { readProjectSummaryFromAnalysis } from "@/lib/tilbud/project-summary"
-import { fetchOfferTripletexSyncStatus } from "@/lib/integrations/tripletex/sync"
+import { fetchOfferAccountingStatus } from "@/lib/regnskap/status"
 import { fetchOfferActivity } from "@/lib/tilbud/offer-activity"
 import { createClient } from "@/lib/supabase/server"
 import {
@@ -255,15 +255,15 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
   const offer = offerResult.data as OfferRecord
   // Both depend only on the offer row and not on each other — one parallel
   // round instead of two serial ones.
-  const [tripletexSync, sourceDocuments] = await Promise.all([
-    fetchOfferTripletexSyncStatus(
+  const [accountingSync, sourceDocuments] = await Promise.all([
+    fetchOfferAccountingStatus({
       companyId,
-      offer.id,
-      offer.customer_id,
-      offer.project_id
-    ).catch((error) => {
+      offerId: offer.id,
+      customerId: offer.customer_id,
+      projectId: offer.project_id,
+    }).catch((error) => {
       void logServerError({
-        message: "Failed to fetch Tripletex sync status for offer detail",
+        message: "Kunne ikke hente regnskapsstatus for tilbudet",
         error,
         source: "server",
         route: "app/tilbud/[id]/page.tsx",
@@ -331,7 +331,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
         }}
         activity={activityRows}
         company={company}
-        tripletexSync={tripletexSync}
+        tripletexSync={accountingSync}
       />
     </AppPageShell>
   )

@@ -1,45 +1,23 @@
-import crypto from "crypto"
+import {
+  decryptSecret as decryptSharedSecret,
+  encryptSecret as encryptSharedSecret,
+} from "@/lib/integrations/shared/crypto"
 
-function getEncryptionKey() {
-  const raw = process.env.TRIPLETEX_ENCRYPTION_KEY
-  if (!raw) {
-    throw new Error("TRIPLETEX_ENCRYPTION_KEY is missing")
-  }
-
-  const key = Buffer.from(raw, "base64")
-  if (key.byteLength !== 32) {
-    throw new Error("TRIPLETEX_ENCRYPTION_KEY must be 32 bytes in base64")
-  }
-
-  return key
-}
+/**
+ * Tripletex-hemmeligheter, kryptert med den delte AES-256-GCM-implementasjonen.
+ *
+ * Nøkkelen er PINNET til TRIPLETEX_ENCRYPTION_KEY med vilje. Den delte modulen
+ * prøver FIKEN_ENCRYPTION_KEY først, og hvis de to nøklene er ulike ville et
+ * ubundet kall dekryptere Tripletex-tokens med Fiken-nøkkelen og gjøre hver
+ * eneste lagrede tilkobling ubrukelig. Denne filen finnes kun for å holde den
+ * bindingen på ett sted — selve algoritmen er ikke lenger duplisert.
+ */
+const TRIPLETEX_KEY_ENV_VARS = ["TRIPLETEX_ENCRYPTION_KEY"]
 
 export function encryptSecret(value: string) {
-  const key = getEncryptionKey()
-  const iv = crypto.randomBytes(12)
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv)
-  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()])
-  const tag = cipher.getAuthTag()
-
-  return `${iv.toString("base64")}.${tag.toString("base64")}.${encrypted.toString("base64")}`
+  return encryptSharedSecret(value, TRIPLETEX_KEY_ENV_VARS)
 }
 
 export function decryptSecret(payload: string | null | undefined) {
-  if (!payload) return ""
-
-  const key = getEncryptionKey()
-  const [ivB64, tagB64, cipherB64] = payload.split(".")
-  if (!ivB64 || !tagB64 || !cipherB64) {
-    throw new Error("Encrypted payload format is invalid")
-  }
-
-  const iv = Buffer.from(ivB64, "base64")
-  const tag = Buffer.from(tagB64, "base64")
-  const ciphertext = Buffer.from(cipherB64, "base64")
-
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv)
-  decipher.setAuthTag(tag)
-  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()])
-
-  return decrypted.toString("utf8")
+  return decryptSharedSecret(payload, TRIPLETEX_KEY_ENV_VARS)
 }
