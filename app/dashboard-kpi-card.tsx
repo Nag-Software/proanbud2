@@ -38,7 +38,7 @@ export function DashboardKpiCard({
   const highestValue = Math.max(...points.map((point) => point.value), 1)
 
   return (
-    <Card className="gap-0 rounded-[22px] border-border/90 bg-card py-0 shadow-[0_1px_3px_rgba(21,21,21,0.06)]">
+    <Card className="gap-0 rounded-md border-border/90 bg-card py-0 shadow-[0_1px_3px_rgba(21,21,21,0.06)]">
       <CardHeader className="flex flex-row items-center justify-between gap-4 px-5 pb-0 pt-5 sm:px-6 sm:pt-6">
         <CardTitle className="text-base font-semibold tracking-[-0.025em] sm:text-lg">
           {label}
@@ -64,7 +64,7 @@ export function DashboardKpiCard({
       </CardHeader>
 
       <CardContent className="px-5 pb-5 pt-8 sm:px-6 sm:pb-6 sm:pt-10">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <p className="min-w-0 text-[clamp(1.9rem,3vw,2.8rem)] font-semibold leading-none tracking-[-0.055em] text-foreground">
             {value}
           </p>

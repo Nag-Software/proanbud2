@@ -479,7 +479,7 @@ export default function DashboardPage() {
 
   const kpiCards = data ? [
     {
-      label: "Total Omsetning",
+      label: "Total omsetning",
       value: `${formatter.format(data.omsetning)}`,
       change: pctChange(data.omsetning, data.omsetningPrev),
       up: isUp(data.omsetning, data.omsetningPrev),
@@ -490,7 +490,7 @@ export default function DashboardPage() {
       })),
     },
     {
-      label: "Aktive Prosjekter",
+      label: "Aktive prosjekter",
       value: `${data.activeProjects}`,
       change: pctChange(data.activeProjects, data.activeProjectsPrev),
       up: isUp(data.activeProjects, data.activeProjectsPrev),
@@ -540,7 +540,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
           <div className="flex flex-col gap-4">
             {/* KPI row */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 min-[1900px]:grid-cols-4">
               {loading
                 ? Array.from({ length: 4 }).map((_, i) => (
                   <Card key={i} className="animate-pulse gap-0 rounded-[22px] py-0">
