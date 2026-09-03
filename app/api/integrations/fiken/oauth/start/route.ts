@@ -23,7 +23,9 @@ export async function GET(request: Request) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const origin = new URL(request.url).origin
+  const requestUrl = new URL(request.url)
+  requestUrl.protocol = "https:"
+  const origin = requestUrl.origin
   const settingsUrl = `${origin}/min-bedrift/fiken`
 
   if (!user) {
@@ -76,7 +78,9 @@ export async function GET(request: Request) {
   const authorizeUrl = new URL(FIKEN_OAUTH_AUTHORIZE_URL)
   authorizeUrl.searchParams.set("response_type", "code")
   authorizeUrl.searchParams.set("client_id", getFikenClientId())
-  authorizeUrl.searchParams.set("redirect_uri", getFikenRedirectUri())
+  const redirectUri = new URL(getFikenRedirectUri())
+  redirectUri.protocol = "https:"
+  authorizeUrl.searchParams.set("redirect_uri", redirectUri.toString())
   authorizeUrl.searchParams.set("scope", FIKEN_OAUTH_SCOPES)
   authorizeUrl.searchParams.set("state", state)
 
