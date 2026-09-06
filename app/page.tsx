@@ -563,6 +563,9 @@ export default function DashboardPage() {
         label: point.date,
         value: point.omsetning,
       })),
+      // Seks måneders kurve + et langt kronebeløp — dette kortet trenger hele
+      // bredden på mobil. De tre tellerne under deler en rad i stedet.
+      wide: true,
     },
     {
       label: "Aktive prosjekter",
@@ -574,6 +577,7 @@ export default function DashboardPage() {
         { label: "Forrige", value: data.activeProjectsPrev },
         { label: "Nå", value: data.activeProjects },
       ],
+      wide: false,
     },
     {
       label: "Tilbud sendt",
@@ -585,6 +589,7 @@ export default function DashboardPage() {
         { label: "Forrige", value: data.tilbudSentPrev },
         { label: "Nå", value: data.tilbudSendt },
       ],
+      wide: false,
     },
     {
       label: "Kunder totalt",
@@ -596,6 +601,7 @@ export default function DashboardPage() {
         { label: "Forrige", value: data.kundersPrev },
         { label: "Nå", value: data.kunders },
       ],
+      wide: false,
     },
   ] : []
 
@@ -614,21 +620,39 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
           <div className="flex min-w-0 flex-col gap-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Mobil: omsetningen over hele bredden, de tre tellerne på én rad
+                under. Fire fullbreddekort var ~580px scroll for fire tall.
+                Fra sm og opp er rutenettet som før. */}
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
               {loading
                 ? Array.from({ length: 4 }).map((_, i) => (
-                  <Card key={i} className="animate-pulse">
-                    <CardHeader>
-                      <div className="h-5 w-28 rounded bg-muted" />
+                  <Card
+                    key={i}
+                    className={cn(
+                      "animate-pulse",
+                      i === 0 ? "max-sm:col-span-3" : "max-sm:gap-1.5 max-sm:py-3"
+                    )}
+                  >
+                    <CardHeader className={cn(i !== 0 && "max-sm:px-3")}>
+                      <div className="h-5 w-28 rounded bg-muted max-sm:h-3 max-sm:w-full" />
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className={cn("space-y-4", i !== 0 && "max-sm:space-y-2 max-sm:px-3")}>
                       <div className="h-7 w-1/2 rounded bg-muted" />
-                      <div className="h-16 rounded-md bg-muted" />
+                      {/* Står bare i mobilruta, der grafen er borte — uten den
+                          er skjelettet 12px kortere enn kortet og alt under
+                          hopper når tallene lander. */}
+                      {i !== 0 && <div className="hidden h-3 w-3/5 rounded bg-muted max-sm:block" />}
+                      <div className={cn("h-16 rounded-md bg-muted", i !== 0 && "max-sm:hidden")} />
                     </CardContent>
                   </Card>
                 ))
-                : kpiCards.map((k) => (
-                  <DashboardKpiCard key={k.label} {...k} />
+                : kpiCards.map(({ wide, ...k }) => (
+                  <DashboardKpiCard
+                    key={k.label}
+                    {...k}
+                    compactOnMobile={!wide}
+                    className={wide ? "max-sm:col-span-3" : undefined}
+                  />
                 ))
               }
             </div>

@@ -384,7 +384,7 @@ export function FaktureringPanel({
                   return (
                     <li
                       key={invoice.id}
-                      className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-0.5 py-2 sm:grid-cols-[1fr_auto_7rem_5.5rem]"
+                      className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-0.5 py-2 sm:grid-cols-[1fr_auto_minmax(7rem,auto)_minmax(5.5rem,auto)]"
                     >
                       <span className="min-w-0 truncate font-medium">
                         {invoice.reference ? `Fakturanr. ${invoice.reference}` : "Faktura"}
@@ -403,11 +403,11 @@ export function FaktureringPanel({
                         ) : null}
                       </span>
 
-                      <span className="text-right font-medium tabular-nums">
+                      <span className="whitespace-nowrap text-right font-medium tabular-nums">
                         {formatNok(Number(invoice.amount_nok))}
                       </span>
 
-                      <span className="flex items-center justify-end gap-1">
+                      <span className="flex items-center justify-end gap-1 whitespace-nowrap">
                         {/* «Sendt» på en forfalt faktura skjuler det som betyr noe:
                             at pengene ikke har kommet. Forfall vinner over status. */}
                         <Badge
