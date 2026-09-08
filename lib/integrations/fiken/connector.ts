@@ -1,3 +1,5 @@
+import crypto from "crypto"
+
 import {
   FIKEN_OAUTH_TOKEN_URL,
   getFikenApiBaseUrl,
@@ -116,6 +118,8 @@ export async function fikenRawRequest(input: {
         Authorization: `Bearer ${input.accessToken}`,
         "Content-Type": "application/json",
         Accept: "application/json",
+        // Fiken anbefaler denne på alle kall; gjør feilsøking mot supporten deres mulig.
+        "X-Request-ID": crypto.randomUUID(),
       },
       body: input.body ? JSON.stringify(input.body) : undefined,
       cache: "no-store",
@@ -333,6 +337,98 @@ export async function createFikenInvoiceDirect(connection: FikenConnectionRow, p
   })
 }
 
+/** Slett et fakturautkast i Fiken (DELETE /invoices/drafts/{draftId}). */
+export async function deleteFikenInvoiceDraft(connection: FikenConnectionRow, draftId: number) {
+  return fikenRequest(connection, {
+    method: "DELETE",
+    path: companyPath(connection, `/invoices/drafts/${draftId}`),
+  })
+}
+
+/**
+ * DELETE /offers/drafts/{id}
+ *
+ * Egen funksjon fordi tilbud og faktura har HVER SIN kladd-ressurs i Fiken, med hver
+ * sin id-serie. Å slette en tilbudskladd via /invoices/drafts ville i beste fall gitt
+ * 404 — og i verste fall truffet en helt annen fakturakladd med samme tall.
+ */
+export async function deleteFikenOfferDraft(connection: FikenConnectionRow, draftId: number) {
+  return fikenRequest(connection, {
+    method: "DELETE",
+    path: companyPath(connection, `/offers/drafts/${draftId}`),
+  })
+}
+
+/**
+ * Bankkontoene Fiken kjenner for firmaet.
+ *
+ * Vi trenger `bankAccountNumber` (selve kontonummeret) — det er feltet et fakturautkast
+ * godtar. `accountCode` («1920:XXXXX») hører til andre endepunkter og virker ikke her.
+ */
+export async function listFikenBankAccounts(connection: FikenConnectionRow) {
+  const response = await fikenRequest(connection, {
+    path: companyPath(connection, "/bankAccounts?page=0&pageSize=100"),
+  })
+  const json = response.json
+  const rows = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : []
+  return rows as Array<{
+    name?: string
+    accountCode?: string
+    bankAccountNumber?: string
+    inactive?: boolean
+  }>
+}
+
+/**
+ * Finn fakturaen som ble opprettet fra et gitt utkast.
+ *
+ * `invoiceDraftUuid` er et dokumentert filter på GET /invoices. Dette er nøkkelen til å
+ * gjøre en TVETYDIG ferdigstilling trygg: feiler `createInvoiceFromDraft` med
+ * nettverksfeil eller 5xx, vet vi ikke om Fiken rakk å opprette fakturaen. I stedet for
+ * å dead-letter'e og be om manuell opprydding, kan vi spørre — og enten koble opp den
+ * ekte fakturaen eller slå fast at ingen finnes.
+ */
+export async function findFikenInvoiceByDraftUuid(
+  connection: FikenConnectionRow,
+  draftUuid: string
+): Promise<{ invoiceId: number } | null> {
+  const response = await fikenRequest(connection, {
+    path: companyPath(connection, `/invoices?invoiceDraftUuid=${encodeURIComponent(draftUuid)}&page=0&pageSize=1`),
+  })
+  const json = response.json
+  const rows = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : []
+  const first = rows[0] as { invoiceId?: number } | undefined
+  return first?.invoiceId ? { invoiceId: first.invoiceId } : null
+}
+
+/**
+ * Nummerserier («counters») for tilbud og faktura.
+ *
+ * Fiken nekter å ferdigstille det FØRSTE dokumentet av en type før nummerserien finnes:
+ *   faktura: «Missing number series for drafts of type: invoice…»
+ *   tilbud:  «Offer counter not initialized for this company…»
+ *
+ * Fikens egen feiltekst ber deg opprette dokumentet manuelt i Fiken Web, men API-et har
+ * et endepunkt for nettopp dette. Tom body gir basisnummer 10000, altså første dokument
+ * 10001 — samme standard som Fiken Web bruker. Vi initialiserer derfor selv, slik at
+ * kunden aldri må innom fiken.no for å komme i gang.
+ */
+export async function createFikenInvoiceCounter(connection: FikenConnectionRow) {
+  return fikenRequest(connection, {
+    method: "POST",
+    path: companyPath(connection, "/invoices/counter"),
+    body: {},
+  })
+}
+
+export async function createFikenOfferCounter(connection: FikenConnectionRow) {
+  return fikenRequest(connection, {
+    method: "POST",
+    path: companyPath(connection, "/offers/counter"),
+    body: {},
+  })
+}
+
 export async function sendFikenInvoice(connection: FikenConnectionRow, payload: Record<string, unknown>) {
   return fikenRequest(connection, {
     method: "POST",
@@ -417,4 +513,44 @@ export async function uploadFikenInboxDocument(
     })
     return parseFikenResponse(response)
   })
+}
+
+/**
+ * GET /contacts?customer=true — kundeimport fra Fiken.
+ *
+ * Fiken sideler med `page` (0-indeksert) + `pageSize` (maks 100), og BEGGE må
+ * settes for at sidedelingen skal slå inn. Kall serielt: Fiken tåler kun én
+ * samtidig forespørsel per credential.
+ */
+export async function listFikenContacts(
+  connection: FikenConnectionRow,
+  input: { page: number; pageSize?: number }
+) {
+  const pageSize = Math.min(input.pageSize ?? 100, 100)
+  const response = await fikenRequest(connection, {
+    path: companyPath(
+      connection,
+      `/contacts?customer=true&page=${input.page}&pageSize=${pageSize}`
+    ),
+  })
+  return Array.isArray(response.json) ? (response.json as Record<string, unknown>[]) : []
+}
+
+/**
+ * GET /timeUsers — Fikens motstykke til Tripletex' ansatte.
+ *
+ * MERK: dette er en LESE-only ressurs. Fiken har intet endepunkt for å opprette
+ * en timebruker, så personen må finnes i Fiken fra før; vi kan bare koble den mot
+ * en ProAnbud-bruker på e-post. Det er også grunnen til at ansatt-koblingen har en
+ * manuell utvei i UI-et.
+ */
+export async function listFikenTimeUsers(
+  connection: FikenConnectionRow,
+  input: { page: number; pageSize?: number }
+) {
+  const pageSize = Math.min(input.pageSize ?? 100, 100)
+  const response = await fikenRequest(connection, {
+    path: companyPath(connection, `/timeUsers?page=${input.page}&pageSize=${pageSize}`),
+  })
+  return Array.isArray(response.json) ? (response.json as Record<string, unknown>[]) : []
 }

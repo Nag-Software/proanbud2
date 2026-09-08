@@ -178,15 +178,21 @@ export function calculateGroupTotal(items: OfferLineItem[]) {
   return items.reduce((sum, item) => sum + calculateLineItemTotal(item), 0)
 }
 
-export function getOfferDocumentTotals(lineItems: OfferLineItem[]) {
+/**
+ * @param vatRegistered Om bedriften er mva-registrert. Når false blir mva 0 og totalen
+ *   lik nettosummen — en bedrift utenfor Merverdiavgiftsregisteret skal ikke legge på
+ *   mva. Default true bevarer oppførselen for kallere som ikke sender flagget.
+ */
+export function getOfferDocumentTotals(lineItems: OfferLineItem[], vatRegistered: boolean = true) {
   const totals = calculateOfferTotals(lineItems)
-  const vatAmountNok = Math.round(totals.subtotalNok * VAT_RATE * 100) / 100
+  const vatAmountNok = vatRegistered ? Math.round(totals.subtotalNok * VAT_RATE * 100) / 100 : 0
   const totalInclVatNok = Math.round((totals.subtotalNok + vatAmountNok) * 100) / 100
 
   return {
     totals,
     vatAmountNok,
     totalInclVatNok,
+    vatRegistered,
   }
 }
 
@@ -225,7 +231,8 @@ type OfferDocumentRenderOptions = {
 export function buildOfferDocumentModel(data: OfferDocumentData) {
   const grouped = groupLineItemsBySubproject(data.lineItems)
   const groupEntries = Object.entries(grouped)
-  const { totals, vatAmountNok, totalInclVatNok } = getOfferDocumentTotals(data.lineItems)
+  const vatRegistered = data.company?.vatRegistered !== false
+  const { totals, vatAmountNok, totalInclVatNok } = getOfferDocumentTotals(data.lineItems, vatRegistered)
   const preDiscountSubtotalNok = Math.round((totals.subtotalNok + totals.discountNok) * 100) / 100
   const hasDiscount = totals.discountNok > 0
 
@@ -248,6 +255,7 @@ export function buildOfferDocumentModel(data: OfferDocumentData) {
     totals,
     vatAmountNok,
     totalInclVatNok,
+    vatRegistered,
     preDiscountSubtotalNok,
     hasDiscount,
     issuedDate,
@@ -424,9 +432,13 @@ export function buildOfferDocumentSheet(data: OfferDocumentData, options: OfferD
         ${totalsRow("Sum eks. mva", escapeHtml(formatDocumentCurrency(m.preDiscountSubtotalNok)))}
         ${m.hasDiscount ? totalsRow("Rabatt", `− ${escapeHtml(formatDocumentCurrency(m.totals.discountNok))}`) : ""}
         ${m.hasDiscount ? totalsRow("Nettosum eks. mva", escapeHtml(formatDocumentCurrency(m.totals.subtotalNok))) : ""}
-        ${totalsRow("Mva (25 %)", escapeHtml(formatDocumentCurrency(m.vatAmountNok)), { muted: true })}
+        ${
+          m.vatRegistered
+            ? totalsRow("Mva (25 %)", escapeHtml(formatDocumentCurrency(m.vatAmountNok)), { muted: true })
+            : totalsRow("Mva", "Ikke mva-pliktig", { muted: true })
+        }
         <div style="margin-top:6px;display:flex;justify-content:space-between;gap:16px;align-items:baseline;border-top:1px solid #111827;padding:7px 0 0;">
-          <span style="font-size:12px;font-weight:700;color:#111827;">Totalt inkl. mva</span>
+          <span style="font-size:12px;font-weight:700;color:#111827;">${m.vatRegistered ? "Totalt inkl. mva" : "Totalt"}</span>
           <span style="font-size:14px;font-weight:700;color:#111827;font-variant-numeric:tabular-nums;white-space:nowrap;">${escapeHtml(formatDocumentCurrency(m.totalInclVatNok))}</span>
         </div>
       </div>

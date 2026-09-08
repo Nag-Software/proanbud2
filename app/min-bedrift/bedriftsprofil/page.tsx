@@ -6,6 +6,7 @@ import { fetchCompanyProfileRow, mapCompanyRowToProfile } from "@/lib/tilbud/com
 import { createClient } from "@/lib/supabase/server"
 import { BedriftsprofilClient } from "./bedriftsprofil-client"
 import { DeleteCompanySection } from "./delete-company-section"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 export default async function Page() {
   const { canonicalRole } = await checkRoleAccess([
@@ -16,9 +17,7 @@ export default async function Page() {
   ])
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
 
   if (!user) {
     redirect("/login")

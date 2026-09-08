@@ -223,9 +223,12 @@ export async function getExternalEntityLink(input: {
   localId: string
 }) {
   const supabase = createAdminClient()
+  // sync_status er med fordi kallstedene må kunne se om en faktura allerede er
+  // sendt eller betalt — uten den ville vi risikert å sende samme faktura to
+  // ganger til kunden.
   const { data, error } = await supabase
     .from("external_entity_links")
-    .select("external_id, external_url")
+    .select("external_id, external_url, sync_status")
     .eq("company_id", input.companyId)
     .eq("provider", "tripletex")
     .eq("entity_type", input.entityType)

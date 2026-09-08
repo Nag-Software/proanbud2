@@ -2,8 +2,10 @@ import { AppPageShell } from "@/components/app-page-shell"
 import { KunderClient } from "@/components/kunder/kunder-client"
 import { Customer, CustomerProject } from "@/components/kunder/schema"
 import { isActiveProject } from "@/app/prosjekter/project-utils"
-import { getTripletexConnectionState } from "@/lib/integrations/tripletex/sync"
+import { getActiveAccountingProvider } from "@/lib/regnskap/registry"
+import { getAdapter } from "@/lib/regnskap/registry"
 import { createClient } from "@/lib/supabase/server"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -11,14 +13,14 @@ export const revalidate = 0;
 
 export default async function Page() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
   
   // Hent kun kunder for den innloggede brukeren (RLS håndterer filtrering via company_id)
   let dbCustomers = []
   let customerLinks: Array<{ local_id: string; last_synced_at: string | null; external_url: string | null }> = []
   let customerJobs: Array<{ status: string; payload: any }> = []
   let companyId: string | null = null
-  let tripletexEnabled = false
+  let accountingProvider: string | null = null
   if (user) {
     // The company-id lookup and the (RLS-scoped) customers read are independent,
     // so run them concurrently instead of as a serial chain.
@@ -43,24 +45,31 @@ export default async function Page() {
     dbCustomers = data || []
 
     if (companyId) {
-      tripletexEnabled = Boolean(await getTripletexConnectionState(companyId))
+      const active = await getActiveAccountingProvider(companyId)
+      accountingProvider = active?.adapter.id ?? null
     }
 
-    // Tripletex sync-data er kun relevant når Tripletex faktisk er tilkoblet.
-    if (companyId && tripletexEnabled) {
+    // Synk-data er kun relevant når et regnskapssystem faktisk er tilkoblet — og
+    // det gjelder BEGGE. Før var dette hardkodet til Tripletex, så Fiken-kunder
+    // så aldri om kundene deres var kommet frem.
+    if (companyId && accountingProvider) {
+      const adapter = getAdapter(accountingProvider as "fiken" | "tripletex")
+      const entityTypes = adapter.storedEntityTypes("customer")
+      const customerJobType = adapter.queueJobType("customer.upsert")
+
       const [{ data: links }, { data: jobs }] = await Promise.all([
         supabase
           .from("external_entity_links")
           .select("local_id,last_synced_at,external_url")
           .eq("company_id", companyId)
-          .eq("provider", "tripletex")
-          .eq("entity_type", "customer"),
+          .eq("provider", accountingProvider)
+          .in("entity_type", entityTypes),
         supabase
           .from("integration_jobs")
           .select("status,payload")
           .eq("company_id", companyId)
-          .eq("provider", "tripletex")
-          .eq("job_type", "customer.upsert"),
+          .eq("provider", accountingProvider)
+          .eq("job_type", customerJobType || "customer.upsert"),
       ])
 
       customerLinks = (links || []) as Array<{ local_id: string; last_synced_at: string | null; external_url: string | null }>
@@ -146,7 +155,7 @@ export default async function Page() {
   return (
     <AppPageShell segments={["Kunder"]}>
       <div className="flex flex-col gap-6 w-full min-w-0 max-w-full pb-8">
-        <KunderClient initialData={customers} tripletexEnabled={tripletexEnabled} />
+        <KunderClient initialData={customers} syncEnabled={Boolean(accountingProvider)} />
       </div>
     </AppPageShell>
   )

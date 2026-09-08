@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache"
 
 import { createClient } from "@/lib/supabase/server"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 import { logServerError } from "@/lib/errors/log"
 import { GENERIC_ERROR_MESSAGE } from "@/lib/errors/user-message"
-import { companyHasModule } from "@/lib/billing/server-modules"
+import { companyHasFeature, companyHasModule } from "@/lib/billing/server-modules"
 import {
   buildEmployeeSummaries,
   buildProjectSummaries,
@@ -50,17 +51,21 @@ export type WorkSession = {
 export type CompletedWorkSession = WorkSession & { hours: number | null }
 
 async function getEffectiveRole(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
-  const { data: userRoleData } = await supabase
-    .from("user_roles")
-    .select("roles(name)")
-    .eq("user_id", userId)
-    .maybeSingle()
+  // Hurtigvei: den delte konteksten har allerede løst opp denne brukeren i samme
+  // render (siden kaller checkRoleAccess først), så dette koster null spørringer.
+  // Rollen slås sammen i nøyaktig samme prioritet som under — user_roles foran
+  // users.role — så resultatet er identisk.
+  const context = await getServerAuthContext()
+  if (context && context.user.id === userId) {
+    return { role: context.role, companyId: context.companyId }
+  }
 
-  const { data: userTableData } = await supabase
-    .from("users")
-    .select("role, company_id")
-    .eq("id", userId)
-    .maybeSingle()
+  // Reserve for kallere med en annen userId enn den innloggede. Kjøres nå i ÉN
+  // bølge; disse to sto sekvensielt og kostet en unødig rundtur hver gang.
+  const [{ data: userRoleData }, { data: userTableData }] = await Promise.all([
+    supabase.from("user_roles").select("roles(name)").eq("user_id", userId).maybeSingle(),
+    supabase.from("users").select("role, company_id").eq("id", userId).maybeSingle(),
+  ])
 
   // @ts-expect-error Supabase nested relation typing
   const role = userRoleData?.roles?.name || userTableData?.role || null
@@ -73,7 +78,10 @@ async function getEffectiveRole(supabase: Awaited<ReturnType<typeof createClient
 
 async function hasTimeforingModule(companyId: string | null): Promise<boolean> {
   if (!companyId) return false
-  return companyHasModule(companyId, TIMEFORING_MODULE)
+  // Feature, ikke modul: Timeføring er inkludert i Proff og kan i tillegg
+  // kjøpes som modul på Mini (FEATURE_MODULE_FALLBACK). companyHasFeature
+  // dekker begge veier — companyHasModule så bare modulkjøpet.
+  return companyHasFeature(companyId, TIMEFORING_MODULE)
 }
 
 export async function getActiveWorkSessionAction(
@@ -806,16 +814,16 @@ export async function getMyTimeTrackingOverviewAction(): Promise<
   ActionResult<MyTimeTrackingOverview>
 > {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
+    // Render-stien for /timeforing: den delte konteksten er allerede varm fra
+    // sidens checkRoleAccess, så dette koster verken nettverkskall eller oppslag.
+    const context = await getServerAuthContext()
+    if (!context) {
       return { ok: false, error: "Du må være logget inn. Logg inn på nytt og prøv igjen." }
     }
+    const supabase = context.supabase
+    const user = context.user
 
-    const { companyId } = await getEffectiveRole(supabase, user.id)
+    const companyId = context.companyId
     if (!(await hasTimeforingModule(companyId))) {
       // Sentinel — klienten viser en egen «modul mangler»-tilstand, ikke en feilmelding.
       return { ok: false, error: "MODULE_MISSING" }

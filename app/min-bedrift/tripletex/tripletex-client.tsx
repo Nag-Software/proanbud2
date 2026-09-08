@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ExternalLink, RefreshCw } from "lucide-react"
+import { ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 
 import { reportClientError } from "@/lib/errors/client"
@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 type JobRow = {
   id: number
@@ -30,8 +29,6 @@ type EventRow = {
 
 type TripletexClientProps = {
   initialConnection: Record<string, unknown> | null
-  initialJobs: JobRow[]
-  initialEvents: EventRow[]
   canManage: boolean
   helpUrl: string
 }
@@ -67,47 +64,6 @@ type ApiErrorPayload = {
   code: string | null
 }
 
-type ActivityItem = {
-  id: string
-  title: string
-  subtitle: string
-  detail?: string
-  timestamp: string
-}
-
-const SCOPE_ITEMS: Array<{ key: keyof ScopeConfig; label: string; hint: string }> = [
-  { key: "customers", label: "Kunder", hint: "Holder kundelisten lik i Proanbud og Tripletex" },
-  {
-    key: "projects",
-    label: "Prosjekter",
-    hint: "Oppretter prosjektet i Tripletex når et tilbud blir til en ordre",
-  },
-  {
-    key: "offers",
-    label: "Tilbud",
-    hint: "Sender tilbud til tilbudsoversikten i Tripletex, og oppretter ordre når tilbudet aksepteres",
-  },
-  {
-    key: "invoices",
-    label: "Fakturaer",
-    hint: "Oppretter faktura i Tripletex når et tilbud er akseptert",
-  },
-  {
-    key: "calendar",
-    label: "Kalender",
-    hint: "Overfører kalenderhendelser på prosjekter til Tripletex",
-  },
-  {
-    key: "documents",
-    label: "Dokumenter",
-    hint: "Laster opp prosjektdokumenter til Tripletex",
-  },
-  {
-    key: "travelExpenses",
-    label: "Kjørebok / reiseregning",
-    hint: "Overfører kjøreturer som kjøregodtgjørelse for hver ansatt",
-  },
-]
 
 async function readApiError(response: Response) {
   const fallback = `Forespørselen feilet (${response.status})`
@@ -147,69 +103,12 @@ function scopePayload(scopes: ScopeConfig) {
   }
 }
 
-function formatJobType(jobType: string) {
-  const labels: Record<string, string> = {
-    "customer.pull_all": "Hentet kunder",
-    "customer.upsert": "Synkroniserte kunde",
-    "project.upsert": "Synkroniserte prosjekt",
-    "offer.upsert": "Synkroniserte tilbud",
-    "order.create_from_offer": "Opprettet ordre",
-    "invoice.create_from_offer": "Opprettet faktura",
-    "document.upload": "Lastet opp dokument",
-    "calendar.activity.upsert": "Synkroniserte kalenderhendelse",
-    "webhook.invoice_paid": "Faktura betalt",
-    "reconcile.full": "Avstemming",
-    "travel_expense.upsert": "Overførte kjøretur (reiseregning)",
-    "travel_expense.delete": "Fjernet kjøretur fra Tripletex",
-    "employee.sync_all": "Koblet ansatte",
-  }
-  return labels[jobType] || jobType
-}
 
-function formatJobStatus(status: string) {
-  const labels: Record<string, string> = {
-    pending: "Venter",
-    processing: "Behandles",
-    retry: "Nytt forsøk",
-    completed: "Fullført",
-    failed: "Feilet",
-    dead_letter: "Avbrutt",
-  }
-  return labels[status] || status
-}
 
-function formatEventType(eventType: string) {
-  const labels: Record<string, string> = {
-    "invoice.paid": "Faktura betalt",
-  }
-  return labels[eventType] || eventType
-}
 
-function buildActivityLog(jobs: JobRow[], events: EventRow[]): ActivityItem[] {
-  const jobItems: ActivityItem[] = jobs.map((job) => ({
-    id: `job-${job.id}`,
-    title: formatJobType(job.job_type),
-    subtitle: formatJobStatus(job.status),
-    detail: job.last_error_message || undefined,
-    timestamp: job.created_at,
-  }))
-
-  const eventItems: ActivityItem[] = events.map((event) => ({
-    id: `event-${event.id}`,
-    title: formatEventType(event.event_type),
-    subtitle: event.process_status,
-    timestamp: event.received_at,
-  }))
-
-  return [...jobItems, ...eventItems]
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, 12)
-}
 
 export function TripletexClient({
   initialConnection,
-  initialJobs,
-  initialEvents,
   canManage,
   helpUrl,
 }: TripletexClientProps) {
@@ -226,8 +125,8 @@ export function TripletexClient({
       failed: 0,
       dead_letter: 0,
     },
-    recentJobs: initialJobs,
-    recentEvents: initialEvents,
+    recentJobs: [],
+    recentEvents: [],
   })
 
   const [apiKey, setApiKey] = React.useState("")
@@ -236,10 +135,8 @@ export function TripletexClient({
   const [isConnecting, setIsConnecting] = React.useState(false)
   const [isDisconnecting, setIsDisconnecting] = React.useState(false)
   const [isRemoving, setIsRemoving] = React.useState(false)
-  const [isSavingScopes, setIsSavingScopes] = React.useState(false)
   const [isUpdatingKey, setIsUpdatingKey] = React.useState(false)
   const [isReplacingKey, setIsReplacingKey] = React.useState(false)
-  const [isSyncing, setIsSyncing] = React.useState(false)
 
   const refreshState = React.useCallback(async () => {
     const response = await fetch("/api/integrations/tripletex", { cache: "no-store" })
@@ -258,10 +155,6 @@ export function TripletexClient({
   const syncState = String(state.connection?.sync_state || "disconnected")
   const isConnected = state.connected
   const hasStoredConnection = Boolean(state.connection)
-  const activityLog = React.useMemo(
-    () => buildActivityLog(state.recentJobs, state.recentEvents),
-    [state.recentJobs, state.recentEvents]
-  )
 
   const statusLabel =
     syncState === "connected" ? "Tilkoblet" : syncState === "degraded" ? "Ustabil" : "Frakoblet"
@@ -429,75 +322,8 @@ export function TripletexClient({
     }
   }
 
-  async function saveScopes() {
-    if (!canManage || !hasStoredConnection) return
 
-    setIsSavingScopes(true)
-    try {
-      const response = await fetch("/api/integrations/tripletex", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "update_scope",
-          ...scopePayload(scopes),
-        }),
-      })
 
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(typeof data.error === "string" ? data.error : "Kunne ikke lagre innstillinger")
-      }
-
-      toast.success("Innstillinger lagret")
-      await refreshState()
-    } catch (error) {
-      reportClientError(error, { context: { action: "tripletex_save_scopes" } })
-      toast.error(error instanceof Error ? error.message : "Ukjent feil")
-    } finally {
-      setIsSavingScopes(false)
-    }
-  }
-
-  const runManualSync = async () => {
-    if (!canManage) {
-      toast.error("Kun bedriftsadmin kan starte synkronisering")
-      return
-    }
-
-    if (!isConnected) {
-      toast.error("Koble til Tripletex først")
-      return
-    }
-
-    setIsSyncing(true)
-    try {
-      const response = await fetch("/api/integrations/tripletex", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "sync_now" }),
-      })
-
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(typeof data.error === "string" ? data.error : "Kunne ikke starte synkronisering")
-      }
-
-      toast.success("Synkronisering startet")
-      await refreshState()
-
-      window.setTimeout(() => {
-        void refreshState()
-      }, 4000)
-    } catch (error) {
-      reportClientError(error, { context: { action: "tripletex_manual_sync" } })
-      toast.error(error instanceof Error ? error.message : "Ukjent feil")
-    } finally {
-      setIsSyncing(false)
-    }
-  }
-
-  const failedJobs = state.jobs.failed + state.jobs.dead_letter
-  const lastError = typeof state.connection?.last_error_message === "string" ? state.connection.last_error_message : null
 
   return (
     <div className="flex flex-col gap-6">
@@ -587,28 +413,6 @@ export function TripletexClient({
               )}
             </div>
 
-            <div className="space-y-3 rounded-lg border p-4">
-              <p className="text-sm font-medium">Synkroniser</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {SCOPE_ITEMS.map((item) => (
-                  <label key={item.key} className="flex items-start justify-between gap-3 text-sm">
-                    <span className="min-w-0">
-                      <span className="block leading-tight">{item.label}</span>
-                      <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-                        {item.hint}
-                      </span>
-                    </span>
-                    <Switch
-                      className="mt-0.5 shrink-0"
-                      checked={scopes[item.key]}
-                      onCheckedChange={(checked) => setScopes((current) => ({ ...current, [item.key]: checked }))}
-                      disabled={!canManage}
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-
             <div className="flex flex-wrap gap-2">
               {!isConnected && (
                 <Button onClick={connectIntegration} disabled={isConnecting || !canManage}>
@@ -625,11 +429,6 @@ export function TripletexClient({
                   {isUpdatingKey ? "Lagrer…" : "Lagre nøkkel"}
                 </Button>
               )}
-              {hasStoredConnection && isConnected && (
-                <Button variant="outline" onClick={saveScopes} disabled={isSavingScopes || !canManage}>
-                  {isSavingScopes ? "Lagrer…" : "Lagre"}
-                </Button>
-              )}
               {hasStoredConnection && (
                 <Button variant="destructive" onClick={removeIntegration} disabled={isRemoving || !canManage}>
                   {isRemoving ? "Fjerner…" : "Fjern"}
@@ -639,76 +438,20 @@ export function TripletexClient({
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-              <CardTitle>Status</CardTitle>
-              {isConnected && canManage ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={runManualSync}
-                  disabled={isSyncing}
-                >
-                  <RefreshCw className={`mr-2 h-3.5 w-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-                  {isSyncing ? "Synkroniserer…" : "Synkroniser nå"}
-                </Button>
-              ) : null}
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">I kø</span>
-                <span>{state.jobs.pending + state.jobs.retry}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Behandles</span>
-                <span>{state.jobs.processing}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Feilet</span>
-                <span className={failedJobs > 0 ? "text-rose-700" : ""}>{failedJobs}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Sist OK</span>
-                <span>
-                  {state.connection?.last_success_at
-                    ? new Date(String(state.connection.last_success_at)).toLocaleString("no-NO")
-                    : "—"}
-                </span>
-              </div>
-              {lastError && (
-                <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
-                  {lastError}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle>Logg</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {activityLog.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Ingen hendelser</p>
-              ) : (
-                activityLog.map((item) => (
-                  <div key={item.id} className="rounded-lg border px-3 py-2 text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="font-medium">{item.title}</p>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {new Date(item.timestamp).toLocaleString("no-NO")}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{item.subtitle}</p>
-                    {item.detail && <p className="mt-1 text-xs text-rose-700">{item.detail}</p>}
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle>Status og synkomfang</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              Hva som synkroniseres, hvordan det går og hva du gjør når noe stopper, er likt for Fiken
+              og Tripletex — og ligger samlet på Regnskap-siden.
+            </p>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/min-bedrift/regnskap">Gå til Regnskap</Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       <Link href="/innstillinger/integrasjoner" className="text-sm text-muted-foreground hover:text-foreground">

@@ -106,6 +106,64 @@ export async function enqueueOfferTripletexSync(input: {
   return true
 }
 
+/**
+ * Legg en prosjektfaktura i kø mot Tripletex.
+ *
+ * Speiler `enqueueProjectInvoiceFikenSync`. Fakturaen bygges av de fakturerbare
+ * linjene brukeren har valgt — ikke av hele tilbudet — og opprettes først når
+ * brukeren faktisk fakturerer. Tripletex trenger en ordre som bærer linjene før
+ * `PUT /order/{id}/:invoice` kan lage fakturaen.
+ */
+export async function enqueueProjectInvoiceTripletexSync(input: {
+  companyId: string
+  projectInvoiceId: string
+  projectId: string
+  customerId: string | null
+}) {
+  const connection = await getTripletexConnectionState(input.companyId)
+  if (!connection) {
+    return false
+  }
+
+  const scopes = connection.scopeConfig
+  if (scopes.invoices === false) {
+    return false
+  }
+
+  if (scopes.customers !== false && input.customerId) {
+    await enqueueIntegrationJob({
+      companyId: input.companyId,
+      jobType: "customer.upsert",
+      payload: { customerId: input.customerId },
+      idempotencyKey: `tripletex:project-invoice:${input.projectInvoiceId}:customer:${input.customerId}`,
+    })
+  }
+
+  if (scopes.projects !== false) {
+    await enqueueIntegrationJob({
+      companyId: input.companyId,
+      jobType: "project.upsert",
+      payload: { projectId: input.projectId },
+      idempotencyKey: `tripletex:project-invoice:${input.projectInvoiceId}:project:${input.projectId}`,
+    })
+  }
+
+  await enqueueIntegrationJob({
+    companyId: input.companyId,
+    jobType: "invoice.create_from_project_invoice",
+    payload: {
+      projectInvoiceId: input.projectInvoiceId,
+      projectId: input.projectId,
+      customerId: input.customerId,
+      sendToCustomer: scopes.sendInvoiceFromAccounting !== false,
+    },
+    idempotencyKey: `tripletex:project-invoice:${input.projectInvoiceId}`,
+  })
+
+  processTripletexQueueInBackground({ batchSize: 20, maxBatches: 8 })
+  return true
+}
+
 export async function enqueueEntityTripletexSync(input: {
   companyId: string
   jobType: "customer.upsert" | "project.upsert"

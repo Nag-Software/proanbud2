@@ -37,6 +37,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { cn } from "@/lib/utils"
 import { calculateLineItemTotal, formatNok, type OfferLineItem } from "@/lib/tilbud/types"
+import {
+  INCOME_ACCOUNT_CATEGORY_OPTIONS,
+  effectiveIncomeAccountCategory,
+  type IncomeAccountCategory,
+} from "@/lib/tilbud/income-accounts"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 export type NewOfferItemsTableProps = {
   items: OfferLineItem[]
@@ -993,6 +1005,34 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
             <p className="text-[11px] leading-snug text-muted-foreground">
               Rabatt: prosent trukket fra prisen kunden ser.
             </p>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Inntektskonto (regnskap)</Label>
+              <Select
+                value={effectiveIncomeAccountCategory(editingItem)}
+                onValueChange={(value) =>
+                  setEditingItem((prev) =>
+                    prev ? { ...prev, incomeAccountCategory: value as IncomeAccountCategory } : null
+                  )
+                }
+              >
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {INCOME_ACCOUNT_CATEGORY_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                {editingItem.incomeAccountCategory
+                  ? "Valgt manuelt."
+                  : "Foreslått automatisk ut fra enhet og leverandør. Endre hvis regnskapet krever noe annet."}{" "}
+                Styrer hvilken konto salget føres på i regnskapet.
+              </p>
+            </div>
             <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
               <span className="text-muted-foreground">Linjesum</span>
               <span className="font-semibold tabular-nums">{formatNok(calculateLineItemTotal(editingItem))}</span>

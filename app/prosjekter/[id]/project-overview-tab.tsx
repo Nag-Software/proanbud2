@@ -1,13 +1,11 @@
 "use client"
 
-import Link from "next/link"
 import {
   AlertTriangle,
   ArrowRight,
   Calendar,
   CheckCircle2,
   ClipboardCheck,
-  Clock,
   FileText,
   Mail,
   Phone,
@@ -81,7 +79,6 @@ export type ParticipantHoursSummary = {
 }
 
 export type ProjectOverviewProps = {
-  projectId: string
   project: {
     status: string | null
     description: string | null
@@ -177,7 +174,6 @@ function Stat({
 }
 
 export function ProjectOverviewTab({
-  projectId,
   project,
   customer,
   tasks,
@@ -266,11 +262,12 @@ export function ProjectOverviewTab({
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-12">
-      {/* 1 — Det som står stille. Vises bare når det finnes noe. */}
+    <div className="space-y-3">
+      {/* Oppmerksomhet tar plass når noe faktisk må gjøres. Frisk status er
+          bare en kompakt linje, ikke et tomt dashboardkort. */}
       {attention.length > 0 ? (
-        <Card className="overflow-hidden lg:col-span-12">
-          <CardHeader className="px-4 pb-2 pt-3">
+        <Card className="gap-0 overflow-hidden py-0">
+          <CardHeader className="px-4 py-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <AlertTriangle className="size-4 text-[color:var(--tone-warning)]" />
               Krever oppmerksomhet
@@ -281,7 +278,7 @@ export function ProjectOverviewTab({
               {attention.map((row) => (
                 <li
                   key={row.key}
-                  className="flex flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap"
+                  className="flex flex-wrap items-center gap-3 px-4 py-2.5 sm:flex-nowrap"
                 >
                   <span
                     className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-control)]"
@@ -317,281 +314,303 @@ export function ProjectOverviewTab({
           </CardContent>
         </Card>
       ) : (
-        <Card className="lg:col-span-12">
-          <CardContent className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
-            <CheckCircle2 className="size-4 text-emerald-600" />
-            Alt i orden — ingen forfalte oppgaver, åpne avvik eller ufullstendige sjekklister.
-          </CardContent>
-        </Card>
+        <div className="flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-xs text-muted-foreground">
+          <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
+          Alt i orden — ingen forfalte oppgaver, åpne avvik eller ufullstendige sjekklister.
+        </div>
       )}
 
-      {/* 2 — Penger. Lønnsomhet er den nest mest brukte fanen; da skal svaret
-             stå her, ikke gjemmes i et utdrag lenger nede. */}
-      {!flags.isWorker && profitability && (
-        <ProfitabilityCard
-          profitability={profitability}
-          budgetNok={project.budget_nok}
-          onOpen={() => navigateToTab("lonnsomhet")}
-        />
-      )}
-
-      {/* 3 — Tilbud: den mest brukte fanen etter Oversikt. */}
-      {!flags.isWorker && (
-        <Card className="lg:col-span-4">
-          <CardHeader className="flex flex-row items-center justify-between px-4 pb-2 pt-3">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <FileText className="size-4" />
-              Tilbud
-            </CardTitle>
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto p-0 text-xs"
-              onClick={() => navigateToTab("tilbud")}
-            >
-              Se alle
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3 px-4 pb-4">
-            <Stat label="Sum tilbud" value={formatNok(offersSummary.total)} />
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Godkjent</span>
-              <span className="font-semibold tabular-nums">
-                {offersSummary.accepted} av {offersSummary.accepted + offersSummary.sent}
-              </span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-              <span
-                className="block h-full bg-primary"
-                style={{ width: `${Math.min(100, offersSummary.acceptancePercent)}%` }}
-              />
-            </div>
-            <Button size="sm" variant="outline" className="w-full" asChild>
-              <Link href={`/nytt-tilbud?projectId=${projectId}`}>Nytt tilbud</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 4 — Fremdrift: arbeid og tid i samme bilde. */}
-      <Card className={cn("lg:col-span-8", flags.isWorker && "lg:col-span-12")}>
-        <CardHeader className="px-4 pb-2 pt-3">
-          <CardTitle className="text-sm">Slik ligger vi an</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 px-4 pb-4">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <Stat
-              label="Oppgaver"
-              value={
-                metrics.totalTasks === 0
-                  ? "—"
-                  : `${metrics.doneTasks} av ${metrics.totalTasks}`
-              }
+      {/* Selvstendige kolonner unngår at korte kort strekkes av høyere naboer. */}
+      <div className="grid items-start gap-3 lg:grid-cols-12">
+        <div className="space-y-3 lg:col-span-8">
+          {!flags.isWorker && profitability && (
+            <ProfitabilityCard
+              profitability={profitability}
+              budgetNok={project.budget_nok}
+              onOpen={() => navigateToTab("lonnsomhet")}
             />
-            {flags.hasTimeforing && (
-              <Stat label="Timer ført" value={formatHours(metrics.totalHours)} />
-            )}
-            <Stat
-              label="Over fristen"
-              value={String(metrics.overdueTasks)}
-              tone={metrics.overdueTasks > 0 ? "negative" : undefined}
-            />
-          </div>
-
-          {metrics.totalTasks > 0 && (
-            <div>
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
-                <span
-                  className="block h-full bg-primary"
-                  style={{ width: `${metrics.progressPercent}%` }}
-                />
-              </div>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                {metrics.progressPercent} % av oppgavene er ferdige
-              </p>
-            </div>
           )}
 
-          {project.start_date && project.end_date && (
-            <div className="border-t pt-3">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <Calendar className="size-3.5" />
-                  {formatProjectDate(project.start_date)}
-                </span>
-                <span>{formatProjectDate(project.end_date)}</span>
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
-                <span
-                  className={cn(
-                    "block h-full",
-                    pastDeadline ? "bg-destructive" : "bg-accent"
+          {/* Fremdrift og neste arbeid hører til samme beslutning: hva skjer nå? */}
+          <Card className="gap-0 py-0">
+            <CardHeader className="flex flex-row items-center justify-between px-4 py-3">
+              <CardTitle className="text-sm">Arbeid og fremdrift</CardTitle>
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                onClick={() => navigateToTab("oppgaver")}
+              >
+                {metrics.totalTasks === 0 ? "Opprett oppgave" : "Se alle"}
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-3 px-4 pb-3">
+              {metrics.totalTasks > 0 || (flags.hasTimeforing && metrics.totalHours > 0) ? (
+                <div className="flex flex-wrap gap-x-8 gap-y-3">
+                  {metrics.totalTasks > 0 && (
+                    <Stat
+                      label="Ferdige oppgaver"
+                      value={`${metrics.doneTasks} av ${metrics.totalTasks}`}
+                    />
                   )}
-                  style={{ width: `${timelinePercent}%` }}
-                />
-              </div>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                {timelinePercent} % av planlagt periode er brukt
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 5 — Hva står for tur. */}
-      <Card className="lg:col-span-4">
-        <CardHeader className="flex flex-row items-center justify-between px-4 pb-2 pt-3">
-          <CardTitle className="text-sm">Neste oppgaver</CardTitle>
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto p-0 text-xs"
-            onClick={() => navigateToTab("oppgaver")}
-          >
-            Se alle
-          </Button>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          {nextTasks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Ingen åpne oppgaver.</p>
-          ) : (
-            <ul className="space-y-2.5">
-              {nextTasks.map((task) => (
-                <li key={task.id} className="flex items-start justify-between gap-3">
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">{task.title}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {task.assigneeName ?? "Ikke tildelt"}
-                    </span>
-                  </span>
-                  <span
-                    className={cn(
-                      "shrink-0 text-xs tabular-nums",
-                      task.due_date && new Date(task.due_date) < new Date()
-                        ? "font-semibold text-destructive"
-                        : "text-muted-foreground"
-                    )}
-                  >
-                    {formatDueDate(task.due_date)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 6 — Folk. */}
-      <Card className="lg:col-span-8">
-        <CardHeader className="flex flex-row items-center justify-between px-4 pb-2 pt-3">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <Users className="size-4" />
-            På jobben ({participants.length})
-          </CardTitle>
-          {!flags.isWorker && (
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto p-0 text-xs"
-              onClick={() => navigateToTab("deltakere")}
-            >
-              Se alle
-            </Button>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-3 px-4 pb-4">
-          {participants.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Ingen er lagt til på prosjektet ennå.</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {participants.slice(0, 8).map((participant) => (
-                <span
-                  key={participant.id}
-                  className="inline-flex items-center gap-2 rounded-[var(--radius-control)] border px-2 py-1.5"
-                >
-                  <Avatar className="size-6">
-                    <AvatarFallback className="bg-primary/10 text-[10px] text-primary">
-                      {participant.avatar}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm font-medium">{participant.name}</span>
-                </span>
-              ))}
-            </div>
-          )}
-
-          {flags.hasTimeforing && flags.isProjectAdmin && topHours.length > 0 && (
-            <div className="space-y-1.5 border-t pt-3">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                Mest timer
-              </p>
-              {topHours.map((entry) => (
-                <div key={entry.userId} className="flex items-center justify-between text-sm">
-                  <span>{entry.name}</span>
-                  <span className="font-medium tabular-nums">{formatHours(entry.totalHours)}</span>
+                  {flags.hasTimeforing && metrics.totalHours > 0 && (
+                    <Stat label="Timer ført" value={formatHours(metrics.totalHours)} />
+                  )}
+                  {metrics.overdueTasks > 0 && (
+                    <Stat
+                      label="Over fristen"
+                      value={String(metrics.overdueTasks)}
+                      tone="negative"
+                    />
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 7 — Kunden og avtalen. */}
-      <Card className="lg:col-span-4">
-        <CardHeader className="px-4 pb-2 pt-3">
-          <CardTitle className="text-sm">Kunde og avtale</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 px-4 pb-4">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Kunde
-            </p>
-            <p className="truncate text-sm font-semibold">{customer.name}</p>
-          </div>
-
-          {(customer.phone || customer.email) && (
-            <div className="flex flex-wrap gap-2">
-              {customer.phone && (
-                <Button size="sm" variant="outline" asChild>
-                  <a href={`tel:${customer.phone}`}>
-                    <Phone className="size-3.5" />
-                    Ring
-                  </a>
-                </Button>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Ingen oppgaver eller arbeidstimer er registrert ennå.
+                </p>
               )}
-              {customer.email && (
-                <Button size="sm" variant="outline" asChild>
-                  <a href={`mailto:${customer.email}`}>
-                    <Mail className="size-3.5" />
-                    E-post
-                  </a>
-                </Button>
+
+              {metrics.totalTasks > 0 && (
+                <div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                    <span
+                      className="block h-full bg-primary"
+                      style={{ width: `${metrics.progressPercent}%` }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {metrics.progressPercent} % av oppgavene er ferdige
+                  </p>
+                </div>
               )}
-            </div>
+
+              {nextTasks.length > 0 ? (
+                <div className="border-t pt-3">
+                  <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Neste oppgaver
+                  </p>
+                  <ul className="space-y-2.5">
+                    {nextTasks.map((task) => (
+                      <li key={task.id} className="flex items-start justify-between gap-3">
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">{task.title}</span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {task.assigneeName ?? "Ikke tildelt"}
+                          </span>
+                        </span>
+                        <span
+                          className={cn(
+                            "shrink-0 text-xs tabular-nums",
+                            task.due_date && new Date(task.due_date) < new Date()
+                              ? "font-semibold text-destructive"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          {formatDueDate(task.due_date)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : metrics.totalTasks > 0 ? (
+                <p className="border-t pt-3 text-sm text-muted-foreground">
+                  Alle oppgavene er ferdige.
+                </p>
+              ) : null}
+
+              {project.start_date && project.end_date && (
+                <div className="border-t pt-3">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="size-3.5" />
+                      {formatProjectDate(project.start_date)}
+                    </span>
+                    <span>{formatProjectDate(project.end_date)}</span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                    <span
+                      className={cn(
+                        "block h-full",
+                        pastDeadline ? "bg-destructive" : "bg-accent"
+                      )}
+                      style={{ width: `${timelinePercent}%` }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {timelinePercent} % av planlagt periode er brukt
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <aside className="space-y-3 lg:col-span-4">
+          {!flags.isWorker && (
+            <Card className="gap-0 py-0">
+              <CardHeader className="flex flex-row items-center justify-between px-4 py-3">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <FileText className="size-4" />
+                  Tilbud
+                </CardTitle>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => navigateToTab("tilbud")}
+                >
+                  {offersSummary.total === 0 ? "Åpne" : "Se alle"}
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-3 px-4 pb-3">
+                {offersSummary.total === 0 &&
+                offersSummary.accepted === 0 &&
+                offersSummary.sent === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Ingen tilbud er registrert på prosjektet ennå.
+                  </p>
+                ) : (
+                  <>
+                    <Stat label="Sum tilbud" value={formatNok(offersSummary.total)} />
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Godkjent</span>
+                      <span className="font-semibold tabular-nums">
+                        {offersSummary.accepted} av {offersSummary.accepted + offersSummary.sent}
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <span
+                        className="block h-full bg-primary"
+                        style={{ width: `${Math.min(100, offersSummary.acceptancePercent)}%` }}
+                      />
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
           )}
 
-          <div className="space-y-1 border-t pt-3 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Periode</span>
-              <span className="font-medium">{getProjectPeriod(project)}</span>
-            </div>
-            {!flags.isWorker && (
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Totalramme</span>
-                <span className="font-medium tabular-nums">
-                  {formatNok(project.budget_nok || 0)}
-                </span>
+          {/* Kunde, avtale og folk er samlet som kompakt støtteinformasjon. */}
+          <Card className="gap-0 py-0">
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="text-sm">Prosjektdetaljer</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 px-4 pb-3">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Kunde
+                </p>
+                <p className="truncate text-sm font-semibold">{customer.name}</p>
               </div>
-            )}
-          </div>
 
-          {project.description?.trim() && (
-            <p className="line-clamp-4 border-t pt-3 text-sm text-muted-foreground">
-              {project.description}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+              {(customer.phone || customer.email) && (
+                <div className="flex flex-wrap gap-2">
+                  {customer.phone && (
+                    <Button size="sm" variant="outline" asChild>
+                      <a href={`tel:${customer.phone}`}>
+                        <Phone className="size-3.5" />
+                        Ring
+                      </a>
+                    </Button>
+                  )}
+                  {customer.email && (
+                    <Button size="sm" variant="outline" asChild>
+                      <a href={`mailto:${customer.email}`}>
+                        <Mail className="size-3.5" />
+                        E-post
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-1 border-t pt-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Periode</span>
+                  <span className="text-right font-medium">{getProjectPeriod(project)}</span>
+                </div>
+                {!flags.isWorker && project.budget_nok ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Totalramme</span>
+                    <span className="font-medium tabular-nums">
+                      {formatNok(project.budget_nok)}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="border-t pt-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <Users className="size-3.5" />
+                    På jobben ({participants.length})
+                  </p>
+                  {!flags.isWorker && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() => navigateToTab("deltakere")}
+                    >
+                      Se alle
+                    </Button>
+                  )}
+                </div>
+                {participants.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Ingen er lagt til på prosjektet ennå.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {participants.slice(0, 5).map((participant) => (
+                      <span
+                        key={participant.id}
+                        className="inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border px-2 py-1"
+                      >
+                        <Avatar className="size-5">
+                          <AvatarFallback className="bg-primary/10 text-[9px] text-primary">
+                            {participant.avatar}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="max-w-32 truncate text-xs font-medium">
+                          {participant.name}
+                        </span>
+                      </span>
+                    ))}
+                    {participants.length > 5 && (
+                      <span className="inline-flex items-center px-1 text-xs text-muted-foreground">
+                        +{participants.length - 5}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {flags.hasTimeforing && flags.isProjectAdmin && topHours.length > 0 && (
+                <div className="space-y-1.5 border-t pt-3">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Mest timer
+                  </p>
+                  {topHours.map((entry) => (
+                    <div key={entry.userId} className="flex items-center justify-between text-sm">
+                      <span className="truncate">{entry.name}</span>
+                      <span className="font-medium tabular-nums">
+                        {formatHours(entry.totalHours)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {project.description?.trim() && (
+                <p className="line-clamp-3 border-t pt-3 text-sm text-muted-foreground">
+                  {project.description}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
     </div>
   )
 }
@@ -616,9 +635,32 @@ function ProfitabilityCard({
   const costShare =
     revenueNok > 0 ? Math.min(100, Math.round((actual.totalCostNok / revenueNok) * 100)) : 0
 
+  if (!hasRevenue) {
+    return (
+      <Card className="gap-0 py-0">
+        <CardHeader className="flex flex-row items-center justify-between px-4 py-3">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <TrendingUp className="size-4" />
+            Lønnsomhet
+          </CardTitle>
+          <Button variant="link" size="sm" className="h-auto gap-1 p-0 text-xs" onClick={onOpen}>
+            Åpne
+            <ArrowRight className="size-3" />
+          </Button>
+        </CardHeader>
+        <CardContent className="px-4 pb-3">
+          <p className="text-sm font-medium">Kan ikke beregnes ennå</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Lønnsomheten vises når prosjektet har et akseptert tilbud eller fakturerbare timer.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
-    <Card className="lg:col-span-8">
-      <CardHeader className="flex flex-row items-center justify-between px-4 pb-2 pt-3">
+    <Card className="gap-0 py-0">
+      <CardHeader className="flex flex-row items-center justify-between px-4 py-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <TrendingUp className="size-4" />
           Tjener vi penger?
@@ -628,7 +670,7 @@ function ProfitabilityCard({
           <ArrowRight className="size-3" />
         </Button>
       </CardHeader>
-      <CardContent className="space-y-4 px-4 pb-4">
+      <CardContent className="space-y-3 px-4 pb-3">
         <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
           <div className="min-w-0">
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -655,26 +697,20 @@ function ProfitabilityCard({
           {budgetNok ? <Stat label="Budsjett" value={formatNok(budgetNok)} /> : null}
         </div>
 
-        {hasRevenue ? (
-          <div>
-            <div className="h-2 overflow-hidden rounded-full bg-emerald-600/20">
-              <span
-                className={cn(
-                  "block h-full",
-                  marginPositive ? "bg-foreground/70" : "bg-destructive"
-                )}
-                style={{ width: `${costShare}%` }}
-              />
-            </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {costShare} % av omsetningen er brukt på lønn og materialer
-            </p>
+        <div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-emerald-600/20">
+            <span
+              className={cn(
+                "block h-full",
+                marginPositive ? "bg-foreground/70" : "bg-destructive"
+              )}
+              style={{ width: `${costShare}%` }}
+            />
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            Omsetningen teller først når et tilbud er akseptert på prosjektet.
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {costShare} % av omsetningen er brukt på lønn og materialer
           </p>
-        )}
+        </div>
 
         {profitability.costRateNok === 0 && (
           <p className="flex items-center gap-1.5 text-xs text-[color:var(--tone-warning-strong)]">

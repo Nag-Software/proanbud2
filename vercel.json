@@ -1,9 +1,15 @@
 {
-  "regions": ["dub1"],
+  "regions": [
+    "dub1"
+  ],
   "crons": [
     {
+      "path": "/api/integrations/tripletex/reconcile",
+      "schedule": "30 2 * * *"
+    },
+    {
       "path": "/api/integrations/tripletex/worker",
-      "schedule": "0 3 * * *"
+      "schedule": "30 4 * * *"
     },
     {
       "path": "/api/billing/trial-reminders",
@@ -19,7 +25,7 @@
     },
     {
       "path": "/api/integrations/fiken/worker",
-      "schedule": "30 2 * * *"
+      "schedule": "0 4 * * *"
     },
     {
       "path": "/api/cron/timeforing-auto-close",

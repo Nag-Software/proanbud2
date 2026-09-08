@@ -48,6 +48,7 @@ export function BedriftsprofilClient({
   const [website, setWebsite] = useState(initialProfile.website)
   const [quoteValidityDays, setQuoteValidityDays] = useState(String(initialProfile.quoteValidityDays))
   const [priceLevel, setPriceLevel] = useState<CompanyPriceLevel>(initialProfile.priceLevel)
+  const [vatRegistered, setVatRegistered] = useState(initialProfile.vatRegistered ? "ja" : "nei")
   const [industry, setIndustry] = useState(initialProfile.industry || "none")
 
   const [isSaving, setIsSaving] = useState(false)
@@ -128,6 +129,7 @@ export function BedriftsprofilClient({
         quote_validity_days: parsedValidityDays,
         price_level: priceLevel,
         industry: industry === "none" ? null : industry,
+        vat_registered: vatRegistered === "ja",
         updated_at: new Date().toISOString(),
       }
 
@@ -162,6 +164,7 @@ export function BedriftsprofilClient({
         quoteValidityDays: parsedValidityDays,
         priceLevel,
         industry: industry === "none" ? "" : industry,
+        vatRegistered: vatRegistered === "ja",
       })
 
       toast.success(
@@ -322,6 +325,35 @@ export function BedriftsprofilClient({
               />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Merverdiavgift</CardTitle>
+          <CardDescription>
+            Om bedriften er registrert i Merverdiavgiftsregisteret. Dette styrer om tilbud og fakturaer legger på
+            25 % mva — og hvordan salget bokføres i regnskapsintegrasjonen.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Er bedriften mva-registrert?</Label>
+            <Select value={vatRegistered} onValueChange={setVatRegistered}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ja">Ja — vi er mva-registrert</SelectItem>
+                <SelectItem value="nei">Nei — vi er ikke mva-registrert</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="text-xs text-muted-foreground sm:pt-7">
+            {vatRegistered === "ja"
+              ? "Tilbud og fakturaer viser «Mva (25 %)», og salget bokføres med utgående mva."
+              : "Tilbud og fakturaer viser «Ikke mva-pliktig» uten mva-beløp, og salget bokføres uten utgående mva. Du må registrere deg når avgiftspliktig omsetning passerer 50 000 kr på 12 måneder."}
+          </p>
         </CardContent>
       </Card>
 

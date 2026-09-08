@@ -11,6 +11,7 @@ import { fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
 import { type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
 import { ACTIVE_PROJECT_STATUSES } from "@/app/prosjekter/project-utils"
 import { ProjectPicker, type PickerProject } from "./project-picker"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 type ProjectRow = {
   id: string
@@ -136,9 +137,7 @@ export default async function NyttTilbudPage({ searchParams }: Props) {
     )
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
 
   const [projectResult, company] = await Promise.all([
     supabase

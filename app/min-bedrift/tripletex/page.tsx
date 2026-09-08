@@ -7,14 +7,13 @@ import { getTripletexApiBaseUrl, TRIPLETEX_HELP_URL } from "@/lib/integrations/t
 
 import { TripletexClient } from "./tripletex-client"
 import { TripletexEmployeeMapping } from "@/components/integrations/tripletex-employee-mapping"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 export default async function TripletexPage() {
   await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
 
   let companyId: string | null = null
   let canManageIntegration = false
@@ -41,33 +40,15 @@ export default async function TripletexPage() {
     )
   }
 
-  const [connectionResult, jobsResult, eventsResult] = companyId
-    ? await Promise.all([
-        supabase
-          .from("tripletex_connections")
-          .select("company_id, sync_state, session_expires_at, default_account_id, last_success_at, last_error_at, last_error_message, scope_config")
-          .eq("company_id", companyId)
-          .maybeSingle(),
-        supabase
-          .from("integration_jobs")
-          .select("id, status, job_type, created_at, last_error_message")
-          .eq("company_id", companyId)
-          .eq("provider", "tripletex")
-          .order("created_at", { ascending: false })
-          .limit(15),
-        supabase
-          .from("integration_webhook_events")
-          .select("id, event_type, process_status, received_at")
-          .eq("company_id", companyId)
-          .eq("provider", "tripletex")
-          .order("received_at", { ascending: false })
-          .limit(15),
-      ])
-    : [
-        { data: null as any },
-        { data: [] as any[] },
-        { data: [] as any[] },
-      ]
+  // Jobber og webhook-hendelser hentes ikke lenger her: aktivitetsloggen er felles
+  // for begge regnskapssystemene og bor på /min-bedrift/regnskap.
+  const connectionResult = companyId
+    ? await supabase
+        .from("tripletex_connections")
+        .select("company_id, sync_state, session_expires_at, default_account_id, last_success_at, last_error_at, last_error_message, scope_config")
+        .eq("company_id", companyId)
+        .maybeSingle()
+    : { data: null }
 
   return (
     <AppPageShell segments={["Min bedrift", "Tripletex"]}>
@@ -76,15 +57,13 @@ export default async function TripletexPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Tripletex</h1>
           {getTripletexApiBaseUrl().includes("api-test.tripletex.tech") && (
             <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900">
-              Test
+              Beta
             </span>
           )}
         </div>
 
         <TripletexClient
           initialConnection={connectionResult.data}
-          initialJobs={jobsResult.data || []}
-          initialEvents={eventsResult.data || []}
           canManage={canManageIntegration}
           helpUrl={TRIPLETEX_HELP_URL}
         />

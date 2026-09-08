@@ -28,22 +28,20 @@ export type NavItem = {
   feature?: FeatureKey
 }
 
-// Bunn-naven speiler de daglige kjerneoppgavene — HMS nås via sidebaren/Meny.
-// (/tilbud gates ikke — tilbud er kjernefunksjon i alle planer.)
+// Bunnmenyen er tre daglige destinasjoner + «Mer» — ikke et sitemap. Alt
+// annet (tilbud, meldinger, kunder, dokumenter, HMS …) nås fra Mer-arket,
+// som bygges av lib/app-nav og derfor aldri kan komme i utakt med sidebaren.
+// Fire kolonner gir plass til ekte etiketter i stedet for 10 px avkortet tekst.
 export const FULL_NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashbord", icon: "dashboard", exact: true },
   { href: "/prosjekter", label: "Prosjekter", icon: "projects", exact: false },
-  { href: "/tilbud", label: "Tilbud", icon: "offers", exact: false },
   { href: "/timeforing", label: "Timer", icon: "hours", exact: false },
-  { href: "/meldinger", label: "Meldinger", icon: "messages", exact: false, feature: "meldinger" },
 ]
 
-// Workers only have Projects, Timer, Kart (read-only locator), Kjørebok
-// (own trips across projects) + Calendar.
+// Håndverkeren starter dagen på timeføring — den ligger derfor først.
+// Kjørebok og kalender flyttet til Mer-arket sammen med resten.
 export const WORKER_NAV_ITEMS: NavItem[] = [
-  { href: "/prosjekter", label: "Prosjekter", icon: "projects", exact: false },
   { href: "/timeforing", label: "Timer", icon: "hours", exact: false },
+  { href: "/prosjekter", label: "Prosjekter", icon: "projects", exact: false },
   { href: "/kart", label: "Kart", icon: "map", exact: false },
-  { href: "/kjorebok", label: "Kjørebok", icon: "trips", exact: false },
-  { href: "/kalender", label: "Kalender", icon: "calendar", exact: false, feature: "kalender" },
 ]

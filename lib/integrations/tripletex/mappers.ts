@@ -374,3 +374,73 @@ export function mapMileageAllowanceFromTrip(
     isCompanyCar: false,
   }
 }
+
+/**
+ * POST /order fra en prosjektfaktura (`project_invoices` + `project_invoice_lines`).
+ *
+ * Tripletex har ingen fakturakladd slik Fiken har: veien til en faktura går alltid
+ * via en ordre som bærer linjene, og `PUT /order/{id}/:invoice` gjør den om til en
+ * ekte faktura. Ordren er derfor et rent mellomledd her — den speiler nøyaktig de
+ * linjene brukeren valgte i Fakturering-panelet, ikke hele tilbudet.
+ *
+ * Linjene er allerede eks. mva, og påslag og rabatt er regnet inn i `unit_price_nok`
+ * av lib/fakturering/billable.ts. Derfor sendes INGEN `discount` her — gjorde vi det
+ * ville rabatten blitt trukket to ganger, samme felle som lineUnitPriceExVat advarer om.
+ */
+export type ProjectInvoiceLineRow = {
+  description: string | null
+  quantity: number | null
+  unit_price_nok: number | null
+  amount_nok: number | null
+  sort_order: number | null
+}
+
+export function mapOrderFromProjectInvoice(
+  lines: ProjectInvoiceLineRow[],
+  customerExternalId: number,
+  projectExternalId: number | null,
+  options?: {
+    defaultVatTypeId?: number | null
+    defaultAccountId?: number | null
+    /** Vises som referanse på ordren/fakturaen — kort og uten systemnavn. */
+    reference?: string | null
+    invoiceComment?: string | null
+  }
+) {
+  const orderDate = new Date().toISOString().slice(0, 10)
+
+  const orderLines = lines.map((line) => {
+    const quantity = Number(line.quantity ?? 1) || 1
+    // Faller tilbake på totalen delt på antall når enhetsprisen mangler, slik at en
+    // manuell linje uten enhetspris fortsatt fakturerer riktig beløp.
+    const unitPrice =
+      line.unit_price_nok != null
+        ? Number(line.unit_price_nok)
+        : Number(line.amount_nok ?? 0) / quantity
+
+    const row: Record<string, unknown> = {
+      description: (line.description || "").trim() || "Utført arbeid",
+      count: quantity,
+      unitPriceExcludingVatCurrency: unitPrice,
+    }
+
+    if (options?.defaultVatTypeId) {
+      row.vatType = { id: options.defaultVatTypeId }
+    }
+    if (options?.defaultAccountId) {
+      row.account = { id: options.defaultAccountId }
+    }
+    return row
+  })
+
+  return {
+    customer: { id: customerExternalId },
+    ...(projectExternalId ? { project: { id: projectExternalId } } : {}),
+    orderDate,
+    deliveryDate: orderDate,
+    isPrioritizeAmountsIncludingVat: false,
+    ...(options?.reference ? { reference: options.reference } : {}),
+    ...(options?.invoiceComment ? { invoiceComment: options.invoiceComment } : {}),
+    orderLines,
+  }
+}

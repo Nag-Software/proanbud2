@@ -478,7 +478,7 @@ export function TutorialWizard() {
 
       {phase === "panel" && (
         <div
-          className="fixed right-4 bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] z-[92] w-[300px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-border bg-background shadow-xl md:bottom-4"
+          className="fixed right-4 bottom-[calc(3.75rem+env(safe-area-inset-bottom)+0.75rem)] z-[92] w-[300px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-border bg-background shadow-xl md:bottom-4"
           role="dialog"
           aria-label="Kom i gang"
         >

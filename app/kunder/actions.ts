@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { enqueueEntityTripletexSync, processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
+import { enqueueEntitySync } from "@/lib/regnskap/sync"
 import { canAccessCustomers } from "@/lib/roles"
 import { logServerError } from "@/lib/errors/log"
 import { GENERIC_ERROR_MESSAGE } from "@/lib/errors/user-message"
@@ -42,20 +42,20 @@ async function resolveCustomerAccess(
   return { ok: true, data: { companyId: userData.company_id, userId: user.id } }
 }
 
-// Tripletex-synk er «best effort»: kunden er allerede lagret, så en hikke i
-// synk-køen skal aldri vises som feil til brukeren.
+// Regnskapssynk er «best effort»: kunden er allerede lagret, så en hikke i
+// synk-køen skal aldri vises som feil til brukeren. Går til den integrasjonen
+// som faktisk er tilkoblet — Fiken eller Tripletex.
 async function enqueueCustomerSync(companyId: string, customerId: string) {
   try {
-    await enqueueEntityTripletexSync({
+    await enqueueEntitySync({
       companyId,
       jobType: "customer.upsert",
       payload: { customerId },
       idempotencyKey: `customer:${customerId}:upsert`,
     })
-    processTripletexQueueInBackground()
   } catch (error) {
     await logServerError({
-      message: "Kunde lagret, men Tripletex-synk kunne ikke settes i kø",
+      message: "Kunde lagret, men synk til regnskapet kunne ikke settes i kø",
       error,
       source: "action",
       route: "kunder/enqueueCustomerSync",

@@ -3,10 +3,18 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
-import { ArrowLeftIcon, ArrowUpDownIcon, ChevronDownIcon, FuelIcon, Loader2Icon } from "lucide-react"
+import {
+  ArrowLeftIcon,
+  ArrowUpDownIcon,
+  ChevronDownIcon,
+  FuelIcon,
+  Loader2Icon,
+  Repeat2Icon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
@@ -80,6 +88,7 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
   const [routeGeometry, setRouteGeometry] = useState<LngLat[] | null>(null)
   const [routes, setRoutes] = useState<RouteResult[]>([])
   const [selectedRouteIdx, setSelectedRouteIdx] = useState(0)
+  const [includeReturn, setIncludeReturn] = useState(false)
 
   // A vehicle is required, so default to the current driver's car (or the first
   // available one) instead of "no vehicle".
@@ -157,7 +166,7 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
   )
 
   function applyRoute(r: RouteResult) {
-    setDistanceKm(String(r.distanceKm))
+    setDistanceKm(String(r.distanceKm * (includeReturn ? 2 : 1)))
     setRouteGeometry(Array.isArray(r.geometry) ? r.geometry : null)
   }
 
@@ -222,6 +231,11 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
     if (fromLat != null && fromLng != null && toLat != null && toLng != null) {
       void recalcRoute(toLat, toLng, fromLat, fromLng)
     }
+  }
+
+  function toggleReturn() {
+    setIncludeReturn(!includeReturn)
+    setDistanceKm(kmNum > 0 ? String(includeReturn ? kmNum / 2 : kmNum * 2) : "")
   }
 
   function onSelectVehicle(id: string) {
@@ -398,6 +412,7 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
                     )
                   }
                 />
+
                 <Kpi
                   label="Godtgjørelse"
                   value={kmNum > 0 ? kr(amount.amountNok) : "—"}
@@ -415,7 +430,7 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
           </div>
 
           {/* FIELDS */}
-          <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border bg-card">
+          <div className="flex min-h-0 h-fit flex-col overflow-hidden rounded-2xl border bg-card">
             {/* Mobile-only disclosure: keeps the default screen to just map + from/to + Lagre. */}
             <button
               type="button"
@@ -441,11 +456,11 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
 
             <div
               className={cn(
-                "space-y-4 px-4 pb-4 lg:block lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:p-4",
-                showMore ? "block" : "hidden"
+                "grid-cols-2 gap-4 px-4 pb-4 lg:grid lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:p-4",
+                showMore ? "grid" : "hidden"
               )}
             >
-              {routeNote && <p className="text-xs text-amber-600">{routeNote}</p>}
+              {routeNote && <p className="col-span-2 text-xs text-amber-600">{routeNote}</p>}
 
               <div className="space-y-1.5">
                 <Label>Kjøretøy</Label>
@@ -479,17 +494,16 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
 
               <div className="space-y-1.5">
                 <Label htmlFor="trip-date">Dato</Label>
-                <Input
+                <DatePicker
                   id="trip-date"
-                  type="date"
-                  className="h-11 sm:h-9"
                   value={tripDate}
-                  max={todayIso()}
-                  onChange={(e) => setTripDate(e.target.value)}
+                  maxDate={todayIso()}
+                  onChange={setTripDate}
+                  className="h-11 w-full sm:h-9"
                 />
               </div>
 
-              <div className="space-y-1.5">
+              <div className="col-span-2 space-y-1.5">
                 <Label htmlFor="trip-distance">Distanse (km)</Label>
                 <div className="flex items-center gap-2">
                   <Input
@@ -501,6 +515,7 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
                     placeholder="0"
                   />
                   {hasBothPoints && (
+                    <>
                     <Button
                       type="button"
                       variant="outline"
@@ -511,6 +526,18 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
                     >
                       {routing ? <Loader2Icon className="size-4 animate-spin" /> : "Beregn rute"}
                     </Button>
+                    <Button
+                      type="button"
+                      variant={includeReturn ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-8 gap-1.5 px-2.5 text-xs"
+                      onClick={toggleReturn}
+                      aria-pressed={includeReturn}
+                    >
+                      <Repeat2Icon className="size-3.5" />
+                      Inkl. retur
+                    </Button>
+                    </>
                   )}
                 </div>
               </div>
@@ -551,7 +578,7 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
               </div>
 
               {/* Error shown here on desktop; mobile surfaces it above the sticky bar. */}
-              {error && <p className="hidden text-sm text-destructive lg:block">{error}</p>}
+              {error && <p className="col-span-2 hidden text-sm text-destructive lg:block">{error}</p>}
             </div>
 
             {/* Desktop action bar (mobile uses the sticky bar below). */}

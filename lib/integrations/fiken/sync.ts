@@ -9,11 +9,18 @@ export async function getFikenConnectionState(companyId: string) {
   const admin = createAdminClient()
   const { data } = await admin
     .from("fiken_connections")
-    .select("sync_state, scope_config")
+    .select("sync_state, scope_config, fiken_company_slug")
     .eq("company_id", companyId)
     .maybeSingle()
 
   if (!data || data.sync_state === "disconnected") {
+    return null
+  }
+
+  // A connection without a chosen Fiken company is not usable: every resource path is
+  // scoped by /companies/{slug}. This happens between the OAuth callback and the user
+  // picking which of their Fiken companies to bind, so we hold all sync until then.
+  if (!data.fiken_company_slug) {
     return null
   }
 
@@ -69,27 +76,38 @@ export async function enqueueOfferFikenSync(input: {
     })
   }
 
-  if (scopes.offers) {
-    if (phase === "quote") {
-      await enqueueFikenJob({
-        companyId: input.companyId,
-        jobType: "offer.create_from_offer",
-        payload: { offerId: input.offerId, customerId: input.customerId, projectId: input.projectId },
-        idempotencyKey: `${stableKey}:offer`,
-      })
-    } else if (scopes.invoices) {
-      await enqueueFikenJob({
-        companyId: input.companyId,
-        jobType: "invoice.create_from_offer",
-        payload: {
-          offerId: input.offerId,
-          customerId: input.customerId,
-          projectId: input.projectId,
-          sendToCustomer: input.sendToCustomer === true,
-        },
-        idempotencyKey: `${stableKey}:invoice`,
-      })
-    }
+  // Offers and invoices are INDEPENDENT scopes. They used to be nested (invoices only
+  // enqueued inside `if (scopes.offers)`), which meant turning off tilbud-sync silently
+  // killed faktura-sync too — the opposite of what the toggle promises.
+  if (scopes.offers && phase === "quote") {
+    await enqueueFikenJob({
+      companyId: input.companyId,
+      jobType: "offer.create_from_offer",
+      payload: { offerId: input.offerId, customerId: input.customerId, projectId: input.projectId },
+      idempotencyKey: `${stableKey}:offer`,
+    })
+  }
+
+  // MERK: aksept av et tilbud oppretter IKKE lenger en faktura.
+  //
+  // Håndverkere fakturerer etter utført arbeid, ikke ved signering — og tilleggene
+  // kommer underveis. Fakturaen bygges derfor av et utvalg fakturerbare linjer på
+  // prosjektet (se lib/fakturering/billable.ts + jobbtypen
+  // `invoice.create_from_project_invoice`), utløst av brukeren når hen faktisk
+  // fakturerer. Kallstedet kan fortsatt be eksplisitt om en faktura fra ett helt
+  // tilbud — det er den gamle veien, beholdt for tilbud uten prosjekt.
+  if (scopes.invoices && phase === "order" && input.sendToCustomer === true) {
+    await enqueueFikenJob({
+      companyId: input.companyId,
+      jobType: "invoice.create_from_offer",
+      payload: {
+        offerId: input.offerId,
+        customerId: input.customerId,
+        projectId: input.projectId,
+        sendToCustomer: scopes.sendInvoiceFromFiken !== false,
+      },
+      idempotencyKey: `${stableKey}:invoice`,
+    })
   }
 
   return true
@@ -194,4 +212,59 @@ export async function fetchOfferFikenSyncStatus(
     invoice: byType("invoice"),
     pendingJobs,
   }
+}
+
+/**
+ * Legg en prosjektfaktura i kø mot Fiken. Kalles når brukeren faktisk fakturerer —
+ * ikke når et tilbud aksepteres. Fiken oppretter fakturaen (og sender den, hvis
+ * `sendInvoiceFromFiken` er på), og eier fakturanummeret.
+ */
+export async function enqueueProjectInvoiceFikenSync(input: {
+  companyId: string
+  projectInvoiceId: string
+  projectId: string
+  customerId: string | null
+}) {
+  const connection = await getFikenConnectionState(input.companyId)
+  if (!connection) {
+    return false
+  }
+
+  const scopes = connection.scopeConfig
+  if (!scopes.invoices) {
+    return false
+  }
+
+  if (scopes.contacts && input.customerId) {
+    await enqueueFikenJob({
+      companyId: input.companyId,
+      jobType: "contact.upsert",
+      payload: { customerId: input.customerId },
+      idempotencyKey: `fiken:project-invoice:${input.projectInvoiceId}:contact:${input.customerId}`,
+    })
+  }
+
+  if (scopes.projects) {
+    await enqueueFikenJob({
+      companyId: input.companyId,
+      jobType: "project.upsert",
+      payload: { projectId: input.projectId },
+      idempotencyKey: `fiken:project-invoice:${input.projectInvoiceId}:project:${input.projectId}`,
+    })
+  }
+
+  await enqueueFikenJob({
+    companyId: input.companyId,
+    jobType: "invoice.create_from_project_invoice",
+    payload: {
+      projectInvoiceId: input.projectInvoiceId,
+      projectId: input.projectId,
+      customerId: input.customerId,
+      sendToCustomer: scopes.sendInvoiceFromFiken !== false,
+    },
+    idempotencyKey: `fiken:project-invoice:${input.projectInvoiceId}`,
+  })
+
+  processFikenQueueInBackground({ batchSize: 5, maxBatches: 8 })
+  return true
 }

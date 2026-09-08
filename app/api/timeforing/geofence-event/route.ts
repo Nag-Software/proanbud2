@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
-import { companyHasModule } from "@/lib/billing/server-modules"
+import { companyHasFeature, companyHasModule } from "@/lib/billing/server-modules"
 import { logServerError } from "@/lib/errors/log"
 import { userFromBearer } from "@/lib/timeforing/native-auth"
 import { calculateSessionHours } from "@/lib/time-tracking"
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient()
-  if (!(await companyHasModule(auth.companyId, "timeforing"))) {
+  if (!(await companyHasFeature(auth.companyId, "timeforing"))) {
     return NextResponse.json({ error: "Timeføring ikke aktivert" }, { status: 403 })
   }
 

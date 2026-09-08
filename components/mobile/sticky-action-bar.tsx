@@ -3,6 +3,7 @@
 import type { ReactNode } from "react"
 
 import { useNativePlatform } from "@/hooks/use-is-native-app"
+import { MOBILE_NAV_HEIGHT } from "@/components/mobile-bottom-nav"
 import { cn } from "@/lib/utils"
 
 /**
@@ -24,13 +25,14 @@ export function StickyActionBar({
   className?: string
 }) {
   // Samme regnestykke som skallets bunn-spacer: på web og i iOS-appen ligger
-  // det en fanelinje på 4rem over bunnkanten som baren må klarere. I
-  // Android-appen ligger fanelinja UTENFOR webviewet, så der er bunnen bunnen.
+  // det en fanelinje over bunnkanten som baren må klarere. Høyden hentes fra
+  // MOBILE_NAV_HEIGHT framfor å gjentas her — endres baren, følger denne med.
+  // I Android-appen ligger fanelinja UTENFOR webviewet, så der er bunnen bunnen.
   const nativePlatform = useNativePlatform()
   const bottom =
     nativePlatform === "android"
       ? "env(safe-area-inset-bottom)"
-      : "calc(4rem + env(safe-area-inset-bottom))"
+      : `calc(${MOBILE_NAV_HEIGHT} + env(safe-area-inset-bottom))`
 
   return (
     <div

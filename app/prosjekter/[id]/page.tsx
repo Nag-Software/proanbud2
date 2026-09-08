@@ -28,7 +28,7 @@ import KvalitetTab from "./kvalitet-tab"
 import { EditProjectDialog } from "./edit-project-dialog"
 import ProjectDocumentsTab from "./project-documents-tab"
 import TilbudTab from "./tilbud-tab"
-import { EtterfaktureringTab } from "./etterfakturering-tab"
+import { FaktureringSeksjon } from "./fakturering-seksjon"
 import TimeforingTab from "./timeforing-tab"
 import KjorebokTab from "./kjorebok-tab"
 import { ProjectOverviewTab, type OverviewTask } from "./project-overview-tab"
@@ -85,15 +85,19 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const supabase = await createClient()
   const { user, canonicalRole } = await checkRoleAccess(["admin", "manager", "worker"])
 
-  // companyId only needs user.id (known above), so resolve it alongside the
-  // project reads instead of after them.
+  // companyId er nå gratis: den delte auth-konteksten (checkRoleAccess over) har
+  // allerede lest brukerens profil, så dette koster ingen spørring i normaltilfellet.
+  // Det lar oss flytte plan/modul-oppslaget INN i bølgen under — før lå det som en
+  // egen, fjerde rundtur mellom de to Promise.all-ene.
+  const companyId = await getCurrentCompanyIdForUser(user.id)
+
   const [
     { data: project },
     { data: tasksData },
     { data: offersData },
     { data: changeOrdersData },
     { data: membersData },
-    companyId,
+    planAndModules,
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -120,7 +124,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       .from("project_members")
       .select("access_level, users(id, email, full_name, role)")
       .eq("project_id", resolvedParams.id),
-    getCurrentCompanyIdForUser(user.id),
+    companyId
+      ? getCompanyPlanAndModules(companyId)
+      : Promise.resolve({ plan: null, modules: [] as string[] }),
   ])
 
   if (!project) {
@@ -148,10 +154,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   // Resolve plan + enabled modules in ONE read, then derive every gate
   // in-memory. Previously companyHasModule + 3× companyHasFeature issued ~8
   // separate admin reads for data that is identical across the calls.
-  const { plan, modules } = companyId
-    ? await getCompanyPlanAndModules(companyId)
-    : { plan: null, modules: [] as string[] }
-  const hasTimeforing = modules.includes("timeforing")
+  const { plan, modules } = planAndModules
+  const hasTimeforing = hasFeature(plan, modules, "timeforing")
   const hasKjorebok = modules.includes("kjorebok")
   // Proff-only feature flags for the embedded tabs (KS, Avvik, Oppgaver).
   const hasKs = hasFeature(plan, modules, "ks")
@@ -302,7 +306,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   { value: "tilbud", label: "Tilbud" },
                   {
                     value: "etterfakturering",
-                    label: "Etterfakturering",
+                    label: "Fakturering",
                     shortLabel: "Etterfakt.",
                     hidden: isWorker,
                   },
@@ -314,7 +318,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           >
             <ProjectTabPanel value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
               <ProjectOverviewTab
-                projectId={project.id}
                 project={{
                   status: project.status,
                   description: project.description,
@@ -368,7 +371,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
             {!isWorker && (
               <ProjectTabPanel value="etterfakturering">
-                <EtterfaktureringTab projectId={project.id} canManage={isProjectAdmin} initialItems={changeOrders} />
+                <FaktureringSeksjon
+                  projectId={project.id}
+                  canManage={isProjectAdmin}
+                  initialChangeOrders={changeOrders}
+                />
               </ProjectTabPanel>
             )}
 

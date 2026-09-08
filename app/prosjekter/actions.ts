@@ -6,7 +6,7 @@ import { ZodError } from "zod"
 import { createProjectSchema, type CreateProjectInput } from "./ny/removed-project-form-schema"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { enqueueEntityTripletexSync, processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
+import { enqueueEntitySync } from "@/lib/regnskap/sync"
 import {
   assertPlanFeature,
   companyHasFeature,
@@ -536,7 +536,7 @@ export async function createProjectAction(
     }
   }
 
-  // Geofence, cache-revalidering og Tripletex-synk er også «best effort» etter
+  // Geofence, cache-revalidering og regnskapssynk er også «best effort» etter
   // at prosjektet finnes.
   try {
     // Store the project's geofence (real teig boundary, else 100 m circle).
@@ -549,13 +549,12 @@ export async function createProjectAction(
     revalidatePath("/prosjekter/ny")
     revalidatePath("/kart")
 
-    await enqueueEntityTripletexSync({
+    await enqueueEntitySync({
       companyId,
       jobType: "project.upsert",
       payload: { projectId: project.id },
       idempotencyKey: `project:${project.id}:upsert`,
     })
-    processTripletexQueueInBackground()
   } catch (tailError) {
     await logServerError({
       message: "Prosjekt opprettet, men etterarbeid feilet (geofence/synk)",
@@ -720,11 +719,10 @@ export async function updateProjectAction(projectId: string, values: Record<stri
   revalidatePath(`/prosjekter`)
   revalidatePath("/kart")
 
-  await enqueueEntityTripletexSync({
+  await enqueueEntitySync({
     companyId: userData.company_id,
     jobType: "project.upsert",
     payload: { projectId },
     idempotencyKey: `project:${projectId}:upsert`,
   })
-  processTripletexQueueInBackground()
 }

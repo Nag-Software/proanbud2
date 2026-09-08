@@ -9,40 +9,39 @@ import { companyHasFeature, getCurrentCompanyIdForUser } from "@/lib/billing/ser
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import Image from "next/image"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 export const integrations = [
     {
         name: "Tripletex",
-        description: "Koble til Tripletex med én API-brukernøkkel. Synkroniser kunder, prosjekter, tilbud og fakturaer.",
+        description: "Koble til Tripletex med én API-brukernøkkel. Kunder, prosjekter, tilbud og fakturaer synkroniseres.",
         url: "/min-bedrift/tripletex",
         status: "active",
         logo: "/integrasjoner-logo/tripletex.png"
     },
     {
-        name: "DocuSign",
-        description: "Send og signer kontrakter elektronisk via DocuSign.",
-        url: "/innstillinger/integrasjoner/docusign",
-        // Siden bak lenken er foreløpig en intern testside — vis kortet som
-        // «Kommer senere» til det finnes et kundevendt oppsett.
-        status: "coming",
-        logo: "https://brandlogos.net/wp-content/uploads/2024/04/docusign-logo_brandlogos.net_5wujv.png"
+        name: "Fiken",
+        description: "Koble til Fiken via sikker innlogging (OAuth). Kunder, prosjekter, tilbud og fakturaer synkroniseres.",
+        url: "/min-bedrift/fiken",
+        status: "active",
+        logo: "/integrasjoner-logo/fiken.png"
     },
     {
-        name: "Fiken",
-        description: "Koble til Fiken via sikker innlogging (OAuth). Synkroniser kunder, prosjekter, tilbud og fakturaer.",
-        url: "/min-bedrift/fiken",
-        status: "beta",
-        logo: "/integrasjoner-logo/fiken.png"
-    }
+      name: "DocuSign",
+      description: "Send og signer kontrakter elektronisk via DocuSign.",
+      url: "/innstillinger/integrasjoner/docusign",
+      // Siden bak lenken er foreløpig en intern testside — vis kortet som
+      // «Kommer senere» til det finnes et kundevendt oppsett.
+      status: "coming",
+      logo: "https://brandlogos.net/wp-content/uploads/2024/04/docusign-logo_brandlogos.net_5wujv.png"
+  },
 ];
 
 export default async function IntegrasjonerPage() {
   await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
 
   const companyId = user ? await getCurrentCompanyIdForUser(user.id) : null
 
@@ -100,6 +99,8 @@ export default async function IntegrasjonerPage() {
             Her vises alle tilgjengelige integrasjoner. Nye integrasjoner legges til fortløpende.
           </p>
         </div>
+
+    
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {integrations.map((integration) => {

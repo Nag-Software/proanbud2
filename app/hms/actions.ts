@@ -6,33 +6,25 @@ import { z } from "zod"
 import { getDeviationStatsAction, getDeviationsAction } from "@/app/avvik/actions"
 import { assertPlanFeature } from "@/lib/billing/server-modules"
 import { createClient } from "@/lib/supabase/server"
+import { requireServerAuthContext } from "@/lib/auth/server-context"
 import { isAdmin } from "@/lib/roles"
 
 const handbookSchema = z.object({
   handbookContent: z.string().max(50000),
 })
 
+// Se app/avvik/actions.ts. Admin-sjekken bruker `profileRole` (rå users.role)
+// nøyaktig som før — ikke den sammenslåtte rollen — så tilgangen er uendret.
 async function getAuthContext(requireAdmin = false) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser()
+  const context = await requireServerAuthContext()
 
-  if (error || !user) throw new Error("Du må være innlogget")
+  if (requireAdmin && !isAdmin(context.profileRole)) {
+    throw new Error("Kun administrator har tilgang")
+  }
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("company_id, role")
-    .eq("id", user.id)
-    .maybeSingle()
+  await assertPlanFeature(context.companyId, "hms", "HMS")
 
-  if (!profile?.company_id) throw new Error("Fant ikke bedrift")
-  if (requireAdmin && !isAdmin(profile.role)) throw new Error("Kun administrator har tilgang")
-
-  await assertPlanFeature(profile.company_id, "hms", "HMS")
-
-  return { supabase, user, companyId: profile.company_id }
+  return { supabase: context.supabase, user: context.user, companyId: context.companyId }
 }
 
 export async function getCompanyHmsAction() {

@@ -99,25 +99,25 @@ export default async function Page({
   return (
     <AppPageShell segments={["Prosjekter"]} hideMobileTitle>
       <ProjectsViewProvider initialView={initialView}>
-      {/* 32 px mellom hver seksjon er riktig på en bred skjerm; på en telefon
-          er det 4 % av viewporten per luftlomme. */}
-      <section className="space-y-5 sm:space-y-8">
-        {/* grid-cols-2 ga tittelen og knappen nøyaktig halve bredden hver, så
-            «Prosjektoversikt» sto og klemte mot knappekanten på en telefon.
-            Flex lar tittelen ta plassen den trenger og knappen krympe til sitt. */}
-        <div className="flex w-full items-center justify-between gap-3">
-          <h1 className="min-w-0 truncate text-2xl font-semibold text-foreground">
-            Prosjektoversikt
-          </h1>
-          {canCreateProject && (
-            <div className="flex shrink-0 items-center gap-2">
-              <CreateProjectDrawer variant="outline" />
-            </div>
-          )}
-        </div>
+      <section className="space-y-5">
+        <div className="flex flex-col gap-2">
+          {/* Knappen sto med w-full i en flex-nowrap-rad, og tok dermed halve
+              bredden fra tittelen på en telefon. shrink-0 lar den ta akkurat
+              sitt eget mål, og tittelen får resten. */}
+          <div className="flex flex-nowrap items-center justify-between gap-3 w-full">
+            <h1 className="min-w-0 truncate text-2xl font-semibold text-foreground">
+              Prosjektoversikt
+            </h1>
+            {canCreateProject && (
+              <div className="flex shrink-0 items-center gap-2">
+                <CreateProjectDrawer variant="outline" />
+              </div>
+            )}
+          </div>
 
-        {/* Søk/filter skjules når det ikke finnes noe å filtrere i det hele tatt. */}
-        {!isCompletelyEmpty && <ProsjekterFilters />}
+          {/* Søk/filter skjules når det ikke finnes noe å filtrere i det hele tatt. */}
+          {!isCompletelyEmpty && <ProsjekterFilters />}
+        </div>
 
         {isCompletelyEmpty ? (
           <ProjectsEmptyState canCreate={canCreateProject} />

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { Loader2, Plus, RefreshCw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -63,10 +63,13 @@ export function EtterfaktureringTab({
   projectId,
   canManage,
   initialItems,
+  onChanged,
 }: {
   projectId: string
   canManage: boolean
   initialItems: ChangeOrder[] | null
+  /** Kalles når lista er endret, så fakturagrunnlaget over kan hentes på nytt. */
+  onChanged?: () => void
 }) {
   const [items, setItems] = useState<ChangeOrder[]>(initialItems ?? [])
   const [loading, setLoading] = useState(!initialItems)
@@ -158,6 +161,7 @@ export function EtterfaktureringTab({
       resetDialog()
       setOpen(false)
       load()
+      onChanged?.()
       toast.success("Ekstrajobb lagret")
     } catch (error) {
       reportClientError(error, { context: { action: "create project change order", projectId } })
@@ -181,6 +185,7 @@ export function EtterfaktureringTab({
     try {
       await deleteProjectChangeOrderAction({ projectId, id })
       load()
+      onChanged?.()
       toast.success("Ekstrajobb slettet")
     } catch (error) {
       reportClientError(error, { context: { action: "delete project change order", projectId, changeOrderId: id } })
@@ -191,32 +196,31 @@ export function EtterfaktureringTab({
   }
 
   return (
-    <div className="space-y-4 py-2">
-      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-        <p>Ekstrajobber her er kun et varsel i prosjektet. De går ikke ut til kunden for godkjenning.</p>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {canManage ? (
-          <Button className="gap-2" onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Ny ekstrajobb
-          </Button>
-        ) : null}
-      </div>
-
+    <div className="py-2">
+      {/* Ett kort, én overskrift. Advarselen var et fullbredde varsel mellom to
+          urelaterte seksjoner — den hører hjemme som en rolig forklaring her, der
+          ekstrajobbene faktisk lages. */}
       <div className="rounded-lg border bg-card">
         <div className="border-b px-4 py-3">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <p className="text-sm font-medium">Oversikt</p>
-              <p className="text-xs text-muted-foreground">Alle registrerte ekstrajobber for prosjektet.</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Ekstrajobber</p>
+              <p className="text-xs text-muted-foreground">
+                Registreres kun internt på prosjektet — går ikke ut til kunden for godkjenning.
+              </p>
             </div>
-            <Button variant="ghost" size="sm" className="h-8" onClick={load} disabled={loading}>
-              <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", loading && "animate-spin")} />
-              Oppdater
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" className="h-8" onClick={load} disabled={loading}>
+                <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", loading && "animate-spin")} />
+                Oppdater
+              </Button>
+              {canManage ? (
+                <Button size="sm" className="h-8 gap-1.5" onClick={() => setOpen(true)}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Ny ekstrajobb
+                </Button>
+              ) : null}
+            </div>
           </div>
         </div>
 

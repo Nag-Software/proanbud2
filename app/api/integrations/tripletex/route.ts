@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server"
 
+import { findConflictingProvider } from "@/lib/regnskap/registry"
+import { ACCOUNTING_PROVIDER_LABELS } from "@/lib/regnskap/types"
+
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
@@ -339,6 +342,20 @@ export async function POST(request: Request) {
     if (forbidden) return forbidden
     const planForbidden = await requireIntegrasjonerFeature(ctx)
     if (planForbidden) return planForbidden
+
+    // Ett regnskapssystem om gangen. Fiken-siden har alltid håndhevet dette,
+    // Tripletex-siden gjorde det ikke — så en bedrift på Fiken kunne koble til
+    // Tripletex og ende dobbelt tilkoblet, der bare Fiken faktisk ble brukt.
+    const conflicting = await findConflictingProvider(ctx.companyId, "tripletex")
+    if (conflicting) {
+      return NextResponse.json(
+        {
+          error: `${ACCOUNTING_PROVIDER_LABELS[conflicting]} er allerede tilkoblet. Koble fra ${ACCOUNTING_PROVIDER_LABELS[conflicting]} først — du kan kun ha ett regnskapssystem.`,
+          code: "accounting_conflict",
+        },
+        { status: 400 }
+      )
+    }
 
     const body = await request.json()
     const apiKey = normalizeTripletexApiKey(String(body.apiKey || body.employeeToken || ""))

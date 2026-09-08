@@ -19,8 +19,15 @@ async function runReconcile(request: Request) {
     const runKey = new Date().toISOString()
     const companyIds = companyId
       ? [companyId]
-      : ((await admin.from("fiken_connections").select("company_id").neq("sync_state", "disconnected")).data ||
-          []).map((row) => row.company_id)
+      : ((
+          await admin
+            .from("fiken_connections")
+            .select("company_id")
+            .neq("sync_state", "disconnected")
+            // Skip connections still awaiting Fiken-company selection: without a slug
+            // every API path is invalid, so reconciling them only manufactures errors.
+            .not("fiken_company_slug", "is", null)
+        ).data || []).map((row) => row.company_id)
 
     for (const id of companyIds) {
       await enqueueFikenJob({

@@ -1,206 +1,194 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  CarIcon,
-  ClockIcon,
-  FolderIcon,
   LayoutDashboardIcon,
-  MapIcon,
+  FolderIcon,
+  FileTextIcon,
+  InboxIcon,
   MoreHorizontalIcon,
   PlusIcon,
+  MapIcon,
+  CalendarDays,
+  CarIcon,
+  ClockIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useSidebar } from "@/components/ui/sidebar"
+import { NavMoreMenu } from "@/components/nav-more-menu"
 import { useUnreadMessages } from "@/hooks/use-unread-messages"
+import { useNavItems } from "@/hooks/use-nav-items"
 import { useIsNativeApp } from "@/hooks/use-is-native-app"
-import { useUserRole } from "@/hooks/use-user-role"
 import { useActiveWorkSession } from "@/hooks/use-active-work-session"
+import { useUserRole } from "@/hooks/use-user-role"
+import type { NavIconKey } from "@/lib/nav-items"
 
-/**
- * Bunnmenyen på mobilweb: fire destinasjoner rundt én opphøyd primærhandling,
- * og «Mer …» inn til sidemenyen.
- *
- * VIKTIG — denne lista er BEVISST web-only og speiler ikke lib/nav-items.
- * Den delte lista er kontrakten mot native-appen (se native-nav-bridge), og
- * native tegner sin egen tab bar som ikke kan rendre en opphøyd knapp midt i.
- * Endrer du lib/nav-items for å «få dem like», endrer du samtidig fanene i
- * appen — og pluss-knappen blir en helt vanlig fane der. Hold dem adskilt til
- * appen kan rendre en FAB.
- */
-
-type WebNavItem = {
-  href: string
-  label: string
-  icon: typeof LayoutDashboardIcon
-  exact: boolean
+// Item definitions (roles, feature gates) live in lib/nav-items — shared with
+// the native-app bridge. Here we only map the stable icon keys to lucide.
+const NAV_ICONS: Record<NavIconKey, typeof LayoutDashboardIcon> = {
+  dashboard: LayoutDashboardIcon,
+  projects: FolderIcon,
+  offers: FileTextIcon,
+  hours: ClockIcon,
+  messages: InboxIcon,
+  map: MapIcon,
+  trips: CarIcon,
+  calendar: CalendarDays,
 }
 
-type WebNavLayout = {
-  /** To til venstre for pluss-knappen. */
-  left: WebNavItem[]
-  /** Én til høyre; «Mer …» tar den siste plassen. */
-  right: WebNavItem[]
-  /** Den opphøyde midtknappen. */
-  primary: { href: string; label: string }
-}
-
-const ADMIN_LAYOUT: WebNavLayout = {
-  left: [
-    { href: "/", label: "Dashbord", icon: LayoutDashboardIcon, exact: true },
-    { href: "/prosjekter", label: "Prosjekter", icon: FolderIcon, exact: false },
-  ],
-  right: [{ href: "/timeforing", label: "Timer", icon: ClockIcon, exact: false }],
-  primary: { href: "/nytt-tilbud", label: "Nytt tilbud" },
-}
-
-/**
- * Arbeidere har verken dashbord eller tilbud. Midtknappen er derfor stemplinga
- * — den ene handlingen de faktisk gjør ute på plassen — og Timer-fanen faller
- * bort, siden den ville pekt på samme side som knappen. Tilbud, Kalender og
- * Meldinger nås fra «Mer …».
- */
-const WORKER_LAYOUT: WebNavLayout = {
-  left: [
-    { href: "/prosjekter", label: "Prosjekter", icon: FolderIcon, exact: false },
-    { href: "/kart", label: "Kart", icon: MapIcon, exact: false },
-  ],
-  right: [{ href: "/kjorebok", label: "Kjørebok", icon: CarIcon, exact: false }],
-  primary: { href: "/timeforing", label: "Stemple inn" },
-}
+/** Barens høyde uten safe-area. Delt med spacer-en i app-shell-layout. */
+export const MOBILE_NAV_HEIGHT = "3.75rem"
 
 export function MobileBottomNav() {
   const pathname = usePathname()
-  const { toggleSidebar } = useSidebar()
   const unreadCount = useUnreadMessages()
   const { hasActiveSession } = useActiveWorkSession()
-  const { isWorker, roleKnown } = useUserRole()
-  // Inne i native-appen er tab-baren native (matet via native-nav-bridge) —
-  // web-kapselen må ikke rendre en meny til.
+  const { navItems, roleKnown } = useNavItems()
+  const [moreOpen, setMoreOpen] = React.useState(false)
+  // Inside the native app the tab bar is native (fed via native-nav-bridge) —
+  // the web bar must not render a second menu.
   const isNative = useIsNativeApp()
 
-  if (isNative) return null
+  // Meldinger ligger ikke lenger i baren, så ulest-varselet ville forsvunnet
+  // ut av syne på mobil. Det følger med til «Mer», der meldinger nå bor.
+  const moreBadge = unreadCount
 
-  const layout = isWorker ? WORKER_LAYOUT : ADMIN_LAYOUT
-  const isActive = (item: WebNavItem) =>
-    item.exact
-      ? pathname === item.href
-      : pathname === item.href || pathname.startsWith(item.href + "/")
+  const primaryHrefs = React.useMemo(() => navItems.map((item) => item.href), [navItems])
 
-  const renderTab = (item: WebNavItem) => {
-    const Icon = item.icon
-    const active = isActive(item)
-    const stampedIn = item.href === "/timeforing" && hasActiveSession
+  const { isWorker } = useUserRole()
 
+  // Den opphøyde midtknappen. Arbeidere kan ikke opprette tilbud, så for dem
+  // er stemplinga primærhandlingen — den ene tingen de gjør ute på plassen.
+  const primaryAction = isWorker
+    ? { href: "/timeforing", label: "Stemple inn" }
+    : { href: "/nytt-tilbud", label: "Nytt tilbud" }
+
+  // Fanene deles i to rundt knappen. Peker knappen på en side som ALLEREDE er
+  // en fane (timeføring for arbeidere), faller fanen bort — to innganger til
+  // samme side ved siden av hverandre er bare forvirrende.
+  const tabs = navItems.filter((item) => item.href !== primaryAction.href)
+  const splitAt = Math.ceil(tabs.length / 2)
+  const leftTabs = tabs.slice(0, splitAt)
+  const rightTabs = tabs.slice(splitAt)
+
+  const renderTab = ({ href, icon, label, exact }: (typeof tabs)[number]) => {
+    const Icon = NAV_ICONS[icon]
+    const isActive = exact
+      ? pathname === href
+      : pathname === href || pathname.startsWith(href + "/")
     return (
       <Link
-        key={item.href}
-        href={item.href}
-        aria-label={stampedIn ? `${item.label} – stemplet inn` : item.label}
-        aria-current={active ? "page" : undefined}
-        className="relative flex flex-1 flex-col items-center justify-center gap-[3px] px-0.5 text-[10px] transition-transform active:scale-95"
+        key={href}
+        href={href}
+        aria-label={href === "/timeforing" && hasActiveSession ? `${label} – stemplet inn` : label}
+        aria-current={isActive ? "page" : undefined}
+        className={cn(
+          "flex flex-1 flex-col items-center justify-center gap-1.5 text-[11px] font-medium leading-none transition-transform active:scale-95",
+          isActive ? "font-semibold text-foreground" : "text-muted-foreground"
+        )}
       >
-        {/* Ingen flate bak ikonet. Den fylte brikken er Material sin
-            «pill indicator» — iOS og Fiken markerer aktiv fane utelukkende
-            med farge og vekt, og lar ikonet stå fritt i baren. */}
-        <span className="relative flex h-[22px] w-9 items-center justify-center">
-          <Icon
-            className={cn(
-              "size-[22px] transition-[color,opacity] duration-150",
-              active ? "text-foreground" : "text-muted-foreground"
-            )}
-            strokeWidth={active ? 2.25 : 1.6}
-          />
-          {stampedIn && (
+        {/* Aktiv tilstand er tyngden i ikonet og teksten — ingen brikke bak.
+            Baren skal trekke seg tilbake så innholdet eier skjermen; markøren
+            trenger bare å være tydelig, ikke tung. */}
+        <span className="relative flex items-center justify-center">
+          <Icon className="size-[23px]" strokeWidth={isActive ? 2.2 : 1.7} />
+          {href === "/timeforing" && hasActiveSession && (
             <span
               aria-hidden
-              className="absolute -right-1 -top-0.5 size-2 animate-pulse rounded-full bg-emerald-500 ring-2 ring-background"
+              className="absolute -right-1.5 -top-0.5 size-2.5 animate-pulse rounded-full bg-emerald-500 ring-2 ring-background"
             />
           )}
         </span>
-        <span
-          className={cn(
-            "relative max-w-full truncate leading-none tracking-[-0.01em] transition-colors",
-            active ? "font-semibold text-foreground" : "font-medium text-muted-foreground"
-          )}
-        >
-          {item.label}
-        </span>
+        <span className="max-w-full truncate">{label}</span>
       </Link>
     )
   }
 
+  if (isNative) return null
+
   return (
-    <nav
-      aria-label="Hovednavigasjon"
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex items-end md:hidden"
-      style={{
-        height: "calc(4rem + env(safe-area-inset-bottom))",
-        paddingBottom: "env(safe-area-inset-bottom)",
-      }}
-    >
-      {/* Flytende glasskapsel. Tre ting gjør at den leses som glass og ikke som
-          en hvit stripe: full kapselradius, ekte gjennomsiktighet med kraftig
-          blur + metning (innholdet skal skimtes rulle under), og lyskanten
-          øverst fra --shadow-glass. */}
-      <div className="pointer-events-auto relative mx-3 mb-2 flex h-14 flex-1 items-center gap-0.5 rounded-full border border-[color:var(--glass-border)] bg-[image:var(--glass-surface)] px-1.5 shadow-[var(--shadow-glass)] backdrop-blur-2xl backdrop-saturate-[1.8] not-supports-[backdrop-filter]:bg-background">
+    <>
+      {/* Dokket, flat bar — ikke en flytende pille. Den deler flate og
+          hårlinje med resten av appen, så den leses som en del av verktøyet
+          og ikke som et objekt som svever over det. Ingen radius, ingen blur:
+          appen kjører --radius 5px, og en 999px-kapsel motsier den. */}
+      <nav
+        aria-label="Hovednavigasjon"
+        className="fixed inset-x-0 bottom-0 z-50 flex items-stretch border-t border-border bg-background md:hidden"
+        style={{
+          height: `calc(${MOBILE_NAV_HEIGHT} + env(safe-area-inset-bottom))`,
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}
+      >
         {/* Rollen er ukjent ved aller første besøk (ingen cache ennå) — hold
             plassene med nøytrale skeletons i stedet for å blinke admin-fanene
-            for en håndverker. Begge rollevariantene har samme fem plasser, så
-            layouten står i ro når rollen lander. */}
-        {!roleKnown ? (
-          Array.from({ length: 5 }).map((_, i) => (
+            for en håndverker. Begge rollevariantene ender på samme antall
+            plasser, så layouten står i ro når rollen lander. */}
+        {!roleKnown &&
+          Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
               aria-hidden
-              className="relative flex flex-1 flex-col items-center justify-center gap-1"
+              className="flex flex-1 flex-col items-center justify-center gap-1.5"
             >
-              <Skeleton className={cn("rounded-full", i === 2 ? "h-12 w-12" : "h-7 w-9")} />
-              {i !== 2 && <Skeleton className="h-2 w-9 rounded-full" />}
+              <Skeleton className="size-[23px] rounded-full" />
+              <Skeleton className="h-2.5 w-11 rounded-full" />
             </div>
-          ))
-        ) : (
-          <>
-            {layout.left.map(renderTab)}
+          ))}
 
-            {/* Primærhandlingen. Løftet ut av rekka og gitt aksentfargen, så
-                den leses som «gjør noe» og ikke som «gå et sted» — de fire
-                andre er destinasjoner. */}
-            <div className="relative flex flex-1 items-center justify-center">
-              <Link
-                href={layout.primary.href}
-                aria-label={layout.primary.label}
-                className="flex size-13 -translate-y-3 items-center justify-center rounded-full bg-accent bg-[image:var(--control-sheen)] text-accent-foreground shadow-[var(--shadow-raised)] transition-transform active:scale-95"
-              >
-                <PlusIcon className="size-6" strokeWidth={2.4} />
-              </Link>
-            </div>
+        {roleKnown && leftTabs.map(renderTab)}
 
-            {layout.right.map(renderTab)}
-
-            <button
-              type="button"
-              onClick={toggleSidebar}
-              aria-label="Mer"
-              className="relative flex flex-1 flex-col items-center justify-center gap-[3px] px-0.5 text-[10px] font-medium text-muted-foreground transition-transform active:scale-95"
+        {roleKnown && (
+          // Primærhandlingen bryter barens overkant med vilje. Baren er ellers
+          // flat og tilbaketrukket, og nettopp derfor blir den ene knappen som
+          // stikker opp entydig: alt annet her er «gå et sted», dette er
+          // «gjør noe». Sirkelen er 52 px — treffbar med hansker.
+          <div className="relative flex flex-1 items-center justify-center">
+            <Link
+              href={primaryAction.href}
+              aria-label={primaryAction.label}
+              className="absolute bottom-2 flex size-13 items-center justify-center rounded-full bg-accent bg-[image:var(--control-sheen)] text-accent-foreground shadow-[var(--shadow-raised)] ring-4 ring-background transition-transform active:scale-95"
             >
-              <span className="relative flex h-[22px] w-9 items-center justify-center">
-                <MoreHorizontalIcon className="size-[22px] text-muted-foreground" strokeWidth={1.6} />
-                {/* Meldinger er ikke lenger egen fane, så uleste ville blitt
-                    usynlige. Badgen følger med inn i «Mer …». */}
-                {unreadCount > 0 && (
-                  <span className="absolute -right-1.5 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold text-white ring-2 ring-background">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </span>
-                )}
-              </span>
-              <span className="relative leading-none tracking-[-0.01em]">Mer</span>
-            </button>
-          </>
+              <PlusIcon className="size-6" strokeWidth={2.4} />
+            </Link>
+          </div>
         )}
-      </div>
-    </nav>
+
+        {roleKnown && rightTabs.map(renderTab)}
+
+        {/* «Mer» er tre prikker i en ring, ikke en hamburger: en hamburger
+            lover «hovedmenyen», ••• lover «flere valg» — og det siste er det
+            arket faktisk inneholder. */}
+        <button
+          type="button"
+          onClick={() => setMoreOpen(true)}
+          aria-label="Mer"
+          aria-haspopup="dialog"
+          aria-expanded={moreOpen}
+          className={cn(
+            "flex flex-1 flex-col items-center justify-center gap-1.5 text-[11px] font-medium leading-none transition-transform active:scale-95",
+            moreOpen ? "text-foreground" : "text-muted-foreground"
+          )}
+        >
+          <span className="relative flex items-center justify-center">
+            <span className="flex size-[23px] items-center justify-center rounded-full border-[1.5px] border-current">
+              <MoreHorizontalIcon className="size-4" strokeWidth={2.4} />
+            </span>
+            {moreBadge > 0 && (
+              <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold text-white ring-2 ring-background">
+                {moreBadge > 9 ? "9+" : moreBadge}
+              </span>
+            )}
+          </span>
+          <span>Mer</span>
+        </button>
+      </nav>
+
+      {/* Samme ark som sidebarens «Mer» — gruppert, søkbart og bygget av
+          lib/app-nav, så en ny side dukker opp her av seg selv. */}
+      <NavMoreMenu open={moreOpen} onOpenChange={setMoreOpen} primaryHrefs={primaryHrefs} />
+    </>
   )
 }

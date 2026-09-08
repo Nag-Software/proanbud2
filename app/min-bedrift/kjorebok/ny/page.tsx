@@ -6,6 +6,7 @@ import { companyHasModule, getCurrentCompanyIdForUser } from "@/lib/billing/serv
 import { MODULE_PRICING } from "@/lib/billing/plans"
 import { createClient } from "@/lib/supabase/server"
 import { TripCreate } from "./trip-create"
+import { getServerAuthContext } from "@/lib/auth/server-context"
 
 export default async function Page({
   searchParams,
@@ -31,9 +32,7 @@ export default async function Page({
   const segments = isWorker ? ["Kjørebok", "Ny tur"] : ["Min bedrift", "Kjørebok", "Ny tur"]
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = (await getServerAuthContext())?.user ?? null
   const companyId = user ? await getCurrentCompanyIdForUser(user.id) : null
   const hasKjorebok = companyId ? await companyHasModule(companyId, "kjorebok") : false
 

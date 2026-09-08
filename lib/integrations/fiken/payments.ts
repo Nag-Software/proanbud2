@@ -59,12 +59,15 @@ export async function pollFikenPayments(
       // Transition guard: only act when not already marked paid.
       if (link.sync_status === "paid") continue
 
-      const offerId = String(link.local_id)
+      // local_id peker enten på en prosjektfaktura (den nye veien) eller på et tilbud
+      // (den gamle). Vi vet ikke hvilken uten å slå opp, så vi oppdaterer begge — kun
+      // én av dem treffer en rad.
+      const localId = String(link.local_id)
 
       await upsertFikenLink({
         companyId: connection.company_id,
         entityType: "invoice",
-        localId: offerId,
+        localId,
         externalId,
         syncStatus: "paid",
         externalUrl:
@@ -73,9 +76,15 @@ export async function pollFikenPayments(
       })
 
       await admin
+        .from("project_invoices")
+        .update({ status: "paid", paid_at: new Date().toISOString() })
+        .eq("id", localId)
+        .eq("company_id", connection.company_id)
+
+      await admin
         .from("offers")
         .update({ status: "accepted", updated_at: new Date().toISOString() })
-        .eq("id", offerId)
+        .eq("id", localId)
         .eq("company_id", connection.company_id)
 
       newlyPaid += 1

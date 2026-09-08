@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server"
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import { logServerError } from "@/lib/errors/log"
-import {
-  enqueueDocumentTripletexSync,
-  parseProjectIdFromDocumentPath,
-} from "@/lib/integrations/tripletex/sync"
+import { parseProjectIdFromDocumentPath } from "@/lib/integrations/tripletex/scopes"
+import { enqueueDocumentSync } from "@/lib/regnskap/sync"
 import {
   createGoogleDriveFolder,
   createOneDriveFolder,
@@ -535,7 +533,7 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (userRow?.company_id) {
-      void enqueueDocumentTripletexSync({
+      void enqueueDocumentSync({
         companyId: userRow.company_id,
         documentItemId: inserted.id,
         projectId,
