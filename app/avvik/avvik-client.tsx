@@ -2,13 +2,19 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ChevronDown, Download, Plus, Search, SlidersHorizontal } from "lucide-react"
+import { ChevronDown, Download, MoreHorizontal, Plus, Search, SlidersHorizontal } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -135,25 +141,57 @@ export function AvvikClient({ deviations, stats, projects }: Props) {
         title="Avvik"
         subtitle="Meld og følg opp RUH (rapport om uønsket hendelse) og andre avvik på prosjektene dine"
         actions={
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <Button variant="outline" size="lg" className="w-full sm:w-auto" asChild>
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            {/* De to eksportene er kontorarbeid — på en telefon sto de som to
+                fullbreddeknapper OVER «Meld avvik», altså foran den ene
+                handlingen man faktisk gjør ute på plassen. Fra sm og opp
+                står de som før; på mobil ligger de i overflow-menyen. */}
+            <Button variant="outline" size="lg" className="hidden sm:inline-flex" asChild>
               <a href={buildExportUrl("csv")} download>
                 <Download className="mr-2 size-4" />
                 Eksporter CSV
               </a>
             </Button>
-            <Button variant="outline" size="lg" className="w-full sm:w-auto" asChild>
+            <Button variant="outline" size="lg" className="hidden sm:inline-flex" asChild>
               <a href={buildExportUrl("html")} target="_blank" rel="noreferrer">
                 <Download className="mr-2 size-4" />
                 Avviksrapport
               </a>
             </Button>
-            <Button asChild size="lg" className="w-full sm:w-auto">
+
+            <Button asChild size="lg" className="flex-1 sm:w-auto sm:flex-none">
               <Link href="/avvik/ny">
                 <Plus className="mr-2 size-4" />
                 Meld avvik
               </Link>
             </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="w-11 shrink-0 px-0 sm:hidden"
+                  aria-label="Flere handlinger"
+                >
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <a href={buildExportUrl("csv")} download>
+                    <Download className="mr-2 size-4" />
+                    Eksporter CSV
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <a href={buildExportUrl("html")} target="_blank" rel="noreferrer">
+                    <Download className="mr-2 size-4" />
+                    Avviksrapport
+                  </a>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         }
       />

@@ -1,5 +1,11 @@
 export type StatusConfig = {
   label: string
+  /**
+   * Ett ord til trange rader på mobil. «Under utførelse» spiser 150 px ved
+   * siden av prosjektnavnet i en listerad — der er det bare fasen som skal
+   * leses, ikke hele setningen. Utelates den brukes `label`.
+   */
+  shortLabel?: string
   description: string
   filledBars: number
   fillClass: string
@@ -59,6 +65,7 @@ export const statusConfigByValue: Record<string, StatusConfig> = {
   },
   active: {
     label: "Under utførelse",
+    shortLabel: "Pågår",
     description: "Arbeid pågår på prosjektet",
     filledBars: 3,
     fillClass: "theme-progress-fill-active",
@@ -67,6 +74,7 @@ export const statusConfigByValue: Record<string, StatusConfig> = {
   },
   on_hold: {
     label: "På pause",
+    shortLabel: "Pause",
     description: "Midlertidig stoppet",
     filledBars: 2,
     fillClass: "theme-progress-fill-onhold",

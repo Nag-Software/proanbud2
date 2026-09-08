@@ -54,7 +54,12 @@ export function DeviationListItem({
           {new Date(deviation.created_at).toLocaleDateString("no-NO")}
         </span>
       </div>
-      <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{deviation.description}</p>
+      {/* Beskrivelsen er to linjer brødtekst i en liste man skanner. På
+          desktop koster den ingenting; på mobil er den en tredjedel av
+          radhøyden for noe man uansett leser inne på avviket. */}
+      <p className="mt-2 hidden line-clamp-2 text-sm text-muted-foreground sm:block">
+        {deviation.description}
+      </p>
     </Link>
   )
 }
@@ -71,11 +76,17 @@ export function DeviationStatsCards({
   ]
 
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    // Tre stablede fullbreddekort er 340 px på en telefon — nok til at ingen
+    // avvik er synlige før du ruller. Tallene er små nok til å stå ved siden
+    // av hverandre, så de gjør det på alle bredder.
+    <div className="grid grid-cols-3 gap-2 sm:gap-3">
       {cards.map((card) => (
-        <div key={card.label} className={cn("rounded-lg border p-4")}>
-          <p className="text-sm text-muted-foreground">{card.label}</p>
-          <p className="text-2xl font-semibold">{card.value}</p>
+        <div key={card.label} className={cn("rounded-lg border p-3 sm:p-4")}>
+          <p className="text-xl font-semibold tabular-nums sm:hidden">{card.value}</p>
+          <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground sm:mt-0 sm:text-sm">
+            {card.label}
+          </p>
+          <p className="hidden text-2xl font-semibold sm:block">{card.value}</p>
         </div>
       ))}
     </div>

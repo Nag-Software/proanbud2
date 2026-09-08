@@ -145,13 +145,17 @@ export function ProjectPhaseStripe({
         </span>
       )}
 
-      <span className="flex min-w-24 flex-1 gap-1" aria-hidden>
+      {/* Skinnen og telleren er kontekst, ikke kontroll. På en telefon deler
+          de tittelraden med prosjektnavnet og fasechippen, og da er det
+          navnet som må få plassen — chippen sier allerede hvilken fase
+          prosjektet står i. */}
+      <span className="hidden min-w-24 flex-1 gap-1 sm:flex" aria-hidden>
         {PHASE_RAIL.map((phase, index) => (
           <span key={phase.value} className={cn("h-1 flex-1 rounded-full", barClass(index))} />
         ))}
       </span>
 
-      <span className="shrink-0 text-xs text-muted-foreground">
+      <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
         {isOffRail ? "—" : `${railIndex + 1} av ${PHASE_RAIL.length}`}
       </span>
 

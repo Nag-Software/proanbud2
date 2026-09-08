@@ -122,17 +122,21 @@ export function TilbudListClient({ rows }: { rows: OfferListRow[] }) {
 
   return (
     <>
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div className="space-y-1">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+      {/* Tittelen, stikktittelen og en fullbreddeknapp sto på hver sin rad og
+          tok 180 px før søkefeltet i det hele tatt kom til syne. Samme grep
+          som på prosjektoversikten: tittel og handling deler én rad, og
+          stikktittelen — som bare gjentar «Tilbud» — vises fra sm og opp. */}
+      <div className="flex flex-row items-center justify-between gap-3 sm:gap-4">
+        <div className="min-w-0 space-y-1">
+          <p className="hidden text-xs uppercase tracking-[0.2em] text-muted-foreground sm:block">
             Dine tilbud
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">
             Tilbud
           </h1>
         </div>
-        <div className="flex w-full items-center sm:w-auto">
-          <Button asChild className="w-full sm:w-auto" size="default">
+        <div className="flex shrink-0 items-center">
+          <Button asChild size="default">
             <Link href="/nytt-tilbud">
               <PlusCircle className="mr-2 h-4 w-4" />
               Nytt tilbud

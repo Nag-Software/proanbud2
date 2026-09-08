@@ -2,31 +2,12 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Archive, CalendarRange, MapPin, MoreVertical, Pencil, User, Users } from "lucide-react"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
+import { CalendarRange, MapPin, User } from "lucide-react"
 
-import { reportClientError } from "@/lib/errors/client"
-import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import { ClientAutocomplete, type ClientOption } from "./ny/components/client-autocomplete"
-import { updateProjectAction } from "./actions"
 import { ProjectPhoto } from "./project-photo"
+import { ProjectRowMenu } from "./project-row-menu"
 import { ProjectStatusFooter } from "./project-status-footer"
+import type { ClientOption } from "./ny/components/client-autocomplete"
 import {
   getProjectCustomer,
   getProjectPeriod,
@@ -39,218 +20,55 @@ type ProjectCardProps = {
   customers: ClientOption[]
 }
 
-type DialogMode = "rename" | "customer" | "archive" | null
-
 export function ProjectCard({ project, customers }: ProjectCardProps) {
-  const router = useRouter()
-  const [dialogMode, setDialogMode] = React.useState<DialogMode>(null)
-  const [nameValue, setNameValue] = React.useState(project.name)
-  const [customerId, setCustomerId] = React.useState(project.customer_id || "")
-  const [isSaving, setIsSaving] = React.useState(false)
-
   const customer = getProjectCustomer(project)
   const siteAddress = getProjectSiteAddress(project)
   const periodLabel = getProjectPeriod(project)
 
-  const closeDialog = () => {
-    setDialogMode(null)
-    setNameValue(project.name)
-    setCustomerId(project.customer_id || "")
-  }
-
-  const openDialog = (mode: Exclude<DialogMode, null>) => {
-    setNameValue(project.name)
-    setCustomerId(project.customer_id || "")
-    setDialogMode(mode)
-  }
-
-  const handleArchive = async () => {
-    setIsSaving(true)
-    try {
-      await updateProjectAction(project.id, { status: "archived" })
-      toast.success("Prosjekt arkivert")
-      closeDialog()
-      router.refresh()
-    } catch (error) {
-      console.error("Kunne ikke arkivere prosjekt", error)
-      reportClientError(error, { context: { action: "arkiver prosjekt", projectId: project.id } })
-      toast.error("Kunne ikke arkivere prosjekt")
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const handleRename = async () => {
-    const trimmedName = nameValue.trim()
-    if (!trimmedName) return
-
-    setIsSaving(true)
-    try {
-      await updateProjectAction(project.id, { name: trimmedName })
-      toast.success("Prosjektnavn oppdatert")
-      closeDialog()
-      router.refresh()
-    } catch (error) {
-      console.error("Kunne ikke oppdatere prosjektnavn", error)
-      reportClientError(error, { context: { action: "endre prosjektnavn", projectId: project.id } })
-      toast.error("Kunne ikke oppdatere prosjektnavn")
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const handleChangeCustomer = async () => {
-    if (!customerId) return
-
-    setIsSaving(true)
-    try {
-      await updateProjectAction(project.id, { customer_id: customerId })
-      toast.success("Kunde oppdatert")
-      closeDialog()
-      router.refresh()
-    } catch (error) {
-      console.error("Kunne ikke oppdatere kunde", error)
-      reportClientError(error, { context: { action: "endre kunde på prosjekt", projectId: project.id } })
-      toast.error("Kunne ikke oppdatere kunde")
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
   return (
-    <>
-      <div className="group relative flex h-full flex-col overflow-hidden rounded-lg border border-border/60 bg-card transition-colors hover:border-primary/25 hover:bg-card/95">
-        <div className="absolute right-2 top-2 z-10">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                // Knappen ligger nå over fotoet, så den trenger egen bakgrunn for
-                // å være synlig mot både lyse og mørke bilder.
-                className="h-8 w-8 rotate-90 rounded-full bg-background/80 text-foreground shadow-sm backdrop-blur-sm transition-opacity hover:bg-background md:opacity-0 md:group-hover:opacity-100 data-[state=open]:opacity-100"
-                onClick={(event) => event.preventDefault()}
-              >
-                <MoreVertical className="h-4 w-4" />
-                <span className="sr-only">Prosjektinnstillinger</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onSelect={() => openDialog("archive")}>
-                <Archive className="mr-2 h-4 w-4" />
-                Arkiver
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => openDialog("rename")}>
-                <Pencil className="mr-2 h-4 w-4" />
-                Endre navn
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => openDialog("customer")}>
-                <Users className="mr-2 h-4 w-4" />
-                Endre kunde
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <Link href={`/prosjekter/${project.id}`} className="flex flex-1 flex-col">
-          <ProjectPhoto projectId={project.id} address={siteAddress} />
-
-          <div className="flex flex-1 flex-col gap-2.5 p-3.5">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold leading-snug text-foreground group-hover:text-primary">
-                {project.name}
-              </p>
-              {siteAddress && (
-                <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                  <MapPin className="size-3.5 shrink-0" aria-hidden />
-                  <span className="truncate">{siteAddress}</span>
-                </p>
-              )}
-            </div>
-
-            {/* mt-auto holder kunde/periode i bunn, så kortene får lik høyde
-                selv når adressen mangler på noen av dem. */}
-            <div className="mt-auto min-w-0 space-y-1 border-t border-border/50 pt-2.5 text-xs text-muted-foreground">
-              <p className="flex min-w-0 items-center gap-1.5">
-                <User className="size-3.5 shrink-0" aria-hidden />
-                <span className="truncate text-foreground/80">{customer.name}</span>
-              </p>
-              <p className="flex min-w-0 items-center gap-1.5">
-                <CalendarRange className="size-3.5 shrink-0" aria-hidden />
-                <span className="truncate tabular-nums">{periodLabel}</span>
-              </p>
-            </div>
-          </div>
-
-          <ProjectStatusFooter status={project.status} idPrefix={project.id} className="w-full" />
-        </Link>
+    <div className="group relative flex h-full flex-col overflow-hidden rounded-lg border border-border/60 bg-card transition-colors hover:border-primary/25 hover:bg-card/95">
+      <div className="absolute right-2 top-2 z-10">
+        <ProjectRowMenu
+          project={project}
+          customers={customers}
+          // Knappen ligger over fotoet og trenger egen bakgrunn for å være
+          // synlig mot både lyse og mørke bilder.
+          triggerClassName="rotate-90 bg-background/80 text-foreground shadow-sm backdrop-blur-sm transition-opacity hover:bg-background md:opacity-0 md:group-hover:opacity-100 data-[state=open]:opacity-100"
+        />
       </div>
 
-      <Dialog open={dialogMode === "rename"} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Endre navn</DialogTitle>
-            <DialogDescription>Oppdater prosjektnavnet.</DialogDescription>
-          </DialogHeader>
-          <Input
-            autoFocus
-            value={nameValue}
-            onChange={(event) => setNameValue(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault()
-                void handleRename()
-              }
-            }}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={closeDialog}>
-              Avbryt
-            </Button>
-            <Button onClick={() => void handleRename()} disabled={!nameValue.trim() || isSaving}>
-              Lagre
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <Link href={`/prosjekter/${project.id}`} className="flex flex-1 flex-col">
+        <ProjectPhoto projectId={project.id} address={siteAddress} />
 
-      <Dialog open={dialogMode === "customer"} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Endre kunde</DialogTitle>
-            <DialogDescription>Velg en annen kunde for prosjektet.</DialogDescription>
-          </DialogHeader>
-          <ClientAutocomplete options={customers} value={customerId} onChange={setCustomerId} />
-          <DialogFooter>
-            <Button variant="outline" onClick={closeDialog}>
-              Avbryt
-            </Button>
-            <Button onClick={() => void handleChangeCustomer()} disabled={!customerId || isSaving}>
-              Lagre
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <div className="flex flex-1 flex-col gap-2.5 p-3.5">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-snug text-foreground group-hover:text-primary">
+              {project.name}
+            </p>
+            {siteAddress && (
+              <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <MapPin className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate">{siteAddress}</span>
+              </p>
+            )}
+          </div>
 
-      <Dialog open={dialogMode === "archive"} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Arkiver prosjekt</DialogTitle>
-            <DialogDescription>
-              {project.name} flyttes til tidligere prosjekter. Du kan fortsatt åpne det senere.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={closeDialog}>
-              Avbryt
-            </Button>
-            <Button onClick={() => void handleArchive()} disabled={isSaving}>
-              Arkiver
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+          {/* mt-auto holder kunde/periode i bunn, så kortene får lik høyde
+              selv når adressen mangler på noen av dem. */}
+          <div className="mt-auto min-w-0 space-y-1 border-t border-border/50 pt-2.5 text-xs text-muted-foreground">
+            <p className="flex min-w-0 items-center gap-1.5">
+              <User className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate text-foreground/80">{customer.name}</span>
+            </p>
+            <p className="flex min-w-0 items-center gap-1.5">
+              <CalendarRange className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate tabular-nums">{periodLabel}</span>
+            </p>
+          </div>
+        </div>
+
+        <ProjectStatusFooter status={project.status} idPrefix={project.id} className="w-full" />
+      </Link>
+    </div>
   )
 }

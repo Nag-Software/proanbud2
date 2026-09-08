@@ -18,6 +18,10 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
+import {
+  StickyActionBar,
+  StickyActionBarSpacer,
+} from "@/components/mobile/sticky-action-bar"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -56,11 +60,21 @@ import { cn } from "@/lib/utils"
 const OFFLINE_ERROR_MESSAGE =
   "Fikk ikke kontakt med serveren. Sjekk internettforbindelsen og prøv igjen."
 
+/** Står to steder — i kortet på desktop, i bunnbaren på mobil. */
+const GPS_HINT = "Bruker GPS for å bekrefte at du er på byggeplassen."
+
 /** Husker forrige valgte prosjekt så gjentaksvalget er ett trykk. */
 const LAST_PROJECT_KEY = "proanbud.timeforing.sist-valgte-prosjekt"
 
-/** Med flere prosjekter enn dette bytter velgeren fra kort til nedtrekksliste. */
-const MAX_PROJECT_CARDS = 6
+/**
+ * Med flere prosjekter enn dette bytter velgeren fra kort til nedtrekksliste.
+ *
+ * Sto på 6. Seks kort à 56 px er 340 px, og på en telefon dyttet det
+ * «Stemple inn på plassen» under folden — altså var sidens hele formål
+ * usynlig når du åpnet den. Tre kort er fortsatt ett trykk for den som har
+ * få prosjekter, og over det er nedtrekkslista både kortere og raskere.
+ */
+const MAX_PROJECT_CARDS = 3
 
 /** Gi beskjed til nav-indikatorene (sidebar/bunn-nav) om at stemplingsstatus endret seg. */
 function notifyWorkSessionChanged() {
@@ -402,6 +416,26 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
     ? format(startedAtDate, "yyyy-MM-dd") === todayLocalISODate()
     : true
 
+  /**
+   * Sidens hele formål. Rendres to steder som utelukker hverandre: inne i
+   * kortet fra md og opp, og i den faste bunnbaren på mobil — aldri begge
+   * samtidig, så det finnes fortsatt bare én «stemple inn»-knapp på skjermen.
+   */
+  const checkInButton = (
+    <Button
+      size="xl"
+      type="button"
+      className="w-full gap-2 text-base font-semibold"
+      onClick={handleGeofenceCheckIn}
+      disabled={!selectedProjectId || isSubmitting || checkingIn}
+    >
+      {checkingIn ? <Loader2 className="size-5 animate-spin" /> : <MapPin className="size-5" />}
+      {checkingIn ? "Henter posisjon …" : "Stemple inn på plassen"}
+    </Button>
+  )
+
+  const showStickyCheckIn = !activeSession && projects.length > 0
+
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4 pb-8">
       <div className="space-y-1">
@@ -501,23 +535,13 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 
-          <div className="space-y-1">
-            <Button size="xl"
-              type="button"
-              className="w-full gap-2 text-base font-semibold"
-              onClick={handleGeofenceCheckIn}
-              disabled={!selectedProjectId || isSubmitting || checkingIn}
-            >
-              {checkingIn ? (
-                <Loader2 className="size-5 animate-spin" />
-              ) : (
-                <MapPin className="size-5" />
-              )}
-              {checkingIn ? "Henter posisjon …" : "Stemple inn på plassen"}
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Bruker GPS for å bekrefte at du er på byggeplassen.
-            </p>
+          {/* På mobil bor både knappen og forklaringen i den faste baren
+              nederst (se lenger ned). Blir forklaringen stående igjen her,
+              leses den som en beskrivelse av «Start uten GPS» — altså det
+              motsatte av hva den sier. */}
+          <div className="hidden space-y-1 md:block">
+            {checkInButton}
+            <p className="text-xs text-muted-foreground">{GPS_HINT}</p>
           </div>
 
           <Button size="lg"
@@ -677,6 +701,16 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
           </div>
         )}
       </div>
+
+      {showStickyCheckIn && (
+        <>
+          <StickyActionBarSpacer className="h-28" />
+          <StickyActionBar>
+            {checkInButton}
+            <p className="mt-1.5 text-center text-[11px] text-muted-foreground">{GPS_HINT}</p>
+          </StickyActionBar>
+        </>
+      )}
     </div>
   )
 }

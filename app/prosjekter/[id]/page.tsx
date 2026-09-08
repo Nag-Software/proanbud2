@@ -235,24 +235,36 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         {/* Tittel, fase og handlinger deler én rad. Fasen hadde sin egen rad
             før, men tittelraden sto halvtom — og prosjektsiden hadde tre
             navigasjonsrader på toppen. */}
-        <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
-          <div className="min-w-0 space-y-0.5">
-            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              {project.project_type || "Ditt prosjekt"}
-            </p>
-            <h1 className="truncate text-xl font-semibold text-foreground">{project.name}</h1>
+        {/* Toppen sto i fire stablede rader på mobil (stikktittel, navn,
+            fasestripe, knapper) og spiste 43 % av skjermen før noe innhold.
+            På mobil er den nå to: navn + fasechip, så handlingene. Fra sm og
+            opp er raden uendret — der var det aldri noe problem. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 sm:gap-y-3">
+          {/* sm:contents løser opp denne innpakningen fra og med sm, slik at
+              tittelen og fasestripa igjen blir direkte flex-barn av raden —
+              desktoplayouten er altså bokstavelig talt uendret, mens de på
+              mobil deler én linje. */}
+          <div className="flex min-w-0 flex-1 items-center gap-3 sm:contents">
+            <div className="min-w-0 space-y-0.5">
+              {/* Prosjekttypen er nyttig kontekst på desktop, men på mobil er
+                  den en hel linje for ett ord man sjelden trenger. */}
+              <p className="hidden text-xs uppercase tracking-[0.2em] text-muted-foreground sm:block">
+                {project.project_type || "Ditt prosjekt"}
+              </p>
+              <h1 className="truncate text-xl font-semibold text-foreground">{project.name}</h1>
+            </div>
+
+            <ProjectPhaseStripe
+              projectId={project.id}
+              status={project.status}
+              canEdit={isProjectAdmin}
+              className="ml-auto shrink-0 sm:w-auto"
+            />
           </div>
 
-          <ProjectPhaseStripe
-            projectId={project.id}
-            status={project.status}
-            canEdit={isProjectAdmin}
-            className="w-full sm:ml-auto sm:w-auto"
-          />
-
-          <div className="flex w-full flex-wrap items-start gap-2 sm:w-auto">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
             {!isWorker && (
-              <Button asChild className="flex flex-row px-4">
+              <Button asChild className="flex flex-1 flex-row px-4 sm:flex-none">
                 <Link href={`/nytt-tilbud?projectId=${project.id}`}>
                   <PlusCircle className="h-4 w-4" />
                   Nytt tilbud

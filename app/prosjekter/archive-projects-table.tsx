@@ -1,11 +1,13 @@
 import Link from "next/link"
 
+import { MobileList, MobileListRow } from "@/components/mobile/list-row"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ProjectStatusFooter } from "./project-status-footer"
 import {
   getProjectCode,
   getProjectCustomer,
   getProjectPeriod,
+  getStatusConfig,
   type ProjectRow,
 } from "./project-utils"
 
@@ -96,51 +98,31 @@ export function ArchiveProjectsTable({ projects, hasFilters = false }: ArchivePr
         </Table>
       </div>
 
-      <div className="divide-y overflow-hidden rounded-xl border border-border/70 bg-card md:hidden">
+      {/* Mobil: tidligere prosjekter er oppslagsverk, ikke daglig arbeid — de
+          får én kompakt rad hver i stedet for et kort på 180 px. */}
+      <MobileList className="md:hidden">
         {projects.map((project) => {
           const customer = getProjectCustomer(project)
-          const projectCode = getProjectCode(project.id)
           const periodLabel = getProjectPeriod(project)
+          const status = getStatusConfig(project.status)
 
           return (
-            <Link
+            <MobileListRow
               key={project.id}
               href={`/prosjekter/${project.id}`}
-              className="flex flex-col transition-colors hover:bg-muted/30"
-            >
-              <div className="px-4 py-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{project.name}</p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                      {projectCode}
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                      Kunde
-                    </p>
-                    <p className="mt-1 text-foreground">{customer.name}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                      Periode
-                    </p>
-                    <p className="mt-1 text-muted-foreground">{periodLabel}</p>
-                  </div>
-                </div>
-              </div>
-              <ProjectStatusFooter
-                status={project.status}
-                idPrefix={`${project.id}-archive-mobile`}
-                className="w-full"
-              />
-            </Link>
+              accentClassName={status.fillClass}
+              title={project.name}
+              subtitle={customer.name}
+              meta={periodLabel}
+              trailing={
+                <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                  {status.shortLabel ?? status.label}
+                </span>
+              }
+            />
           )
         })}
-      </div>
+      </MobileList>
     </>
   )
 }

@@ -99,13 +99,18 @@ export default async function Page({
   return (
     <AppPageShell segments={["Prosjekter"]} hideMobileTitle>
       <ProjectsViewProvider initialView={initialView}>
-      <section className="space-y-8">
-        <div className="grid grid-cols-2 items-center justify-between gap-2 sm:flex sm:justify-between w-full">
-          <div className="space-y-0">
-            <h1 className="text-2xl font-semibold text-foreground">Prosjektoversikt</h1>
-          </div>
+      {/* 32 px mellom hver seksjon er riktig på en bred skjerm; på en telefon
+          er det 4 % av viewporten per luftlomme. */}
+      <section className="space-y-5 sm:space-y-8">
+        {/* grid-cols-2 ga tittelen og knappen nøyaktig halve bredden hver, så
+            «Prosjektoversikt» sto og klemte mot knappekanten på en telefon.
+            Flex lar tittelen ta plassen den trenger og knappen krympe til sitt. */}
+        <div className="flex w-full items-center justify-between gap-3">
+          <h1 className="min-w-0 truncate text-2xl font-semibold text-foreground">
+            Prosjektoversikt
+          </h1>
           {canCreateProject && (
-            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <div className="flex shrink-0 items-center gap-2">
               <CreateProjectDrawer variant="outline" />
             </div>
           )}

@@ -3,7 +3,10 @@
 import * as React from "react"
 import dynamic from "next/dynamic"
 
+import { MobileList } from "@/components/mobile/list-row"
+
 import { ProjectCard } from "./project-card"
+import { ProjectListRow } from "./project-list-row"
 import { useProjectsView } from "./projects-view"
 import type { ClientOption } from "./ny/components/client-autocomplete"
 import type { ProjectRow } from "./project-utils"
@@ -54,14 +57,27 @@ export function ActiveProjects({ projects, customers, hasFilters = false }: Acti
       ) : view === "kanban" ? (
         <ProjectKanbanBoard projects={projects} />
       ) : (
-        <div
-          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5"
-          style={{ borderRadius: 5 }}
-        >
-          {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} customers={customers} />
-          ))}
-        </div>
+        <>
+          {/* Mobil: kompakte rader. Kortet med fullbreddebilde er laget for
+              fire i bredden — i én kolonne blir det 470 px per prosjekt, og
+              lista slutter å være noe man kan skanne. Begge variantene
+              rendres i markup og velges av CSS, så det ikke blir et hopp
+              mellom server og klient. */}
+          <MobileList className="sm:hidden">
+            {projects.map((project) => (
+              <ProjectListRow key={project.id} project={project} customers={customers} />
+            ))}
+          </MobileList>
+
+          <div
+            className="hidden gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5"
+            style={{ borderRadius: 5 }}
+          >
+            {projects.map((project) => (
+              <ProjectCard key={project.id} project={project} customers={customers} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   )

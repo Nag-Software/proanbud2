@@ -142,9 +142,15 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
   return (
     <ResponsiveDialog open={open} onOpenChange={setOpen}>
       <ResponsiveDialogTrigger asChild>
-        <Button variant="outline" className="gap-2">
+        {/* Ikonknapp på mobil: ordet «Innstillinger» er 110 px som tittelraden
+            trenger bedre, og tannhjulet er entydig nok alene. */}
+        <Button
+          variant="outline"
+          className="w-10 shrink-0 gap-2 px-0 sm:w-auto sm:px-2.5"
+          aria-label="Innstillinger"
+        >
           <Settings2 className="h-4 w-4" />
-          Innstillinger
+          <span className="sr-only sm:not-sr-only">Innstillinger</span>
         </Button>
       </ResponsiveDialogTrigger>
       <ResponsiveDialogContent className="max-h-[90vh] px-2 md:p-4 overflow-y-scroll sm:max-w-lg">
