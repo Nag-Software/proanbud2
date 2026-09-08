@@ -117,7 +117,7 @@ export function KartWorkerClient({ initialProjects }: { initialProjects: KartWor
       {/* Bottom sheet — slides up on pin tap, down on dismiss. */}
       <div
         className={cn(
-          "absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-[calc(env(safe-area-inset-bottom)+5.25rem)] transition-transform duration-300 ease-out md:pb-3",
+          "absolute inset-x-0 bottom-0 z-20 flex justify-center px-3 pb-3 transition-transform duration-300 ease-out",
           isOpen ? "translate-y-0" : "pointer-events-none translate-y-[130%]"
         )}
       >

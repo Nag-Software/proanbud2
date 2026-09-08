@@ -24,15 +24,15 @@ export function StickyActionBar({
   children: ReactNode
   className?: string
 }) {
-  // Samme regnestykke som skallets bunn-spacer: på web og i iOS-appen ligger
-  // det en fanelinje over bunnkanten som baren må klarere. Høyden hentes fra
+  // Samme regnestykke som skallets bunn-spacer: på mobilweb ligger det en
+  // fanelinje over bunnkanten som baren må klarere. Høyden hentes fra
   // MOBILE_NAV_HEIGHT framfor å gjentas her — endres baren, følger denne med.
-  // I Android-appen ligger fanelinja UTENFOR webviewet, så der er bunnen bunnen.
+  // I appene ligger menyen UTENFOR webviewet (iOS: systemets tab-bar,
+  // Android: den dokkede baren), så der er bunnen bunnen.
   const nativePlatform = useNativePlatform()
-  const bottom =
-    nativePlatform === "android"
-      ? "env(safe-area-inset-bottom)"
-      : `calc(${MOBILE_NAV_HEIGHT} + env(safe-area-inset-bottom))`
+  const bottom = nativePlatform
+    ? "env(safe-area-inset-bottom)"
+    : `calc(${MOBILE_NAV_HEIGHT} + env(safe-area-inset-bottom))`
 
   return (
     <div

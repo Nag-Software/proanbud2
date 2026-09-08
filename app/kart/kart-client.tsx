@@ -619,7 +619,7 @@ export function KartClient({
       {/* Bottom: selected project — live operations panel (bottom sheet on mobile) */}
       {selected && !geoEditing && (
         <div className="absolute inset-x-0 bottom-0 z-20 md:inset-x-auto md:bottom-3 md:right-3 md:left-auto">
-          <div className="pointer-events-auto flex max-h-[70vh] w-full flex-col rounded-t-2xl border-t bg-background/95 px-4 pt-2.5 pb-[calc(env(safe-area-inset-bottom)+4.5rem)] shadow-2xl backdrop-blur md:max-h-[calc(100dvh-6rem)] md:w-[360px] md:rounded-xl md:border md:p-4 md:shadow-lg">
+          <div className="pointer-events-auto flex max-h-[70vh] w-full flex-col rounded-t-2xl border-t bg-background/95 px-4 pt-2.5 pb-4 shadow-2xl backdrop-blur md:max-h-[calc(100dvh-6rem)] md:w-[360px] md:rounded-xl md:border md:p-4 md:shadow-lg">
             <div className="mx-auto mb-2 h-1 w-9 shrink-0 rounded-full bg-muted-foreground/30 md:hidden" />
             <div className="flex shrink-0 items-start justify-between gap-3">
               <div className="min-w-0">
@@ -743,7 +743,7 @@ export function KartClient({
       {/* Bottom: geofence editor (bottom sheet on mobile, replaces the detail panel) */}
       {selected && geoEditing && (
         <div className="absolute inset-x-0 bottom-0 z-20 md:inset-x-auto md:bottom-3 md:right-3 md:left-auto">
-          <div className="pointer-events-auto w-full rounded-t-2xl border-t bg-background/95 px-4 pt-2.5 pb-[calc(env(safe-area-inset-bottom)+4.5rem)] shadow-2xl backdrop-blur md:w-[360px] md:rounded-xl md:border md:p-4 md:shadow-lg">
+          <div className="pointer-events-auto w-full rounded-t-2xl border-t bg-background/95 px-4 pt-2.5 pb-4 shadow-2xl backdrop-blur md:w-[360px] md:rounded-xl md:border md:p-4 md:shadow-lg">
             <div className="mx-auto mb-2 h-1 w-9 rounded-full bg-muted-foreground/30 md:hidden" />
             <div className="flex items-center justify-between gap-3">
               <h3 className="flex items-center gap-2 text-base font-medium text-foreground">
