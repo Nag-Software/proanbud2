@@ -568,7 +568,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-3">
+        <div className="min-h-0 flex-1 overflow-y-auto pb-4 pt-3">
           {step === 1 ? (
             <div className="space-y-5">
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

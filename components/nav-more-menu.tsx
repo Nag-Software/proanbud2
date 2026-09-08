@@ -102,7 +102,7 @@ export function NavMoreMenu({ open, onOpenChange, primaryHrefs }: NavMoreMenuPro
             </p>
           ) : (
             grouped.map((section) => (
-              <div key={section.group} className="space-y-2">
+              <div key={section.group} className="space-y-2 mt-2">
                 <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
                   {APP_NAV_GROUP_LABELS[section.group]}
                 </p>
