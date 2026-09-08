@@ -100,20 +100,18 @@ export function MobileBottomNav() {
         href={item.href}
         aria-label={stampedIn ? `${item.label} – stemplet inn` : item.label}
         aria-current={active ? "page" : undefined}
-        className="relative flex flex-1 flex-col items-center justify-center gap-1 px-0.5 text-[10px] font-medium transition-transform active:scale-95"
+        className="relative flex flex-1 flex-col items-center justify-center gap-[3px] px-0.5 text-[10px] transition-transform active:scale-95"
       >
-        <span
-          className={cn(
-            "relative flex h-7 w-9 items-center justify-center rounded-full transition-colors",
-            active && "bg-primary bg-[image:var(--control-sheen)] shadow-[var(--shadow-raised)]"
-          )}
-        >
+        {/* Ingen flate bak ikonet. Den fylte brikken er Material sin
+            «pill indicator» — iOS og Fiken markerer aktiv fane utelukkende
+            med farge og vekt, og lar ikonet stå fritt i baren. */}
+        <span className="relative flex h-[22px] w-9 items-center justify-center">
           <Icon
             className={cn(
-              "size-[19px] transition-colors",
-              active ? "text-primary-foreground" : "text-muted-foreground"
+              "size-[22px] transition-[color,opacity] duration-150",
+              active ? "text-foreground" : "text-muted-foreground"
             )}
-            strokeWidth={active ? 2.1 : 1.8}
+            strokeWidth={active ? 2.25 : 1.6}
           />
           {stampedIn && (
             <span
@@ -124,8 +122,8 @@ export function MobileBottomNav() {
         </span>
         <span
           className={cn(
-            "relative max-w-full truncate leading-none",
-            active ? "font-semibold text-foreground" : "text-muted-foreground"
+            "relative max-w-full truncate leading-none tracking-[-0.01em] transition-colors",
+            active ? "font-semibold text-foreground" : "font-medium text-muted-foreground"
           )}
         >
           {item.label}
@@ -186,10 +184,10 @@ export function MobileBottomNav() {
               type="button"
               onClick={toggleSidebar}
               aria-label="Mer"
-              className="relative flex flex-1 flex-col items-center justify-center gap-1 px-0.5 text-[10px] font-medium text-muted-foreground transition-transform active:scale-95"
+              className="relative flex flex-1 flex-col items-center justify-center gap-[3px] px-0.5 text-[10px] font-medium text-muted-foreground transition-transform active:scale-95"
             >
-              <span className="relative flex h-7 w-9 items-center justify-center rounded-full">
-                <MoreHorizontalIcon className="size-[19px]" strokeWidth={1.8} />
+              <span className="relative flex h-[22px] w-9 items-center justify-center">
+                <MoreHorizontalIcon className="size-[22px] text-muted-foreground" strokeWidth={1.6} />
                 {/* Meldinger er ikke lenger egen fane, så uleste ville blitt
                     usynlige. Badgen følger med inn i «Mer …». */}
                 {unreadCount > 0 && (
@@ -198,7 +196,7 @@ export function MobileBottomNav() {
                   </span>
                 )}
               </span>
-              <span className="relative leading-none">Mer</span>
+              <span className="relative leading-none tracking-[-0.01em]">Mer</span>
             </button>
           </>
         )}
