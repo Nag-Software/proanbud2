@@ -28,6 +28,7 @@ import { canInviteEmployees, canManageSubscription } from "@/lib/roles"
 import { useAuth } from "@/components/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { CreateProjectDrawer } from "@/app/prosjekter/create-project-dialog"
+import { NativeMenuBridge } from "@/components/native-nav-bridge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useNotifications, type NotificationItem } from "@/hooks/use-notifications"
 import { NotificationsPopover } from "@/components/notifications-popover"
@@ -504,6 +505,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
+      {/* Appens «Mer»-ark viser denne menyen — send den over broen så de to
+          aldri kan drifte fra hverandre. Rendrer ingenting. */}
+      <NativeMenuBridge items={filteredNavMain} />
       <AppSidebarHeader
         unreadCount={visibleUnreadCount}
         notifications={notifications}
