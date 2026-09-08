@@ -90,7 +90,9 @@ export function SearchableSelect({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={searchPlaceholder}
-            className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            // Samme touch-gulv som resten av appen setter i globals.css: med
+            // finger må målet være minst 40 px.
+            className="h-9 w-full bg-transparent text-sm outline-none pointer-coarse:h-11 placeholder:text-muted-foreground"
           />
         </div>
         <div className="max-h-60 overflow-y-auto p-1">
@@ -106,7 +108,10 @@ export function SearchableSelect({
                   setOpen(false)
                 }}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
+                  // 32 px høye rader tett i tett gjør at en tommel treffer
+                  // nabovalget. På timeføringa betyr et feiltrykk timer ført
+                  // på feil byggeplass, så med finger løftes raden til 44 px.
+                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors pointer-coarse:min-h-11 hover:bg-accent hover:text-accent-foreground",
                   o.value === value && "bg-accent/60"
                 )}
               >

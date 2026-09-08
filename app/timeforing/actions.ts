@@ -769,7 +769,7 @@ export async function getProjectTimeEntriesAction(
   }
 }
 
-export type MyTimeTrackingProject = { id: string; name: string }
+export type MyTimeTrackingProject = { id: string; name: string; site_address?: string | null }
 
 export type MyRecentTimeEntry = {
   id: string
@@ -842,7 +842,9 @@ export async function getMyTimeTrackingOverviewAction(): Promise<
         .maybeSingle(),
       supabase
         .from("projects")
-        .select("id, name")
+        // site_address er med fordi prosjektvelgeren søker på byggeplass, ikke
+        // bare prosjektnavn — folk husker gjerne adressen de kjørte til.
+        .select("id, name, site_address")
         .in("status", [...ACTIVE_PROJECT_STATUSES])
         .order("name", { ascending: true }),
       supabase

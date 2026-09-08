@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { nb } from "date-fns/locale"
@@ -32,13 +32,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Textarea } from "@/components/ui/textarea"
 import {
   addManualTimeEntryAction,
@@ -154,6 +148,18 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
   const projects = overview?.projects ?? []
   const recentEntries = overview?.recentEntries ?? []
   const weekHours = overview?.weekHours ?? 0
+
+  // Navnet står i lista, adressen ligger bak som søkeord: du finner plassen
+  // enten du husker hva prosjektet heter eller hvor du kjørte.
+  const projectOptions = useMemo(
+    () =>
+      (overview?.projects ?? []).map((project) => ({
+        value: project.id,
+        label: project.name,
+        keywords: project.site_address ?? "",
+      })),
+    [overview?.projects]
+  )
 
   const refresh = useCallback(async () => {
     try {
@@ -519,18 +525,19 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
               })}
             </div>
           ) : (
-            <Select value={selectedProjectId ?? ""} onValueChange={selectProject}>
-              <SelectTrigger className="h-12 w-full text-base">
-                <SelectValue placeholder="Velg prosjekt" />
-              </SelectTrigger>
-              <SelectContent>
-                {projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            // Med mange prosjekter er rulling gjennom en liste det tregeste
+            // man kan gjøre med hansker på. SearchableSelect søker på både
+            // navn og byggeplassadresse — samme komponent som turskjemaet i
+            // kjøreboka bruker.
+            <SearchableSelect
+              value={selectedProjectId ?? ""}
+              onChange={selectProject}
+              options={projectOptions}
+              placeholder="Velg prosjekt"
+              searchPlaceholder="Søk på prosjekt eller adresse …"
+              emptyText="Ingen prosjekter passer søket"
+              className="h-12 w-full text-base"
+            />
           )}
 
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -577,18 +584,16 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
             <div className="mt-4 space-y-3">
               <div className="space-y-2">
                 <Label htmlFor="manual-project">Prosjekt</Label>
-                <Select value={manualProjectId} onValueChange={setManualProjectId}>
-                  <SelectTrigger id="manual-project" className="w-full">
-                    <SelectValue placeholder="Velg prosjekt" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="manual-project"
+                  value={manualProjectId}
+                  onChange={setManualProjectId}
+                  options={projectOptions}
+                  placeholder="Velg prosjekt"
+                  searchPlaceholder="Søk på prosjekt eller adresse …"
+                  emptyText="Ingen prosjekter passer søket"
+                  className="h-10 w-full"
+                />
               </div>
 
               <div className="space-y-2">
