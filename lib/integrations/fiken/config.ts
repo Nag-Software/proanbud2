@@ -37,13 +37,35 @@ export function hasFikenOAuthConfig() {
 }
 
 /**
+ * Fiken sammenligner redirect_uri i token-steget tegn for tegn med den vi sendte til
+ * /authorize — og avviser hele vekslingen med «The redirect_uri is missing or invalid»
+ * hvis de skiller seg med så mye som protokollen. Derfor normaliseres URI-en ETT sted,
+ * og begge stegene bruker akkurat denne strengen. Alt utenfor localhost tvinges til
+ * https, slik at en env-verdi skrevet med http:// ikke knekker tilkoblingen.
+ */
+function normalizeFikenRedirectUri(value: string) {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error(`FIKEN_OAUTH_REDIRECT_URI er ugyldig: ${value}`)
+  }
+
+  const isLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1"
+  if (!isLocal) {
+    url.protocol = "https:"
+  }
+  return url.toString()
+}
+
+/**
  * Registered OAuth redirect URI. Falls back to building from the public app origin.
  * Must match the value registered in the Fiken App exactly.
  */
 export function getFikenRedirectUri() {
   const explicit = process.env.FIKEN_OAUTH_REDIRECT_URI?.trim()
   if (explicit) {
-    return explicit
+    return normalizeFikenRedirectUri(explicit)
   }
 
   const origin =
@@ -55,7 +77,7 @@ export function getFikenRedirectUri() {
     throw new Error("FIKEN_OAUTH_REDIRECT_URI (or NEXT_PUBLIC_APP_URL) is missing")
   }
 
-  return `${origin.replace(/\/$/, "")}/api/integrations/fiken/oauth/callback`
+  return normalizeFikenRedirectUri(`${origin.replace(/\/$/, "")}/api/integrations/fiken/oauth/callback`)
 }
 
 /** HTTP Basic credential for the Fiken token endpoint (client_id:client_secret). */

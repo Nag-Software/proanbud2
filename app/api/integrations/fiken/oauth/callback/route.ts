@@ -123,6 +123,9 @@ export async function GET(request: Request) {
       source: "api",
       route: "GET /api/integrations/fiken/oauth/callback",
     })
-    return NextResponse.redirect(`${redirectTo}?fiken_error=oauth_failed`)
+    // Uten årsaken ser hvert nye forsøk identisk ut for brukeren («Prøv igjen»), selv
+    // når feilen er permanent (feil redirect_uri, avvist app). Ta med Fikens egen tekst.
+    const reason = encodeURIComponent(message.slice(0, 160))
+    return NextResponse.redirect(`${redirectTo}?fiken_error=oauth_failed&fiken_reason=${reason}`)
   }
 }
