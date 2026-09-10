@@ -13,6 +13,7 @@ import {
   LayoutDashboardIcon,
   NewspaperIcon,
   RadarIcon,
+  ScanSearchIcon,
   ReceiptIcon,
   ScrollTextIcon,
   ShieldCheckIcon,
@@ -55,6 +56,11 @@ const navItems = [
     title: "Analyse",
     url: "/sjefen/analyse",
     icon: <RadarIcon className="size-4" />,
+  },
+  {
+    title: "Analyserte",
+    url: "/sjefen/analyserte",
+    icon: <ScanSearchIcon className="size-4" />,
   },
   {
     title: "Firmaer",
