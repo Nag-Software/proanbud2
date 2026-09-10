@@ -76,12 +76,8 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
         >
           {children}
         </div>
-        {/* Spacer reserving room for the fixed mobile bottom nav (incl. safe
-            area). Bare på vanlig mobilweb: begge appene har bunnmenyen sin
-            UTENFOR webviewet (iOS: systemets tab-bar, Android: den dokkede
-            baren), så der ville dette blitt en stripe dødt hvitrom over
-            menyen i stedet for plass til noe. */}
-        {!nativePlatform && (
+        {/* Spacer reserving room for the fixed mobile bottom nav (incl. safe area) */}
+        {nativePlatform !== "android" && (
           <div
             className="shrink-0 md:hidden"
             style={{ height: `calc(${MOBILE_NAV_HEIGHT} + env(safe-area-inset-bottom))` }}

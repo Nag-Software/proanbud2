@@ -123,7 +123,9 @@ export function FikenClient({
     const ok = params.get("fiken_connected")
     const pickCompany = params.get("fiken_select_company")
     if (error) {
-      toast.error(ERROR_MESSAGES[error] || `Fiken: ${error}`)
+      const reason = params.get("fiken_reason")
+      const base = ERROR_MESSAGES[error] || `Fiken: ${error}`
+      toast.error(reason ? `${base} (${reason})` : base)
       router.replace("/min-bedrift/fiken")
     } else if (pickCompany) {
       toast.info("Velg hvilket Fiken-selskap ProAnbud skal bruke.")

@@ -44,7 +44,7 @@ export async function sanityFetch<T>(query: string, params: Record<string, unkno
   return payload.result
 }
 
-async function sanityFetchWithToken<T>(
+export async function sanityFetchWithToken<T>(
   query: string,
   params: Record<string, unknown> = {}
 ): Promise<T> {
