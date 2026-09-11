@@ -420,6 +420,9 @@ export function TutorialWizard() {
 
   if (!mounted || phase === "off") return null
 
+  const portalHost =
+    document.getElementById("pa-overlay-root") ?? document.body
+
   return createPortal(
     <>
       {phase === "welcome" && (
@@ -628,6 +631,6 @@ export function TutorialWizard() {
         </>
       )}
     </>,
-    document.body
+    portalHost
   )
 }

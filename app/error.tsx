@@ -1,11 +1,15 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { AlertTriangle, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { reportClientError } from "@/lib/errors/client"
+import {
+  isDomReconcilerMismatch,
+  reloadOnceForDomMismatch,
+} from "@/lib/errors/dom-mismatch"
 
 export default function Error({
   error,
@@ -14,17 +18,30 @@ export default function Error({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const [reloading, setReloading] = useState(() => isDomReconcilerMismatch(error))
+
   useEffect(() => {
     console.error("App route error:", error)
-    // Record to the central error log (visible in /sjefen/feil).
+    const domMismatch = isDomReconcilerMismatch(error)
+    // Chrome Translate / extension DOM mutations crash the reconciler. A
+    // one-shot reload usually recovers; report as warning so it does not
+    // look like an unexplained fatal in /sjefen/feil.
     reportClientError({
       message: error.message || "Uventet sidefeil",
       stack: error.stack,
       digest: error.digest,
-      level: "error",
+      level: domMismatch ? "warning" : "error",
       source: "client",
+      context: domMismatch ? { action: "dom-reconciler-mismatch" } : undefined,
     })
+    if (domMismatch && reloadOnceForDomMismatch()) {
+      setReloading(true)
+      return
+    }
+    setReloading(false)
   }, [error])
+
+  if (reloading) return null
 
   return (
     <div className="flex min-h-[60vh] w-full items-center justify-center p-6">
