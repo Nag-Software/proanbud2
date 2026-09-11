@@ -15,6 +15,8 @@ import type { LookupFunction } from "node:net"
 
 import ipaddr from "ipaddr.js"
 
+import { ROLE_LOCALPARTS } from "@/lib/outreach/gates"
+
 const GENERIC_EMAIL = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
 const MAILTO = /mailto:([^"'?>\s]+)/gi
 const TEL = /tel:([+\d\s]+)/gi
@@ -60,14 +62,19 @@ function pickBestEmail(candidates: string[], siteHost: string | null): string | 
     .filter((e) => e.includes("@") && !EMAIL_BLOCKLIST.some((b) => e.includes(b)))
   if (cleaned.length === 0) return null
 
-  // Prefer an address on the same domain as the website.
-  if (siteHost) {
-    const sameDomain = cleaned.find((e) => e.endsWith(`@${siteHost}`) || e.endsWith(`.${siteHost}`))
-    if (sameDomain) return sameDomain
-  }
-  // Then prefer common business mailboxes.
-  const preferredLocal = cleaned.find((e) => /^(post|kontakt|firmapost|hei|info)@/.test(e))
-  return preferredLocal ?? cleaned[0]
+  // Kald e-post kan bare gå til en generell firmaadresse (markedsføringsloven
+  // § 15), så en rolleadresse (post@, kontakt@ …) slår alltid en navngitt
+  // ansatt — også når personen står øverst på kontaktsiden.
+  const host = siteHost?.replace(/^www\./, "") ?? null
+  const onSite = (e: string) => Boolean(host && (e.endsWith(`@${host}`) || e.endsWith(`.${host}`)))
+  const isRole = (e: string) => ROLE_LOCALPARTS.has(e.split("@")[0].replace(/\d+$/, ""))
+
+  return (
+    cleaned.find((e) => onSite(e) && isRole(e)) ??
+    cleaned.find(isRole) ??
+    cleaned.find(onSite) ??
+    cleaned[0]
+  )
 }
 
 function normalizePhone(raw: string): string | null {

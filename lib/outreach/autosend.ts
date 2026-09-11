@@ -48,10 +48,13 @@ type SequenceProspect = {
   sequence_step: number
   click_count: number | null
   last_contacted_at: string | null
+  domain: string | null
 }
 
+// NB: contact_policy/domain krever db/90. Mangler de, feiler spørringen og
+// cronen sender ingenting — trygg feilretning.
 const PROSPECT_COLUMNS =
-  "id, name, email, org_number, status, nace_code, nace_description, matched_company_id, sequence_step, click_count, last_contacted_at"
+  "id, name, email, org_number, status, nace_code, nace_description, matched_company_id, sequence_step, click_count, last_contacted_at, domain"
 
 function withUtmContent(url: string, content: string): string {
   return `${url}${url.includes("?") ? "&" : "?"}utm_content=${content}`
@@ -173,13 +176,16 @@ export async function runAutosendBatch(): Promise<AutosendSummary> {
     .is("sequence_stopped_at", null)
     .in("sequence_step", [1, 2])
     .not("email", "is", null)
+    .eq("contact_policy", "epost_ok")
     .lte("sequence_next_at", nowIso)
     .order("sequence_next_at", { ascending: true })
     .limit(CANDIDATE_POOL)
   if (dueError) throw dueError
 
-  // 2) Nye innmeldinger: innboks/kald lead med e-post, aldri i sekvens før,
-  //    ikke eksisterende kunde, og ikke manuelt kontaktet de siste ukene.
+  // 2) Nye innmeldinger: KVALIFISERTE leads som har bestått portene
+  //    (contact_policy = epost_ok: AS i målgruppen, firmaadresse, ikke avmeldt),
+  //    aldri i sekvens før, ikke eksisterende kunde, og ikke manuelt kontaktet de
+  //    siste ukene. Innboks-leads («ny») meldes aldri inn automatisk.
   const quietCutoff = new Date(Date.now() - REENROLL_QUIET_DAYS * 24 * 60 * 60 * 1000).toISOString()
   const { data: freshRaw, error: freshError } = await admin
     .from("prospects")
@@ -187,7 +193,8 @@ export async function runAutosendBatch(): Promise<AutosendSummary> {
     .is("sequence_stopped_at", null)
     .eq("sequence_step", 0)
     .not("email", "is", null)
-    .in("status", ["ny", "kvalifisert"])
+    .eq("status", "kvalifisert")
+    .eq("contact_policy", "epost_ok")
     .or("is_existing_customer.is.null,is_existing_customer.eq.false")
     .or(`last_contacted_at.is.null,last_contacted_at.lt.${quietCutoff}`)
     .order("lead_score", { ascending: false, nullsFirst: false })
@@ -216,7 +223,7 @@ export async function runAutosendBatch(): Promise<AutosendSummary> {
     }
 
     // Suppresjonslisten sjekkes ALLTID rett før sending (markedsføringsloven/GDPR).
-    if (await isOptedOut(admin, { email: prospect.email, orgNumber: prospect.org_number })) {
+    if (await isOptedOut(admin, { email: prospect.email, orgNumber: prospect.org_number, domain: prospect.domain })) {
       await stopSequence(admin, prospect.id, "avmeldt")
       summary.stopped += 1
       continue

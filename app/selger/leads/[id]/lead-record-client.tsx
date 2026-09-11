@@ -41,6 +41,25 @@ import {
 import type { ProspectDetail } from "@/lib/selger/queries"
 import type { ProspectTaskRow, ProspectTimelineEntry } from "@/lib/selger/types"
 import { TASK_TYPE_LABELS } from "@/lib/selger/types"
+import {
+  COLD_STATUSES,
+  CONTACT_POLICY_LABELS,
+  GATE_REASON_LABELS,
+  LEGAL_GATE_REASONS,
+  type ContactPolicy,
+  type GateReason,
+} from "@/lib/outreach/gates"
+
+/** Lovkravet som stenger kald e-post for dette leadet (ENK, personlig adresse …),
+ *  eller null. Avmelding vises i eget banner, og manglende adresse sier seg selv. */
+function coldEmailBlock(prospect: ProspectDetail["prospect"], status: ProspectStatus): string | null {
+  if (!COLD_STATUSES.has(status) || prospect.matched_company_id) return null
+  const reasons = (prospect.gate_reasons ?? []) as GateReason[]
+  const legal = reasons.find(
+    (reason) => LEGAL_GATE_REASONS.has(reason) && reason !== "avmeldt" && reason !== "ingen_epost",
+  )
+  return legal ? GATE_REASON_LABELS[legal] : null
+}
 
 type ComposerTab = "epost" | "ring" | "notat" | "mote"
 
@@ -98,6 +117,28 @@ export function LeadRecordClient({
 
   const isClosed = status === "kunde" || status === "tapt"
   const rotting = rottingFor(status, prospect.last_activity_at)
+  const emailBlock = coldEmailBlock(prospect, status)
+  const [regating, setRegating] = React.useState(false)
+
+  async function recheckGates() {
+    setRegating(true)
+    try {
+      const response = await fetch("/api/selger/regate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [prospect.id], force: true }),
+      })
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string }
+        toast.error(payload.error || "Kunne ikke sjekke på nytt")
+        return
+      }
+      toast.success("Sjekket mot Brønnøysund på nytt")
+      router.refresh()
+    } finally {
+      setRegating(false)
+    }
+  }
   const stageDays = daysInStage(prospect.stage_entered_at)
   const trialDays = trialDaysLeft(detail.billing?.trial_ends_at ?? null)
 
@@ -152,7 +193,7 @@ export function LeadRecordClient({
               <PhoneIcon className="size-3.5" /> Ring
             </Button>
           )}
-          <Button size="sm" onClick={() => setTab("epost")} disabled={detail.optedOut}>
+          <Button size="sm" onClick={() => setTab("epost")} disabled={detail.optedOut || Boolean(emailBlock)}>
             <MailIcon className="size-3.5" /> Send e-post
           </Button>
         </div>
@@ -172,13 +213,38 @@ export function LeadRecordClient({
               Avmeldt e-post — kun telefon. Adressen står på suppresjonslisten.
             </div>
           )}
+          {!detail.optedOut && emailBlock && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              <PhoneIcon className="size-4 shrink-0" />
+              <span className="font-semibold">Kun telefon:</span>
+              <span className="min-w-0">{emailBlock}</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-auto h-7 text-xs"
+                disabled={regating}
+                onClick={() => void recheckGates()}
+              >
+                {regating ? "Sjekker…" : "Sjekk på nytt"}
+              </Button>
+            </div>
+          )}
 
           <Composer
             prospectId={prospect.id}
             phone={prospect.phone}
             tab={tab}
             onTabChange={setTab}
-            emailDisabled={detail.optedOut || !prospect.email}
+            emailDisabled={detail.optedOut || !prospect.email || Boolean(emailBlock)}
+            emailDisabledReason={
+              detail.optedOut
+                ? "Adressen er avmeldt — bruk telefon."
+                : emailBlock
+                  ? `${emailBlock}.`
+                  : !prospect.email
+                    ? "Leadet har ingen e-postadresse — bruk telefon, eller «Finn kontaktinfo» i innboksen."
+                    : undefined
+            }
             status={status}
             onMoveToDialog={() => void changeStatus("dialog")}
             onDone={() => router.refresh()}
@@ -577,6 +643,8 @@ function InfoPanel({ detail }: { detail: ProspectDetail }) {
         </div>
       </div>
 
+      <ContactRules prospect={prospect} />
+
       <div className="border-b px-3.5 py-3">
         <div className="flex items-center gap-2">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -640,6 +708,50 @@ function InfoPanel({ detail }: { detail: ProspectDetail }) {
   )
 }
 
+/** Portdommen: hva slags firma dette er, og hvordan det lovlig kan kontaktes. */
+function ContactRules({ prospect }: { prospect: ProspectDetail["prospect"] }) {
+  const policy = (prospect.contact_policy ?? "ukjent") as ContactPolicy
+  const reasons = (prospect.gate_reasons ?? []) as GateReason[]
+  if (prospect.contact_policy === undefined) return null // db/90 ikke kjørt
+
+  return (
+    <div className="border-b px-3.5 py-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        Kontaktregler
+      </p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <Badge
+          variant="outline"
+          className={cn(
+            "text-[10px]",
+            policy === "epost_ok" && "theme-badge-status-accepted",
+            policy === "kun_telefon" &&
+              "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+            (policy === "utenfor_icp" || policy === "blokkert") && "text-muted-foreground",
+          )}
+        >
+          {CONTACT_POLICY_LABELS[policy]}
+        </Badge>
+        {prospect.org_form && (
+          <Badge variant="outline" className="text-[10px]">
+            {prospect.org_form}
+          </Badge>
+        )}
+      </div>
+      {reasons.length > 0 && (
+        <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+          {reasons.map((reason) => (
+            <li key={reason}>· {GATE_REASON_LABELS[reason] ?? reason}</li>
+          ))}
+        </ul>
+      )}
+      {policy === "ukjent" && (
+        <p className="mt-1.5 text-xs text-muted-foreground">Ikke sjekket mot Brønnøysund ennå.</p>
+      )}
+    </div>
+  )
+}
+
 // ============================================================
 // Komponisten: E-post / Ring / Notat / Møte
 // ============================================================
@@ -650,6 +762,7 @@ function Composer({
   tab,
   onTabChange,
   emailDisabled,
+  emailDisabledReason,
   status,
   onMoveToDialog,
   onDone,
@@ -661,6 +774,7 @@ function Composer({
   tab: ComposerTab
   onTabChange: (tab: ComposerTab) => void
   emailDisabled: boolean
+  emailDisabledReason?: string
   status: string
   onMoveToDialog: () => void
   onDone: () => void
@@ -696,7 +810,12 @@ function Composer({
       </div>
       <div className="p-3.5">
         {tab === "epost" && (
-          <EmailPane prospectId={prospectId} disabled={emailDisabled} onSent={onDone} />
+          <EmailPane
+            prospectId={prospectId}
+            disabled={emailDisabled}
+            disabledReason={emailDisabledReason}
+            onSent={onDone}
+          />
         )}
         {tab === "ring" && (
           <CallPane
@@ -726,10 +845,12 @@ function Composer({
 function EmailPane({
   prospectId,
   disabled,
+  disabledReason,
   onSent,
 }: {
   prospectId: string
   disabled: boolean
+  disabledReason?: string
   onSent: () => void
 }) {
   const [subject, setSubject] = React.useState("")
@@ -740,7 +861,7 @@ function EmailPane({
   if (disabled) {
     return (
       <p className="py-4 text-center text-sm text-muted-foreground">
-        E-postkanalen er stengt for dette leadet — bruk telefon.
+        {disabledReason ?? "E-postkanalen er stengt for dette leadet — bruk telefon."}
       </p>
     )
   }

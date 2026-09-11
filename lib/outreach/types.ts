@@ -74,6 +74,16 @@ export type ProspectRow = {
   click_count: number
   is_hot: boolean
   hot_since: string | null
+  // Portene (db/90). Valgfrie: finnes ikke før migrasjonen er kjørt.
+  segment?: string | null
+  org_form?: string | null
+  domain?: string | null
+  trade?: string | null
+  email_kind?: string | null
+  email_source?: string | null
+  contact_policy?: string | null
+  gate_reasons?: string[] | null
+  brreg_checked_at?: string | null
 }
 
 /** Norwegian counties (fylker) with their 2-digit kommunenummer prefix (2024 structure). */

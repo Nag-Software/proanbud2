@@ -58,15 +58,20 @@ export function computeLeadScore(input: LeadScoreInput): LeadScore {
     reasons.push("Har e-post")
   }
 
+  // Målgruppen er 5–20 ansatte (docs/visjon.md). 21–30 kan fortsatt passe; over
+  // det har de trolig eget system. Brreg viser ikke 1–4, så «ukjent» er små.
   const employees = input.employeeCount ?? 0
-  if (employees >= 3 && employees <= 50) {
+  if (employees >= 5 && employees <= 20) {
     score += 15
-    reasons.push("God størrelse (3–50 ansatte)")
-  } else if (employees > 50) {
-    score += 6
-    reasons.push("Stor bedrift")
+    reasons.push("Riktig størrelse (5–20 ansatte)")
+  } else if (employees > 20 && employees <= 30) {
+    score += 8
+    reasons.push("Litt over målgruppen (21–30 ansatte)")
+  } else if (employees > 30) {
+    score += 2
+    reasons.push("Stor bedrift — har trolig eget system")
   } else if (employees >= 1) {
-    score += 6
+    score += 4
     reasons.push("Liten bedrift")
   }
 

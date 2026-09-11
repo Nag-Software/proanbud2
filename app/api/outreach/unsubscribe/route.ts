@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { recordUnsubscribe } from "@/lib/outreach/send"
+import { logServerError } from "@/lib/errors/log"
 
 /**
  * Suppress a prospect from all further outreach. Only ever keyed on the unguessable
@@ -11,11 +12,9 @@ async function suppressProspect(prospectId: string | null): Promise<void> {
   if (!prospectId) return
 
   const admin = createAdminClient()
-  const { data: prospect } = await admin
-    .from("prospects")
-    .select("id, email, org_number")
-    .eq("id", prospectId)
-    .maybeSingle()
+  // select("*"): virker også før nye kolonner (domain, db/90) finnes — en
+  // avmelding skal aldri feile på et skjema-mellomrom.
+  const { data: prospect } = await admin.from("prospects").select("*").eq("id", prospectId).maybeSingle()
   if (!prospect) return
 
   const now = new Date().toISOString()
@@ -27,6 +26,7 @@ async function suppressProspect(prospectId: string | null): Promise<void> {
   await recordUnsubscribe(admin, {
     email: prospect.email,
     orgNumber: prospect.org_number,
+    domain: (prospect as { domain?: string | null }).domain ?? null,
     reason: "link",
   })
 }
@@ -68,10 +68,29 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const { searchParams } = new URL(request.url)
   const rawBody = await request.text().catch(() => "")
-  await suppressProspect(searchParams.get("p"))
+  const oneClick = /list-unsubscribe=one-click/i.test(rawBody)
+
+  try {
+    await suppressProspect(searchParams.get("p"))
+  } catch (error) {
+    // Aldri si «du er avmeldt» når det ikke ble lagret.
+    await logServerError({
+      message: "Avmelding kunne ikke lagres",
+      error,
+      source: "api",
+      route: "POST /api/outreach/unsubscribe",
+      context: { prospectId: searchParams.get("p") },
+    })
+    if (oneClick) return new Response(null, { status: 500 })
+    return page(
+      "Noe gikk galt",
+      `<h1 style="font-size:18px;margin:0 0 8px;color:#1c1917;">Avmeldingen ble ikke lagret</h1>
+         <p style="font-size:14px;color:#78716c;margin:0;">Prøv igjen, eller svar «stopp» på e-posten, så melder vi deg av manuelt.</p>`
+    )
+  }
 
   // One-click clients send the RFC 8058 body and want a bare 2xx, not HTML.
-  if (/list-unsubscribe=one-click/i.test(rawBody)) {
+  if (oneClick) {
     return new Response(null, { status: 200 })
   }
 

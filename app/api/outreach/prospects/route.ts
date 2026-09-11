@@ -6,8 +6,10 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerActivity } from "@/lib/selger/activity-log"
 import { logServerError } from "@/lib/errors/log"
 
-const PROSPECT_SELECT =
-  "id, org_number, name, nace_code, nace_description, employee_count, website, email, phone, address, postal_code, city, kommune, kommune_number, enrichment_status, status, is_existing_customer, notes, last_contacted_at, created_at, lead_score, open_count, click_count, is_hot, hot_since"
+// "*" i stedet for en kolonneliste: innboksen trenger portkolonnene fra db/90
+// (org_form, contact_policy, gate_reasons …), og listen skal ikke knekke i
+// perioden mellom deploy og migrasjon.
+const PROSPECT_SELECT = "*"
 
 export async function GET(request: Request) {
   const auth = await requirePlatformSellerForApi()

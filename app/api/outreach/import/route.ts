@@ -6,12 +6,17 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerActivity } from "@/lib/selger/activity-log"
 import { logServerError } from "@/lib/errors/log"
 import { importProspects } from "@/lib/outreach/import"
+import { SEGMENT_KEYS } from "@/lib/outreach/segments"
 
 // Importing several Brreg pages can take a while.
 export const maxDuration = 60
 
 const importSchema = z.object({
   naeringskoder: z.array(z.string().trim().min(1)).min(1).max(10),
+  segment: z.enum(SEGMENT_KEYS).optional(),
+  /** Tom streng = alle organisasjonsformer (ENK/NUF filtreres uansett bort). */
+  organisasjonsform: z.string().trim().max(10).optional(),
+  kunMva: z.boolean().optional(),
   /** 2-digit fylke prefix codes, e.g. ["03","32"]. Filters post-fetch. */
   fylker: z.array(z.string().trim().min(2).max(2)).optional(),
   fraAntallAnsatte: z.number().int().min(0).optional(),
@@ -56,6 +61,9 @@ export async function POST(request: Request) {
   try {
     result = await importProspects(admin, {
       naeringskoder,
+      segment: parsed.data.segment,
+      organisasjonsform: parsed.data.organisasjonsform,
+      kunMva: parsed.data.kunMva,
       fylker,
       fraAntallAnsatte,
       tilAntallAnsatte,
@@ -91,6 +99,8 @@ export async function POST(request: Request) {
       duplicates: result.duplicates,
       backfilled: result.backfilled,
       existingCustomers: result.existingCustomers,
+      emailOk: result.emailOk,
+      phoneOnly: result.phoneOnly,
     },
   })
 
