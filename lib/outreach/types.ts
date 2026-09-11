@@ -84,6 +84,66 @@ export type ProspectRow = {
   contact_policy?: string | null
   gate_reasons?: string[] | null
   brreg_checked_at?: string | null
+  is_test?: boolean | null
+  // Maskintilstand (db/91). Valgfrie av samme grunn.
+  pipeline_state?: PipelineState | null
+  fit_score?: number | null
+  fit_tier?: "A" | "B" | "C" | null
+  disqualify_reason?: string | null
+  research_id?: string | null
+  researched_at?: string | null
+  research_error?: string | null
+  snoozed_until?: string | null
+  tracking_token?: string | null
+  sequence_step?: number | null
+  sequence_next_at?: string | null
+  sequence_stopped_at?: string | null
+  sequence_stop_reason?: string | null
+}
+
+/** Maskinens steg. `status` er fortsatt Caspers handelssteg (kanban). */
+export const PIPELINE_STATES = [
+  "kilde",
+  "venter_research",
+  "research",
+  "kvalifisert",
+  "diskvalifisert",
+  "for_tynn",
+  "kun_telefon",
+  "til_godkjenning",
+  "i_sekvens",
+  "avsluttet",
+  "overlevert",
+] as const
+
+export type PipelineState = (typeof PIPELINE_STATES)[number]
+
+export const PIPELINE_STATE_LABELS: Record<PipelineState, string> = {
+  kilde: "Kilde",
+  venter_research: "Venter på research",
+  research: "Research kjører",
+  kvalifisert: "Kvalifisert",
+  diskvalifisert: "Diskvalifisert",
+  for_tynn: "For tynt grunnlag",
+  kun_telefon: "Kun telefon",
+  til_godkjenning: "Til godkjenning",
+  i_sekvens: "I sekvens",
+  avsluttet: "Avsluttet",
+  overlevert: "Overlevert",
+}
+
+/** Traktstripen over kanban — maskinstegene, i rekkefølge. */
+export const MACHINE_FUNNEL_STATES = [
+  "kilde",
+  "venter_research",
+  "kvalifisert",
+  "til_godkjenning",
+  "i_sekvens",
+  "avsluttet",
+] as const satisfies readonly PipelineState[]
+
+export function isPipelineState(value: unknown): value is PipelineState {
+  return typeof value === "string" && (PIPELINE_STATES as readonly string[]).includes(value)
 }
 
 /** Norwegian counties (fylker) with their 2-digit kommunenummer prefix (2024 structure). */
