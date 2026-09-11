@@ -70,7 +70,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="nb" suppressHydrationWarning>
+    {/* translate="no" / notranslate: Chrome Translate wraps React text nodes
+        in <font> tags and the reconciler then throws insertBefore/removeChild
+        NotFoundError (fatal white screen). The product UI is Norwegian-only. */}
+    <html
+      lang="nb"
+      translate="no"
+      className="notranslate"
+      suppressHydrationWarning
+    >
       <body
         className={`${satoshi.className} ${satoshi.variable} antialiased`}
         suppressHydrationWarning

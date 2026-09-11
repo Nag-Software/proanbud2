@@ -1,6 +1,11 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
+
+import {
+  isDomReconcilerMismatch,
+  reloadOnceForDomMismatch,
+} from "@/lib/errors/dom-mismatch"
 
 // global-error replaces the root layout, so it must render its own <html>/<body>
 // and cannot rely on app providers, fonts, or CSS — use inline styles only.
@@ -11,10 +16,14 @@ export default function GlobalError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const [reloading, setReloading] = useState(() => isDomReconcilerMismatch(error))
+
   useEffect(() => {
     console.error("Global app error:", error)
-    // Self-contained report (global-error must not depend on app modules). Records to
-    // the central error log so even fatal root crashes show up in /sjefen/feil.
+    const domMismatch = isDomReconcilerMismatch(error)
+    // Self-contained report so even root crashes show up in /sjefen/feil.
+    // DOM reconciler mismatches are recovered with a one-shot reload — do not
+    // mark those fatal (they white-screened /tilbud and / for a new company).
     try {
       void fetch("/api/errors", {
         method: "POST",
@@ -23,19 +32,33 @@ export default function GlobalError({
           message: error?.message || "Fatal applikasjonsfeil",
           stack: error?.stack ?? null,
           digest: error?.digest ?? null,
-          level: "fatal",
+          level: domMismatch ? "warning" : "fatal",
           source: "client",
           route: typeof window !== "undefined" ? window.location?.pathname : null,
+          context: domMismatch ? { action: "dom-reconciler-mismatch" } : undefined,
         }),
         keepalive: true,
       }).catch(() => {})
     } catch {
       /* never throw from an error boundary */
     }
+    if (domMismatch && reloadOnceForDomMismatch()) {
+      setReloading(true)
+    } else {
+      setReloading(false)
+    }
   }, [error])
 
+  if (reloading) {
+    return (
+      <html lang="no" translate="no" className="notranslate">
+        <body />
+      </html>
+    )
+  }
+
   return (
-    <html lang="no">
+    <html lang="no" translate="no" className="notranslate">
       <body
         style={{
           margin: 0,

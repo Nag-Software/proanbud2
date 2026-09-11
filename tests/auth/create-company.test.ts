@@ -33,4 +33,10 @@ describe('create-company onboarding hand-off', () => {
       'completeClientLogin(router, created?.trialStarted ? "/onboarding/velkommen" : "/onboarding/abonnement")'
     )
   })
+
+  // Bare text next to a conditionally mounted spinner is the classic
+  // Chrome-Translate insertBefore crash (Tromsø Bygg 2026-09-11).
+  it('wraps the submit label so a loading icon is not inserted beside a text node', () => {
+    expect(page).toContain("<span>Opprett bedrift og start prøveperioden</span>")
+  })
 })
