@@ -75,6 +75,9 @@ describe("app wiring", () => {
     const layout = readFileSync(resolve(__dirname, "../../app/layout.tsx"), "utf-8")
     expect(layout).toContain('translate="no"')
     expect(layout).toContain('className="notranslate"')
+    // A JSX comment sibling of <html> is a parse error (broke CI on the
+    // first revision of this fix).
+    expect(layout).toMatch(/return \(\s*<html/)
   })
 
   it("recovers from reconciler mismatches in both error boundaries", () => {
@@ -84,12 +87,13 @@ describe("app wiring", () => {
     expect(globalError).toContain("reloadOnceForDomMismatch")
   })
 
-  it("keeps the App Router page slot on a stable host node", () => {
-    const shell = readFileSync(
-      resolve(__dirname, "../../components/app-shell-layout.tsx"),
+  it("keeps the tutorial portal host on document.body", () => {
+    const layout = readFileSync(resolve(__dirname, "../../app/layout.tsx"), "utf-8")
+    const wizard = readFileSync(
+      resolve(__dirname, "../../components/onboarding/tutorial-wizard.tsx"),
       "utf-8"
     )
-    expect(shell).toContain('className="contents"')
-    expect(shell).toContain('id="pa-overlay-root"')
+    expect(layout).toContain('id="pa-overlay-root"')
+    expect(wizard).toContain('document.getElementById("pa-overlay-root")')
   })
 })

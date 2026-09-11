@@ -86,9 +86,6 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
         )}
       </SidebarInset>
       <MobileBottomNav />
-      {/* Dedicated host for the tutorial portal. Portaling into document.body
-          races Toaster / Analytics / browser translate wrappers on body. */}
-      <div id="pa-overlay-root" />
       {/* Tutorial-veiviser for nye brukere — inne i SidebarProvider fordi den
           styrer sidebar-tilstanden (ekspanderer før spotlight). Skallet
           persisterer på tvers av navigasjon, så guiden overlever sideskift. */}
@@ -104,12 +101,6 @@ export function AppShellLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const useShell = shouldUsePersistentShell(pathname)
 
-  // Keep the App Router page slot under a stable host node. Toggling between
-  // `<Shell>{children}</Shell>` and bare `{children}` asks React to move the
-  // RSC slot between parents — a known insertBefore/removeChild crash during
-  // login → create-company → onboarding → dashboard.
-  const page = <div className="contents">{children}</div>
-
   return (
     <>
       {/* Always mounted: the native tab bar needs pathname + shell-visibility
@@ -117,10 +108,10 @@ export function AppShellLayout({ children }: { children: ReactNode }) {
       <NativeNavState shell={useShell} />
       {useShell ? (
         <AppShellProvider enabled>
-          <PersistentShellFrame>{page}</PersistentShellFrame>
+          <PersistentShellFrame>{children}</PersistentShellFrame>
         </AppShellProvider>
       ) : (
-        page
+        children
       )}
     </>
   )
