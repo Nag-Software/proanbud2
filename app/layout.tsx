@@ -70,8 +70,16 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // translate="no" / notranslate: Chrome Translate wraps React text nodes in
+  // <font> tags and the reconciler then throws insertBefore/removeChild
+  // NotFoundError (fatal white screen). The product UI is Norwegian-only.
   return (
-    <html lang="nb" suppressHydrationWarning>
+    <html
+      lang="nb"
+      translate="no"
+      className="notranslate"
+      suppressHydrationWarning
+    >
       {/* OpenAI Ads-pixel: beforeInteractive legger snutten i <head>, slik at
           init + consent står i kø-en før noe event kan gå ut. */}
       <head>
@@ -107,6 +115,9 @@ export default function RootLayout({
         <NativeTrackingBridge />
         <MockRoleBanner />
         <Analytics />
+        {/* Empty host for client portals (tutorial). Kept on <body> so
+            position:fixed overlays are not trapped by sidebar transforms. */}
+        <div id="pa-overlay-root" />
       </body>
     </html>
   );

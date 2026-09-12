@@ -276,7 +276,7 @@ export default function CreateCompanyClient() {
             disabled={loading || !companyName || !phoneValid}
           >
             {loading && <LoaderCircleIcon className="mr-2 h-4 w-4 animate-spin" />}
-            Opprett bedrift og start prøveperioden
+            <span>Opprett bedrift og start prøveperioden</span>
           </Button>
 
           <p className="text-center text-xs text-muted-foreground">
