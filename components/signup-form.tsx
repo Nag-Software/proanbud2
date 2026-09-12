@@ -24,6 +24,7 @@ import {
 import { completeClientLogin } from "@/lib/auth/client-login"
 import { reportClientError } from "@/lib/errors/client"
 import { track } from "@/lib/analytics/track"
+import { recordSignupAttribution } from "@/lib/analytics/openai-ads"
 import { authErrorMessage, GENERIC_ERROR_MESSAGE } from "@/lib/errors/user-message"
 import { Input } from "@/components/ui/input"
 
@@ -145,6 +146,13 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
 
       console.log('SignupForm: signUp result', data)
       track("signup_konto_opprettet", { via: "direkte" })
+
+      // Annonse-attribusjon: lagre klikk-referansene varig på brukeren og fyr
+      // registration_completed i nettleseren som sekundært signal. Ingen
+      // konvertering her — den kommer når prøveperioden faktisk opprettes.
+      // Må skje FØR navigeringen, ellers rives fetchen over.
+      await recordSignupAttribution(searchParams.get("oppref"))
+
       // If session exists, user is signed in immediately
       if (data?.session) {
         completeClientLogin(router, "/create-company")

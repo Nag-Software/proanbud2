@@ -14,6 +14,7 @@ import {
   type PlanKey,
 } from "@/lib/billing/plans"
 import type { BillingStatus } from "@/lib/billing/types"
+import { reportTrialStarted } from "@/lib/analytics/openai-ads-server"
 import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getStripe } from "@/lib/stripe/server"
@@ -172,6 +173,22 @@ export async function upsertCompanyBillingFromSubscription(input: {
       throw new CompanyMissingError(input.companyId)
     }
     throw new Error(`Kunne ikke synke billing: ${error.message}`)
+  }
+
+  // Annonsekonvertering (OpenAI Ads): dette er det ENE stedet alle prøvestarter
+  // går gjennom — kortfri trial, Checkout-trial, Stripe-webhook, reconcile-cron
+  // og admin-handlinger i /sjefen ender alle her. Nettleseren ser ofte ingenting
+  // av dette, så serverkanalen er den autoritative.
+  //
+  // Event-ID = abonnementets id, samme verdi nettleseren sender, slik at OpenAI
+  // dedupliserer de to kanalene mot hverandre. Idempotent via ad_conversions og
+  // best-effort: kaster aldri, så en måling kan ikke velte en billing-synk.
+  if (payload.status === "trialing") {
+    await reportTrialStarted({
+      companyId: input.companyId,
+      trialId: input.subscription.id,
+      planId: resolvedPlan,
+    })
   }
 
   return payload

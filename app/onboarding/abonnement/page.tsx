@@ -9,6 +9,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { PROFF_INCLUDED_FEATURES } from "@/lib/billing/plans"
 import { track } from "@/lib/analytics/track"
+import { measureAdEvent } from "@/lib/analytics/openai-ads"
 import { reportClientError } from "@/lib/errors/client"
 
 function OnboardingAbonnementContent() {
@@ -77,6 +78,10 @@ function OnboardingAbonnementContent() {
       }
       if (!res.ok) throw new Error(data.error || "Kunne ikke starte prøveperioden")
       track("prove_startet")
+      // Annonsekonvertering: samme event-ID som serverkanalen brukte.
+      if (data?.trialId) {
+        measureAdEvent("trial_started", { type: "plan_enrollment" }, data.trialId)
+      }
       router.replace("/onboarding/velkommen")
     } catch (error) {
       track("prove_start_feilet")

@@ -266,7 +266,7 @@ export async function createTrialSubscription(input: {
   companyName: string
   fullName: string
   orgNumber?: string | null
-}): Promise<{ status: string }> {
+}): Promise<{ status: string; subscriptionId: string | null }> {
   const stripe = getStripe()
   await ensureCompanyBillingRow(input.companyId)
 
@@ -288,7 +288,9 @@ export async function createTrialSubscription(input: {
       input.companyId,
       billing.stripe_subscription_id
     )
-    if (liveStatus) return { status: liveStatus }
+    if (liveStatus) {
+      return { status: liveStatus, subscriptionId: billing.stripe_subscription_id }
+    }
   }
 
   // One free trial per company: any historic trial_ends_at means the free
@@ -323,13 +325,17 @@ export async function createTrialSubscription(input: {
     expand: ["items.data.price"],
   })
 
+  // Sender samtidig prøvestart-konverteringen til OpenAI Ads (serverkanalen).
   await upsertCompanyBillingFromSubscription({
     companyId: input.companyId,
     customerId,
     subscription,
   })
 
-  return { status: subscription.status }
+  // subscription.id er prøveperiodens egen ID. Den returneres til klienten så
+  // nettleseren kan fyre trial_started med NØYAKTIG samme event-ID som
+  // serverkanalen brukte — ellers telles konverteringen to ganger.
+  return { status: subscription.status, subscriptionId: subscription.id }
 }
 
 /**

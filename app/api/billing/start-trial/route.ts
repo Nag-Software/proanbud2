@@ -45,7 +45,10 @@ export async function POST() {
       orgNumber: company?.org_number,
     })
 
-    return NextResponse.json({ status: result.status })
+    // trialId = prøveperiodens egen ID (Stripe-abonnementet). Klienten bruker
+    // den som event-ID for trial_started, samme som serverkanalen — slik at
+    // OpenAI dedupliserer de to kanalene i stedet for å telle dobbelt.
+    return NextResponse.json({ status: result.status, trialId: result.subscriptionId })
   } catch (error) {
     if (error instanceof TrialAlreadyUsedError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 409 })

@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
 import { reportClientError } from "@/lib/errors/client"
 import { track } from "@/lib/analytics/track"
+import { measureAdEvent } from "@/lib/analytics/openai-ads"
 import {
   MODULE_CATALOG,
   MODULES_INCLUDED_IN_PROFF,
@@ -137,6 +138,10 @@ export function BillingPageClient() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || "Kunne ikke starte prøveperioden")
       track("prove_startet")
+      // Annonsekonvertering: samme event-ID som serverkanalen brukte.
+      if (data?.trialId) {
+        measureAdEvent("trial_started", { type: "plan_enrollment" }, data.trialId)
+      }
       toast.success("Prøveperioden er i gang — 14 dager Proff uten kort.")
       await loadSummary()
     } catch (error) {

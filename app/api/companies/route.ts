@@ -7,6 +7,11 @@ import { ensureCompanyBillingRow } from '@/lib/billing/sync'
 import { createTrialSubscription } from '@/lib/billing/checkout'
 import { isStripeConfigured } from '@/lib/stripe/server'
 import { attributeCompanyToPartner, REF_COOKIE } from '@/lib/affiliate/attribution'
+import {
+  attributeCompanyToAdClick,
+  OBREF_COOKIE,
+  OPPREF_COOKIE,
+} from '@/lib/analytics/ad-attribution'
 import { logServerError } from '@/lib/errors/log'
 
 export async function POST(request: Request) {
@@ -86,6 +91,21 @@ export async function POST(request: Request) {
       console.warn('Affiliate attribution skipped:', attributionError)
     }
 
+    // Annonse-attribusjon (OpenAI Ads): flytt klikk-referansene fra
+    // registreringen over på firmaet. MÅ skje før prøven startes lenger ned —
+    // serverkanalen leser refs av firma-raden når konverteringen sendes.
+    try {
+      const jar = await cookies()
+      await attributeCompanyToAdClick(supabaseAdmin, {
+        companyId: companyData.id,
+        userId: user.id,
+        cookieOppref: jar.get(OPPREF_COOKIE)?.value ?? null,
+        cookieObref: jar.get(OBREF_COOKIE)?.value ?? null,
+      })
+    } catch (adAttributionError) {
+      console.warn('Ad attribution skipped:', adAttributionError)
+    }
+
     // Lagre brukertilknytning
     const { error: userError } = await supabaseAdmin
       .from('users')
@@ -140,9 +160,10 @@ export async function POST(request: Request) {
     // i produktet. Best-effort: feiler Stripe her forblir status 'incomplete',
     // og middleware sender admin til /onboarding/abonnement som prøver igjen.
     let trialStarted = false
+    let trialId: string | null = null
     if (isStripeConfigured()) {
       try {
-        await createTrialSubscription({
+        const trial = await createTrialSubscription({
           companyId: companyData.id,
           email: user.email || '',
           companyName: name,
@@ -150,6 +171,9 @@ export async function POST(request: Request) {
           orgNumber: org_number || null,
         })
         trialStarted = true
+        // Prøveperiodens egen ID, videre til nettleseren som event-ID for
+        // trial_started — samme ID som serverkanalen brukte.
+        trialId = trial.subscriptionId
       } catch (trialError) {
         console.error('Trial auto-start error:', trialError)
         await logServerError({
@@ -195,7 +219,10 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, company: companyData, trialStarted }, { status: 201 })
+    return NextResponse.json(
+      { success: true, company: companyData, trialStarted, trialId },
+      { status: 201 }
+    )
   } catch (err: any) {
     console.error('SERVER ROUTE ERROR:', err)
     await logServerError({
