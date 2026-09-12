@@ -11,6 +11,9 @@ import {
   ListTodoIcon,
   MailIcon,
   MailCheckIcon,
+  MessagesSquareIcon,
+  SettingsIcon,
+  LayersIcon,
   PlusIcon,
   TargetIcon,
   TrendingUpIcon,
@@ -56,6 +59,11 @@ const workItems = [
     icon: <TargetIcon className="size-4" />,
   },
   {
+    title: "Svar",
+    url: "/selger/svar",
+    icon: <MessagesSquareIcon className="size-4" />,
+  },
+  {
     title: "Godkjenning",
     url: "/selger/godkjenning",
     icon: <MailCheckIcon className="size-4" />,
@@ -69,8 +77,10 @@ const workItems = [
 
 const insightItems = [
   { title: "Analyse", url: "/selger/analyse", icon: <TrendingUpIcon className="size-4" /> },
+  { title: "Segmenter", url: "/selger/segmenter", icon: <LayersIcon className="size-4" /> },
   { title: "Aktivitet", url: "/selger/aktivitet", icon: <HistoryIcon className="size-4" /> },
   { title: "E-post og maler", url: "/selger/e-post", icon: <MailIcon className="size-4" /> },
+  { title: "Innstillinger", url: "/selger/innstillinger", icon: <SettingsIcon className="size-4" /> },
 ]
 
 function SelgerSidebarHeader() {

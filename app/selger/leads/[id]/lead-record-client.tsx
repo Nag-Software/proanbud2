@@ -51,6 +51,8 @@ import {
 } from "@/lib/outreach/gates"
 import type { ApprovalDossier } from "@/lib/selger/godkjenning"
 import { DossierPanel } from "./dossier-panel"
+import { RepliesPanel } from "./replies-panel"
+import type { PendingReply } from "@/lib/selger/cockpit"
 
 /** Lovkravet som stenger kald e-post for dette leadet (ENK, personlig adresse …),
  *  eller null. Avmelding vises i eget banner, og manglende adresse sier seg selv. */
@@ -88,11 +90,17 @@ export function LeadRecordClient({
   detail,
   initialTimeline,
   dossier,
+  replies,
+  openReplyId,
 }: {
   detail: ProspectDetail
   initialTimeline: ProspectTimelineEntry[]
   /** Siste dossier fra research-pipelinen. Null før maskinen har sett firmaet. */
   dossier: ApprovalDossier | null
+  /** Innkommende svar, nyeste først. */
+  replies: PendingReply[]
+  /** ?svar=<id> fra cockpiten. */
+  openReplyId: string | null
 }) {
   const router = useRouter()
   const confirm = useConfirm()
@@ -208,6 +216,7 @@ export function LeadRecordClient({
         {/* ============ VENSTRE: hvem er dette ============ */}
         <div className="order-3 flex flex-col gap-3 lg:order-1">
           <InfoPanel detail={detail} />
+          <RepliesPanel replies={replies} openId={openReplyId} />
           <DossierPanel
             prospectId={prospect.id}
             dossier={dossier}

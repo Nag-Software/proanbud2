@@ -148,16 +148,23 @@ export function InboxClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Traktstripen på pipelinen lenker hit med ?steg=<maskinsteg>. Da viser vi
+  // det steget på tvers av status, i stedet for innboksens vanlige «ny».
+  const steg = searchParams.get("steg")
+
   const load = React.useCallback(async () => {
     setLoading(true)
     try {
-      const response = await fetch("/api/outreach/prospects?status=ny&limit=500")
+      const params = steg
+        ? `steg=${encodeURIComponent(steg)}&status=all&limit=500`
+        : "status=ny&limit=500"
+      const response = await fetch(`/api/outreach/prospects?${params}`)
       const payload = (await response.json().catch(() => ({}))) as { prospects?: InboxRow[] }
       setRows(payload.prospects ?? [])
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [steg])
 
   React.useEffect(() => {
     void load()
