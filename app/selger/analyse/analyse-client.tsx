@@ -26,7 +26,14 @@ function pct(part: number, total: number): string {
   return `${Math.round((part / total) * 100)} %`
 }
 
-export function AnalyseClient({ metrics }: { metrics: SalesMetrics }) {
+export function AnalyseClient({
+  metrics,
+  children,
+}: {
+  metrics: SalesMetrics
+  /** Maskinens del av analysen, rendret på serveren. */
+  children?: React.ReactNode
+}) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -200,6 +207,8 @@ export function AnalyseClient({ metrics }: { metrics: SalesMetrics }) {
             For lite data ennå — kom tilbake når du har jobbet noen leads.
           </p>
         )}
+
+        {children}
       </div>
     </SelgerPageShell>
   )

@@ -88,6 +88,7 @@ export const sellerActionLabels: Record<string, string> = {
   import_prospects: "Importerte leads",
   won_prospect: "Vant lead",
   lost_prospect: "Tapte lead",
+  regate_prospects: "Sjekket leads mot Brønnøysund",
 }
 
 // ============================================================

@@ -70,6 +70,7 @@ export async function GET(request: Request) {
         city: row.city,
         naceDescription: row.nace_description,
         employeeCount: row.employee_count,
+        orgForm: row.org_form,
         hasContact: Boolean(row.email || row.phone),
         existingProspectId: prospectByOrg.get(row.org_number) ?? null,
         isCustomer: customerOrgs.has(row.org_number),

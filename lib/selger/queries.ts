@@ -504,6 +504,7 @@ export async function fetchProspectDetail(prospectId: string): Promise<ProspectD
     isOptedOut(admin, {
       email: (prospect.email as string | null) ?? null,
       orgNumber: (prospect.org_number as string | null) ?? null,
+      domain: (prospect.domain as string | null | undefined) ?? null,
     }),
   ])
 

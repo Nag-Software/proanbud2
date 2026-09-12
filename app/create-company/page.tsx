@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { completeClientLogin } from "@/lib/auth/client-login"
 import { reportClientError } from "@/lib/errors/client"
 import { track } from "@/lib/analytics/track"
+import { measureAdEvent } from "@/lib/analytics/openai-ads"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -123,6 +124,13 @@ export default function CreateCompanyClient() {
       const created = await res.json().catch(() => ({}))
       track("firma_opprettet")
       track(created?.trialStarted ? "prove_startet" : "prove_start_feilet")
+
+      // Annonsekonvertering (OpenAI Ads) i nettleseren. Event-ID = prøvens egen
+      // ID fra serveren, samme verdi serverkanalen sendte — OpenAI beholder den
+      // FØRSTE av de to, så konverteringen telles én gang.
+      if (created?.trialId) {
+        measureAdEvent("trial_started", { type: "plan_enrollment" }, created.trialId)
+      }
 
       // Bedriften er opprettet og users.company_id er skrevet server-side. Men en
       // hard navigering kan nå middleware-gaten FØR denne nettleser-sesjonen klarer

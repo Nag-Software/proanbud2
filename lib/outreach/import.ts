@@ -6,15 +6,27 @@
 
 import type { createAdminClient } from "@/lib/supabase/admin"
 import { mapEnhetToProspect, searchBrregEnheter, type MappedProspect } from "@/lib/outreach/brreg"
+import { regateProspects, type GateProspect } from "@/lib/outreach/regate"
+import { getSegment, type SegmentKey } from "@/lib/outreach/segments"
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
+/** Så mange nye prospekter sjekkes mot portene i samme kall (enhet + roller per
+ *  firma). Resten står som «ukjent» til «Sjekk porter» kjøres. */
+const INLINE_REGATE_LIMIT = 120
+
 export type ImportProspectsParams = {
   naeringskoder: string[]
+  /** Salgssegment — styrer standard ansatte-intervall og organisasjonsform. */
+  segment?: SegmentKey
   /** 2-digit fylke prefix codes, e.g. ["03","32"]. Filters post-fetch. */
   fylker?: string[]
   fraAntallAnsatte?: number
   tilAntallAnsatte?: number
+  /** Brreg-organisasjonsform. Standard fra segmentet (AS). Tom streng = alle. */
+  organisasjonsform?: string
+  /** Bare mva-registrerte firmaer (standard true — de driver faktisk). */
+  kunMva?: boolean
   /** How many companies to import this run. */
   count?: number
   /** Only import companies that have email OR phone registered in Brønnøysund. */
@@ -32,6 +44,10 @@ export type ImportProspectsResult = {
   duplicates: number
   backfilled: number
   imported: number
+  /** Hvor mange av de nye som kan få e-post fra maskinen med én gang. */
+  emailOk: number
+  /** Hvor mange av de nye som bare kan ringes (personlig adresse / ingen adresse). */
+  phoneOnly: number
 }
 
 const PAGE_SIZE = 100
@@ -74,19 +90,22 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out
 }
 
-/** Default construction NACE prefixes for auto-import (matched by prefix in Brreg):
- *  43 = specialised construction (maler, rør, elektro, tømrer, tak …),
- *  41.2 = oppføring av bygninger. Override with OUTREACH_IMPORT_NACE="43,41.2". */
+/** Default construction NACE prefixes (SN2025, matched by prefix in Brreg):
+ *  41 = oppføring av bygninger (41.000), 43 = spesialisert bygg (maler, rør,
+ *  elektro, snekker, tak …). NB: SN2007-koden «41.2» gir 0 treff siden
+ *  Brønnøysund gikk over til SN2025. Override with OUTREACH_IMPORT_NACE="41,43". */
 export function getDefaultImportNace(): string[] {
   const raw = process.env.OUTREACH_IMPORT_NACE?.trim()
   if (raw) {
     const parsed = raw
       .split(",")
       .map((c) => c.trim())
+      // Gamle SN2007-koder ville gitt tomme søk — oversett den vanligste.
+      .map((c) => (c === "41.2" || c === "41.20" ? "41" : c))
       .filter(Boolean)
     if (parsed.length > 0) return parsed
   }
-  return ["43", "41.2"]
+  return getSegment("handverker").naeringskoder
 }
 
 /**
@@ -103,7 +122,12 @@ export async function importProspects(
   admin: AdminClient,
   params: ImportProspectsParams
 ): Promise<ImportProspectsResult> {
-  const { naeringskoder, fraAntallAnsatte, tilAntallAnsatte } = params
+  const segment = getSegment(params.segment)
+  const naeringskoder = params.naeringskoder.map((c) => (c === "41.2" || c === "41.20" ? "41" : c))
+  const fraAntallAnsatte = params.fraAntallAnsatte ?? segment.fraAntallAnsatte
+  const tilAntallAnsatte = params.tilAntallAnsatte ?? segment.tilAntallAnsatte
+  const organisasjonsform = params.organisasjonsform ?? segment.orgForms[0]
+  const registrertIMvaregisteret = params.kunMva === false ? undefined : true
   const count = params.count ?? 100
   const onlyWithContact = params.onlyWithContact ?? false
   const onlyWithEmail = params.onlyWithEmail ?? false
@@ -124,6 +148,12 @@ export async function importProspects(
     for (const enhet of enheter) {
       const row = mapEnhetToProspect(enhet)
       if (!row) {
+        skipped += 1
+        continue
+      }
+      // ENK/NUF kan aldri få kald e-post — ikke fyll innboksen med dem, selv om
+      // Brreg-søket skulle slippe dem gjennom (f.eks. ved organisasjonsform "").
+      if (row.org_form === "ENK" || row.org_form === "NUF") {
         skipped += 1
         continue
       }
@@ -150,15 +180,21 @@ export async function importProspects(
     }
   }
 
-  // 1. Probe page 0 to learn the result-set size for this query+sort.
-  const probe = await searchBrregEnheter({
+  // ICP-filtrene går rett i Brreg-søket, så alle sidene fylles med firmaer vi
+  // faktisk vil ha (AS, 5–20 ansatte, mva-registrert, ikke konkurs).
+  const baseQuery = {
     naeringskoder,
     fraAntallAnsatte,
     tilAntallAnsatte,
+    organisasjonsform: organisasjonsform || undefined,
+    registrertIMvaregisteret,
+    kunAktive: true,
     sort,
-    page: 0,
     size: PAGE_SIZE,
-  })
+  }
+
+  // 1. Probe page 0 to learn the result-set size for this query+sort.
+  const probe = await searchBrregEnheter({ ...baseQuery, page: 0 })
   ingest(probe.enheter)
 
   // Pages we're allowed to read (Brreg caps deep paging; never exceed totalPages).
@@ -182,21 +218,23 @@ export async function importProspects(
   for (const page of pageQueue) {
     if (candidates.size >= wantCandidates) break
     if (pagesUsed >= maxPagesThisRun) break
-    const result = await searchBrregEnheter({
-      naeringskoder,
-      fraAntallAnsatte,
-      tilAntallAnsatte,
-      sort,
-      page,
-      size: PAGE_SIZE,
-    })
+    const result = await searchBrregEnheter({ ...baseQuery, page })
     ingest(result.enheter)
     pagesUsed += 1
   }
 
   const candidateOrgs = [...candidates.keys()]
   if (candidateOrgs.length === 0) {
-    return { fetched, skipped, existingCustomers: 0, imported: 0, duplicates: 0, backfilled: 0 }
+    return {
+      fetched,
+      skipped,
+      existingCustomers: 0,
+      imported: 0,
+      duplicates: 0,
+      backfilled: 0,
+      emailOk: 0,
+      phoneOnly: 0,
+    }
   }
 
   // 3. Find which candidates are already prospects or registered customers, so we
@@ -215,22 +253,35 @@ export async function importProspects(
   const newOrgs = candidateOrgs.filter(
     (org) => !existingProspectOrgs.has(org) && !existingCustomerOrgs.has(org)
   )
-  const toInsert = newOrgs.slice(0, count).map((org) => candidates.get(org)!)
+  const toInsert = newOrgs
+    .slice(0, count)
+    .map((org) => ({ ...candidates.get(org)!, segment: segment.key }))
 
   // 4. Insert the new prospects. onConflict still guards against a concurrent run
   // having inserted the same org between our dedup read and this write.
   let imported = 0
+  let emailOk = 0
+  let phoneOnly = 0
   if (toInsert.length > 0) {
     const { data: inserted, error: insertError } = await admin
       .from("prospects")
       .upsert(toInsert, { onConflict: "org_number", ignoreDuplicates: true })
-      .select("id")
+      .select("*")
 
     if (insertError) {
       console.error("[outreach/import] insert failed", insertError)
       throw new Error("Kunne ikke lagre prospekter")
     }
     imported = inserted?.length ?? 0
+
+    // 4b. Portene med én gang (roller + adresseeier), så innboksen viser hvem som
+    // kan få e-post og hvem som bare kan ringes.
+    const toCheck = ((inserted ?? []) as GateProspect[]).slice(0, INLINE_REGATE_LIMIT)
+    if (toCheck.length > 0) {
+      const gated = await regateProspects(admin, toCheck, { concurrency: 6 })
+      emailOk = gated.byPolicy.epost_ok
+      phoneOnly = gated.byPolicy.kun_telefon
+    }
   }
 
   // 5. Backfill Brreg contact info onto prospects that were imported earlier and
@@ -265,5 +316,7 @@ export async function importProspects(
     duplicates: existingProspectOrgs.size,
     backfilled,
     imported,
+    emailOk,
+    phoneOnly,
   }
 }

@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logSellerActivity } from "@/lib/selger/activity-log"
 import { logServerError } from "@/lib/errors/log"
 import { mapEnhetToProspect, type BrregEnhet } from "@/lib/outreach/brreg"
+import { regateProspect, type GateProspect } from "@/lib/outreach/regate"
 
 const schema = z.object({ orgNumber: z.string().regex(/^\d{9}$/) })
 
@@ -54,6 +55,17 @@ export async function POST(request: Request) {
         .eq("org_number", row.org_number)
         .maybeSingle()
       prospectId = existing?.id ?? null
+    }
+
+    // Portdommen med én gang, så lead-kortet viser om firmaet kan få e-post.
+    // Best effort — importen står selv om Brønnøysund-oppslaget feiler.
+    if (prospectId) {
+      const { data: fresh } = await admin.from("prospects").select("*").eq("id", prospectId).maybeSingle()
+      if (fresh) {
+        await regateProspect(admin, fresh as GateProspect).catch((error) =>
+          console.error("[selger/brreg/import] portsjekk feilet", error),
+        )
+      }
     }
 
     await logSellerActivity({

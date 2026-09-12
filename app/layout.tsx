@@ -14,6 +14,7 @@ import { NativeTrackingBridge } from "@/components/native-tracking-bridge"
 import { MockRoleBanner } from "@/components/dev/mock-role-banner"
 import { AnalyticsProvider } from "@/components/analytics/analytics-provider"
 import { AnalyticsIdentify } from "@/components/analytics/analytics-identify"
+import { OpenAiPixel } from "@/components/analytics/openai-pixel"
 import { Analytics } from "@vercel/analytics/next"
 
 const satoshi = localFont({
@@ -71,6 +72,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="nb" suppressHydrationWarning>
+      {/* OpenAI Ads-pixel: beforeInteractive legger snutten i <head>, slik at
+          init + consent står i kø-en før noe event kan gå ut. */}
+      <head>
+        <OpenAiPixel />
+      </head>
       <body
         className={`${satoshi.className} ${satoshi.variable} antialiased`}
         suppressHydrationWarning

@@ -2,9 +2,12 @@
 
 // Leads-innboksen: råmateriale INN (Brønnøysund-søk + listeimport), kvalifisering
 // UT til pipelinen. Viser KUN status «ny» — kvalifiserte leads bor i pipelinen.
-// Motorens «Full auto»-blokk er borte; alt herfra er manuelle valg.
+// Hver rad har en portdom (lib/outreach/gates.ts): kan få e-post, kun telefon,
+// utenfor målgruppen eller blokkert — så ENK og personlige adresser aldri havner
+// i en e-postsekvens ved et uhell.
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   CheckIcon,
@@ -12,6 +15,8 @@ import {
   MailIcon,
   PhoneIcon,
   SearchIcon,
+  ShieldCheckIcon,
+  PlayIcon,
   SparklesIcon,
   Trash2Icon,
 } from "lucide-react"
@@ -39,7 +44,14 @@ import {
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { SelgerPageShell } from "@/components/selger/selger-page-shell"
 import { PlanNextDialog } from "@/components/selger/plan-next-dialog"
-import { CONSTRUCTION_NACE, NORWEGIAN_FYLKER } from "@/lib/outreach/types"
+import { NORWEGIAN_FYLKER } from "@/lib/outreach/types"
+import {
+  CONTACT_POLICY_LABELS,
+  GATE_REASON_LABELS,
+  type ContactPolicy,
+  type GateReason,
+} from "@/lib/outreach/gates"
+import { IMPORT_TRADE_OPTIONS } from "@/lib/outreach/segments"
 import { cn } from "@/lib/utils"
 
 type InboxRow = {
@@ -54,6 +66,10 @@ type InboxRow = {
   kommune_number: string | null
   enrichment_status: string
   created_at: string
+  // Portkolonnene (db/90). Mangler før migrasjonen er kjørt.
+  org_form?: string | null
+  contact_policy?: ContactPolicy | null
+  gate_reasons?: GateReason[] | null
 }
 
 type BrregResult = {
@@ -62,9 +78,48 @@ type BrregResult = {
   city: string | null
   naceDescription: string | null
   employeeCount: number | null
+  orgForm?: string | null
   hasContact: boolean
   existingProspectId: string | null
   isCustomer: boolean
+}
+
+type PolicyFilter = "alle" | ContactPolicy
+
+/** Leads Casper bør se to ganger på før de går i pipelinen. */
+const OUT_OF_TARGET: ReadonlySet<ContactPolicy> = new Set(["utenfor_icp", "blokkert"])
+
+function policyOf(row: InboxRow): ContactPolicy {
+  return row.contact_policy ?? "ukjent"
+}
+
+function reasonText(row: InboxRow): string {
+  const reasons = row.gate_reasons ?? []
+  return reasons.length ? reasons.map((reason) => GATE_REASON_LABELS[reason] ?? reason).join("\n") : ""
+}
+
+const POLICY_BADGE_CLASS: Record<ContactPolicy, string> = {
+  epost_ok: "theme-badge-status-accepted",
+  kun_telefon: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+  utenfor_icp: "border-stone-300 bg-stone-100 text-stone-600 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400",
+  blokkert: "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300",
+  ukjent: "",
+}
+
+function PolicyBadge({ row }: { row: InboxRow }) {
+  const policy = policyOf(row)
+  const reasons = reasonText(row)
+  return (
+    <Badge
+      variant="outline"
+      className={cn("gap-1 text-[10px]", POLICY_BADGE_CLASS[policy])}
+      title={reasons || undefined}
+    >
+      {policy === "epost_ok" && <MailIcon className="size-2.5" />}
+      {policy === "kun_telefon" && <PhoneIcon className="size-2.5" />}
+      {CONTACT_POLICY_LABELS[policy]}
+    </Badge>
+  )
 }
 
 export function InboxClient() {
@@ -77,12 +132,15 @@ export function InboxClient() {
   const [query, setQuery] = React.useState("")
   const [onlyContact, setOnlyContact] = React.useState(false)
   const [fylke, setFylke] = React.useState("alle")
+  const [policyFilter, setPolicyFilter] = React.useState<PolicyFilter>("alle")
   const [selected, setSelected] = React.useState<Set<string>>(new Set())
 
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
   const [planFor, setPlanFor] = React.useState<{ id: string; name: string } | null>(null)
   const [enriching, setEnriching] = React.useState(false)
+  const [gating, setGating] = React.useState(false)
+  const [running, setRunning] = React.useState(false)
 
   // «+ Nytt lead» i sidebaren lander her med ?nytt=1 → åpne Brreg-søket.
   React.useEffect(() => {
@@ -90,16 +148,23 @@ export function InboxClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Traktstripen på pipelinen lenker hit med ?steg=<maskinsteg>. Da viser vi
+  // det steget på tvers av status, i stedet for innboksens vanlige «ny».
+  const steg = searchParams.get("steg")
+
   const load = React.useCallback(async () => {
     setLoading(true)
     try {
-      const response = await fetch("/api/outreach/prospects?status=ny&limit=500")
+      const params = steg
+        ? `steg=${encodeURIComponent(steg)}&status=all&limit=500`
+        : "status=ny&limit=500"
+      const response = await fetch(`/api/outreach/prospects?${params}`)
       const payload = (await response.json().catch(() => ({}))) as { prospects?: InboxRow[] }
       setRows(payload.prospects ?? [])
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [steg])
 
   React.useEffect(() => {
     void load()
@@ -113,11 +178,22 @@ export function InboxClient() {
       }
       if (onlyContact && !row.email && !row.phone) return false
       if (fylke !== "alle" && !(row.kommune_number ?? "").startsWith(fylke)) return false
+      if (policyFilter !== "alle" && policyOf(row) !== policyFilter) return false
       return true
     })
-  }, [rows, query, onlyContact, fylke])
+  }, [rows, query, onlyContact, fylke, policyFilter])
 
-  const withContact = rows.filter((row) => row.email || row.phone).length
+  const policyCounts = React.useMemo(() => {
+    const counts: Record<ContactPolicy, number> = {
+      epost_ok: 0,
+      kun_telefon: 0,
+      utenfor_icp: 0,
+      blokkert: 0,
+      ukjent: 0,
+    }
+    for (const row of rows) counts[policyOf(row)] += 1
+    return counts
+  }, [rows])
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -148,6 +224,14 @@ export function InboxClient() {
   }
 
   async function qualifySingle(row: InboxRow) {
+    if (OUT_OF_TARGET.has(policyOf(row))) {
+      const ok = await confirm({
+        title: `${row.name} er ${CONTACT_POLICY_LABELS[policyOf(row)].toLowerCase()}`,
+        description: `${reasonText(row) || "Portene stoppet firmaet."}\n\nLegge det i pipelinen likevel?`,
+        confirmText: "Kvalifiser likevel",
+      })
+      if (!ok) return
+    }
     const ok = await qualify(row)
     if (ok) {
       toast.success(`${row.name} lagt i pipelinen`)
@@ -158,12 +242,91 @@ export function InboxClient() {
 
   async function qualifyBulk() {
     const chosen = rows.filter((row) => selected.has(row.id))
+    // Massekvalifisering tar aldri med firmaer portene har stoppet — de må
+    // vurderes ett for ett.
+    const allowed = chosen.filter((row) => !OUT_OF_TARGET.has(policyOf(row)))
+    const skipped = chosen.length - allowed.length
     let done = 0
-    for (const row of chosen) {
+    for (const row of allowed) {
       if (await qualify(row)) done += 1
     }
     if (done > 0) {
       toast.success(`${done} leads lagt i pipelinen — husk å sette neste handling`)
+    }
+    if (skipped > 0) {
+      toast.info(`${skipped} hoppet over: utenfor målgruppen eller blokkert. Kvalifiser dem enkeltvis om du vil.`)
+    }
+  }
+
+  /** «Kjør maskinen»: køer opp nye prospekter, researcher dem og skriver
+   *  utkast i ett trykk. Utkastene havner i godkjenningskøen — ingenting
+   *  sendes herfra. */
+  async function runMachine() {
+    setRunning(true)
+    try {
+      const response = await fetch("/api/selger/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ queueLimit: 30 }),
+      })
+      const payload = (await response.json().catch(() => ({}))) as {
+        queued?: number
+        research?: { succeeded?: number; failed?: number }
+        drafts?: { succeeded?: number; failed?: number }
+        cost_usd?: number
+        notes?: string[]
+        error?: string
+      }
+      if (!response.ok) {
+        toast.error(payload.error || "Kjøringen feilet")
+        return
+      }
+      toast.success(
+        `${payload.queued ?? 0} køet · ${payload.research?.succeeded ?? 0} researchet · ${payload.drafts?.succeeded ?? 0} utkast klare`,
+        {
+          description: [
+            payload.cost_usd ? `Kostnad $${payload.cost_usd.toFixed(3)}` : null,
+            payload.notes?.length ? payload.notes.slice(0, 2).join(" · ") : null,
+          ]
+            .filter(Boolean)
+            .join(" — "),
+          action:
+            (payload.drafts?.succeeded ?? 0) > 0
+              ? { label: "Gå til godkjenning", onClick: () => router.push("/selger/godkjenning") }
+              : undefined,
+        },
+      )
+      void load()
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  async function runGates() {
+    setGating(true)
+    try {
+      const response = await fetch("/api/selger/regate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
+      })
+      const payload = (await response.json().catch(() => ({}))) as {
+        checked?: number
+        byPolicy?: Record<ContactPolicy, number>
+        hasMore?: boolean
+        error?: string
+      }
+      if (!response.ok) {
+        toast.error(payload.error || "Portsjekken feilet")
+        return
+      }
+      const by = payload.byPolicy
+      toast.success(
+        `Sjekket ${payload.checked ?? 0} mot Brønnøysund: ${by?.epost_ok ?? 0} kan få e-post, ${by?.kun_telefon ?? 0} kun telefon, ${(by?.utenfor_icp ?? 0) + (by?.blokkert ?? 0)} utenfor målgruppen.${payload.hasMore ? " Trykk igjen for resten." : ""}`,
+      )
+      void load()
+    } finally {
+      setGating(false)
     }
   }
 
@@ -243,24 +406,54 @@ export function InboxClient() {
           </div>
         </div>
 
-        {/* Statuskort */}
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: "Innboks", value: loading ? "…" : String(rows.length) },
-            { label: "Med kontaktinfo", value: loading ? "…" : String(withContact) },
-            {
-              label: "Uten kontaktinfo",
-              value: loading ? "…" : String(rows.length - withContact),
-            },
-          ].map((stat) => (
-            <div key={stat.label} className="rounded-lg border bg-card px-3.5 py-3">
+        {/* Statuskort — klikk for å filtrere på portdommen */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {(
+            [
+              { key: "alle", label: "Innboks", value: rows.length },
+              { key: "epost_ok", label: "Kan få e-post", value: policyCounts.epost_ok },
+              { key: "kun_telefon", label: "Kun telefon", value: policyCounts.kun_telefon },
+              {
+                key: "utenfor_icp",
+                label: "Utenfor målgruppen",
+                value: policyCounts.utenfor_icp + policyCounts.blokkert,
+              },
+            ] as Array<{ key: PolicyFilter; label: string; value: number }>
+          ).map((stat) => (
+            <button
+              key={stat.key}
+              type="button"
+              onClick={() => setPolicyFilter((current) => (current === stat.key ? "alle" : stat.key))}
+              className={cn(
+                "rounded-lg border bg-card px-3.5 py-3 text-left transition-colors hover:bg-muted/50",
+                policyFilter === stat.key && stat.key !== "alle" && "border-primary ring-1 ring-primary",
+              )}
+            >
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 {stat.label}
               </p>
-              <p className="mt-0.5 text-xl font-bold tabular-nums tracking-tight">{stat.value}</p>
-            </div>
+              <p className="mt-0.5 text-xl font-bold tabular-nums tracking-tight">
+                {loading ? "…" : String(stat.value)}
+              </p>
+            </button>
           ))}
         </div>
+        {!loading && policyCounts.ukjent > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+            <ShieldCheckIcon className="size-3.5" />
+            {policyCounts.ukjent} leads er ikke sjekket mot Brønnøysund ennå (organisasjonsform, ansatte og
+            hvem som eier e-postadressen).
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto h-7 text-xs"
+              disabled={gating}
+              onClick={() => void runGates()}
+            >
+              {gating ? "Sjekker…" : "Sjekk nå"}
+            </Button>
+          </div>
+        )}
 
         {/* Filtre */}
         <div className="flex flex-wrap items-center gap-2">
@@ -298,11 +491,32 @@ export function InboxClient() {
             variant="outline"
             size="sm"
             className="ml-auto h-8 gap-1.5 text-xs"
+            disabled={gating}
+            onClick={() => void runGates()}
+            title="Hent fersk data fra Brønnøysund og sjekk hvem som lovlig kan få e-post"
+          >
+            <ShieldCheckIcon className="size-3.5" />
+            {gating ? "Sjekker…" : "Sjekk porter"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
             disabled={enriching}
             onClick={() => void enrichPending()}
           >
             <SparklesIcon className="size-3.5" />
             {enriching ? "Beriker…" : "Finn kontaktinfo"}
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            disabled={running}
+            onClick={() => void runMachine()}
+            title="Research de neste prospektene og skriv utkast til godkjenning"
+          >
+            <PlayIcon className="size-3.5" />
+            {running ? "Kjører…" : "Kjør maskinen"}
           </Button>
         </div>
 
@@ -370,30 +584,30 @@ export function InboxClient() {
                     aria-label={`Velg ${row.name}`}
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{row.name}</p>
+                    <Link
+                      href={`/selger/leads/${row.id}`}
+                      className="block truncate text-sm font-semibold hover:underline"
+                    >
+                      {row.name}
+                    </Link>
                     <p className="truncate text-xs text-muted-foreground">
-                      {[row.nace_description, row.city, row.org_number]
+                      {[row.org_form, row.nace_description, row.city, row.org_number]
                         .filter(Boolean)
                         .join(" · ")}
                       {row.employee_count !== null && ` · ${row.employee_count} ansatte`}
                     </p>
+                    {policyOf(row) !== "epost_ok" && policyOf(row) !== "ukjent" && reasonText(row) && (
+                      <p className="truncate text-[11px] text-muted-foreground/80">
+                        {reasonText(row).split("\n")[0]}
+                      </p>
+                    )}
                   </div>
-                  {row.email && row.phone ? (
-                    <Badge variant="outline" className="theme-badge-status-accepted gap-1 text-[10px]">
-                      <MailIcon className="size-2.5" />
-                      <PhoneIcon className="size-2.5" />
-                      Full kontakt
-                    </Badge>
-                  ) : row.email || row.phone ? (
-                    <Badge variant="outline" className="gap-1 text-[10px]">
-                      {row.email ? <MailIcon className="size-2.5" /> : <PhoneIcon className="size-2.5" />}
-                      {row.email ? "E-post" : "Telefon"}
-                    </Badge>
-                  ) : (
+                  {!row.email && !row.phone && (
                     <Badge variant="outline" className="theme-badge-status-sent text-[10px]">
                       Mangler kontakt
                     </Badge>
                   )}
+                  <PolicyBadge row={row} />
                   <div className="flex gap-1.5">
                     <Button
                       variant="accent"
@@ -549,11 +763,18 @@ function BrregSearchDialog({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{result.name}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {[result.orgNumber, result.city, result.naceDescription]
+                      {[result.orgForm, result.orgNumber, result.city, result.naceDescription]
                         .filter(Boolean)
                         .join(" · ")}
                       {result.employeeCount !== null && ` · ${result.employeeCount} ansatte`}
                     </p>
+                    {(result.orgForm === "ENK" || result.orgForm === "NUF") && (
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                        {result.orgForm === "ENK"
+                          ? "Enkeltpersonforetak — kan ringes, men aldri få kald e-post."
+                          : "Utenlandsk foretak — utenfor målgruppen."}
+                      </p>
+                    )}
                   </div>
                   {result.isCustomer ? (
                     <Badge variant="outline" className="theme-badge-status-accepted text-[10px]">
@@ -601,34 +822,49 @@ function ImportListDialog({
   onOpenChange: (open: boolean) => void
   onImported: () => void
 }) {
-  const [nace, setNace] = React.useState<string>("43")
+  const [trade, setTrade] = React.useState<string>("alle")
   const [fylke, setFylke] = React.useState<string>("alle")
   const [count, setCount] = React.useState<string>("50")
   const [onlyWithContact, setOnlyWithContact] = React.useState(true)
+  // Målgruppen: AS med 5–20 ansatte, mva-registrert. Av = alle størrelser
+  // (ENK og NUF filtreres uansett bort — de kan aldri få kald e-post).
+  const [onlyTarget, setOnlyTarget] = React.useState(true)
   const [importing, setImporting] = React.useState(false)
 
   async function runImport() {
     setImporting(true)
     try {
+      const codes = IMPORT_TRADE_OPTIONS.find((option) => option.value === trade)?.codes ?? ["41", "43"]
       const response = await fetch("/api/outreach/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          naeringskoder: [nace],
+          naeringskoder: codes,
+          segment: "handverker",
           fylker: fylke === "alle" ? undefined : [fylke],
           count: Number(count) || 50,
           onlyWithContact,
+          ...(onlyTarget
+            ? {}
+            : { organisasjonsform: "", kunMva: false, fraAntallAnsatte: 0, tilAntallAnsatte: 10000 }),
         }),
       })
       const payload = (await response.json().catch(() => ({}))) as {
         imported?: number
+        emailOk?: number
+        phoneOnly?: number
         error?: string
       }
       if (!response.ok) {
         toast.error(payload.error || "Importen feilet")
         return
       }
-      toast.success(`Importerte ${payload.imported ?? 0} nye firmaer til innboksen`)
+      const imported = payload.imported ?? 0
+      toast.success(
+        imported === 0
+          ? "Fant ingen nye firmaer med disse filtrene — prøv et annet fag eller fylke"
+          : `Importerte ${imported} nye firmaer: ${payload.emailOk ?? 0} kan få e-post, ${payload.phoneOnly ?? 0} kun telefon`,
+      )
       onImported()
       onOpenChange(false)
     } finally {
@@ -642,22 +878,23 @@ function ImportListDialog({
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>Importer liste fra Brønnøysund</ResponsiveDialogTitle>
           <ResponsiveDialogDescription>
-            Hent en batch byggefirmaer til innboksen — du kvalifiserer dem etterpå.
+            Ett fag og ett fylke om gangen gir de beste leadene. Hvert firma sjekkes mot
+            Brønnøysund med én gang.
           </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
         <div className="flex flex-col gap-3 px-4 sm:px-0">
           <div className="grid grid-cols-2 gap-2">
             <div>
               <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Bransje
+                Fag
               </p>
-              <Select value={nace} onValueChange={setNace}>
+              <Select value={trade} onValueChange={setTrade}>
                 <SelectTrigger className="w-full text-xs" size="sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {CONSTRUCTION_NACE.map((item) => (
-                    <SelectItem key={item.code} value={item.code}>
+                  {IMPORT_TRADE_OPTIONS.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
                       {item.label}
                     </SelectItem>
                   ))}
@@ -700,12 +937,25 @@ function ImportListDialog({
               </SelectContent>
             </Select>
           </div>
+          <label className="flex items-start gap-2 text-xs">
+            <Checkbox
+              checked={onlyTarget}
+              onCheckedChange={(checked) => setOnlyTarget(checked === true)}
+              className="mt-0.5"
+            />
+            <span>
+              Bare målgruppen: AS med 5–20 ansatte, mva-registrert
+              <span className="block text-muted-foreground">
+                Enkeltpersonforetak og utenlandske foretak tas aldri med.
+              </span>
+            </span>
+          </label>
           <label className="flex items-center gap-2 text-xs">
             <Checkbox
               checked={onlyWithContact}
               onCheckedChange={(checked) => setOnlyWithContact(checked === true)}
             />
-            Kun firmaer med e-post eller telefon
+            Kun firmaer med e-post eller telefon i Brønnøysund
           </label>
         </div>
         <ResponsiveDialogFooter className="sm:flex-row sm:justify-between">

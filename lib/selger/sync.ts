@@ -6,6 +6,8 @@
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
+import { logSellerActivity } from "@/lib/selger/activity-log"
+import { reconcileProspectStatus } from "@/lib/selger/billing-transition"
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -36,6 +38,8 @@ function targetStatusFor(billingStatus: string): "trial" | "kunde" {
  */
 export async function ensureProspectsForCompanies(admin: AdminClient): Promise<void> {
   try {
+    await reconcileLinkedProspects(admin)
+
     const { data: billingRows, error } = await admin
       .from("company_billing")
       .select("company_id, status, companies(id, name, org_number, email, phone)")
@@ -131,5 +135,66 @@ export async function ensureProspectsForCompanies(admin: AdminClient): Promise<v
       source: "server",
       route: "lib/selger/sync.ts",
     })
+  }
+}
+
+/**
+ * Allerede koblede prospekter skal følge betalingen videre: prøve → kunde når de
+ * betaler, prøve → tapt når prøven går ut. Tidligere ble et kort stående i
+ * «Prøve» for alltid etter første kobling.
+ */
+async function reconcileLinkedProspects(admin: AdminClient): Promise<void> {
+  const { data: linked, error } = await admin
+    .from("prospects")
+    .select("id, name, status, matched_company_id")
+    .not("matched_company_id", "is", null)
+    .in("status", ["ny", "kvalifisert", "kontaktet", "dialog", "demo", "trial", "tapt"])
+  if (error || !linked?.length) return
+
+  const companyIds = linked.map((row) => row.matched_company_id as string)
+  const { data: billing } = await admin
+    .from("company_billing")
+    .select("company_id, status, plan_key")
+    .in("company_id", companyIds)
+  const billingByCompany = new Map((billing ?? []).map((row) => [row.company_id, row]))
+
+  const now = new Date().toISOString()
+  for (const prospect of linked) {
+    const row = billingByCompany.get(prospect.matched_company_id)
+    if (!row?.status) continue
+    const transition = reconcileProspectStatus(prospect.status, row.status)
+    if (!transition) continue
+
+    const { error: updateError } = await admin
+      .from("prospects")
+      .update({
+        status: transition.status,
+        stage_entered_at: now,
+        last_activity_at: now,
+        updated_at: now,
+      })
+      .eq("id", prospect.id)
+      .eq("status", prospect.status) // ingen kappløp med en samtidig manuell flytting
+    if (updateError) continue
+
+    if (transition.outcome) {
+      await logSellerActivity({
+        sellerUserId: null,
+        action: transition.outcome === "won" ? "won_prospect" : "lost_prospect",
+        targetType: "prospect",
+        targetId: prospect.id,
+        metadata:
+          transition.outcome === "won"
+            ? { companyName: prospect.name, from: prospect.status, to: "kunde", planKey: row.plan_key, automatic: true }
+            : {
+                companyName: prospect.name,
+                from: prospect.status,
+                to: "tapt",
+                lostReason: "annet",
+                note: "Prøveperioden gikk ut uten abonnement",
+                automatic: true,
+              },
+      })
+    }
   }
 }

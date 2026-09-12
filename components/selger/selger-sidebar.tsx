@@ -10,6 +10,10 @@ import {
   InboxIcon,
   ListTodoIcon,
   MailIcon,
+  MailCheckIcon,
+  MessagesSquareIcon,
+  SettingsIcon,
+  LayersIcon,
   PlusIcon,
   TargetIcon,
   TrendingUpIcon,
@@ -41,7 +45,8 @@ import {
 import { createClient } from "@/lib/supabase/client"
 
 // Arbeidsflatene øverst (selgeren lever i «I dag» og Pipeline), innsikt under.
-// Motoren og godkjenningskøen er borte — alt salg er manuelt og aktivitetsbasert.
+// Godkjenning er tilbake, men den er ikke den gamle «motoren»: maskinen skriver
+// utkastene, og Casper feller hver eneste dom før noe forlater huset.
 const workItems = [
   {
     title: "I dag",
@@ -54,6 +59,16 @@ const workItems = [
     icon: <TargetIcon className="size-4" />,
   },
   {
+    title: "Svar",
+    url: "/selger/svar",
+    icon: <MessagesSquareIcon className="size-4" />,
+  },
+  {
+    title: "Godkjenning",
+    url: "/selger/godkjenning",
+    icon: <MailCheckIcon className="size-4" />,
+  },
+  {
     title: "Leads",
     url: "/selger/leads",
     icon: <InboxIcon className="size-4" />,
@@ -62,8 +77,10 @@ const workItems = [
 
 const insightItems = [
   { title: "Analyse", url: "/selger/analyse", icon: <TrendingUpIcon className="size-4" /> },
+  { title: "Segmenter", url: "/selger/segmenter", icon: <LayersIcon className="size-4" /> },
   { title: "Aktivitet", url: "/selger/aktivitet", icon: <HistoryIcon className="size-4" /> },
   { title: "E-post og maler", url: "/selger/e-post", icon: <MailIcon className="size-4" /> },
+  { title: "Innstillinger", url: "/selger/innstillinger", icon: <SettingsIcon className="size-4" /> },
 ]
 
 function SelgerSidebarHeader() {

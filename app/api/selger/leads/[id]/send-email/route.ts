@@ -13,17 +13,20 @@ import {
 } from "@/lib/outreach/send"
 import { resolveBransje } from "@/lib/outreach/bransje"
 import { buildExampleOfferUrl, EXAMPLE_OFFER_CTA_LABEL } from "@/lib/outreach/example-offers"
+import { checkColdEmailGates, COLD_STATUSES, GATE_REASON_LABELS } from "@/lib/outreach/gates"
+import { evaluateProspectGates, type GateProspect } from "@/lib/outreach/regate"
 
 const sendSchema = z.object({
   subject: z.string().min(1).max(300),
   body: z.string().min(1).max(10000),
 })
 
-/** Manuell e-post til et lead — ENESTE sendeveien i den nye salgskanalen.
+/** Manuell e-post til et lead fra lead-kortet.
  *
  *  Rekkefølgen er lovpålagt viktig: suppresjonssjekken (markedsføringsloven/GDPR)
- *  kjører FØR alt annet, og dagskvoten (domenevern) gjelder også manuelle
- *  kaldsendinger. Avmeldingsfooter + List-Unsubscribe legges alltid på. */
+ *  og kaldportene (ENK, personlige adresser) kjører FØR alt annet, og dagskvoten
+ *  (domenevern) gjelder også manuelle kaldsendinger. Avmeldingsfooter +
+ *  List-Unsubscribe legges alltid på. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requirePlatformSellerForApi()
   if (auth.error) return auth.error
@@ -35,20 +38,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const admin = createAdminClient()
-  const { data: prospect } = await admin
-    .from("prospects")
-    .select("id, name, email, org_number, status, nace_code, nace_description, matched_company_id")
-    .eq("id", id)
-    .maybeSingle()
+  // select("*") — tåler at db/90-kolonnene (org_form, domain …) ikke finnes ennå.
+  const { data: prospect } = await admin.from("prospects").select("*").eq("id", id).maybeSingle()
   if (!prospect) return NextResponse.json({ error: "Fant ikke leadet" }, { status: 404 })
   if (!prospect.email) {
     return NextResponse.json({ error: "Leadet mangler e-postadresse" }, { status: 400 })
   }
 
   // 1) Suppresjonsliste — avmeldte/bouncede adresser skal ALDRI kontaktes igjen.
+  //    Gjelder også firmadomenet: et «nei» fra ola@firma.no stopper post@firma.no.
   const optedOut = await isOptedOut(admin, {
     email: prospect.email,
     orgNumber: prospect.org_number,
+    domain: prospect.domain ?? null,
   })
   if (optedOut) {
     return NextResponse.json(
@@ -57,7 +59,42 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     )
   }
 
-  // 2) Dagskvote — manuelle kaldsendinger teller mot samme domenevern-kvote.
+  // 2) Kaldportene (markedsføringsloven § 15). Bare når dette fortsatt er kaldsalg:
+  //    har de svart (dialog/demo/trial) eller er kunde, er det en samtale. Dommen
+  //    regnes fersk mot Brønnøysund hver gang — en ENK eller en personlig adresse
+  //    stoppes her uansett hva som står i databasen.
+  const isColdContact = COLD_STATUSES.has(prospect.status) && !prospect.matched_company_id
+  if (isColdContact) {
+    const outcome = await evaluateProspectGates(admin, prospect as GateProspect)
+    const gate = checkColdEmailGates(
+      {
+        segment: prospect.segment,
+        orgForm: outcome.orgForm,
+        employeeCount: outcome.employeeCount,
+        isExistingCustomer: prospect.is_existing_customer,
+        optedOut: outcome.optedOut,
+        emailClass: outcome.emailKind,
+        hasEmail: true,
+      },
+      "manual",
+    )
+    // Lagre den ferske dommen (best effort — mangler db/90, står sendingen likevel).
+    await admin
+      .from("prospects")
+      .update(outcome.update)
+      .eq("id", prospect.id)
+      .then(({ error }) => {
+        if (error) console.warn("[send-email] kunne ikke lagre portdom", error.message)
+      })
+    if (!gate.ok) {
+      return NextResponse.json(
+        { error: GATE_REASON_LABELS[gate.reason], code: gate.reason, phoneOnly: gate.phoneOnly },
+        { status: 403 }
+      )
+    }
+  }
+
+  // 3) Dagskvote — manuelle kaldsendinger teller mot samme domenevern-kvote.
   const [sentToday, limit] = [await countOutreachSentToday(admin), getOutreachDailyLimit()]
   if (sentToday >= limit) {
     return NextResponse.json(

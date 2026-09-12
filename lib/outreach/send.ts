@@ -1,7 +1,13 @@
+import { resolveMx } from "node:dns/promises"
+
 import { Resend } from "resend"
 
 import { createAdminClient } from "@/lib/supabase/admin"
-import { buildOutreachEmailHtml } from "@/lib/outreach/templates"
+import { buildOutreachEmailHtml, buildOutreachPlaintext } from "@/lib/outreach/templates"
+import { emailDomainOf, FREEMAIL_DOMAINS } from "@/lib/outreach/gates"
+import { plusAddress } from "@/lib/outreach/lenker"
+
+export { plusAddress }
 
 const resend = new Resend(process.env.RESEND_API_KEY || "re_defaultkey")
 
@@ -70,42 +76,69 @@ export function getOutreachDailyLimit(): number {
   return Number(process.env.OUTREACH_DAILY_LIMIT) || 50
 }
 
-/** How many outreach emails (cold + follow-up) have been sent so far today (UTC). */
+/** Midnatt i dag, norsk tid, som ISO-streng. Dagskvoten skal følge Caspers
+ *  dag — med UTC-grensen «nullstilte» kvoten seg kl. 01/02 om natten. */
+export function startOfOsloDayIso(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Oslo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now)
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0)
+  // Hvor mye er Oslo foran UTC akkurat nå (1 eller 2 timer)?
+  const osloAsUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"))
+  const offsetMs = osloAsUtc - Math.floor(now.getTime() / 1000) * 1000
+  const osloMidnightAsUtc = Date.UTC(get("year"), get("month") - 1, get("day"))
+  return new Date(osloMidnightAsUtc - offsetMs).toISOString()
+}
+
+/** How many outreach emails (cold + follow-up) have been sent so far today (Oslo). */
 export async function countOutreachSentToday(admin: AdminClient): Promise<number> {
-  const startOfDay = new Date()
-  startOfDay.setUTCHours(0, 0, 0, 0)
   const { count } = await admin
     .from("seller_email_log")
     .select("id", { count: "exact", head: true })
     .in("template_id", OUTREACH_TEMPLATE_IDS as unknown as string[])
-    .gte("created_at", startOfDay.toISOString())
+    .gte("created_at", startOfOsloDayIso())
   return count ?? 0
+}
+
+/** Domenet vi avmelder/sjekker på — aldri gmail.com o.l., da ville én avmelding
+ *  stoppet alle som bruker Gmail. */
+function suppressionDomainFor(email: string | null, domain?: string | null): string | null {
+  const candidate = (domain?.trim().toLowerCase() || (email ? emailDomainOf(email) : null)) ?? null
+  if (!candidate || FREEMAIL_DOMAINS.has(candidate)) return null
+  return candidate
 }
 
 /** Check the opt-out list before sending (markedsføringsloven/GDPR). Emails are
  *  compared lowercased — the suppress list always stores them lowercased (see
  *  recordUnsubscribe), so a bounce/complaint recorded as "post@firma.no" still blocks
- *  a prospect stored as "Post@Firma.no". */
+ *  a prospect stored as "Post@Firma.no".
+ *
+ *  Matcher på e-post, org.nr ELLER firmadomene: et «nei takk» fra ola@firma.no
+ *  skal også stoppe post@firma.no. Hver kolonne spørres for seg (ikke `.or()` med
+ *  interpolerte verdier), så en adresse med komma/parentes ikke kan knekke filteret. */
 export async function isOptedOut(
   admin: AdminClient,
-  args: { email: string | null; orgNumber: string | null }
+  args: { email: string | null; orgNumber: string | null; domain?: string | null }
 ): Promise<boolean> {
   const email = args.email?.trim().toLowerCase() || null
   const orgNumber = args.orgNumber?.trim() || null
-  const conditions: string[] = []
-  if (email) conditions.push(`email.eq.${email}`)
-  if (orgNumber) conditions.push(`org_number.eq.${orgNumber}`)
-  if (conditions.length === 0) return false
+  const domain = suppressionDomainFor(email, args.domain)
 
-  // .limit(1) (not .maybeSingle) — a prospect can match more than one suppress row
-  // (e.g. by email AND by org), and maybeSingle errors on >1 row, which would wrongly
-  // read as "not opted out". We only care that at least one match exists.
-  const { data } = await admin
-    .from("outreach_unsubscribes")
-    .select("id")
-    .or(conditions.join(","))
-    .limit(1)
-  return Boolean(data && data.length > 0)
+  const checks: Array<PromiseLike<{ data: unknown[] | null }>> = []
+  if (email) checks.push(admin.from("outreach_unsubscribes").select("id").eq("email", email).limit(1))
+  if (orgNumber) checks.push(admin.from("outreach_unsubscribes").select("id").eq("org_number", orgNumber).limit(1))
+  if (domain) checks.push(admin.from("outreach_unsubscribes").select("id").eq("domain", domain).limit(1))
+  if (checks.length === 0) return false
+
+  const results = await Promise.all(checks)
+  return results.some((result) => Boolean(result.data && result.data.length > 0))
 }
 
 /**
@@ -121,19 +154,36 @@ export async function isOptedOut(
  */
 export async function recordUnsubscribe(
   admin: AdminClient,
-  args: { email: string | null; orgNumber: string | null; reason: string }
+  args: { email: string | null; orgNumber: string | null; reason: string; domain?: string | null }
 ): Promise<void> {
   const email = args.email?.trim().toLowerCase() || null
   const orgNumber = args.orgNumber?.trim() || null
   if (!email && !orgNumber) return
+  // Avmelding og klage gjelder hele firmaet; en død adresse (bounce) gjør ikke det.
+  const domain = args.reason === "bounce" ? null : suppressionDomainFor(email, args.domain)
+
+  // En avmelding må ALDRI gå tapt. Mangler domain-kolonnen (db/90 ikke kjørt),
+  // skrives raden på nytt uten den i stedet for å feile stille.
+  const write = async (row: Record<string, unknown>) => {
+    const query = email
+      ? admin.from("outreach_unsubscribes").upsert(row, { onConflict: "email", ignoreDuplicates: true })
+      : admin.from("outreach_unsubscribes").insert(row)
+    const { error } = await query
+    if (error && "domain" in row && /domain/i.test(error.message ?? "")) {
+      const withoutDomain = { ...row }
+      delete withoutDomain.domain
+      const retry = email
+        ? admin.from("outreach_unsubscribes").upsert(withoutDomain, { onConflict: "email", ignoreDuplicates: true })
+        : admin.from("outreach_unsubscribes").insert(withoutDomain)
+      const { error: retryError } = await retry
+      if (retryError) throw retryError
+      return
+    }
+    if (error) throw error
+  }
 
   if (email) {
-    await admin
-      .from("outreach_unsubscribes")
-      .upsert(
-        { email, org_number: orgNumber, reason: args.reason },
-        { onConflict: "email", ignoreDuplicates: true }
-      )
+    await write({ email, org_number: orgNumber, reason: args.reason, domain })
     return
   }
 
@@ -143,9 +193,7 @@ export async function recordUnsubscribe(
     .eq("org_number", orgNumber)
     .limit(1)
   if (existing && existing.length > 0) return
-  await admin
-    .from("outreach_unsubscribes")
-    .insert({ email: null, org_number: orgNumber, reason: args.reason })
+  await write({ email: null, org_number: orgNumber, reason: args.reason, domain })
 }
 
 /** Render + send a single outreach email from post@proanbud.no with the CTA,
@@ -190,3 +238,103 @@ export async function sendOutreachEmail(args: {
   // onto seller_email_log so we can measure what's actually working.
   return { providerMessageId: data?.id ?? null }
 }
+
+// ── Sendemodus, MX-sjekk og ren tekst ───────────────────────────────────────
+
+export type SendMode = "dry-run" | "test" | "live"
+
+/**
+ * `.env.local` peker på prod-Supabase med live-nøkler. Derfor er standarden
+ * `dry-run`, og `live` krever i tillegg at vi faktisk kjører i produksjon —
+ * ellers kan en lokal kjøring sende ekte kald e-post til ekte firmaer.
+ */
+export function getSendMode(): SendMode {
+  const raw = process.env.SALG_SEND_MODE?.trim().toLowerCase()
+  if (raw === "live") {
+    return process.env.VERCEL_ENV === "production" ? "live" : "dry-run"
+  }
+  if (raw === "test") return "test"
+  return "dry-run"
+}
+
+export function getTestRecipient(): string | null {
+  return process.env.SALG_TEST_RECIPIENT?.trim() || null
+}
+
+/** RFC 2606-domener finnes ikke, og skal aldri treffe en ekte postkasse. */
+const RESERVED_DOMAINS = /(^|\.)(example\.(com|net|org)|invalid|test|localhost)$/i
+
+export function isSimulatedRecipient(email: string, isTestProspect?: boolean | null): boolean {
+  if (isTestProspect) return true
+  const domain = emailDomainOf(email)
+  return Boolean(domain && RESERVED_DOMAINS.test(domain))
+}
+
+/**
+ * Har domenet en postkasse i det hele tatt? En hard bounce koster mer enn et
+ * DNS-oppslag. Feiler oppslaget teknisk, slipper vi sendingen gjennom — vi vil
+ * ikke stoppe salget fordi en resolver er treg.
+ */
+export async function hasMxRecord(email: string): Promise<boolean> {
+  const domain = emailDomainOf(email)
+  if (!domain) return false
+  try {
+    const records = await resolveMx(domain)
+    return records.length > 0
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code
+    // NXDOMAIN/ENODATA = domenet har ingen e-post. Alt annet er vår feil.
+    return code !== "ENOTFOUND" && code !== "ENODATA"
+  }
+}
+
+/**
+ * Ren tekst-utsending. Ingen knapp, ingen bilder, ingen HTML — best
+ * leveringsdyktighet, og det ser ut som en e-post fra et menneske.
+ *
+ * `replyToToken` gir `post+<token>@proanbud.no`, som lar svar-løkka matche
+ * eksakt på mottakeradressen i stedet for å gjette ut fra emne og avsender.
+ */
+export async function sendOutreachPlaintext(args: {
+  to: string
+  subject: string
+  body: string
+  unsubscribeUrl: string
+  sourceLabel?: string
+  replyToToken?: string | null
+  /** outreach_messages.id — hindrer dobbeltsending ved retry. */
+  idempotencyKey?: string
+  tags?: Array<{ name: string; value: string }>
+}): Promise<{ providerMessageId: string | null }> {
+  const text = buildOutreachPlaintext({
+    bodyText: args.body,
+    unsubscribeUrl: args.unsubscribeUrl,
+    sourceLabel: args.sourceLabel,
+  })
+
+  const replyTo = args.replyToToken
+    ? plusAddress(getOutreachReplyToAddress(), args.replyToToken)
+    : getOutreachReplyToAddress()
+
+  const { data, error } = await resend.emails.send(
+    {
+      from: getOutreachFromAddress(),
+      to: args.to,
+      replyTo,
+      subject: args.subject,
+      text,
+      headers: {
+        "List-Unsubscribe": `<${args.unsubscribeUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
+      ...(args.tags?.length ? { tags: args.tags } : {}),
+    },
+    args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : undefined,
+  )
+
+  if (error) {
+    throw new Error(`Resend-utsending feilet: ${error.message ?? JSON.stringify(error)}`)
+  }
+  return { providerMessageId: data?.id ?? null }
+}
+
