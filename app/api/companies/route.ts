@@ -8,6 +8,7 @@ import { createTrialSubscription } from '@/lib/billing/checkout'
 import { isStripeConfigured } from '@/lib/stripe/server'
 import { attributeCompanyToPartner, REF_COOKIE } from '@/lib/affiliate/attribution'
 import { logServerError } from '@/lib/errors/log'
+import { stopSequence } from '@/lib/outreach/sequence'
 
 export async function POST(request: Request) {
   try {
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
     const user = userData?.user
     if (!user) return NextResponse.json({ error: 'Du er ikke logget inn.' }, { status: 401 })
 
-    const { name, org_number, full_name, phone, website } = await request.json()
+    const { name, org_number, full_name, phone, website, r } = await request.json()
 
     if (!name) return NextResponse.json({ error: 'Navn på bedrift mangler.' }, { status: 400 })
 
@@ -167,21 +168,51 @@ export async function POST(request: Request) {
     // it to «Trial» in the sales pipeline — a fresh signup starts a trial, not a
     // paid subscription (billing-webhooken/trial-broen flytter det videre til
     // «Vunnet» når abonnementet blir aktivt).
-    if (org_number) {
+    //
+    // To veier inn: org.nr (sikrest), eller sporingstokenet `r` fra en
+    // salgs-e-post. Tokenet er det eneste som fanger opp en som registrerer
+    // seg med et annet org.nr enn det vi prospekterte på — for eksempel et
+    // datterselskap, eller fordi vi fant feil enhet i Brreg.
+    const trackingRef = typeof r === 'string' && /^[a-z0-9]{6,32}$/i.test(r) ? r : null
+
+    if (org_number || trackingRef) {
       try {
         const nowIso = new Date().toISOString()
-        await supabaseAdmin
-          .from('prospects')
-          .update({
-            status: 'trial',
-            matched_company_id: companyData.id,
-            is_existing_customer: true,
-            stage_entered_at: nowIso,
-            last_activity_at: nowIso,
-            updated_at: nowIso,
-          })
-          .eq('org_number', org_number)
-          .not('status', 'in', '(kunde,tapt)')
+        const conversion = {
+          status: 'trial',
+          matched_company_id: companyData.id,
+          is_existing_customer: true,
+          pipeline_state: 'overlevert',
+          stage_entered_at: nowIso,
+          last_activity_at: nowIso,
+          updated_at: nowIso,
+        }
+
+        if (org_number) {
+          await supabaseAdmin
+            .from('prospects')
+            .update(conversion)
+            .eq('org_number', org_number)
+            .not('status', 'in', '(kunde,tapt)')
+        }
+
+        if (trackingRef) {
+          await supabaseAdmin
+            .from('prospects')
+            .update(conversion)
+            .eq('tracking_token', trackingRef)
+            .not('status', 'in', '(kunde,tapt)')
+
+          // De har registrert seg. Da skal de ikke få flere kalde meldinger.
+          const { data: referred } = await supabaseAdmin
+            .from('prospects')
+            .select('id')
+            .eq('tracking_token', trackingRef)
+            .maybeSingle()
+          if (referred?.id) {
+            await stopSequence(supabaseAdmin, referred.id, 'pipeline')
+          }
+        }
       } catch (prospectError) {
         console.error('Prospect conversion update error:', prospectError)
         await logServerError({
@@ -190,7 +221,12 @@ export async function POST(request: Request) {
           source: 'api',
           route: 'POST /api/companies',
           level: 'warning',
-          context: { companyId: companyData.id, userId: user.id, orgNumber: org_number },
+          context: {
+            companyId: companyData.id,
+            userId: user.id,
+            orgNumber: org_number,
+            trackingRef,
+          },
         })
       }
     }
