@@ -10,6 +10,7 @@ import {
   InboxIcon,
   ListTodoIcon,
   MailIcon,
+  MailCheckIcon,
   PlusIcon,
   TargetIcon,
   TrendingUpIcon,
@@ -41,7 +42,8 @@ import {
 import { createClient } from "@/lib/supabase/client"
 
 // Arbeidsflatene øverst (selgeren lever i «I dag» og Pipeline), innsikt under.
-// Motoren og godkjenningskøen er borte — alt salg er manuelt og aktivitetsbasert.
+// Godkjenning er tilbake, men den er ikke den gamle «motoren»: maskinen skriver
+// utkastene, og Casper feller hver eneste dom før noe forlater huset.
 const workItems = [
   {
     title: "I dag",
@@ -52,6 +54,11 @@ const workItems = [
     title: "Pipeline",
     url: "/selger/pipeline",
     icon: <TargetIcon className="size-4" />,
+  },
+  {
+    title: "Godkjenning",
+    url: "/selger/godkjenning",
+    icon: <MailCheckIcon className="size-4" />,
   },
   {
     title: "Leads",

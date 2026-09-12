@@ -1,7 +1,9 @@
+import { resolveMx } from "node:dns/promises"
+
 import { Resend } from "resend"
 
 import { createAdminClient } from "@/lib/supabase/admin"
-import { buildOutreachEmailHtml } from "@/lib/outreach/templates"
+import { buildOutreachEmailHtml, buildOutreachPlaintext } from "@/lib/outreach/templates"
 import { emailDomainOf, FREEMAIL_DOMAINS } from "@/lib/outreach/gates"
 
 const resend = new Resend(process.env.RESEND_API_KEY || "re_defaultkey")
@@ -232,4 +234,113 @@ export async function sendOutreachEmail(args: {
   // The provider id lets the Resend webhook stamp delivery/open/click events back
   // onto seller_email_log so we can measure what's actually working.
   return { providerMessageId: data?.id ?? null }
+}
+
+// ── Sendemodus, MX-sjekk og ren tekst ───────────────────────────────────────
+
+export type SendMode = "dry-run" | "test" | "live"
+
+/**
+ * `.env.local` peker på prod-Supabase med live-nøkler. Derfor er standarden
+ * `dry-run`, og `live` krever i tillegg at vi faktisk kjører i produksjon —
+ * ellers kan en lokal kjøring sende ekte kald e-post til ekte firmaer.
+ */
+export function getSendMode(): SendMode {
+  const raw = process.env.SALG_SEND_MODE?.trim().toLowerCase()
+  if (raw === "live") {
+    return process.env.VERCEL_ENV === "production" ? "live" : "dry-run"
+  }
+  if (raw === "test") return "test"
+  return "dry-run"
+}
+
+export function getTestRecipient(): string | null {
+  return process.env.SALG_TEST_RECIPIENT?.trim() || null
+}
+
+/** RFC 2606-domener finnes ikke, og skal aldri treffe en ekte postkasse. */
+const RESERVED_DOMAINS = /(^|\.)(example\.(com|net|org)|invalid|test|localhost)$/i
+
+export function isSimulatedRecipient(email: string, isTestProspect?: boolean | null): boolean {
+  if (isTestProspect) return true
+  const domain = emailDomainOf(email)
+  return Boolean(domain && RESERVED_DOMAINS.test(domain))
+}
+
+/**
+ * Har domenet en postkasse i det hele tatt? En hard bounce koster mer enn et
+ * DNS-oppslag. Feiler oppslaget teknisk, slipper vi sendingen gjennom — vi vil
+ * ikke stoppe salget fordi en resolver er treg.
+ */
+export async function hasMxRecord(email: string): Promise<boolean> {
+  const domain = emailDomainOf(email)
+  if (!domain) return false
+  try {
+    const records = await resolveMx(domain)
+    return records.length > 0
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code
+    // NXDOMAIN/ENODATA = domenet har ingen e-post. Alt annet er vår feil.
+    return code !== "ENOTFOUND" && code !== "ENODATA"
+  }
+}
+
+/**
+ * Ren tekst-utsending. Ingen knapp, ingen bilder, ingen HTML — best
+ * leveringsdyktighet, og det ser ut som en e-post fra et menneske.
+ *
+ * `replyToToken` gir `post+<token>@proanbud.no`, som lar svar-løkka matche
+ * eksakt på mottakeradressen i stedet for å gjette ut fra emne og avsender.
+ */
+export async function sendOutreachPlaintext(args: {
+  to: string
+  subject: string
+  body: string
+  unsubscribeUrl: string
+  sourceLabel?: string
+  replyToToken?: string | null
+  /** outreach_messages.id — hindrer dobbeltsending ved retry. */
+  idempotencyKey?: string
+  tags?: Array<{ name: string; value: string }>
+}): Promise<{ providerMessageId: string | null }> {
+  const text = buildOutreachPlaintext({
+    bodyText: args.body,
+    unsubscribeUrl: args.unsubscribeUrl,
+    sourceLabel: args.sourceLabel,
+  })
+
+  const replyTo = args.replyToToken
+    ? plusAddress(getOutreachReplyToAddress(), args.replyToToken)
+    : getOutreachReplyToAddress()
+
+  const { data, error } = await resend.emails.send(
+    {
+      from: getOutreachFromAddress(),
+      to: args.to,
+      replyTo,
+      subject: args.subject,
+      text,
+      headers: {
+        "List-Unsubscribe": `<${args.unsubscribeUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
+      ...(args.tags?.length ? { tags: args.tags } : {}),
+    },
+    args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : undefined,
+  )
+
+  if (error) {
+    throw new Error(`Resend-utsending feilet: ${error.message ?? JSON.stringify(error)}`)
+  }
+  return { providerMessageId: data?.id ?? null }
+}
+
+/** «Casper Nag <post@proanbud.no>» + token → «Casper Nag <post+abc@proanbud.no>». */
+export function plusAddress(address: string, token: string): string {
+  const match = address.match(/^(.*)<([^>]+)>\s*$/)
+  const bare = (match ? match[2] : address).trim()
+  const at = bare.lastIndexOf("@")
+  if (at <= 0) return address
+  const plussed = `${bare.slice(0, at)}+${token}${bare.slice(at)}`
+  return match ? `${match[1]}<${plussed}>` : plussed
 }

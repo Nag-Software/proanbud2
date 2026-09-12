@@ -49,6 +49,8 @@ import {
   type ContactPolicy,
   type GateReason,
 } from "@/lib/outreach/gates"
+import type { ApprovalDossier } from "@/lib/selger/godkjenning"
+import { DossierPanel } from "./dossier-panel"
 
 /** Lovkravet som stenger kald e-post for dette leadet (ENK, personlig adresse …),
  *  eller null. Avmelding vises i eget banner, og manglende adresse sier seg selv. */
@@ -85,9 +87,12 @@ type CallBrief = { who: string; history: string; angle: string; opener: string }
 export function LeadRecordClient({
   detail,
   initialTimeline,
+  dossier,
 }: {
   detail: ProspectDetail
   initialTimeline: ProspectTimelineEntry[]
+  /** Siste dossier fra research-pipelinen. Null før maskinen har sett firmaet. */
+  dossier: ApprovalDossier | null
 }) {
   const router = useRouter()
   const confirm = useConfirm()
@@ -203,6 +208,15 @@ export function LeadRecordClient({
         {/* ============ VENSTRE: hvem er dette ============ */}
         <div className="order-3 flex flex-col gap-3 lg:order-1">
           <InfoPanel detail={detail} />
+          <DossierPanel
+            prospectId={prospect.id}
+            dossier={dossier}
+            pipelineState={prospect.pipeline_state ?? null}
+            fitScore={prospect.fit_score ?? null}
+            fitTier={prospect.fit_tier ?? null}
+            researchedAt={prospect.researched_at ?? null}
+            researchError={prospect.research_error ?? null}
+          />
         </div>
 
         {/* ============ SENTER: komponist + tidslinje ============ */}

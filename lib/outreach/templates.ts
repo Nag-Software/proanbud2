@@ -19,6 +19,37 @@ function bodyToHtml(bodyText: string): string {
     .join("")
 }
 
+/**
+ * Bunntekst for ren tekst-utsending.
+ *
+ * Kald e-post i ren tekst leveres bedre enn HTML med knapp og bilder, og den
+ * ser ut som noe et menneske har skrevet — som er hele poenget. Bunnteksten må
+ * likevel ha avsenderidentitet, hvor adressen kom fra og en avmeldingslenke
+ * (markedsføringsloven § 15, GDPR art. 14).
+ */
+export function buildOutreachPlaintextFooter(args: {
+  unsubscribeUrl: string
+  /** Hvor vi fant adressen — «Brønnøysundregistrene» eller «nettsiden deres». */
+  sourceLabel?: string
+}): string {
+  const source = args.sourceLabel || "Brønnøysundregistrene"
+  return [
+    "--",
+    "Proanbud — utviklet av Nag Software, Sydhøyveien 1, 3084 Holmestrand (org.nr. 936593127).",
+    `Du får denne e-posten fordi bedriften er registrert i bygg- og anleggsbransjen. Adressen er hentet fra ${source}.`,
+    `Vil du ikke ha flere e-poster: ${args.unsubscribeUrl}`,
+  ].join("\n")
+}
+
+/** Hele e-posten som ren tekst, klar til sending. */
+export function buildOutreachPlaintext(args: {
+  bodyText: string
+  unsubscribeUrl: string
+  sourceLabel?: string
+}): string {
+  return `${args.bodyText.trim()}\n\n${buildOutreachPlaintextFooter(args)}\n`
+}
+
 export function buildOutreachEmailHtml(args: {
   bodyText: string
   unsubscribeUrl: string

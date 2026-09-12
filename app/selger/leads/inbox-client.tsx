@@ -16,6 +16,7 @@ import {
   PhoneIcon,
   SearchIcon,
   ShieldCheckIcon,
+  PlayIcon,
   SparklesIcon,
   Trash2Icon,
 } from "lucide-react"
@@ -139,6 +140,7 @@ export function InboxClient() {
   const [planFor, setPlanFor] = React.useState<{ id: string; name: string } | null>(null)
   const [enriching, setEnriching] = React.useState(false)
   const [gating, setGating] = React.useState(false)
+  const [running, setRunning] = React.useState(false)
 
   // «+ Nytt lead» i sidebaren lander her med ?nytt=1 → åpne Brreg-søket.
   React.useEffect(() => {
@@ -246,6 +248,50 @@ export function InboxClient() {
     }
     if (skipped > 0) {
       toast.info(`${skipped} hoppet over: utenfor målgruppen eller blokkert. Kvalifiser dem enkeltvis om du vil.`)
+    }
+  }
+
+  /** «Kjør maskinen»: køer opp nye prospekter, researcher dem og skriver
+   *  utkast i ett trykk. Utkastene havner i godkjenningskøen — ingenting
+   *  sendes herfra. */
+  async function runMachine() {
+    setRunning(true)
+    try {
+      const response = await fetch("/api/selger/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ queueLimit: 30 }),
+      })
+      const payload = (await response.json().catch(() => ({}))) as {
+        queued?: number
+        research?: { succeeded?: number; failed?: number }
+        drafts?: { succeeded?: number; failed?: number }
+        cost_usd?: number
+        notes?: string[]
+        error?: string
+      }
+      if (!response.ok) {
+        toast.error(payload.error || "Kjøringen feilet")
+        return
+      }
+      toast.success(
+        `${payload.queued ?? 0} køet · ${payload.research?.succeeded ?? 0} researchet · ${payload.drafts?.succeeded ?? 0} utkast klare`,
+        {
+          description: [
+            payload.cost_usd ? `Kostnad $${payload.cost_usd.toFixed(3)}` : null,
+            payload.notes?.length ? payload.notes.slice(0, 2).join(" · ") : null,
+          ]
+            .filter(Boolean)
+            .join(" — "),
+          action:
+            (payload.drafts?.succeeded ?? 0) > 0
+              ? { label: "Gå til godkjenning", onClick: () => router.push("/selger/godkjenning") }
+              : undefined,
+        },
+      )
+      void load()
+    } finally {
+      setRunning(false)
     }
   }
 
@@ -454,6 +500,16 @@ export function InboxClient() {
           >
             <SparklesIcon className="size-3.5" />
             {enriching ? "Beriker…" : "Finn kontaktinfo"}
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            disabled={running}
+            onClick={() => void runMachine()}
+            title="Research de neste prospektene og skriv utkast til godkjenning"
+          >
+            <PlayIcon className="size-3.5" />
+            {running ? "Kjører…" : "Kjør maskinen"}
           </Button>
         </div>
 
