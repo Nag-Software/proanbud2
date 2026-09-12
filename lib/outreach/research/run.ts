@@ -212,6 +212,9 @@ export async function researchProspect(prospectId: string): Promise<ResearchOutc
         contact_policy: policy,
         brreg_checked_at: nowIso(),
         tracking_token: prospect.tracking_token ?? newTrackingToken(),
+        // Rollen REGN. Aggregert over målgruppen blir dette mållista for
+        // partnersegmentet (lib/outreach/partner.ts).
+        accountant_orgnr: roller.regnskapsforerOrgnr,
       })
       .eq("id", prospectId)
 

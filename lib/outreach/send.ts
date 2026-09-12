@@ -5,6 +5,9 @@ import { Resend } from "resend"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { buildOutreachEmailHtml, buildOutreachPlaintext } from "@/lib/outreach/templates"
 import { emailDomainOf, FREEMAIL_DOMAINS } from "@/lib/outreach/gates"
+import { plusAddress } from "@/lib/outreach/lenker"
+
+export { plusAddress }
 
 const resend = new Resend(process.env.RESEND_API_KEY || "re_defaultkey")
 
@@ -335,12 +338,3 @@ export async function sendOutreachPlaintext(args: {
   return { providerMessageId: data?.id ?? null }
 }
 
-/** «Casper Nag <post@proanbud.no>» + token → «Casper Nag <post+abc@proanbud.no>». */
-export function plusAddress(address: string, token: string): string {
-  const match = address.match(/^(.*)<([^>]+)>\s*$/)
-  const bare = (match ? match[2] : address).trim()
-  const at = bare.lastIndexOf("@")
-  if (at <= 0) return address
-  const plussed = `${bare.slice(0, at)}+${token}${bare.slice(at)}`
-  return match ? `${match[1]}<${plussed}>` : plussed
-}

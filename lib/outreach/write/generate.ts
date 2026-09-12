@@ -22,6 +22,7 @@ import { gradeMessage, type GradeReport } from "@/lib/outreach/write/grade"
 import { lintMessage, WORD_LIMITS, type LintReport } from "@/lib/outreach/write/lint"
 import { loadLearningMemory, memoryForPrompt } from "@/lib/outreach/write/learning"
 import { anglesFor, FOLLOWUP_BRIEF, playbookForPrompt } from "@/lib/outreach/write/playbooks"
+import { buildAnalyseGiftUrl } from "@/lib/outreach/analyse-bro"
 
 export const SIGNATURE = "Casper Nag\nProanbud — et produkt fra Nag Software, Holmestrand"
 
@@ -56,7 +57,7 @@ Stilen er Caspers egen:
 - Så én til to setninger om hva Proanbud gjør med problemet i vinkelen, med ordene fra faktaarket.
 - Avslutt med ETT lavterskel-spørsmål som kan besvares med én setning. Aldri «book et møte».
 - Maks ${WORD_LIMITS[step] ?? 120} ord før signaturen. Ingen emojier. Ingen utropstegn.
-- Ingen lenker, ingen kontaktinfo, ingen avmeldingstekst — det legges på automatisk.
+- ${step === 1 ? "Ingen lenker i det hele tatt" : "Høyst én lenke, og bare den du eventuelt får oppgitt"}. Ingen kontaktinfo, ingen avmeldingstekst — det legges på automatisk.
 - Avslutt brødteksten med nøyaktig denne signaturen:
 ${SIGNATURE}
 
@@ -104,6 +105,16 @@ function userPrompt(input: DraftInput, hook: Hook, memory: string): string {
   const segment = getSegment(prospect.segment)
   const angles = anglesFor(prospect.trade)
 
+  // Steg 1 har aldri lenke — det er det som gir best leveringsdyktighet, og
+  // målet der er et svar, ikke et klikk.
+  const gift =
+    input.step === 3
+      ? buildAnalyseGiftUrl({
+          website: prospect.website ?? null,
+          trackingToken: prospect.tracking_token ?? null,
+        })
+      : null
+
   return [
     `Firma: ${prospect.name}`,
     prospect.city ? `Sted: ${prospect.city}` : null,
@@ -124,6 +135,11 @@ function userPrompt(input: DraftInput, hook: Hook, memory: string): string {
     angles.length > 0 ? `Velg vinkel-id fra: ${angles.map((angle) => angle.id).join(", ")}` : null,
     "",
     input.step > 1 ? FOLLOWUP_BRIEF[input.step] ?? "" : null,
+    // «Gaven» i steg 3: analysen med nettsiden deres ferdig utfylt. Den er det
+    // eneste vi gir bort som koster oss noe og som de faktisk kan bruke.
+    gift
+      ? `Du kan legge ved DENNE ene lenken, ordrett, og ingen andre:\n${gift}\nSkriv den som det den er: en ferdig analyse av deres egen nettside, ikke en registrering.`
+      : null,
     input.step > 1 && input.previousBody
       ? `Dette sendte du i steg 1 — ikke gjenta det:\n${input.previousBody}`
       : null,

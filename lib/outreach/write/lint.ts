@@ -185,8 +185,11 @@ export function lintMessage(input: LintInput): LintReport {
   }
 
   // ── Alle tall må ha dekning ───────────────────────────────────────────────
+  // Sifre inne i en lenke er ikke en påstand — sporingstokenet vårt inneholder
+  // tall, og det skal ikke stoppe et ellers godt utkast.
   const allowed = allowedNumbers({ hooks: input.hook ? [input.hook] : [], dossierText: input.dossierText })
-  for (const number of numbersIn(full)) {
+  const withoutLinks = full.replace(LINK, " ")
+  for (const number of numbersIn(withoutLinks)) {
     if (!allowed.has(number)) {
       block("tall_uten_dekning", `Tallet ${number} står verken i faktaarket eller i dossieret`)
     }
