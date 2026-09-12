@@ -1,5 +1,5 @@
 -- ============================================================================
--- 91: OpenAI Ads (ChatGPT) — klikk-attribusjon og konverteringsjournal
+-- 95: OpenAI Ads (ChatGPT) — klikk-attribusjon og konverteringsjournal
 --
 -- Annonseklikket i ChatGPT bærer en klikk-referanse `oppref` i URL-en.
 -- Markedssiden lagrer den i en førsteparts __oppref-cookie, og /start sender

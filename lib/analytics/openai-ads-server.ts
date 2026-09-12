@@ -138,7 +138,7 @@ export async function reportTrialStarted(input: {
     if (claimError) {
       // 23505 = unik konflikt → allerede sendt, ingenting å gjøre.
       if ((claimError as { code?: string }).code === "23505") return
-      // 42P01 = tabellen finnes ikke (db/91 ikke kjørt) → feil lukket og stille.
+      // 42P01 = tabellen finnes ikke (db/95 ikke kjørt) → feil lukket og stille.
       if ((claimError as { code?: string }).code === "42P01") return
       throw claimError
     }

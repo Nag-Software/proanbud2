@@ -58,7 +58,6 @@ try {
   return (
     <script
       id="openai-ads-pixel"
-      // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{ __html: snippet }}
     />
   )

@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     )
 
     if (error) {
-      // 42P01 = tabellen finnes ikke (db/91 ikke kjørt) → feil lukket og stille.
+      // 42P01 = tabellen finnes ikke (db/95 ikke kjørt) → feil lukket og stille.
       if ((error as { code?: string }).code !== "42P01") throw error
       return NextResponse.json({ stored: false })
     }
