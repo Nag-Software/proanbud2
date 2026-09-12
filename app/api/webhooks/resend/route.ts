@@ -4,7 +4,7 @@ import { Webhook } from "svix"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { computeLeadScore } from "@/lib/selger/scoring"
 import { recordUnsubscribe } from "@/lib/outreach/send"
-import { stopSequenceForEmail } from "@/lib/outreach/autosend"
+import { stopSequenceForEmail } from "@/lib/outreach/sequence"
 import { logServerError } from "@/lib/errors/log"
 
 export const runtime = "nodejs"
@@ -171,10 +171,11 @@ export async function POST(request: Request) {
       const recipient = await resolveRecipient(admin, event, provider)
       if (recipient) {
         await bumpProspectEngagement(admin, recipient, kind)
-        // Et klikk er ekte interesse — autosekvensen stopper og selger tar over.
-        if (kind === "click") {
-          await stopSequenceForEmail(admin, recipient, "engasjert")
-        }
+        // Et klikk stopper IKKE sekvensen. Lenkeskannere (Safe Links o.l.)
+        // klikker på alt, og selv et ekte klikk er bare nysgjerrighet — å
+        // stoppe på det ville drept oppfølgingen for alle som bare kikket.
+        // Ekte klikk måles med beacon i /api/outreach/engagement, og bare et
+        // SVAR stopper sekvensen.
       } else {
         console.warn(`[resend webhook] ${kind} event without resolvable recipient (provider=${provider})`)
       }

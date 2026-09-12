@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { recordUnsubscribe } from "@/lib/outreach/send"
+import { purgeOnUnsubscribe } from "@/lib/outreach/retention"
 import { logServerError } from "@/lib/errors/log"
 
 /**
@@ -29,6 +30,12 @@ async function suppressProspect(prospectId: string | null): Promise<void> {
     domain: (prospect as { domain?: string | null }).domain ?? null,
     reason: "link",
   })
+
+  // Slett det vi har samlet inn om dem (dossier, sidetekst, svar). Rekkefølgen
+  // er viktig: suppresjonsraden er skrevet FØRST og blir stående — det er den
+  // som gjør at de aldri får kald e-post igjen, også neste gang vi importerer
+  // fra Brønnøysund. Sletting er best effort, avmeldingen er det ikke.
+  await purgeOnUnsubscribe(prospect.id)
 }
 
 function page(title: string, inner: string): Response {

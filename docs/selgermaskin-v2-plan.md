@@ -1,5 +1,63 @@
 # Selgermaskinen v2 — autonom KI-pipeline for /selger
 
+## Status (oppdatert 2026-09-12)
+
+Fase 0–4 er bygget og ligger på `preview`. Dette avsnittet er fasiten på hva
+som faktisk finnes i koden; resten av dokumentet er planen den ble bygget etter,
+og noen detaljer nedenfor ble justert underveis (se «Avvik fra planen»).
+
+| Fase | Innhold | Status |
+|---|---|---|
+| 0 | Porter, ICP-import, faktaark (db/90) | Ferdig |
+| 1 | Research, dossier, skrivemotor, godkjenning (db/91) | Ferdig |
+| 2 | Sekvens, IMAP-svarløkke, tick, helse, beacon (db/92–93) | Ferdig |
+| 3 | Cockpit, svarflate, traktstripe, segmenter, innstillinger | Ferdig |
+| 4 | Læring, autonomi, partnersegment, gaven, sletting (db/94) | Ferdig |
+
+**Før maskinen kan sende én eneste ekte e-post, må Casper:**
+
+1. Kjøre migrasjonene: `pnpm db:migrate` (db/91 → db/94).
+2. Legge `CRON_SECRET` inn i Supabase Vault, og så kjøre db/93:
+   `select vault.create_secret('<hemmelighet>', 'cron_secret', 'Bearer-token for /api/cron/*');`
+   Uten den opprettes ingen pg_cron-jobb, og ticken kjører bare på Vercels
+   daglige reserve.
+3. Sette `alter database postgres set app.settings.base_url = 'https://app.proanbud.no';`
+4. Legge `SALG_IMAP_HOST`, `SALG_IMAP_USER` og `SALG_IMAP_PASSWORD` for
+   post@proanbud.no inn i Vercel. Uten dem leses ingen svar, og resten av
+   maskinen går videre som om ingenting har skjedd — som er nøyaktig den
+   feilen v1 gjorde.
+5. Gå gjennom faktaarket i `/selger/innstillinger` og bekrefte eller rette de
+   uverifiserte påstandene.
+6. Kjøre en testsending med `SALG_SEND_MODE=test` og `SALG_TEST_RECIPIENT` satt
+   til egen adresse. Sjekk tråding, pluss-adressering, Authentication-Results
+   (DKIM/DMARC) og mail-tester-poeng.
+7. Først da: `SALG_SEND_MODE=live` og start maskinen i innstillingene. Den står
+   i pause fra seed og starter aldri av seg selv.
+
+Valgfritt: `SALG_PLACES=on` (krever at Places API er skrudd på for
+`GOOGLE_MAPS_API_KEY`), og `SALG_VARSEL_EPOST` for hvor svarvarsler skal.
+
+**Avvik fra planen, med begrunnelse:**
+
+- **Ingen `selger_jobs`-tabell.** Domenetabellene er køene, som revisjonen sier.
+  Claim-RPC-ene ligger i db/91.
+- **Faktaarket ble værende i `lib/outreach/facts.ts`** i stedet for å flyttes til
+  `write/facts.ts`. Flyttingen hadde bare vært omrokering av importer.
+- **`?nettside=` i gaven krever en endring i proanbud-new** (`ExampleFlow`) for at
+  forhåndsutfyllingen skal virke. Lenken er gyldig uten den — den lander bare på
+  et tomt skjema. Dette er den ENESTE gjenstående kodeavhengigheten utenfor dette
+  repoet.
+- **Ukesrapporten kjører på forespørsel**, ikke på en cron: den koster et
+  modellkall, og ingen blir varslet av at den finnes.
+- **Autopilot på steg 1 er ikke implementert som en bryter.** `autonomy.ts` regner
+  ut om den er fortjent og viser det i Analyse, men oppgradering krever at Casper
+  trykker. Nedgradering skjer derimot automatisk. Dette følger revisjonens punkt 4.
+- **Eksperimenter med vinkler** er ikke bygget som en egen A/B-motor. Svarrate per
+  vinkel måles i Analyse, og det er grunnlaget en slik motor uansett måtte hvile
+  på. Bygges når det finnes nok data til at forskjeller betyr noe.
+
+---
+
 ## Kontekst
 
 Casper driver Proanbud alene. Pipelinen skal gjøre 95 % av jobben selv. Den finner firmaer, researcher dem, kvalifiserer dem, skriver en personlig e-post til hvert enkelt firma, sender, følger opp og fanger opp svar. Casper bruker ~15 min/dag på å godkjenne førstekontakter. Resten av tiden går til menneskene som faktisk svarer.

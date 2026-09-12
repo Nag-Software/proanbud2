@@ -40,6 +40,10 @@ export async function GET(request: Request) {
   const status = searchParams.get("status")
   if (status && status !== "all") query = query.eq("status", status)
 
+  // Maskinsteget (db/91). Traktstripen på pipelinen lenker hit med ?steg=.
+  const steg = searchParams.get("steg")
+  if (steg && steg !== "alle") query = query.eq("pipeline_state", steg)
+
   const nace = searchParams.get("nace")
   if (nace && nace !== "all") query = query.like("nace_code", `${nace}%`)
 

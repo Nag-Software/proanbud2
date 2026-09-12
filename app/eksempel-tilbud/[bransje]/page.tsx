@@ -8,6 +8,7 @@ import { EXAMPLE_OFFER_BRANSJER, getExampleOffer } from "@/lib/outreach/example-
 import { getOfferDocumentTotals } from "@/lib/tilbud/offer-document"
 import { formatNok, type OfferCompanyContext } from "@/lib/tilbud/types"
 import { SIGNUP_PATH } from "@/lib/constants"
+import { EngagementBeacon } from "./engagement-beacon"
 
 // Marketing example pages are safe to cache; revalidate daily so the offer date
 // stays fresh without rendering on every request.
@@ -36,16 +37,24 @@ export async function generateMetadata({
   }
 }
 
-const signupHref = (bransje: string) =>
-  `${SIGNUP_PATH}?utm_source=eksempel-tilbud&utm_medium=web&utm_content=${bransje}`
+/** `r` følger med til signup, så en prøvebruker kan knyttes til riktig prospekt. */
+const signupHref = (bransje: string, ref?: string | null) =>
+  `${SIGNUP_PATH}?utm_source=eksempel-tilbud&utm_medium=web&utm_content=${bransje}${ref ? `&r=${encodeURIComponent(ref)}` : ""}`
 
 export default async function ExampleOfferPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ bransje: string }>
+  searchParams: Promise<{ r?: string }>
 }) {
   const { bransje } = await params
   if (!isBransjeKey(bransje)) notFound()
+
+  // ?r= er sporingstokenet fra en salgs-e-post. Uten det er dette bare den
+  // offentlige eksempelsiden, og da måler vi ingenting.
+  const { r } = await searchParams
+  const ref = typeof r === "string" && /^[a-z0-9]{6,32}$/i.test(r) ? r : null
 
   const example = getExampleOffer(bransje)
   const label = BRANSJE_LABELS[bransje]
@@ -67,6 +76,7 @@ export default async function ExampleOfferPage({
 
   return (
     <div className="min-h-screen bg-[#f7f7f5] text-neutral-900">
+      <EngagementBeacon token={ref} />
       <header className="border-b border-neutral-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2">
@@ -75,7 +85,7 @@ export default async function ExampleOfferPage({
             <span className="text-sm font-semibold tracking-tight">Proanbud</span>
           </div>
           <Link
-            href={signupHref(bransje)}
+            href={signupHref(bransje, ref)}
             className="rounded-lg bg-neutral-900 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-neutral-800 sm:text-sm"
           >
             Prøv gratis i 14 dager
@@ -127,7 +137,7 @@ export default async function ExampleOfferPage({
           </p>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
             <Link
-              href={signupHref(bransje)}
+              href={signupHref(bransje, ref)}
               className="rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-neutral-800"
             >
               Lag ditt eget gratis tilbud

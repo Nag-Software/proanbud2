@@ -26,8 +26,10 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "exceljs": "^4.4.0",
+    "imapflow": "^2.0.2",
     "ipaddr.js": "^2.5.0",
     "lucide-react": "^0.577.0",
+    "mailparser": "^3.9.25",
     "mammoth": "^1.12.0",
     "maplibre-gl": "^5.24.0",
     "metadata": "^0.1.0",
@@ -61,6 +63,7 @@
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-big-calendar": "^1.16.3",

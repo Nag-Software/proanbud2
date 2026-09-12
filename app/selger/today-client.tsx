@@ -29,6 +29,8 @@ import { dueLabel, trialDaysLeft } from "@/lib/selger/dates"
 import { rottingFor } from "@/lib/selger/rotting"
 import { PROSPECT_STATUS_LABELS, type ProspectStatus } from "@/lib/outreach/types"
 import type { PipelineLeadRow, TaskWithLead, TaskType } from "@/lib/selger/types"
+import { Cockpit } from "@/components/selger/cockpit"
+import type { CockpitData } from "@/lib/selger/cockpit"
 
 const TASK_ICONS: Record<TaskType, React.ReactNode> = {
   ring: <PhoneIcon className="size-3.5" />,
@@ -117,9 +119,12 @@ function computeSignals(leads: PipelineLeadRow[]): Signal[] {
 export function TodayClient({
   initialTasks,
   leads,
+  cockpit,
 }: {
   initialTasks: TaskWithLead[]
   leads: PipelineLeadRow[]
+  /** Maskinens del av dagen. Null når salgsmaskinen ikke er tatt i bruk. */
+  cockpit: CockpitData | null
 }) {
   const router = useRouter()
   const [tasks, setTasks] = React.useState(initialTasks)
@@ -155,6 +160,11 @@ export function TodayClient({
 
   return (
     <SelgerPageShell segments={["Selger", "I dag"]}>
+      {cockpit && (
+        <div className="mx-auto w-full max-w-5xl px-4 pt-1">
+          <Cockpit data={cockpit} />
+        </div>
+      )}
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-1 px-4 pb-10">
         <div className="flex items-end justify-between gap-3 pb-3">
           <div>
