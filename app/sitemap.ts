@@ -26,7 +26,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
   })
 
   return [
-    page("/kalkulator", "weekly", 0.8),
+    // /kalkulator står bevisst IKKE her lenger, av samme grunn som /verktoy:
+    // siden serveres på proanbud.no/verktoy/tilbudskalkulator og er meldt inn i
+    // markedssidens sitemap. Å melde den inn her i tillegg ville bedt Google
+    // indeksere app-domenets kopi — som peker canonical bort herfra uansett.
     page("/login", "monthly", 0.5),
     page("/signup", "monthly", 0.5),
     page("/terms", "yearly", 0.3),

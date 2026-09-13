@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { track } from "@/lib/analytics/track"
 import { reportClientError } from "@/lib/errors/client"
+import { appUrl } from "@/lib/verktoy/tools"
 
 const FAG = [
   { key: "tomrer", label: "Tømrer" },
@@ -33,7 +34,17 @@ type Tilbud = {
   totalInklMvaNok: number
 }
 
-const SIGNUP_URL = "/signup?utm_source=kalkulator&utm_medium=produkt&utm_campaign=gratis-kalkulator"
+// Absolutt mot app-domenet, ikke relativt.
+//
+// Siden serveres nå også på proanbud.no/verktoy/tilbudskalkulator via
+// multi-zone-rewrite, og der finnes verken /signup eller /login — apex sender
+// dem videre til app-domenet med en 301 midt i konverteringen, og Next-ens
+// RSC-prefetch av dem feiler i konsollen. Samme grunn som at hele /verktoy-sonen
+// bruker appUrl(); se kommentaren over helperen i lib/verktoy/tools.ts.
+const SIGNUP_URL = appUrl(
+  "/signup?utm_source=kalkulator&utm_medium=produkt&utm_campaign=gratis-kalkulator"
+)
+const LOGIN_URL = appUrl("/login")
 
 const PLACEHOLDER =
   "F.eks: Bytte 12 vinduer i enebolig fra 1978. To etasjer, stillas på baksiden. " +
@@ -119,7 +130,7 @@ export function KalkulatorClient() {
           </a>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/login">Logg inn</Link>
+              <Link href={LOGIN_URL}>Logg inn</Link>
             </Button>
             <Button size="sm" asChild>
               <Link href={SIGNUP_URL} onClick={() => track("kalkulator_cta_klikket", { plassering: "topp" })}>
