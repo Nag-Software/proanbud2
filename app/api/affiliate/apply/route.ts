@@ -8,8 +8,8 @@ import { createAffiliatePartner } from "@/lib/affiliate/queries"
 /**
  * Public intake for the marketing site's /bli-selger form.
  *
- * The form lives on www.proanbud.no and posts cross-origin to this app
- * (nye.proanbud.no), so the route answers CORS preflight and echoes an
+ * The form lives on proanbud.no and posts cross-origin to this app
+ * (app.proanbud.no), so the route answers CORS preflight and echoes an
  * allowed *.proanbud.no origin. The application is stored in
  * `affiliate_partners` (the source of truth shown in /sjefen/selgere) and a
  * notification is e-mailed to post@proanbud.no. E-mail is best-effort: as long

@@ -15,7 +15,7 @@ export type SellerEmailHtmlInput = {
   secondaryText?: string
 }
 
-const appUrl = () => process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://nye.proanbud.no"
+const appUrl = () => process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://app.proanbud.no"
 
 function escapeHtml(value: string) {
   return value

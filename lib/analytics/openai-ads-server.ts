@@ -35,7 +35,7 @@ const EVENTS_ENDPOINT = "https://bzr.openai.com/v1/events"
  * appens egen signup-URL — det er nettadressen konverteringen hører til.
  */
 const FALLBACK_SOURCE_URL = `${(
-  process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://nye.proanbud.no"
+  process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://app.proanbud.no"
 ).replace(/\/$/, "")}/signup`
 const PROVIDER = "openai"
 const INTEGRATION_SOURCE = "proanbud"
