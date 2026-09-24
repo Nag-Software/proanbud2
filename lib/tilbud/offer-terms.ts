@@ -18,16 +18,20 @@ export const DEFAULT_PRICING_MODEL: OfferPricingModel = "time_materials"
 export const SELECTABLE_PRICING_MODELS = ["time_materials", "fixed"] as const
 export type SelectablePricingModel = (typeof SELECTABLE_PRICING_MODELS)[number]
 
-export const PRICING_MODEL_OPTIONS: Record<SelectablePricingModel, { label: string; description: string }> = {
+export const PRICING_MODEL_OPTIONS: Record<
+  SelectablePricingModel,
+  { label: string; summary: string; points: string[]; consumerPoint?: string }
+> = {
   time_materials: {
     label: "Regningsarbeid",
-    description:
-      "Kunden betaler for faktisk medgått tid og materialer. Summen i tilbudet er et prisoverslag — overfor privatkunder maks 15 % over.",
+    summary: "Kunden betaler for medgått tid og materialer.",
+    points: ["Summen i tilbudet er et prisoverslag.", "Du fakturerer faktisk forbruk."],
+    consumerPoint: "Privatkunder: endelig pris kan ikke bli mer enn 15 % over overslaget, heller ikke om kunden varsles.",
   },
   fixed: {
     label: "Fastpris",
-    description:
-      "Kunden betaler avtalt sum for jobben som er beskrevet. Endringer og tillegg må avtales skriftlig.",
+    summary: "Kunden betaler avtalt sum for jobben som er beskrevet.",
+    points: ["Endringer og tillegg avtales skriftlig før de utføres.", "Du bærer risikoen hvis jobben tar lengre tid."],
   },
 }
 
@@ -46,6 +50,8 @@ export type ContractBasisAudience = "all" | "bedrift" | "privatperson"
 export type ContractBasisOption = {
   value: OfferContractBasis
   label: string
+  /** Kort merkelapp på kortet, f.eks. hvilken lov eller entrepriseform det gjelder. */
+  tag?: string
   description: string
   audience: ContractBasisAudience
 }
@@ -60,49 +66,51 @@ export const CONTRACT_BASIS_OPTIONS: ContractBasisOption[] = [
   {
     value: "ns8405",
     label: "NS 8405",
-    description:
-      "Norsk bygge- og anleggskontrakt — utførelsesentreprise der byggherren prosjekterer og du bygger. Mellom profesjonelle parter.",
+    tag: "Utførelsesentreprise",
+    description: "Byggherren prosjekterer, du bygger. Faste regler for varsling og endringer.",
     audience: "bedrift",
   },
   {
     value: "ns8407",
     label: "NS 8407",
-    description:
-      "Totalentreprise — du har ansvar for både prosjektering og utførelse. Mellom profesjonelle parter.",
+    tag: "Totalentreprise",
+    description: "Du har ansvar for både prosjektering og utførelse.",
     audience: "bedrift",
   },
   {
     value: "ns8416",
     label: "NS 8416",
-    description:
-      "Forenklet underentreprisekontrakt — når kunden er en entreprenør og du er underentreprenør på utførelsen.",
+    tag: "Underentreprise",
+    description: "Kunden er en entreprenør, og du er underentreprenør på utførelsen.",
     audience: "bedrift",
   },
   {
     value: "ns8417",
     label: "NS 8417",
-    description:
-      "Totalunderentreprise — når kunden er en totalentreprenør og du tar både prosjektering og utførelse som underentreprenør.",
+    tag: "Totalunderentreprise",
+    description: "Kunden er en totalentreprenør, og du prosjekterer og utfører som underentreprenør.",
     audience: "bedrift",
   },
   {
     value: "bb3501",
     label: "Byggblankett 3501/3502",
+    tag: "Håndverkertjenesteloven",
     description:
-      "Standardkontrakt for forbruker om arbeid på eksisterende bolig eller annen fast eiendom, f.eks. reparasjon, rehabilitering og tilbygg (håndverkertjenesteloven). 3501 ved vederlag 2 G eller mer, 3502 under 2 G.",
+      "Arbeid på eksisterende bolig, f.eks. reparasjon, rehabilitering og tilbygg. 3501 når prisen er 2 G eller mer, 3502 under 2 G.",
     audience: "privatperson",
   },
   {
     value: "bb3425",
     label: "Byggblankett 3425/3426",
+    tag: "Bustadoppføringslova",
     description:
-      "Standardkontrakt for forbruker om oppføring av ny bolig eller fritidsbolig (bustadoppføringslova). 3425 når du prosjekterer og bygger, 3426 A/B når kunden leverer tegningene.",
+      "Oppføring av ny bolig eller fritidsbolig. 3425 når du prosjekterer og bygger, 3426 når kunden leverer tegningene.",
     audience: "privatperson",
   },
   {
     value: "custom",
     label: "Egne kontraktsvilkår",
-    description: "Bedriftens egne vilkår legges ved eller avtales særskilt. Overfor forbrukere kan de ikke være dårligere enn loven.",
+    description: "Bedriftens egne vilkår legges ved. Overfor privatkunder kan de ikke være dårligere enn loven.",
     audience: "all",
   },
 ]
