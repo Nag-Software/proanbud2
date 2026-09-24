@@ -103,6 +103,16 @@ async function batchSignUrls(
   return signedByPath
 }
 
+/** Admin/leder i firmaet eller prosjektleder – kan slette andres filer i prosjektmappen. */
+async function canManageProjectDocuments(
+  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
+  projectId: string
+) {
+  const { data, error } = await supabase.rpc("can_manage_project_documents", { p_project_id: projectId })
+  // Før db/102 er kjørt finnes ikke funksjonen – da gjelder det gamle: bare eieren.
+  return !error && data === true
+}
+
 async function getAuthenticatedUser() {
   const supabase = await createServerSupabase()
   const {
@@ -263,6 +273,7 @@ export async function GET(request: Request) {
     const signedByPath = await batchSignUrls(supabase, directFiles)
 
     // Hvem som lastet opp, for filer fra andre i en delt prosjektmappe.
+    const canManageFolder = projectFolderId ? await canManageProjectDocuments(supabase, projectFolderId) : false
     const otherUploaderIds = [
       ...new Set(directFiles.map((row) => row.user_id).filter((id): id is string => Boolean(id) && id !== user.id)),
     ]
@@ -292,6 +303,8 @@ export async function GET(request: Request) {
         updatedAt: row.updated_at,
         // Andres filer kan leses, men bare den som lastet opp kan endre eller slette.
         canEdit: ownedByMe,
+        // Ledere kan rydde i prosjektmappen – også andres filer.
+        canDelete: ownedByMe || canManageFolder,
         uploadedBy: ownedByMe ? null : uploaderNames.get(row.user_id as string) ?? "En kollega",
       }
     })
@@ -973,16 +986,28 @@ export async function DELETE(request: Request) {
   }
 
   if (provider === "supabase") {
+    // Uten eierfilter: RLS lar deg se egne filer og filer i prosjekter du har tilgang til.
     const { data: row, error } = await supabase
       .from("document_items")
-      .select("id,name,item_type,external_parent_id,storage_bucket,storage_path")
+      .select("id,name,item_type,external_parent_id,storage_bucket,storage_path,user_id,project_id")
       .eq("id", id)
-      .eq("user_id", user.id)
       .eq("provider", "supabase")
-      .single()
+      .maybeSingle()
 
     if (error || !row) {
       return NextResponse.json({ error: "item_not_found" }, { status: 404 })
+    }
+
+    // Andres filer kan bare slettes av ledere, og bare i en prosjektmappe (db/102).
+    const ownedByMe = row.user_id === user.id
+    if (!ownedByMe) {
+      const allowed =
+        row.item_type === "file" && row.project_id
+          ? await canManageProjectDocuments(supabase, row.project_id as string)
+          : false
+      if (!allowed) {
+        return NextResponse.json({ error: "Bare den som lastet opp eller en leder kan slette filen." }, { status: 403 })
+      }
     }
 
     if (row.item_type === "folder") {
@@ -1046,7 +1071,10 @@ export async function DELETE(request: Request) {
       }
     }
 
-    await supabase.from("document_items").delete().eq("id", id).eq("user_id", user.id)
+    const { data: deleted } = await supabase.from("document_items").delete().eq("id", id).select("id")
+    if (!deleted?.length) {
+      return NextResponse.json({ error: "Kunne ikke slette filen. Prøv igjen." }, { status: 403 })
+    }
     return NextResponse.json({ ok: true })
   }
 

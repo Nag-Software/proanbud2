@@ -37,6 +37,8 @@ type DocumentItem = {
   updatedAt: string
   /** Prosjektmappen er delt: andres filer kan leses, men ikke endres eller slettes. */
   canEdit?: boolean
+  /** Eier, eller leder som kan rydde i prosjektmappen. */
+  canDelete?: boolean
   /** Navnet på den som lastet opp, når det er noen andre enn deg. */
   uploadedBy?: string | null
 }
@@ -292,8 +294,8 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
                     <TableCell>{formatSize(item.sizeBytes)}</TableCell>
                     <TableCell>{formatDate(item.updatedAt)}</TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      {item.canEdit !== false ? (
-                        <div className="flex justify-end gap-1">
+                      <div className="flex justify-end gap-1">
+                        {item.canEdit !== false ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -303,6 +305,8 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
+                        ) : null}
+                        {(item.canDelete ?? item.canEdit) !== false ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -312,8 +316,8 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
-                        </div>
-                      ) : null}
+                        ) : null}
+                      </div>
                     </TableCell>
                   </TableRow>
                 )
@@ -339,8 +343,8 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
                     {item.uploadedBy ? ` · fra ${item.uploadedBy}` : ""}
                   </p>
                 </button>
-                {item.canEdit !== false ? (
-                  <div className="flex shrink-0 gap-1">
+                <div className="flex shrink-0 gap-1">
+                  {item.canEdit !== false ? (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -351,6 +355,8 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
+                  ) : null}
+                  {(item.canDelete ?? item.canEdit) !== false ? (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -361,8 +367,8 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
               </div>
             )
           })
