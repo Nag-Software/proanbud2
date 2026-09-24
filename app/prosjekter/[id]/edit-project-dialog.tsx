@@ -265,7 +265,7 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
           {/* Faresone */}
           <section className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-destructive">
-              Faresone
+              Arkiver eller slett
             </h3>
             {confirmArchive ? (
               <div className="space-y-3">

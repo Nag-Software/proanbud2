@@ -7,7 +7,7 @@ import { resolve } from 'path'
 const dbDir = resolve(__dirname, '../../db')
 const schema = readdirSync(dbDir)
   .filter((file) => file.endsWith('.sql'))
-  .sort()
+  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
   .map((file) => readFileSync(resolve(dbDir, file), 'utf-8'))
   .join('\n')
 
@@ -18,5 +18,17 @@ describe('database schema', () => {
 
   it('contains user_profiles table', () => {
     expect(schema).toContain('CREATE TABLE IF NOT EXISTS public.user_profiles')
+  })
+})
+
+describe('migrasjonsrekkefølge', () => {
+  it('sorterer filnavn numerisk, så 100_ kommer etter 99_', () => {
+    const files = ['100_b.sql', '10_a.sql', '99_c.sql', '09_d.sql']
+    expect(files.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))).toEqual([
+      '09_d.sql',
+      '10_a.sql',
+      '99_c.sql',
+      '100_b.sql',
+    ])
   })
 })

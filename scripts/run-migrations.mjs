@@ -40,7 +40,11 @@ if (!DATABASE_URL) {
 
 async function main() {
   const entries = await readdir(DB_DIR)
-  const files = entries.filter((f) => f.endsWith(".sql")).sort()
+  // Numerisk: tekstsortering legger «100_…» foran «10_…», og på en ny database
+  // ville en migrasjon da kjøres før tabellene den endrer finnes.
+  const files = entries
+    .filter((f) => f.endsWith(".sql"))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
   if (files.length === 0) {
     console.log("Ingen .sql-filer i db/.")
     return

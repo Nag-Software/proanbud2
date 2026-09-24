@@ -21,10 +21,12 @@ export function FaktureringSeksjon({
   projectId,
   canManage,
   initialChangeOrders,
+  customerEmail,
 }: {
   projectId: string
   canManage: boolean
   initialChangeOrders: ChangeOrder[] | null
+  customerEmail?: string | null
 }) {
   const [changeSignal, setChangeSignal] = React.useState(0)
 
@@ -35,6 +37,7 @@ export function FaktureringSeksjon({
         projectId={projectId}
         canManage={canManage}
         initialItems={initialChangeOrders}
+        customerEmail={customerEmail}
         onChanged={() => setChangeSignal((n) => n + 1)}
       />
     </div>

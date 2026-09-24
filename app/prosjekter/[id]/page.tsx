@@ -78,6 +78,10 @@ type ProjectChangeOrderRow = {
   sent_at: string | null
   customer_responded_at: string | null
   created_at: string
+  recipient_email?: string | null
+  reminder_sent_at?: string | null
+  accepted_by_name?: string | null
+  approval_basis?: string | null
 }
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
@@ -115,9 +119,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       .eq("project_id", resolvedParams.id),
     supabase
       .from("change_orders")
-      .select(
-        "id, offer_id, project_id, title, description, amount_nok, billing_type, hourly_rate_nok, estimated_hours, status, public_slug, sent_at, customer_responded_at, created_at",
-      )
+      // «*» tåler at kolonnene fra db/100 (godkjenning) ikke finnes ennå.
+      .select("*")
       .eq("project_id", resolvedParams.id)
       .order("created_at", { ascending: false }),
     supabase
@@ -217,6 +220,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   const offers = (offersData || []) as ProjectOfferRow[]
   const changeOrders = (changeOrdersData || []) as ProjectChangeOrderRow[]
+  const projectCustomerRelation = (project as { customers?: { email?: string | null } | { email?: string | null }[] | null }).customers
+  const projectCustomer = Array.isArray(projectCustomerRelation) ? projectCustomerRelation[0] ?? null : projectCustomerRelation ?? null
   const doneTasks = tasks.filter((task) => task.status === "done").length
   const openTasks = tasks.filter((task) => task.status !== "done").length
   const overdueTasks = tasks.filter((task) => {
@@ -307,7 +312,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   {
                     value: "etterfakturering",
                     label: "Fakturering",
-                    shortLabel: "Etterfakt.",
+                    shortLabel: "Faktura",
                     hidden: isWorker,
                   },
                   { value: "lonnsomhet", label: "Lønnsomhet", hidden: isWorker },
@@ -375,6 +380,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   projectId={project.id}
                   canManage={isProjectAdmin}
                   initialChangeOrders={changeOrders}
+                  customerEmail={projectCustomer?.email ?? null}
                 />
               </ProjectTabPanel>
             )}

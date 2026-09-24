@@ -20,6 +20,12 @@ export type ChangeOrder = {
   sent_at: string | null
   customer_responded_at: string | null
   created_at: string
+  // Fra db/100 – mangler før migrasjonen er kjørt.
+  recipient_email?: string | null
+  reminder_sent_at?: string | null
+  accepted_by_name?: string | null
+  approval_basis?: string | null
+  approval_note?: string | null
 }
 
 export function buildPublicChangeOrderUrl(slug: string) {
@@ -73,6 +79,13 @@ export type PublicChangeOrder = {
   estimatedHours: number | null
   status: ChangeOrderStatus
   canRespond: boolean
+  publicSlug: string
+  /** Hvor engangskoden sendes: mottakeren ekstrajobben ble sendt til, ellers kundens e-post. */
+  recipientEmail: string
+  customerName: string
+  acceptedByName: string | null
+  respondedAt: string | null
+  approvalBasis: string | null
   /**
    * Om prisen skal vises inkl. mva. Privatkunder (eller ukjent kunde) skal se
    * priser inkl. mva (prisopplysningsforskriften § 3); bedriftskunder eks. mva.
@@ -84,7 +97,8 @@ export async function fetchPublicChangeOrderBySlug(slug: string): Promise<Public
   const admin = createAdminClient()
   const { data } = await admin
     .from("change_orders")
-    .select("id, company_id, project_id, customer_id, title, description, amount_nok, billing_type, hourly_rate_nok, estimated_hours, status, companies(name)")
+    // «*» tåler at kolonnene fra db/100 ikke finnes ennå.
+    .select("*, companies(name)")
     .eq("public_slug", slug)
     .maybeSingle()
   if (!data) return null
@@ -92,11 +106,13 @@ export async function fetchPublicChangeOrderBySlug(slug: string): Promise<Public
   // Egne oppslag som tåler feil: skal ikke kunne gjøre varselet om til 404.
   const [{ data: customerRow }, { data: companyRow }] = await Promise.all([
     data.customer_id
-      ? admin.from("customers").select("org_number").eq("id", data.customer_id as string).maybeSingle()
+      ? admin.from("customers").select("org_number, email, name").eq("id", data.customer_id as string).maybeSingle()
       : Promise.resolve({ data: null }),
     admin.from("companies").select("vat_registered").eq("id", data.company_id as string).maybeSingle(),
   ])
-  const isBusinessCustomer = Boolean((customerRow as { org_number?: string | null } | null)?.org_number?.trim())
+  const customer = customerRow as { org_number?: string | null; email?: string | null; name?: string | null } | null
+  const isBusinessCustomer = Boolean(customer?.org_number?.trim())
+  const row = data as Record<string, unknown>
   const vatRegistered = (companyRow as { vat_registered?: boolean | null } | null)?.vat_registered !== false
 
   const companies = (data as { companies?: { name: string | null } | { name: string | null }[] | null }).companies
@@ -121,6 +137,12 @@ export async function fetchPublicChangeOrderBySlug(slug: string): Promise<Public
         : Number(data.estimated_hours),
     status,
     canRespond: status === "sent",
+    publicSlug: slug,
+    recipientEmail: String(row.recipient_email || customer?.email || "").trim(),
+    customerName: String(customer?.name || "").trim(),
+    acceptedByName: (row.accepted_by_name as string | null | undefined) ?? null,
+    respondedAt: (row.customer_responded_at as string | null | undefined) ?? null,
+    approvalBasis: (row.approval_basis as string | null | undefined) ?? null,
     pricesInclVat: vatRegistered && !isBusinessCustomer,
   }
 }
