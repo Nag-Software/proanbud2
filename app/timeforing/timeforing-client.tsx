@@ -30,6 +30,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SearchableSelect } from "@/components/ui/searchable-select"
@@ -598,12 +599,12 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
 
               <div className="space-y-2">
                 <Label htmlFor="manual-date">Dato</Label>
-                <Input
+                <DatePicker
                   id="manual-date"
-                  type="date"
                   value={manualDate}
-                  max={todayLocalISODate()}
-                  onChange={(event) => setManualDate(event.target.value)}
+                  maxDate={todayLocalISODate()}
+                  onChange={setManualDate}
+                  className="h-10 w-full"
                 />
               </div>
 

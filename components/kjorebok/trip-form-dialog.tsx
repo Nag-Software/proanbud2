@@ -5,6 +5,7 @@ import dynamic from "next/dynamic"
 import { Loader2Icon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -345,7 +346,7 @@ export function TripFormDialog({
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="trip-date">Dato</Label>
-              <Input id="trip-date" type="date" value={tripDate} max={todayIso()} onChange={(e) => setTripDate(e.target.value)} />
+              <DatePicker id="trip-date" value={tripDate} maxDate={todayIso()} onChange={setTripDate} className="h-9 w-full" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="trip-distance">Distanse (km)</Label>

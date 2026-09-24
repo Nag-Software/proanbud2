@@ -15,6 +15,7 @@ import {
   ResponsiveDialogTitle,
   ResponsiveDialogTrigger,
 } from "@/components/ui/responsive-dialog"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -239,20 +240,23 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="project-start">Startdato</Label>
-                <Input
+                <DatePicker
                   id="project-start"
-                  type="date"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  maxDate={endDate || undefined}
+                  onChange={setStartDate}
+                  className="h-9 w-full"
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="project-end">Sluttdato</Label>
-                <Input
+                <DatePicker
                   id="project-end"
-                  type="date"
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  // Sluttdato kan ikke ligge før start.
+                  minDate={startDate || undefined}
+                  onChange={setEndDate}
+                  className="h-9 w-full"
                 />
               </div>
             </div>

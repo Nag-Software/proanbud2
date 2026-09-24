@@ -16,6 +16,7 @@ import { ArrowLeft, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-reac
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -972,11 +973,11 @@ export function LonnsomhetTab({
                         </div>
                         <div>
                           <Label htmlFor="mc-date-picked">Dato</Label>
-                          <Input
+                          <DatePicker
                             id="mc-date-picked"
-                            type="date"
                             value={form.costDate}
-                            onChange={(e) => setForm((f) => ({ ...f, costDate: e.target.value }))}
+                            onChange={(value) => setForm((f) => ({ ...f, costDate: value }))}
+                            className="w-full"
                           />
                         </div>
                       </div>
@@ -1076,11 +1077,11 @@ export function LonnsomhetTab({
                       </div>
                       <div>
                         <Label htmlFor="mc-date">Dato</Label>
-                        <Input
+                        <DatePicker
                           id="mc-date"
-                          type="date"
                           value={form.costDate}
-                          onChange={(e) => setForm((f) => ({ ...f, costDate: e.target.value }))}
+                          onChange={(value) => setForm((f) => ({ ...f, costDate: value }))}
+                          className="w-full"
                         />
                       </div>
                     </div>

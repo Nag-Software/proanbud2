@@ -15,9 +15,11 @@ type DatePickerFieldProps = {
   onChange: (date?: Date) => void
   error?: string
   placeholder?: string
+  /** Tidligste dato som kan velges (f.eks. sluttdato ≥ startdato). */
+  minDate?: Date
 }
 
-export function DatePickerField({ label, value, onChange, error, placeholder = "Velg dato" }: DatePickerFieldProps) {
+export function DatePickerField({ label, value, onChange, error, placeholder = "Velg dato", minDate }: DatePickerFieldProps) {
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium text-foreground">{label}</p>
@@ -41,6 +43,8 @@ export function DatePickerField({ label, value, onChange, error, placeholder = "
             mode="single"
             selected={value}
             onSelect={(date) => onChange(date ?? undefined)}
+            disabled={minDate ? { before: minDate } : undefined}
+            defaultMonth={value ?? minDate}
             locale={nb}
           />
         </PopoverContent>

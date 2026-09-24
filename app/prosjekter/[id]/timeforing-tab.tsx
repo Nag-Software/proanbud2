@@ -6,6 +6,7 @@ import { nb } from "date-fns/locale"
 import { Clock, Loader2, MapPin, Pencil, Play, Square } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -390,12 +391,12 @@ export default function TimeforingTab({
             <div className="space-y-3">
               <div className="space-y-2">
                 <Label htmlFor="manual-date">Dato</Label>
-                <Input
+                <DatePicker
                   id="manual-date"
-                  type="date"
                   value={manualDate}
-                  max={todayLocalISODate()}
-                  onChange={(event) => setManualDate(event.target.value)}
+                  maxDate={todayLocalISODate()}
+                  onChange={setManualDate}
+                  className="h-10 w-full"
                 />
               </div>
 

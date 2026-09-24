@@ -696,6 +696,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
                               <DatePickerField
                                 label="Sluttdato"
                                 value={field.value}
+                                minDate={form.watch("startDate")}
                                 onChange={field.onChange}
                                 error={form.formState.errors.endDate?.message}
                                 placeholder="Ingen dato valgt"
