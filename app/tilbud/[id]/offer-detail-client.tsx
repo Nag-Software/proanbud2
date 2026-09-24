@@ -482,6 +482,10 @@ export function OfferDetailClient({
     if (category) setActiveSubproject(category)
   }, [])
 
+  const handleCategoryChange = useCallback((from: string, to: string | null) => {
+    setActiveSubproject((current) => (current === from ? to : current))
+  }, [])
+
   const saveOfferSnapshot = useCallback(
     async (snapshot: OfferSaveSnapshot, options?: { silent?: boolean }) => {
       const requestId = ++saveSequenceRef.current
@@ -866,6 +870,7 @@ export function OfferDetailClient({
             items={lineItems}
             onItemsChange={setLineItems}
             supplierSuggestions={[]}
+            onCategoryChange={handleCategoryChange}
           />
           <div className="bg-muted/5 p-5">
             <div className="ml-auto flex w-full max-w-sm flex-col gap-3">

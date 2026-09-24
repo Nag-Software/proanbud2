@@ -54,6 +54,12 @@ export type NewOfferItemsTableProps = {
   items: OfferLineItem[]
   onItemsChange: (next: OfferLineItem[]) => void
   supplierSuggestions: string[]
+  /**
+   * Kalles når en kategori omdøpes (`to` = nytt navn) eller fjernes (`to` = null).
+   * Forelderen husker «aktiv kategori» for nye linjer og må følge med — ellers
+   * havner neste «Blank rad» i en gjenoppstått kategori med det gamle navnet.
+   */
+  onCategoryChange?: (from: string, to: string | null) => void
 }
 
 export type NewOfferItemsTableHandle = {
@@ -409,7 +415,7 @@ function EditableNumber({
 }
 
 export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferItemsTableProps>(function NewOfferItemsTable(
-  { items, onItemsChange, supplierSuggestions },
+  { items, onItemsChange, supplierSuggestions, onCategoryChange },
   ref
 ) {
   const confirm = useConfirm()
@@ -483,8 +489,9 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
         }
         return next
       })
+      onCategoryChange?.(oldName, nextName)
     },
-    [items, onItemsChange]
+    [items, onItemsChange, onCategoryChange]
   )
 
   const groupOrderRef = useRef(groupOrder)
@@ -535,8 +542,9 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
         next.delete(group)
         return next
       })
+      onCategoryChange?.(group, null)
     },
-    [confirm, onItemsChange]
+    [confirm, onItemsChange, onCategoryChange]
   )
 
   useImperativeHandle(

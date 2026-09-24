@@ -290,6 +290,10 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
 
   const defaultSubproject = activeSubproject || subprojectSuggestions[0] || "Generelt"
 
+  const handleCategoryChange = (from: string, to: string | null) => {
+    setActiveSubproject((current) => (current === from ? to : current))
+  }
+
   const buildPayload = (): SaveOfferPayload => {
     return {
       id: offerId,
@@ -770,6 +774,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 items={lineItems}
                 onItemsChange={setLineItems}
                 supplierSuggestions={getDistinctSuppliers()}
+                onCategoryChange={handleCategoryChange}
               />
 
               {/* Totals footer */}
