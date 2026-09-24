@@ -82,7 +82,7 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: Employe
 
       setEmployees([...employees, {
         id: data.invitationId ?? Math.random().toString(),
-        name: "Avventer Registrering",
+        name: "Venter på registrering",
         email: inviteEmail,
         role: inviteRole,
         status: "Invitert"
@@ -407,7 +407,7 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: Employe
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="role">Velg Rolle</Label>
+                <Label htmlFor="role">Velg rolle</Label>
                 <Select value={inviteRole} onValueChange={setInviteRole}>
                   <SelectTrigger id="role" className="w-full">
                     <SelectValue placeholder="Velg en rolle">{inviteRole}</SelectValue>

@@ -4,6 +4,7 @@ import { checkRoleAccess } from "@/lib/auth-utils"
 
 import { DocusignTesterClient } from "./docusign-tester-client"
 import { getServerAuthContext } from "@/lib/auth/server-context"
+import { isPlatformAdminEmail } from "@/lib/auth/platform-admin"
 
 export default async function DocusignPage() {
   await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
@@ -42,7 +43,8 @@ export default async function DocusignPage() {
           </div>
         ) : null}
 
-        {companyId && (
+        {/* Utviklertestene er for Proanbud-teamet, ikke for kundene. */}
+        {companyId && isPlatformAdminEmail(user?.email) && (
           <div className="mt-8">
              <h2 className="text-xl font-semibold tracking-tight text-foreground mb-4">Utviklertester</h2>
              <DocusignTesterClient />

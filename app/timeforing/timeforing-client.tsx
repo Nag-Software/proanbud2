@@ -671,7 +671,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
         <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
           <div>
             <h2 className="font-semibold">Denne uka</h2>
-            <p className="text-sm text-muted-foreground">Dine siste føringer</p>
+            <p className="text-sm text-muted-foreground">Sum fra mandag · listen viser de siste 7 dagene</p>
           </div>
           <p className="text-2xl font-semibold tabular-nums">{formatT(weekHours)}</p>
         </div>
@@ -695,6 +695,10 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
                   {entry.status === "pending" ? (
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
                       Venter
+                    </span>
+                  ) : entry.status === "rejected" ? (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800 dark:bg-red-900/40 dark:text-red-200">
+                      Avvist – snakk med lederen din
                     </span>
                   ) : (
                     <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-200">

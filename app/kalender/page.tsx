@@ -30,6 +30,7 @@ import {
   ResponsiveDialogTitle,
 } from "@/components/ui/responsive-dialog"
 import { Input } from "@/components/ui/input"
+import { DateTimeField } from "@/components/ui/date-time-field"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -59,29 +60,6 @@ function defaultSlotTimes(day: Date) {
   const end = new Date(day)
   end.setHours(10, 0, 0, 0)
   return { start, end }
-}
-
-// <input type="datetime-local"> exchanges a bare "YYYY-MM-DDTHH:mm" string with
-// no timezone offset. `new Date(value)` on that form is NOT portable: V8 (Chrome)
-// parses it as LOCAL time, but JavaScriptCore (Safari) parses it as UTC — so on
-// Safari reading the field back shifts the saved event by the user's offset
-// (1–2 h in Norway), and that wrong time is persisted via toISOString() and
-// synced to Google/Microsoft/Tripletex. Going through explicit local components
-// (the `new Date(y, m, d, ...)` constructor is local on every engine) fixes it.
-function parseLocalDatetimeInput(value: string): Date | null {
-  if (!value) return null
-  const [datePart, timePart] = value.split("T")
-  if (!datePart || !timePart) return null
-  const [year, month, day] = datePart.split("-").map(Number)
-  const [hour, minute] = timePart.split(":").map(Number)
-  if ([year, month, day, hour, minute].some(Number.isNaN)) return null
-  return new Date(year, month - 1, day, hour, minute, 0, 0)
-}
-
-function formatLocalDatetimeInput(date: Date | null): string {
-  if (!date) return ""
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 function KalenderPage() {
@@ -156,10 +134,15 @@ function KalenderPage() {
           }
         }))
         setEvents(formattedEvents)
+      } else {
+        // Tidligere skjedde ingenting – en tom kalender så ut som «ingen avtaler».
+        reportClientError(`Kalenderhenting feilet (${res.status})`, { level: "warning", context: { action: "Hente kalenderhendelser" } })
+        toast.error("Kunne ikke hente avtalene. Last siden på nytt.")
       }
     } catch (e) {
       console.error("Failed to fetch events", e)
       reportClientError(e, { level: "warning", context: { action: "Hente kalenderhendelser" } })
+      toast.error("Kunne ikke hente avtalene. Sjekk nettforbindelsen.")
     }
   }, [])
 
@@ -390,8 +373,24 @@ function KalenderPage() {
     setIsEditDialogOpen(true)
   }
 
+  // Flytter man starten, følger slutten med (samme varighet) – ellers kan slutt havne før start.
+  const changeEventStart = (next: Date | null) => {
+    if (next && eventStart && eventEnd) {
+      const duration = eventEnd.getTime() - eventStart.getTime()
+      setEventEnd(new Date(next.getTime() + (duration > 0 ? duration : 60 * 60 * 1000)))
+    }
+    setEventStart(next)
+  }
+
+  const endsBeforeStart = (start: Date | null, end: Date | null) =>
+    Boolean(start && end && end.getTime() <= start.getTime())
+
   const handleCreateEvent = async () => {
     if (!eventTitle.trim() || !eventStart || !eventEnd) return
+    if (endsBeforeStart(eventStart, eventEnd)) {
+      toast.error("Avtalen må slutte etter at den starter.")
+      return
+    }
     setIsSubmitting(true)
 
     try {
@@ -424,6 +423,10 @@ function KalenderPage() {
 
   const handleUpdateEventDetails = async () => {
     if (!activeEventId || !eventTitle.trim() || !eventStart || !eventEnd) return
+    if (endsBeforeStart(eventStart, eventEnd)) {
+      toast.error("Avtalen må slutte etter at den starter.")
+      return
+    }
     setIsSubmitting(true)
 
     try {
@@ -694,21 +697,11 @@ function KalenderPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="create-start">Starter</Label>
-                <Input
-                  id="create-start"
-                  type="datetime-local"
-                  value={formatLocalDatetimeInput(eventStart)}
-                  onChange={(e) => setEventStart(parseLocalDatetimeInput(e.target.value))}
-                />
+                <DateTimeField id="create-start" value={eventStart} onChange={changeEventStart} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-end">Slutter</Label>
-                <Input
-                  id="create-end"
-                  type="datetime-local"
-                  value={formatLocalDatetimeInput(eventEnd)}
-                  onChange={(e) => setEventEnd(parseLocalDatetimeInput(e.target.value))}
-                />
+                <DateTimeField id="create-end" value={eventEnd} onChange={setEventEnd} />
               </div>
             </div>
 
@@ -777,11 +770,11 @@ function KalenderPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="edit-start">Starter</Label>
-                <Input id="edit-start" type="datetime-local" value={formatLocalDatetimeInput(eventStart)} onChange={(e) => setEventStart(parseLocalDatetimeInput(e.target.value))} />
+                <DateTimeField id="edit-start" value={eventStart} onChange={changeEventStart} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-end">Slutter</Label>
-                <Input id="edit-end" type="datetime-local" value={formatLocalDatetimeInput(eventEnd)} onChange={(e) => setEventEnd(parseLocalDatetimeInput(e.target.value))} />
+                <DateTimeField id="edit-end" value={eventEnd} onChange={setEventEnd} />
               </div>
             </div>
 

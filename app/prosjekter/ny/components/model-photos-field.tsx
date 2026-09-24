@@ -138,7 +138,7 @@ export function ModelPhotosField({
               <button
                 type="button"
                 onClick={() => onChange(files.filter((item) => fileKey(item) !== preview.key))}
-                className="absolute right-1 top-1 rounded-full bg-background/90 p-0.5 opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100"
+                className="absolute right-0.5 top-0.5 flex size-7 items-center justify-center rounded-full bg-background/90 shadow-sm transition [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100"
                 aria-label={`Fjern ${preview.file.name}`}
               >
                 <X className="size-3.5" />

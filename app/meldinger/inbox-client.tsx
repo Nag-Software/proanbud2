@@ -160,7 +160,10 @@ export default function InboxClient({ companyId, currentUserId, initialCustomerI
         .from("messages")
         .select("*")
         .eq("company_id", companyId)
-        .order("created_at", { ascending: true });
+        // Nyeste først med grense, snudd under: stigende uten grense kuttet de NYESTE
+        // meldingene når bedriften passerte PostgRESTs standardgrense på 1000 rader.
+        .order("created_at", { ascending: false })
+        .limit(1000);
 
       if (messagesError) {
         console.error("Error fetching messages:", messagesError);
@@ -170,7 +173,7 @@ export default function InboxClient({ companyId, currentUserId, initialCustomerI
         toast.error("Kunne ikke hente meldinger");
       }
 
-      if (messagesData) setMessages(messagesData);
+      if (messagesData) setMessages([...messagesData].reverse());
       setIsLoading(false);
     }
     loadData();
@@ -298,7 +301,9 @@ export default function InboxClient({ companyId, currentUserId, initialCustomerI
   }, [aiSuggestion]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // På telefon er Enter linjeskift – sending skjer med knappen, ikke ved et uhell.
+    const isTouch = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+    if (e.key === "Enter" && !e.shiftKey && !isTouch) {
       e.preventDefault();
       handleSendMessage(e as unknown as React.FormEvent);
     }
@@ -915,7 +920,7 @@ export default function InboxClient({ companyId, currentUserId, initialCustomerI
                       )}
                     </Button>
                   </form>
-                  <p className="mx-auto mt-2 max-w-3xl text-center text-[10px] text-muted-foreground">
+                  <p className="mx-auto mt-2 hidden max-w-3xl text-center text-[10px] text-muted-foreground [@media(pointer:fine)]:block">
                     Enter for å sende · Shift + Enter for ny linje
                   </p>
                 </div>

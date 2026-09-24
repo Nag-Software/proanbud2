@@ -206,13 +206,14 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
                   </Button>
                 </Field>
                 <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
-                  Eller fortsett med
+                  eller med e-post
                 </FieldSeparator>
                 <Field>
-                  <FieldLabel htmlFor="fullName">Fullt Navn</FieldLabel>
+                  <FieldLabel htmlFor="fullName">Fullt navn</FieldLabel>
                   <Input
                     id="fullName"
                     type="text"
+                    autoComplete="name"
                     placeholder="Ditt navn"
                     required
                     value={fullName}
@@ -224,7 +225,8 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="m@example.com"
+                    autoComplete="email"
+                    placeholder="ola@firma.no"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -244,6 +246,8 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      minLength={8}
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -258,6 +262,7 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
                       {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
                   </div>
+                  <FieldDescription>Minst 8 tegn.</FieldDescription>
                 </Field>
                 <Field>
                   {info ? (
@@ -288,7 +293,7 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
           </CardContent>
         </Card>
         <FieldDescription className="px-6 text-center">
-          Ved å klikke fortsett, godtar du våre <a href="/terms">Vilkår for bruk</a>{" "}
+          Ved å opprette konto godtar du våre <a href="/terms">Vilkår for bruk</a>{" "}
           og <a href="/privacy">Personvernerklæring</a>.
         </FieldDescription>
       </div>

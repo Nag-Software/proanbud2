@@ -853,7 +853,7 @@ export async function getMyTimeTrackingOverviewAction(): Promise<
         .eq("user_id", user.id)
         .not("ended_at", "is", null)
         .not("hours", "is", null)
-        .neq("status", "rejected")
+        // Avviste timer tas med og merkes «Avvist» – de skal ikke forsvinne uten beskjed.
         .gte("entry_date", windowStartStr)
         .order("entry_date", { ascending: false })
         .order("started_at", { ascending: false })
@@ -901,9 +901,9 @@ export async function getMyTimeTrackingOverviewAction(): Promise<
       status: (row.status as MyRecentTimeEntry["status"]) || "approved",
     }))
 
-    // Ukesummen teller alt som er ført denne uka (også det som venter på godkjenning).
+    // Ukesummen teller alt som er ført denne uka (også det som venter på godkjenning), ikke avviste timer.
     const weekHours = recentEntries
-      .filter((entry) => entry.entryDate >= weekStartStr)
+      .filter((entry) => entry.entryDate >= weekStartStr && entry.status !== "rejected")
       .reduce((sum, entry) => sum + entry.hours, 0)
 
     return {

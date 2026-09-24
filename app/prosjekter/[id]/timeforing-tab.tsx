@@ -77,6 +77,8 @@ export default function TimeforingTab({
   canViewAllEntries?: boolean
 }) {
   const [entries, setEntries] = useState<TimeEntryRow[]>([])
+  // Uten dette sto «Ingen fullførte arbeidsøkter ennå» mens listen lastet.
+  const [entriesLoaded, setEntriesLoaded] = useState(false)
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null)
   const [description, setDescription] = useState("")
   const [elapsedLabel, setElapsedLabel] = useState("0m 00s")
@@ -121,6 +123,8 @@ export default function TimeforingTab({
     } catch (loadDataError) {
       reportClientError(loadDataError, { context: { action: "hente timeføringer", projectId } })
       setError(OFFLINE_ERROR_MESSAGE)
+    } finally {
+      setEntriesLoaded(true)
     }
   }, [projectId, canViewAllEntries])
 
@@ -461,7 +465,7 @@ export default function TimeforingTab({
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div>
             <h3 className="font-semibold">
-              {canViewAllEntries ? "Timeføring per prosjekt" : "Mine registrerte timer"}
+              {canViewAllEntries ? "Alle timer på prosjektet" : "Mine registrerte timer"}
             </h3>
             <p className="text-sm text-muted-foreground">Totalt {formatHours(totalHours)}</p>
           </div>
@@ -479,7 +483,13 @@ export default function TimeforingTab({
               </tr>
             </thead>
             <tbody>
-              {entries.length === 0 ? (
+              {!entriesLoaded ? (
+                <tr>
+                  <td colSpan={canViewAllEntries ? 5 : 4} className="px-4 py-8 text-center text-muted-foreground">
+                    Henter timer …
+                  </td>
+                </tr>
+              ) : entries.length === 0 ? (
                 <tr>
                   <td
                     colSpan={canViewAllEntries ? 5 : 4}
@@ -517,7 +527,9 @@ export default function TimeforingTab({
           </table>
         </div>
         <div className="divide-y md:hidden">
-          {entries.length === 0 ? (
+          {!entriesLoaded ? (
+            <div className="px-4 py-8 text-center text-muted-foreground">Henter timer …</div>
+          ) : entries.length === 0 ? (
             <div className="px-4 py-8 text-center text-muted-foreground">
               Ingen fullførte arbeidsøkter ennå. Trykk «Stemple inn på plassen» eller «Start uten GPS» for å begynne.
             </div>

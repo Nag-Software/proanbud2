@@ -13,6 +13,7 @@ import {
   OPPREF_COOKIE,
 } from '@/lib/analytics/ad-attribution'
 import { logServerError } from '@/lib/errors/log'
+import { fetchBrregCompanyProfile } from '@/lib/brreg/company-profile'
 import { stopSequence } from '@/lib/outreach/sequence'
 
 export async function POST(request: Request) {
@@ -60,6 +61,10 @@ export async function POST(request: Request) {
       )
     }
 
+    // Brønnøysund vet allerede adresse, mva-registrering og fag – da slipper
+    // brukeren å taste det inn på nytt i bedriftsprofilen.
+    const brregProfile = await fetchBrregCompanyProfile(org_number)
+
     // Bypass RLS og lag bedrift med admin:
     let { data: companyData, error: companyError } = await supabaseAdmin
       .from('companies')
@@ -69,6 +74,15 @@ export async function POST(request: Request) {
         phone: normalizedPhone,
         website: website?.trim() || null,
         email: user.email || null,
+        ...(brregProfile
+          ? {
+              address: brregProfile.address,
+              postal_code: brregProfile.postalCode,
+              city: brregProfile.city,
+              industry: brregProfile.industry,
+              ...(brregProfile.vatRegistered === null ? {} : { vat_registered: brregProfile.vatRegistered }),
+            }
+          : {}),
         created_at: new Date().toISOString()
       })
       .select()
@@ -77,10 +91,21 @@ export async function POST(request: Request) {
     if (companyError) {
       console.error('Company create error i ruten:', companyError)
       if (companyError.code === '23505') {
-        return NextResponse.json({ error: 'En bedrift med dette organisasjonsnummeret eksisterer allerede.' }, { status: 400 })
+        return NextResponse.json(
+          {
+            error:
+              'Bedriften har allerede en konto i Proanbud. Be den som registrerte bedriften om å invitere deg under Min bedrift → Ansatte og roller.',
+          },
+          { status: 400 }
+        )
       }
-      // Hvis API returnerer Permission denied ETTER dette, er det feil service key eller table structure!
-      return NextResponse.json({ error: 'Kunne ikke opprette bedrift: ' + JSON.stringify(companyError) }, { status: 500 })
+      await logServerError({
+        message: 'Kunne ikke opprette bedrift',
+        error: companyError,
+        source: 'api',
+        route: 'app/api/companies/route.ts',
+      })
+      return NextResponse.json({ error: 'Kunne ikke opprette bedriften akkurat nå. Prøv igjen om litt.' }, { status: 500 })
     }
 
     // Affiliate-attribusjon (henvisningspartner): knytt firmaet til selgeren bak

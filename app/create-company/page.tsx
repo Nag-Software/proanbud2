@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useRef } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { completeClientLogin } from "@/lib/auth/client-login"
 import { reportClientError } from "@/lib/errors/client"
@@ -53,12 +52,19 @@ export default function CreateCompanyClient() {
 
     if (val.length >= 3) {
       setSearchingBrreg(true)
+      // Ni sifre er et org.nr. – slå det opp direkte i stedet for å søke på navn.
+      const orgNumberQuery = val.replace(/\s/g, "")
+      const isOrgNumberQuery = /^\d{9}$/.test(orgNumberQuery)
       searchTimeout.current = setTimeout(async () => {
         try {
-          const res = await fetch(`https://data.brreg.no/enhetsregisteret/api/enheter?navn=${encodeURIComponent(val)}`)
+          const res = await fetch(
+            isOrgNumberQuery
+              ? `https://data.brreg.no/enhetsregisteret/api/enheter/${orgNumberQuery}`
+              : `https://data.brreg.no/enhetsregisteret/api/enheter?navn=${encodeURIComponent(val)}`
+          )
           if (res.ok) {
             const data = await res.json()
-            setBrregResults(data._embedded?.enheter || [])
+            setBrregResults(isOrgNumberQuery ? [data] : data._embedded?.enheter || [])
           } else {
             setBrregResults([])
           }
@@ -185,7 +191,7 @@ export default function CreateCompanyClient() {
                    if (companyName.length >= 3) setShowDropdown(true)
                 }}
                 onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
-                placeholder="Skriv inn navnet på bedriften..."
+                placeholder="Firmanavn eller org.nr."
                 className="pr-10"
               />
               <Search className="absolute right-3 top-2.5 size-4 text-muted-foreground" />
@@ -232,10 +238,12 @@ export default function CreateCompanyClient() {
           </div>
 
           <div className="space-y-2">
-            <Label>Organisasjonsnummer (valgfritt)</Label>
+            <Label htmlFor="org-number">Organisasjonsnummer (valgfritt)</Label>
             <Input
+              id="org-number"
               inputMode="numeric"
-              autoComplete="organization"
+              // Ikke «organization»: da fyller nettleseren inn firmanavnet her.
+              autoComplete="off"
               value={orgNumber}
               onChange={(e) => setOrgNumber(e.target.value)}
               placeholder="9 sifre, f.eks. 987 654 321"
@@ -284,12 +292,20 @@ export default function CreateCompanyClient() {
           </p>
         </div>
       </div>
-      <Link
-        href="/login"
+      {/* Innlogget uten bedrift sendes alltid hit, så en lenke til /login var en blindvei. */}
+      <button
+        type="button"
+        onClick={async () => {
+          await supabase.auth.signOut()
+          router.push("/login")
+        }}
         className="mt-4 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
       >
-        Tilbake til innlogging
-      </Link>
+        Feil konto? Logg ut
+      </button>
+      <p className="mt-2 max-w-sm text-center text-xs text-muted-foreground">
+        Skal du bli med i en bedrift som allerede bruker Proanbud? Be sjefen sende deg en invitasjon.
+      </p>
     </div>
   )
 }

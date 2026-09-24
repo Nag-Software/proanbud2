@@ -65,7 +65,7 @@ export function SuccessState({
               onClick={() => setNoteOpen((previous) => !previous)}
               className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted/40"
             >
-              <span>Modellen er generert - kontroll målene</span>
+              <span>3D-modellen lages nå</span>
               <ChevronDown
                 className={cn(
                   "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",

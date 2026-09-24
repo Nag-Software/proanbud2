@@ -290,7 +290,7 @@ export function BedriftsprofilClient({
               <Input
                 id="org-number"
                 inputMode="numeric"
-                autoComplete="organization"
+                autoComplete="off"
                 value={orgNumber}
                 onChange={(event) => setOrgNumber(event.target.value)}
                 placeholder="9 siffer"

@@ -104,15 +104,16 @@ function LoginFormInner({
                 </Button>
               </Field>
               <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
-                Eller fortsett med
+                eller med e-post
               </FieldSeparator>
               <Field>
-                <FieldLabel htmlFor="email">Epost</FieldLabel>
+                <FieldLabel htmlFor="email">E-post</FieldLabel>
                 <Input
                   ref={emailRef}
                   id="email"
                   type="email"
-                  placeholder="m@example.com"
+                  autoComplete="email"
+                  placeholder="ola@firma.no"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -132,6 +133,7 @@ function LoginFormInner({
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -171,7 +173,7 @@ function LoginFormInner({
         </CardContent>
       </Card>
       <FieldDescription className="px-6 text-center">
-        Ved å klikke fortsett, godtar du våre <a href="/terms">Vilkår for bruk</a>{" "}
+        Ved å logge inn godtar du våre <a href="/terms">Vilkår for bruk</a>{" "}
         og <a href="/privacy">Personvernerklæring</a>.
       </FieldDescription>
     </div>

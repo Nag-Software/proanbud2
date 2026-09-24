@@ -466,7 +466,7 @@ export function TripCreate({ context, currentUserId, defaultProjectId, returnTo 
                 <Label>Kjøretøy</Label>
                 {vehicles.length === 0 ? (
                   <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                    Ingen kjøretøy ennå. Legg til under «Kjøretøy» i kjøreboken.
+                    Ingen kjøretøy ennå. Lederen legger til biler under Min bedrift → Kjørebok → Kjøretøy.
                   </p>
                 ) : (
                   <Select value={vehicleId} onValueChange={onSelectVehicle}>
