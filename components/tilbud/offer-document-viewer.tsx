@@ -5,6 +5,7 @@ import { Download, ExternalLink } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
+import { OfferMobileDocument } from "@/components/tilbud/offer-mobile-document"
 import { buildOfferDocumentPage, type OfferDocumentData } from "@/lib/tilbud/offer-document"
 import { cn } from "@/lib/utils"
 
@@ -38,6 +39,9 @@ export function OfferDocumentViewer({
   const containerRef = useRef<HTMLDivElement>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(1)
+  // Telefon: et nedskalert A4-ark har ~5 px tekst. Vis heller tilbudet slik kunden
+  // leser det på mobil, med A4 ett trykk unna.
+  const [phoneView, setPhoneView] = useState<"mobil" | "a4">("mobil")
   const [sheetHeight, setSheetHeight] = useState(A4_HEIGHT)
 
   useEffect(() => {
@@ -103,7 +107,47 @@ export function OfferDocumentViewer({
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-lg bg-[#e8e6e1] p-3 sm:p-5">
+      <div
+        role="radiogroup"
+        aria-label="Visning"
+        className="inline-flex w-full rounded-md bg-secondary p-0.5 text-sm sm:hidden"
+      >
+        {(
+          [
+            { value: "mobil", label: "Slik kunden ser det" },
+            { value: "a4", label: "A4 (PDF)" },
+          ] as const
+        ).map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={phoneView === option.value}
+            onClick={() => setPhoneView(option.value)}
+            className={cn(
+              "min-h-9 flex-1 rounded-[4px] px-3 py-1.5 font-medium transition-colors",
+              phoneView === option.value
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      <OfferMobileDocument
+        {...data}
+        showSupplier={showSupplier}
+        className={cn("rounded-lg bg-[#f7f7f5] p-2 sm:hidden", phoneView !== "mobil" && "hidden")}
+      />
+
+      <div
+        className={cn(
+          "overflow-hidden rounded-lg bg-[#e8e6e1] p-3 sm:p-5",
+          phoneView === "mobil" && "hidden sm:block"
+        )}
+      >
         <div ref={containerRef} className="mx-auto" style={{ maxWidth: A4_WIDTH }}>
           {/* Reserve the scaled height so surrounding layout stays correct. */}
           <div style={{ height: sheetHeight * scale }}>

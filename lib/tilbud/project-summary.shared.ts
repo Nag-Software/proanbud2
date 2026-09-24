@@ -3,11 +3,18 @@
 // server-only modules (OpenAI, error logger), so keep these split out to avoid
 // dragging server-only code into client bundles.
 
+/**
+ * Plassholderen manuelle tilbud fikk som «sammendrag». Den er intern informasjon
+ * og havnet som innledning i kundens tilbud og PDF — i stedet for jobbeskrivelsen.
+ */
+const MANUAL_SUMMARY_PLACEHOLDER = "Manuell kalkyle uten AI-analyse"
+
 export function readProjectSummaryFromAnalysis(analysisResult: unknown) {
   if (!analysisResult || typeof analysisResult !== "object") return ""
 
   const summary = (analysisResult as Record<string, unknown>).summary
-  return typeof summary === "string" ? summary.trim() : ""
+  const text = typeof summary === "string" ? summary.trim() : ""
+  return text === MANUAL_SUMMARY_PLACEHOLDER ? "" : text
 }
 
 export function mergeAnalysisSummary(analysisResult: unknown, summary: string) {

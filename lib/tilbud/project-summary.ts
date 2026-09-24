@@ -12,8 +12,18 @@ type GenerateProjectSummaryInput = {
   lineItems: OfferLineItem[]
 }
 
-function buildFallbackProjectSummary(input: GenerateProjectSummaryInput) {
-  const subprojects = Array.from(new Set(input.lineItems.map((item) => item.subproject).filter(Boolean)))
+export function buildFallbackProjectSummary(input: GenerateProjectSummaryInput) {
+  // Håndverkerens egen jobbeskrivelse er en bedre innledning for kunden enn en
+  // oppramsing av kategorier, så den brukes først.
+  const trimmed = input.description.trim()
+  if (trimmed.length > 0) {
+    return trimmed.length > 180 ? `${trimmed.slice(0, 177).trim()}…` : trimmed
+  }
+
+  // «Generelt» er standardkategorien, ikke en beskrivelse av arbeidet.
+  const subprojects = Array.from(
+    new Set(input.lineItems.map((item) => item.subproject?.trim()).filter((name) => name && name !== "Generelt"))
+  )
   const scope =
     subprojects.length > 0
       ? subprojects.slice(0, 3).join(", ")
@@ -26,11 +36,6 @@ function buildFallbackProjectSummary(input: GenerateProjectSummaryInput) {
   const projectLabel = input.projectName?.trim() || input.title.trim() || "prosjektet"
   if (scope) {
     return `Tilbud for ${projectLabel} med arbeider som blant annet omfatter ${scope}.`
-  }
-
-  const trimmed = input.description.trim()
-  if (trimmed.length > 0) {
-    return trimmed.length > 180 ? `${trimmed.slice(0, 177).trim()}…` : trimmed
   }
 
   return `Kort tilbud for ${projectLabel}.`

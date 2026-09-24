@@ -16,6 +16,7 @@ import {
   Calculator,
   Check,
   CheckCircle2,
+  ChevronDown,
   Info,
   LoaderCircle,
   Plus,
@@ -36,6 +37,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea"
 import { getDistinctSuppliers } from "@/lib/tilbud/supplier-prices"
 import { DEFAULT_PRICING_MODEL, initialContractBasisFor } from "@/lib/tilbud/offer-terms"
+import { isHourUnit } from "@/lib/job-costing/calc"
 import {
   calculateOfferTotals,
   formatNok,
@@ -78,6 +80,10 @@ const steps = [
   },
 ] as const
 
+function formatLineCount(count: number) {
+  return `${count} ${count === 1 ? "linje" : "linjer"}`
+}
+
 function normalizeNumberInput(value: string, fallback: number) {
   const parsed = Number(value.replace(",", "."))
   if (!Number.isFinite(parsed)) return fallback
@@ -104,7 +110,9 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
   const [step, setStep] = useState<(typeof steps)[number]["id"]>(1)
   const [offerId, setOfferId] = useState<string | undefined>()
 
-  const [title, setTitle] = useState("")
+  // Prosjektnavnet er et godt utgangspunkt — det er ett felt mindre å fylle ut,
+  // og på mobil slipper man å lete opp feltet når tittelen mangler.
+  const [title, setTitle] = useState(project.name?.trim() || "")
   const [description, setDescription] = useState("")
 
   const projectId = project.id
@@ -323,12 +331,40 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     }
   }
 
+  const titleInputRef = useRef<HTMLInputElement>(null)
+  const descriptionRef = useRef<HTMLTextAreaElement>(null)
+  const [stepOneErrorField, setStepOneErrorField] = useState<"title" | "description" | null>(null)
+
   const validateStepOne = () => {
     if (title.trim().length < 2) return "Legg inn en tittel på tilbudet"
     if (description.trim().length < 20) return "Beskriv jobben med minst 20 tegn"
     if (!projectId) return "Prosjekt mangler"
     if (!customerId) return "Prosjektet mangler kunde"
     return null
+  }
+
+  // Vis feilen ved feltet det gjelder, og flytt fokus dit — på mobil ligger
+  // feltet ellers langt over knappen som ble trykket.
+  const showStepOneError = (message: string) => {
+    const field =
+      message === "Legg inn en tittel på tilbudet"
+        ? "title"
+        : message === "Beskriv jobben med minst 20 tegn"
+          ? "description"
+          : null
+    setStepOneErrorField(field)
+    setAnalysisError(field ? null : message)
+    // Etter render: feltet kan komme tilbake fra steg 2/3 først.
+    window.setTimeout(() => {
+      const element = field === "title" ? titleInputRef.current : field === "description" ? descriptionRef.current : null
+      element?.scrollIntoView({ behavior: "smooth", block: "center" })
+      element?.focus({ preventScroll: true })
+    }, 50)
+  }
+
+  const clearStepOneError = () => {
+    setStepOneErrorField(null)
+    setAnalysisError(null)
   }
 
   const validateBeforeSave = () => {
@@ -341,10 +377,10 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     if (step === 1 && targetStep > 1) {
       const validationError = validateStepOne()
       if (validationError) {
-        setAnalysisError(validationError)
+        showStepOneError(validationError)
         return false
       }
-      setAnalysisError(null)
+      clearStepOneError()
     }
     setStep(targetStep)
     return true
@@ -353,11 +389,11 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
   const handleAnalyze = () => {
     const validationError = validateStepOne()
     if (validationError) {
-      setAnalysisError(validationError)
+      showStepOneError(validationError)
       return
     }
 
-    setAnalysisError(null)
+    clearStepOneError()
     setFeedback(null)
 
     void (async () => {
@@ -401,13 +437,19 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     setStep(2)
   }
 
+  // Påslaget gjelder materialer. Timelinjer står med bedriftens timepris, som
+  // allerede er salgsprisen — påslag der ville gitt kunden en annen timepris.
   const applyGlobalAdjustments = () => {
     setLineItems((previous) =>
-      previous.map((item) => ({
-        ...item,
-        markupPercent: globalMarkupPercent,
-        discountPercent: 0,
-      }))
+      previous.map((item) =>
+        isHourUnit(item.unit)
+          ? item
+          : {
+              ...item,
+              markupPercent: globalMarkupPercent,
+              discountPercent: 0,
+            }
+      )
     )
   }
 
@@ -456,10 +498,10 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
     // tilbake til feltet som må fylles ut i stedet for å feile til slutt.
     const stepOneError = validateStepOne()
     if (stepOneError) {
-      setAnalysisError(stepOneError)
       setFeedback(stepOneError)
       toast.error(stepOneError)
       setStep(1)
+      showStepOneError(stepOneError)
       return
     }
 
@@ -518,8 +560,8 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
       ) : null}
 
       <div className="flex h-full min-h-0 flex-col rounded-md bg-white">
-        <div className="border-none px-4 pb-6">
-          <div className="mb-5 flex flex-col items-center gap-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-start sm:gap-4">
+        <div className="border-none px-4 pb-2 sm:pb-6">
+          <div className="mb-2 flex flex-col items-center gap-3 sm:mb-5 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-start sm:gap-4">
             <div aria-hidden="true" className="hidden sm:block" />
             <div className="flex items-center pt-0.5 mt-0.5">
               {steps.map((item, index) => {
@@ -566,87 +608,128 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 )
               })}
             </div>
-            {/* Mobil: navnet på steget som tekst i stedet for tre etiketter
-                som ikke får plass ved siden av hverandre. */}
-            <p className="text-xs font-semibold text-foreground sm:hidden">
-              Steg {step} av {steps.length} · {steps[step - 1]?.title}
-            </p>
-            <div className="flex w-full justify-center sm:justify-end">
-              <Button type="button" variant="outline" size="sm" onClick={handleSaveDraft} disabled={isPersisting}>
-                {isPersisting ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
-                Lagre som utkast
+            {/* Mobil: stegnavnet som tekst (tre etiketter får ikke plass) og
+                «Lagre utkast» i samme rad — ikke en egen knapperad over skjemaet. */}
+            <div className="flex w-full items-center justify-between gap-3 sm:justify-end">
+              <p className="text-xs font-semibold text-foreground sm:hidden">
+                Steg {step} av {steps.length} · {steps[step - 1]?.title}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSaveDraft}
+                disabled={isPersisting}
+                className="shrink-0"
+              >
+                {isPersisting ? <LoaderCircle className="mr-1.5 size-4 animate-spin" /> : <Save className="mr-1.5 size-4" />}
+                <span className="sm:hidden">Lagre utkast</span>
+                <span className="hidden sm:inline">Lagre som utkast</span>
               </Button>
             </div>
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pb-4 pt-3">
+        <div className="min-h-0 flex-1 overflow-y-auto pb-4 pt-1 sm:pt-3">
           {step === 1 ? (
             <div className="space-y-5">
+              {/* Mobil: tittel, prosjekt/kunde, beskrivelse, vedlegg — beskrivelsen er
+                  hovedfeltet og skal ikke ligge under opplastingen. Desktop: beskrivelsen
+                  i høyre kolonne. */}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <div className="space-y-4">
-                  <div>
-                    <label className="theme-text-label mb-2 block text-sm font-medium">Hva skal tilbudet hete?</label>
-                    <Input
-                      className="h-9 text-sm"
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      placeholder="Skriv inn tilbudsnavn..."
-                    />
+                <div className="lg:col-start-1">
+                  <label htmlFor="offer-title" className="theme-text-label mb-2 block text-sm font-medium">
+                    Hva skal tilbudet hete?
+                  </label>
+                  <Input
+                    id="offer-title"
+                    ref={titleInputRef}
+                    className="h-10 text-sm sm:h-9"
+                    value={title}
+                    onChange={(event) => {
+                      setTitle(event.target.value)
+                      if (stepOneErrorField === "title") setStepOneErrorField(null)
+                    }}
+                    placeholder="Skriv inn tilbudsnavn..."
+                    aria-invalid={stepOneErrorField === "title" || undefined}
+                    aria-describedby={stepOneErrorField === "title" ? "offer-title-error" : undefined}
+                  />
+                  {stepOneErrorField === "title" ? (
+                    <p id="offer-title-error" className="mt-1.5 text-sm text-destructive">
+                      Legg inn en tittel på tilbudet.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:col-start-1 lg:grid-cols-1 xl:grid-cols-2">
+                  <div className="rounded-lg border bg-card px-3 py-2">
+                    <p className="text-xs text-muted-foreground">Prosjekt</p>
+                    <p className="truncate text-sm font-medium">{selectedProject?.name || "Ikke valgt"}</p>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                    <div className="rounded-lg border bg-card px-3 py-2">
-                      <p className="text-xs text-muted-foreground">Prosjekt</p>
-                      <p className="truncate text-sm font-medium">{selectedProject?.name || "Ikke valgt"}</p>
-                    </div>
-                    <div className="rounded-lg border bg-card px-3 py-2">
-                      <p className="text-xs text-muted-foreground">Kunde</p>
-                      <p className="truncate text-sm font-medium">{selectedCustomer?.name || "Ikke valgt"}</p>
-                    </div>
-                  </div>
-                  {/* Vedlegg */}
-                  <div>
-                    <label className="theme-text-label mb-2 block text-sm font-medium">Vedlegg (bilder, PDF, DOCX etc.)</label>
-                    <label className="theme-upload-zone block cursor-pointer rounded-lg border-2 border-dashed p-5 text-center transition-all">
-                      <Upload className="theme-upload-icon mx-auto mb-2 h-7 w-7" />
-                      <p className="theme-upload-text mb-1 text-sm">Dra og slipp filer her, eller klikk for å velge</p>
-                      <p className="theme-upload-subtext text-xs">Maks 10 vedlegg</p>
-                      <input id="source-files" type="file" multiple className="hidden" onChange={onDocumentsSelected} />
-                    </label>
-
-                    {sourceDocuments.length > 0 ? (
-                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {sourceDocuments.map((documentItem) => (
-                          <div key={documentItem.id} className="theme-upload-item flex items-center justify-between rounded-lg border px-3 py-2">
-                            <div className="min-w-0">
-                              <p className="theme-upload-item-title truncate text-sm">{documentItem.name}</p>
-                              <p className="theme-upload-item-meta text-xs">
-                                {Math.round(documentItem.sizeBytes / 1024)} KB
-                                {documentItem.uploadStatus === "uploading" ? " • laster opp" : null}
-                                {documentItem.uploadStatus === "ready" ? " • klar" : null}
-                                {documentItem.uploadStatus === "failed" ? " • feil" : null}
-                              </p>
-                            </div>
-                            <Button type="button" size="sm" variant="ghost" onClick={() => removeSourceDocument(documentItem.id)}>
-                              Fjern
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
+                  <div className="rounded-lg border bg-card px-3 py-2">
+                    <p className="text-xs text-muted-foreground">Kunde</p>
+                    <p className="truncate text-sm font-medium">{selectedCustomer?.name || "Ikke valgt"}</p>
                   </div>
                 </div>
+                <div className="flex flex-col lg:col-start-2 lg:row-span-3 lg:row-start-1">
+                  <label htmlFor="offer-description" className="theme-text-label mb-2 block text-sm font-medium">
+                    Hva skal gjøres?
+                  </label>
+                  <Textarea
+                    id="offer-description"
+                    ref={descriptionRef}
+                    value={description}
+                    onChange={(event) => {
+                      setDescription(event.target.value)
+                      if (stepOneErrorField === "description") setStepOneErrorField(null)
+                    }}
+                    placeholder="Skriv med dine egne ord, som om du forklarte jobben til en kollega. Vi setter opp postene — du retter det som ikke stemmer."
+                    className="min-h-36 flex-1 resize-none text-sm"
+                    aria-invalid={stepOneErrorField === "description" || undefined}
+                    aria-describedby={stepOneErrorField === "description" ? "offer-description-error" : undefined}
+                  />
+                  {stepOneErrorField === "description" ? (
+                    <p id="offer-description-error" className="mt-1.5 text-sm text-destructive">
+                      Beskriv jobben med minst 20 tegn — det er grunnlaget for postene.
+                    </p>
+                  ) : null}
+                </div>
+                {/* Vedlegg */}
+                <div className="lg:col-start-1">
+                  <label htmlFor="source-files" className="theme-text-label mb-2 block text-sm font-medium">
+                    Vedlegg (bilder, PDF, DOCX etc.)
+                  </label>
+                  <label className="theme-upload-zone flex cursor-pointer items-center gap-3 rounded-lg border-2 border-dashed p-4 text-left transition-all sm:block sm:p-5 sm:text-center">
+                    <Upload className="theme-upload-icon h-6 w-6 shrink-0 sm:mx-auto sm:mb-2 sm:h-7 sm:w-7" />
+                    <span className="block">
+                      <span className="theme-upload-text mb-0.5 block text-sm">
+                        <span className="sm:hidden">Trykk for å ta bilde eller velge filer</span>
+                        <span className="hidden sm:inline">Dra og slipp filer her, eller klikk for å velge</span>
+                      </span>
+                      <span className="theme-upload-subtext block text-xs">Maks 10 vedlegg</span>
+                    </span>
+                    <input id="source-files" type="file" multiple className="hidden" onChange={onDocumentsSelected} />
+                  </label>
 
-                <div className="space-y-4">
-                  <div className="h-[90%]">
-                    <label className="theme-text-label mb-2 block text-sm font-medium">Hva skal gjøres?</label>
-                    <Textarea
-                      value={description}
-                      onChange={(event) => setDescription(event.target.value)}
-                      placeholder="Skriv med dine egne ord, som om du forklarte jobben til en kollega. Vi setter opp postene — du retter det som ikke stemmer."
-                      className="h-full resize-none text-sm"
-                    />
-                  </div>
+                  {sourceDocuments.length > 0 ? (
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {sourceDocuments.map((documentItem) => (
+                        <div key={documentItem.id} className="theme-upload-item flex items-center justify-between rounded-lg border px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="theme-upload-item-title truncate text-sm">{documentItem.name}</p>
+                            <p className="theme-upload-item-meta text-xs">
+                              {Math.round(documentItem.sizeBytes / 1024)} KB
+                              {documentItem.uploadStatus === "uploading" ? " • laster opp" : null}
+                              {documentItem.uploadStatus === "ready" ? " • klar" : null}
+                              {documentItem.uploadStatus === "failed" ? " • feil" : null}
+                            </p>
+                          </div>
+                          <Button type="button" size="sm" variant="ghost" onClick={() => removeSourceDocument(documentItem.id)}>
+                            Fjern
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -662,10 +745,10 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                     // vises her, ikke først ved lagring på siste steg.
                     const validationError = validateStepOne()
                     if (validationError) {
-                      setAnalysisError(validationError)
+                      showStepOneError(validationError)
                       return
                     }
-                    setAnalysisError(null)
+                    clearStepOneError()
                     seedManualLineItems()
                   }}
                 >
@@ -684,14 +767,16 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
               <div className="border-b pb-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h2 className="theme-heading-strong text-xl font-bold">Forslag til poster</h2>
+                    <h2 className="theme-heading-strong text-xl font-bold">
+                      {analysisResult ? "Forslag til poster" : "Tilbudets poster"}
+                    </h2>
                     {analysisResult ? (
                       <p className="mt-1 max-w-prose text-sm text-muted-foreground">{analysisResult.summary}</p>
                     ) : null}
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="text-3xl font-bold text-primary">{formatNok(totals.totalNok)}</div>
-                    <p className="text-xs text-muted-foreground">{lineItems.length} linjer</p>
+                    <p className="text-xs text-muted-foreground">{formatLineCount(lineItems.length)}</p>
                   </div>
                 </div>
               </div>
@@ -699,15 +784,19 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
               {/* Manuell kalkyle: kort veiviser i stedet for et blankt
                   regneark — første gang er dette skjermbildet mye å ta inn */}
               {!analysisResult ? (
-                <div className="rounded-lg border border-sky-200 bg-sky-50 p-3.5 text-sm text-sky-900 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-200">
-                  <p className="font-medium">Slik bygger du kalkylen:</p>
-                  <p className="mt-1 leading-6">
-                    Skriv hva hver del av jobben består av (f.eks. «Gipsplate 13 mm» eller «Montering,
-                    timer») med antall, enhet og innkjøpspris. Med «Legg til → Fra prisliste» henter du
-                    varer med dine egne priser fra prisfilene. Påslaget er fortjenesten din og legges på
+                // Sammenleggbar: nyttig første gang, men tar en halv mobilskjerm hver gang.
+                <details className="group rounded-lg border border-sky-200 bg-sky-50 text-sm text-sky-900 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-200">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3.5 py-2.5 font-medium [&::-webkit-details-marker]:hidden">
+                    Slik bygger du kalkylen
+                    <ChevronDown className="size-4 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
+                  </summary>
+                  <p className="px-3.5 pb-3.5 leading-6">
+                    Legg inn hva jobben består av med antall, enhet og pris. Arbeid føres i timer — bruk
+                    «Legg til → Arbeidstimer» for bedriftens timepriser. Med «Legg til → Fra prisliste»
+                    henter du varer med dine egne priser. Påslaget er fortjenesten din og legges på
                     innkjøpsprisen.
                   </p>
-                </div>
+                </details>
               ) : null}
 
               {/* Forbehold fra prisforslaget — estimater og antakelser brukeren
@@ -723,41 +812,46 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 </div>
               ) : null}
 
-              {/* Compact markup + add row toolbar */}
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="theme-text-label text-sm font-medium">Påslag</span>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className="text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label="Hva er påslag?"
-                    >
-                      <Info className="h-3.5 w-3.5" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent side="top" className="w-64 text-xs">
-                    Prosent lagt på innkjøpsprisen — dette er fortjenesten din på varen.
-                  </PopoverContent>
-                </Popover>
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={globalMarkupPercent}
-                  onChange={(event) => setGlobalMarkupPercent(normalizeNumberInput(event.target.value, globalMarkupPercent))}
-                  className="h-7 w-20 text-sm"
-                />
-                <span className="text-sm text-muted-foreground">%</span>
-                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={applyGlobalAdjustments}>
-                  Bruk på alle
-                </Button>
-                <div className="ml-auto flex items-center gap-2">
+              {/* Påslag + legg til. Mobil: to rader med store trykkflater; desktop: én kompakt rad. */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="theme-text-label text-sm font-medium">Påslag</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+                        aria-label="Hva er påslag?"
+                      >
+                        <Info className="h-3.5 w-3.5" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent side="top" className="w-64 text-xs">
+                      Prosent lagt på innkjøpsprisen — fortjenesten din på varen. Timelinjer får ikke påslag: timeprisen
+                      er allerede prisen kunden betaler.
+                    </PopoverContent>
+                  </Popover>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={100}
+                    value={globalMarkupPercent}
+                    onChange={(event) => setGlobalMarkupPercent(normalizeNumberInput(event.target.value, globalMarkupPercent))}
+                    className="h-9 w-20 text-sm sm:h-7"
+                    aria-label="Påslag i prosent"
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                  <Button type="button" variant="ghost" size="sm" className="h-9 px-2 text-xs sm:h-7" onClick={applyGlobalAdjustments}>
+                    Bruk på materialer
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:ml-auto sm:flex sm:items-center">
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-7 text-xs"
+                    className="h-10 text-sm sm:h-7 sm:text-xs"
                     onClick={() => {
                       const category = itemsTableRef.current?.addCategory()
                       if (category) setActiveSubproject(category)
@@ -771,7 +865,8 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                     defaultSubproject={defaultSubproject}
                     defaultMarkupPercent={globalMarkupPercent}
                     companyName={company?.name}
-                    buttonClassName="h-7 text-xs"
+                    buttonClassName="h-10 w-full text-sm sm:h-7 sm:w-auto sm:text-xs"
+                    onBlankItemAdded={(item) => itemsTableRef.current?.editItem(item)}
                   />
                 </div>
               </div>
@@ -787,7 +882,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
 
               {/* Totals footer */}
               <div className="flex items-center justify-between border-t pt-3">
-                <span className="text-sm text-muted-foreground">{lineItems.length} linjer</span>
+                <span className="text-sm text-muted-foreground">{formatLineCount(lineItems.length)}</span>
                 <div>
                   <span className="theme-text-label text-sm font-medium">Totalsum: </span>
                   <span className="text-base font-bold text-primary">{formatNok(totals.totalNok)}</span>

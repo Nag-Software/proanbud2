@@ -36,7 +36,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { cn } from "@/lib/utils"
-import { calculateLineItemTotal, formatNok, type OfferLineItem } from "@/lib/tilbud/types"
+import {
+  calculateLineItemTotal,
+  calculateLineItemUnitPriceWithMarkupBeforeDiscount,
+  formatNok,
+  type OfferLineItem,
+} from "@/lib/tilbud/types"
+import { isHourUnit } from "@/lib/job-costing/calc"
+import { formatDocumentQuantity, formatDocumentUnit } from "@/lib/tilbud/offer-document"
+import { toast } from "sonner"
 import {
   INCOME_ACCOUNT_CATEGORY_OPTIONS,
   effectiveIncomeAccountCategory,
@@ -66,6 +74,8 @@ export type NewOfferItemsTableHandle = {
   addCategory: () => string
   removeCategory: (group: string) => void
   getCategories: () => string[]
+  /** Åpner redigeringsarket for raden i kortvisningen (mobil/nettbrett), med markøren i navnefeltet. Gjør ingenting når tabellen vises. */
+  editItem: (item: OfferLineItem) => void
 }
 
 function parseNumber(value: string, fallback: number) {
@@ -414,6 +424,33 @@ function EditableNumber({
   )
 }
 
+const QUICK_UNITS = [
+  { value: "timer", label: "timer" },
+  { value: "stk", label: "stk" },
+  { value: "m2", label: "m²" },
+  { value: "lm", label: "lm" },
+] as const
+
+function formatUnitPrice(value: number) {
+  const safe = Number.isFinite(value) ? value : 0
+  const decimals = Number.isInteger(Math.round(safe * 100) / 100) ? 0 : 2
+  return `${new Intl.NumberFormat("nb-NO", { minimumFractionDigits: decimals, maximumFractionDigits: 2 }).format(safe)} kr`
+}
+
+/** Entall etter «per»: «per time», «per m²». */
+function perUnitLabel(unit: string) {
+  return isHourUnit(unit) ? "time" : formatDocumentUnit(unit || "stk")
+}
+
+/** «16 timer × 650 kr + 15 % påslag» — hele regnestykket bak linjesummen. */
+function describeLineItemPrice(item: OfferLineItem) {
+  const base = `${formatDocumentQuantity(item.quantity)} ${formatDocumentUnit(item.unit || "stk")}`
+  const parts = [item.unitPriceNok > 0 ? `${base} × ${formatUnitPrice(item.unitPriceNok)}` : base]
+  if (item.markupPercent > 0) parts.push(`+ ${formatDocumentQuantity(item.markupPercent)} % påslag`)
+  if (item.discountPercent > 0) parts.push(`− ${formatDocumentQuantity(item.discountPercent)} % rabatt`)
+  return parts.join(" ")
+}
+
 export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferItemsTableProps>(function NewOfferItemsTable(
   { items, onItemsChange, supplierSuggestions, onCategoryChange },
   ref
@@ -422,6 +459,9 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [emptyGroups, setEmptyGroups] = useState<string[]>([])
   const [editingItem, setEditingItem] = useState<OfferLineItem | null>(null)
+  // En ny rad skal få navnet sitt skrevet inn med en gang. En eksisterende rad åpnes
+  // uten tastatur, så feltene man oftest endrer (antall, pris) ikke dekkes til.
+  const focusTitleOnOpenRef = useRef(false)
 
   const groups = useMemo(() => buildGroups(items), [items])
 
@@ -459,6 +499,24 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
     },
     [items, onItemsChange]
   )
+
+  // Mobil: sletting er ett trykk unna, så den kan angres i et par sekunder.
+  const removeRowWithUndo = (removed: OfferLineItem) => {
+    const index = items.findIndex((item) => item.id === removed.id)
+    onItemsChange(items.filter((item) => item.id !== removed.id))
+    toast("Linjen er slettet", {
+      action: {
+        label: "Angre",
+        onClick: () => {
+          const current = itemsRef.current
+          if (current.some((item) => item.id === removed.id)) return
+          const next = [...current]
+          next.splice(Math.min(Math.max(index, 0), next.length), 0, removed)
+          onItemsChange(next)
+        },
+      },
+    })
+  }
 
   const toggleGroup = (group: string) => {
     setCollapsedGroups((prev) => {
@@ -553,6 +611,12 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
       addCategory,
       removeCategory,
       getCategories: () => groupOrderRef.current,
+      editItem: (item) => {
+        // Arket hører til kortvisningen (under lg); med tabellen redigeres raden direkte i den.
+        if (!window.matchMedia("(max-width: 1023px)").matches) return
+        focusTitleOnOpenRef.current = true
+        setEditingItem({ ...item })
+      },
     }),
     [addCategory, removeCategory]
   )
@@ -853,7 +917,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
     <div className="space-y-2 lg:hidden">
       {groupOrder.length === 0 ? (
         <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">
-          Ingen elementer enda. Legg til fra prisliste, fast jobb eller blank rad.
+          Ingen linjer ennå. Bruk «Legg til» for å hente fra prislisten, legge inn arbeidstimer eller en blank rad.
         </div>
       ) : (
         groupOrder.map((group) => {
@@ -865,7 +929,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
             <div key={group} className="overflow-hidden rounded-lg border bg-background">
               <button
                 type="button"
-                className="flex w-full items-center gap-2 bg-muted/50 px-3 py-2.5 text-left"
+                className="flex min-h-11 w-full items-center gap-2 bg-muted/50 px-3 py-2.5 text-left"
                 onClick={() => toggleGroup(group)}
                 aria-expanded={isExpanded}
                 aria-label={isExpanded ? `Skjul ${group}` : `Vis ${group}`}
@@ -888,50 +952,51 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
               {isExpanded ? (
                 groupItems.length === 0 ? (
                   <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                    Ingen komponenter i denne kategorien.
+                    Ingen linjer i denne kategorien.
                   </div>
                 ) : (
                   <div className="divide-y">
                     {groupItems.map((item) => (
-                      <div key={item.id} className="p-3">
-                        <div className="flex items-start gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium text-sm leading-snug">{item.title || "Uten navn"}</p>
-                            {item.description ? (
-                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
-                            ) : null}
-                          </div>
-                          <div className="flex shrink-0 gap-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              onClick={() => setEditingItem({ ...item })}
-                              aria-label="Rediger"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                              onClick={() => removeRow(item.id)}
-                              aria-label="Slett"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">
-                          <p className="text-xs text-muted-foreground">
-                            {item.quantity} {item.unit || "stk"}
-                            {item.unitPriceNok > 0 ? ` · ${item.unitPriceNok.toLocaleString("no-NO")} kr/enhet` : ""}
-                            {item.discountPercent > 0 ? ` · ${item.discountPercent}% rabatt` : ""}
-                          </p>
-                          <p className="shrink-0 text-sm font-semibold tabular-nums">{formatNok(calculateLineItemTotal(item))}</p>
-                        </div>
+                      <div key={item.id} className="flex items-stretch">
+                        {/* Hele kortet er trykkflaten for redigering — lettere å treffe enn et lite blyantikon. */}
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 py-3 pl-3 pr-1 text-left transition-colors active:bg-muted/60"
+                          onClick={() => {
+                            focusTitleOnOpenRef.current = false
+                            setEditingItem({ ...item })
+                          }}
+                          aria-label={`Rediger ${item.title || "linje"}`}
+                        >
+                          <span className="flex items-start gap-3">
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-medium leading-snug">{item.title || "Uten navn"}</span>
+                              {item.description ? (
+                                <span className="mt-1 line-clamp-2 block text-xs text-muted-foreground">
+                                  {item.description}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="shrink-0 text-sm font-semibold tabular-nums">
+                              {formatNok(calculateLineItemTotal(item))}
+                            </span>
+                          </span>
+                          <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                            <span>{describeLineItemPrice(item)}</span>
+                            <PriceSourceBadge item={item} />
+                            <Pencil className="size-3 opacity-60" aria-hidden="true" />
+                          </span>
+                        </button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="mr-1 size-10 self-center text-muted-foreground hover:text-destructive"
+                          onClick={() => removeRowWithUndo(item)}
+                          aria-label={`Slett ${item.title || "linje"}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     ))}
                   </div>
@@ -943,76 +1008,125 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
       )}
     </div>
 
-    {/* Mobile edit sheet */}
+    {/* Mobil redigering */}
     <Sheet open={editingItem !== null} onOpenChange={(open) => { if (!open) setEditingItem(null) }}>
-      <SheetContent side="bottom" className="h-auto max-h-[90vh] overflow-y-auto rounded-t-xl px-5 pb-8">
-        <SheetHeader className="mb-4">
-          <SheetTitle className="text-base">Rediger komponent</SheetTitle>
+      <SheetContent
+        side="bottom"
+        className="h-auto max-h-[90vh] overflow-y-auto rounded-t-xl px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+        onOpenAutoFocus={(event) => {
+          if (focusTitleOnOpenRef.current) return
+          // Fokus på selve arket: skjermlesere havner i dialogen, men tastaturet blir nede.
+          event.preventDefault()
+          ;(event.currentTarget as HTMLElement | null)?.focus()
+        }}
+      >
+        <SheetHeader className="mb-2 px-0">
+          <SheetTitle className="text-base">Rediger linje</SheetTitle>
         </SheetHeader>
         {editingItem && (
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Navn</Label>
+              <Label htmlFor="line-edit-title" className="text-xs text-muted-foreground">Navn</Label>
               <Input
+                id="line-edit-title"
                 value={editingItem.title}
                 onChange={(e) => setEditingItem((prev) => prev ? { ...prev, title: e.target.value } : null)}
-                placeholder="Komponentnavn"
-                className="h-10"
+                placeholder="F.eks. Flislegging vegg"
+                className="h-11"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Antall</Label>
+                <Label htmlFor="line-edit-quantity" className="text-xs text-muted-foreground">Antall</Label>
                 <Input
+                  id="line-edit-quantity"
                   type="number"
-                  inputMode="numeric"
+                  inputMode="decimal"
                   value={editingItem.quantity}
                   onChange={(e) => setEditingItem((prev) => prev ? { ...prev, quantity: parseNumber(e.target.value, prev.quantity) } : null)}
                   min={0}
-                  step={1}
-                  className="h-10"
+                  step="any"
+                  className="h-11"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Enhet</Label>
+                <Label htmlFor="line-edit-unit" className="text-xs text-muted-foreground">Enhet</Label>
                 <Input
+                  id="line-edit-unit"
                   value={editingItem.unit}
                   onChange={(e) => setEditingItem((prev) => prev ? { ...prev, unit: e.target.value } : null)}
                   placeholder="stk"
-                  className="h-10"
+                  className="h-11"
                 />
               </div>
             </div>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Vanlige enheter">
+              {QUICK_UNITS.map((unit) => {
+                // Normalisert: «time» fra Arbeidstimer og «M2»/«m²» skal også markere riktig brikke.
+                const active =
+                  unit.value === "timer"
+                    ? isHourUnit(editingItem.unit)
+                    : formatDocumentUnit(editingItem.unit.trim().toLowerCase()) === formatDocumentUnit(unit.value)
+                return (
+                  <button
+                    key={unit.value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setEditingItem((prev) => prev ? { ...prev, unit: unit.value } : null)}
+                    className={cn(
+                      "min-h-9 rounded-full border px-3 text-xs font-medium transition-colors",
+                      active ? "border-foreground bg-foreground text-background" : "text-muted-foreground"
+                    )}
+                  >
+                    {unit.label}
+                  </button>
+                )
+              })}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Enhetspris (kr)</Label>
+                <Label htmlFor="line-edit-price" className="text-xs text-muted-foreground">
+                  {isHourUnit(editingItem.unit) ? "Timepris (kr)" : "Innkjøpspris (kr)"}
+                </Label>
                 <Input
+                  id="line-edit-price"
                   type="number"
                   inputMode="decimal"
                   value={editingItem.unitPriceNok}
                   onChange={(e) => setEditingItem((prev) => prev ? { ...prev, unitPriceNok: parseNumber(e.target.value, prev.unitPriceNok) } : null)}
                   min={0}
-                  step={0.01}
-                  className="h-10"
+                  step="any"
+                  className="h-11"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Rabatt (%)</Label>
+                <Label htmlFor="line-edit-markup" className="text-xs text-muted-foreground">Påslag (%)</Label>
                 <Input
+                  id="line-edit-markup"
                   type="number"
                   inputMode="decimal"
-                  value={editingItem.discountPercent}
-                  onChange={(e) => setEditingItem((prev) => prev ? { ...prev, discountPercent: parseNumber(e.target.value, prev.discountPercent) } : null)}
+                  value={editingItem.markupPercent}
+                  onChange={(e) => setEditingItem((prev) => prev ? { ...prev, markupPercent: parseNumber(e.target.value, prev.markupPercent) } : null)}
                   min={0}
-                  max={100}
-                  step={0.1}
-                  className="h-10"
+                  step="any"
+                  className="h-11"
                 />
               </div>
             </div>
-            <p className="text-[11px] leading-snug text-muted-foreground">
-              Rabatt: prosent trukket fra prisen kunden ser.
-            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="line-edit-discount" className="text-xs text-muted-foreground">Rabatt til kunden (%)</Label>
+              <Input
+                id="line-edit-discount"
+                type="number"
+                inputMode="decimal"
+                value={editingItem.discountPercent}
+                onChange={(e) => setEditingItem((prev) => prev ? { ...prev, discountPercent: parseNumber(e.target.value, prev.discountPercent) } : null)}
+                min={0}
+                max={100}
+                step="any"
+                className="h-11"
+              />
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Inntektskonto (regnskap)</Label>
               <Select
@@ -1023,7 +1137,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                   )
                 }
               >
-                <SelectTrigger className="h-10">
+                <SelectTrigger className="h-11 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1037,26 +1151,34 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
               <p className="text-[11px] leading-snug text-muted-foreground">
                 {editingItem.incomeAccountCategory
                   ? "Valgt manuelt."
-                  : "Foreslått automatisk ut fra enhet og leverandør. Endre hvis regnskapet krever noe annet."}{" "}
-                Styrer hvilken konto salget føres på i regnskapet.
+                  : "Foreslått ut fra enhet og leverandør."}{" "}
+                Styrer hvilken konto salget føres på.
               </p>
             </div>
-            <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">Linjesum</span>
-              <span className="font-semibold tabular-nums">{formatNok(calculateLineItemTotal(editingItem))}</span>
+            <div className="space-y-1 rounded-lg border bg-muted/30 px-3 py-2.5 text-sm">
+              <div className="flex items-center justify-between gap-3 text-muted-foreground">
+                <span>Pris til kunde per {perUnitLabel(editingItem.unit)}</span>
+                <span className="tabular-nums">
+                  {formatUnitPrice(calculateLineItemUnitPriceWithMarkupBeforeDiscount(editingItem))}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-medium">Linjesum eks. mva</span>
+                <span className="font-semibold tabular-nums">{formatNok(calculateLineItemTotal(editingItem))}</span>
+              </div>
             </div>
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 pt-1">
               <Button size="lg"
                 type="button"
                 variant="outline"
-                className="flex-1 "
+                className="flex-1"
                 onClick={() => setEditingItem(null)}
               >
                 Avbryt
               </Button>
               <Button size="lg"
                 type="button"
-                className="flex-1 "
+                className="flex-1"
                 onClick={() => {
                   if (editingItem) {
                     updateRow(editingItem.id, editingItem)

@@ -285,8 +285,11 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
   const resolvedCustomerId = offer.customer_id || project?.customer_id || null
   const projectSummary = readProjectSummaryFromAnalysis(offer.analysis_result)
 
+  // Som prosjektsiden: navnet, ikke en ID, er tittelen i topplinjen på mobil.
+  const pageTitle = offer.title?.trim() || `Tilbud #${formatOfferReference(offer.id)}`
+
   return (
-    <AppPageShell segments={["Tilbud", `#${formatOfferReference(offer.id)}`]}>
+    <AppPageShell segments={["Tilbud", pageTitle]}>
       <OfferDetailClient
         linkedCustomer={{
           id: resolvedCustomerId,

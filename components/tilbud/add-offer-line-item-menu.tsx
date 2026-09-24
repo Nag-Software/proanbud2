@@ -46,6 +46,8 @@ type AddOfferLineItemMenuProps = {
   companyName?: string | null
   buttonLabel?: string
   buttonClassName?: string
+  /** Kalles med den nye raden etter «Blank rad», f.eks. for å åpne den for redigering. */
+  onBlankItemAdded?: (item: OfferLineItem) => void
 }
 
 export function AddOfferLineItemMenu({
@@ -55,6 +57,7 @@ export function AddOfferLineItemMenu({
   companyName,
   buttonLabel = "Legg til",
   buttonClassName,
+  onBlankItemAdded,
 }: AddOfferLineItemMenuProps) {
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false)
   const [jobDialogOpen, setJobDialogOpen] = useState(false)
@@ -71,21 +74,22 @@ export function AddOfferLineItemMenu({
   const debouncedJobQuery = useDebouncedValue(jobQuery, 250)
 
   const addBlankLineItem = useCallback(() => {
-    onAddItems([
-      {
-        id: generateLocalId(),
-        subproject: defaultSubproject,
-        title: "Ny post",
-        description: "",
-        quantity: 1,
-        unit: "stk",
-        supplier: "",
-        unitPriceNok: 0,
-        markupPercent: defaultMarkupPercent,
-        discountPercent: 0,
-      },
-    ])
-  }, [defaultMarkupPercent, defaultSubproject, onAddItems])
+    const item: OfferLineItem = {
+      id: generateLocalId(),
+      subproject: defaultSubproject,
+      title: "Ny post",
+      description: "",
+      quantity: 1,
+      unit: "stk",
+      supplier: "",
+      unitPriceNok: 0,
+      markupPercent: defaultMarkupPercent,
+      discountPercent: 0,
+    }
+    onAddItems([item])
+    // Som dialogene over: vent til menyen har lukket seg og gitt fra seg fokus.
+    if (onBlankItemAdded) window.setTimeout(() => onBlankItemAdded(item), 0)
+  }, [defaultMarkupPercent, defaultSubproject, onAddItems, onBlankItemAdded])
 
   const addMaterial = useCallback(
     (material: SearchMaterial) => {

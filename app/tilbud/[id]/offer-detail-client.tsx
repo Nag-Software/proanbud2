@@ -13,6 +13,7 @@ import {
   FileImage,
   FileText,
   FolderKanban,
+  MessageSquarePlus,
   Plus,
   Receipt,
   Send,
@@ -51,6 +52,7 @@ import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-me
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
 import {
   formatOfferReference,
+  getOfferDocumentTotals,
   type OfferDocumentAcceptance,
   type OfferDocumentData,
 } from "@/lib/tilbud/offer-document"
@@ -261,7 +263,9 @@ function CustomerInfoDisplay({
   projectSummary?: string
   isGeneratingSummary?: boolean
 }) {
-  const addressLine = [customer.address, customer.postalCode, customer.city].filter(Boolean).join(", ")
+  // «Løkkeveien 5, 0253 Oslo» — ikke komma mellom postnummer og sted.
+  const postalLine = [customer.postalCode, customer.city].filter(Boolean).join(" ")
+  const addressLine = [customer.address, postalLine].filter(Boolean).join(", ")
   const customerHref = customer.id
     ? `/kunder?sok=${encodeURIComponent(customer.name)}`
     : null
@@ -388,6 +392,11 @@ export function OfferDetailClient({
   const lastSavedFingerprintRef = useRef("")
 
   const totals = useMemo(() => calculateOfferTotals(lineItems), [lineItems])
+  // Mva følger bedriftens registrering — ikke-registrerte bedrifter skal ikke vise 25 %.
+  const documentTotals = useMemo(
+    () => getOfferDocumentTotals(lineItems, company?.vatRegistered !== false),
+    [company?.vatRegistered, lineItems]
+  )
   const saveSnapshot = useMemo<OfferSaveSnapshot>(
     () => ({
       title: offer.title,
@@ -732,7 +741,10 @@ export function OfferDetailClient({
               <p className="text-2xl font-semibold tabular-nums text-foreground">
                 {formatNok(totals.totalNok)}
               </p>
-              <p className="text-xs text-muted-foreground">eks. mva</p>
+              <p className="text-xs text-muted-foreground">
+                eks. mva
+                {documentTotals.vatRegistered ? ` · ${formatNok(documentTotals.totalInclVatNok)} inkl. mva` : ""}
+              </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -773,8 +785,11 @@ export function OfferDetailClient({
               customerKind={linkedCustomer.customerType}
             />
 
-            <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+            {/* Mobil: «Send tilbud» over hele bredden, resten i to kolonner. En
+                handling som blir alene på siste rad, tar hele bredden. */}
+            <div className="grid grid-cols-2 gap-2 border-t border-border pt-4 [&>*:nth-child(even):last-child]:col-span-2 sm:flex sm:flex-wrap">
               <Button
+                className="col-span-2 h-11 sm:h-9"
                 onClick={openSendDialog}
                 disabled={
                   isPending || isAutoSaving || lineItems.length === 0
@@ -827,10 +842,13 @@ export function OfferDetailClient({
             <div className="border-t border-border pt-4">
               <Button
                 type="button"
-                variant="link"
-                className="h-auto p-0 text-xs"
+                variant="outline"
+                size="sm"
+                className="w-full sm:w-auto"
                 onClick={() => setIsMessageOpen((open) => !open)}
+                aria-expanded={isMessageOpen}
               >
+                <MessageSquarePlus className="h-4 w-4" />
                 {hasCustomerMessage
                   ? "Rediger melding til kunde"
                   : "Legg til melding til kunde"}
@@ -865,7 +883,7 @@ export function OfferDetailClient({
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-8 text-xs font-medium"
+                className="h-9 text-xs font-medium sm:h-8"
                 onClick={handleAddCategory}
               >
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
@@ -875,6 +893,8 @@ export function OfferDetailClient({
                 onAddItems={addLineItems}
                 defaultSubproject={defaultSubproject}
                 companyName={company?.name}
+                buttonClassName="h-9 text-xs font-medium sm:h-8"
+                onBlankItemAdded={(item) => itemsTableRef.current?.editItem(item)}
               />
             </div>
           </div>
@@ -886,30 +906,40 @@ export function OfferDetailClient({
             supplierSuggestions={[]}
             onCategoryChange={handleCategoryChange}
           />
-          <div className="bg-muted/5 p-5">
+          <div className="bg-muted/5 p-4 sm:p-5">
             <div className="ml-auto flex w-full max-w-sm flex-col gap-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Delsum</span>
-                <span className="font-medium tabular-nums">{formatNok(totals.subtotalNok)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Rabatt</span>
-                <span className="theme-text-danger font-medium tabular-nums">-{formatNok(totals.discountNok)}</span>
-              </div>
-              <div className="my-1 border-t border-border/80"></div>
+              {totals.discountNok > 0 ? (
+                <>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Delsum</span>
+                    <span className="font-medium tabular-nums">{formatNok(totals.subtotalNok + totals.discountNok)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Rabatt</span>
+                    <span className="theme-text-danger font-medium tabular-nums">−{formatNok(totals.discountNok)}</span>
+                  </div>
+                  <div className="my-1 border-t border-border/80"></div>
+                </>
+              ) : null}
               <div className="flex items-center justify-between text-sm">
                 <span className="font-medium text-foreground">Total eks. mva</span>
                 <span className="font-medium tabular-nums">{formatNok(totals.totalNok)}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">MVA (25%)</span>
-                <span className="font-medium tabular-nums">{formatNok(totals.totalNok * 0.25)}</span>
+                <span className="text-muted-foreground">
+                  {documentTotals.vatRegistered ? "Mva (25 %)" : "Mva"}
+                </span>
+                <span className="font-medium tabular-nums">
+                  {documentTotals.vatRegistered ? formatNok(documentTotals.vatAmountNok) : "Ikke mva-pliktig"}
+                </span>
               </div>
               <div className="my-1 border-t border-foreground/30"></div>
               <div className="flex items-center justify-between">
-                <span className="font-bold text-foreground">Totalsum inkl. mva</span>
+                <span className="font-bold text-foreground">
+                  {documentTotals.vatRegistered ? "Totalsum inkl. mva" : "Totalsum"}
+                </span>
                 <span className="text-xl font-bold tracking-tight text-foreground tabular-nums">
-                  {formatNok(totals.totalNok * 1.25)}
+                  {formatNok(documentTotals.totalInclVatNok)}
                 </span>
               </div>
             </div>
@@ -1046,8 +1076,14 @@ export function OfferDetailClient({
       </ResponsiveDialog>
 
       <Sheet open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <SheetContent className="theme-preview-shell !max-w-[min(1100px,96vw)] w-[96vw] overflow-y-auto p-4 sm:!max-w-[min(700px,96vw)]">
-
+        {/* Mobil: nesten hele skjermbredden (standard er 3/4), så dokumentet og knappene
+            får plass og lukkeknappen ikke havner oppå «Last ned PDF». */}
+        <SheetContent className="theme-preview-shell !max-w-[min(1100px,96vw)] overflow-y-auto p-4 data-[side=right]:w-full sm:!max-w-[min(700px,96vw)] sm:data-[side=right]:w-3/4">
+          {/* Dokumentet er overskriften visuelt; tittelen er for skjermlesere. */}
+          <SheetHeader className="sr-only">
+            <SheetTitle>Forhåndsvisning av tilbudet</SheetTitle>
+            <SheetDescription>Slik ser tilbudet ut for kunden.</SheetDescription>
+          </SheetHeader>
           <OfferDocumentViewer
             {...documentData}
             pdfUrl={`/api/tilbud/${offer.id}/pdf`}

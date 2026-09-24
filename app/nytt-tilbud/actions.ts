@@ -74,7 +74,9 @@ function normalizeAnalysisResult(value: z.infer<typeof analysisSchema>) {
   }
 
   return {
-    summary: "Manuell kalkyle uten AI-analyse",
+    // Tomt: et sammendrag vises som innledning i kundens tilbud. Den interne
+    // markeringen av at kalkylen er manuell ligger i model: "manual".
+    summary: "",
     warnings: [],
     reasoning: "",
     generatedAt: new Date().toISOString(),

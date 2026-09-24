@@ -19,20 +19,10 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { OfferMobileDocument } from "@/components/tilbud/offer-mobile-document"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  buildOfferDocumentModel,
-  formatDocumentAmount,
-  formatDocumentCurrency,
-  formatDocumentQuantity,
-  formatDocumentUnit,
-  formatOfferDate,
-  formatOfferDateTime,
-  getOfferDocumentTotals,
-  groupLineItemsBySubproject,
-  type OfferDocumentAcceptance,
-} from "@/lib/tilbud/offer-document"
+import { formatOfferDateTime, type OfferDocumentAcceptance } from "@/lib/tilbud/offer-document"
 import {
   type OfferCompanyContext,
   type OfferContractBasis,
@@ -162,180 +152,6 @@ function OfferChatPanel({
         </Button>
       </div>
     </>
-  )
-}
-
-function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOfferPayload; totalInclVat: number }) {
-  // Samme modell som PDF-en og desktop-dokumentet: privatkunder ser priser inkl. mva,
-  // og vilkårsteksten følger kundetypen.
-  const m = useMemo(
-    () =>
-      buildOfferDocumentModel({
-        title: offer.title,
-        customer: offer.customer,
-        lineItems: offer.lineItems,
-        company: offer.company,
-        issuedDate: offer.createdAt,
-        quoteValidUntil: offer.quoteValidUntil,
-        validityDays: offer.validityDays,
-        pricingModel: offer.pricingModel,
-        contractBasis: offer.contractBasis,
-      }),
-    [offer]
-  )
-  const grouped = useMemo(() => groupLineItemsBySubproject(offer.lineItems), [offer.lineItems])
-  const { totals, vatAmountNok, vatRegistered, validityDays, validUntil } = m
-
-  return (
-    <div className="space-y-3 lg:hidden">
-      <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          {offer.company.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={offer.company.logoUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg object-contain" />
-          ) : null}
-          <div className="min-w-0">
-            <p className="truncate font-semibold text-neutral-900">{offer.company.name || "Tilbud"}</p>
-            {offer.company.orgNumber ? (
-              <p className="text-xs text-neutral-500">Org.nr. {offer.company.orgNumber}</p>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-3 text-sm">
-          <div className="rounded-xl bg-neutral-50 px-3 py-2.5">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Kunde</p>
-            <p className="mt-0.5 font-medium text-neutral-900">{offer.customer.name || "—"}</p>
-            {offer.customer.email ? <p className="text-xs text-neutral-500">{offer.customer.email}</p> : null}
-          </div>
-          {offer.projectName ? (
-            <div className="rounded-xl bg-neutral-50 px-3 py-2.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Prosjekt</p>
-              <p className="mt-0.5 font-medium text-neutral-900">{offer.projectName}</p>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
-          <span>Tilbudsnr. {offer.offerReference}</span>
-          <span>Dato: {formatOfferDate(offer.createdAt || new Date())}</span>
-          {validUntil ? <span>Gyldig til {formatOfferDate(validUntil)}</span> : <span>Gyldig {validityDays} dager</span>}
-        </div>
-      </div>
-
-      {Object.entries(grouped).map(([groupName, items]) => (
-        <div key={groupName} className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-neutral-100 bg-neutral-50 px-4 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{groupName}</p>
-            <p className="text-[11px] font-medium tabular-nums text-neutral-400">
-              {formatDocumentAmount(m.displayGroupTotal(items))}
-            </p>
-          </div>
-          <div className="divide-y divide-neutral-100">
-            {items.map((item) => (
-              <div key={item.id} className="px-4 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-sm font-medium leading-snug text-neutral-900">{item.title}</p>
-                  <p className="shrink-0 text-sm font-semibold tabular-nums text-neutral-900">
-                    {formatDocumentAmount(m.displayLineTotal(item))}
-                  </p>
-                </div>
-                {item.description ? (
-                  <p className="mt-1 text-xs leading-relaxed text-neutral-500">{item.description}</p>
-                ) : null}
-                <p className="mt-1.5 text-xs text-neutral-500">
-                  {formatDocumentQuantity(item.quantity)} {formatDocumentUnit(item.unit)} ×{" "}
-                  {formatDocumentAmount(m.displayUnitPrice(item))}
-                  {item.discountPercent > 0 ? ` (−${formatDocumentQuantity(item.discountPercent)} %)` : ""}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm shadow-sm">
-        <div className="space-y-1.5">
-          {m.pricesInclVat ? (
-            <>
-              {totals.discountNok > 0 ? (
-                <>
-                  <div className="flex justify-between text-neutral-600">
-                    <span>Sum før rabatt</span>
-                    <span className="tabular-nums">{formatDocumentCurrency(m.displayPreDiscountSubtotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-neutral-600">
-                    <span>Rabatt</span>
-                    <span className="tabular-nums">− {formatDocumentCurrency(m.displayDiscount)}</span>
-                  </div>
-                </>
-              ) : null}
-              <div className="flex items-baseline justify-between font-semibold text-neutral-900">
-                <span>Totalt inkl. mva</span>
-                <span className="tabular-nums">{formatDocumentCurrency(totalInclVat)}</span>
-              </div>
-              <div className="flex justify-between text-xs text-neutral-500">
-                <span>Herav mva (25 %)</span>
-                <span className="tabular-nums">{formatDocumentCurrency(vatAmountNok)}</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex justify-between text-neutral-600">
-                <span>Sum eks. mva</span>
-                <span className="tabular-nums">{formatDocumentCurrency(m.preDiscountSubtotalNok)}</span>
-              </div>
-              {totals.discountNok > 0 ? (
-                <>
-                  <div className="flex justify-between text-neutral-600">
-                    <span>Rabatt</span>
-                    <span className="tabular-nums">− {formatDocumentCurrency(totals.discountNok)}</span>
-                  </div>
-                  <div className="flex justify-between text-neutral-600">
-                    <span>Nettosum eks. mva</span>
-                    <span className="tabular-nums">{formatDocumentCurrency(totals.subtotalNok)}</span>
-                  </div>
-                </>
-              ) : null}
-              <div className="flex justify-between text-neutral-600">
-                <span>Mva{vatRegistered ? " (25 %)" : ""}</span>
-                <span className="tabular-nums">
-                  {vatRegistered ? formatDocumentCurrency(vatAmountNok) : "Ikke mva-pliktig"}
-                </span>
-              </div>
-              <div className="mt-1 flex items-baseline justify-between border-t border-neutral-900 pt-2 font-semibold text-neutral-900">
-                <span>{vatRegistered ? "Totalt inkl. mva" : "Totalt"}</span>
-                <span className="tabular-nums">{formatDocumentCurrency(totalInclVat)}</span>
-              </div>
-            </>
-          )}
-        </div>
-        <ul className="mt-3 list-disc space-y-1 pl-4 text-[11px] leading-relaxed text-neutral-500">
-          <li>
-            {validUntil
-              ? `Tilbudet er gyldig til ${formatOfferDate(validUntil)} (${validityDays} dager fra utstedelsesdato).`
-              : `Tilbudet er gyldig i ${validityDays} dager fra utstedelsesdato.`}
-          </li>
-          {m.contractTerms.map((term) => (
-            <li key={term}>{term}</li>
-          ))}
-          <li>{m.priceNote}</li>
-        </ul>
-      </div>
-
-      {offer.acceptance ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm shadow-sm">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Aksept av tilbud</p>
-          <p className="mt-1.5 text-[13px] font-medium leading-relaxed text-neutral-900">
-            Akseptert digitalt {formatOfferDateTime(offer.acceptance.acceptedAt)} av {offer.acceptance.name}.
-          </p>
-          <p className="mt-1 text-xs leading-relaxed text-neutral-600">
-            Bekreftet med engangskode til {offer.acceptance.email}. Dokument-ID:{" "}
-            <span className="break-all font-mono text-[10px]">{offer.acceptance.documentSha256}</span>
-          </p>
-        </div>
-      ) : null}
-    </div>
   )
 }
 
@@ -562,11 +378,6 @@ export function CustomerOfferView({
     return statusLabel(offer.status, offer.isExpired)
   }, [offer])
 
-  const totalInclVat = useMemo(() => {
-    if (!offer) return 0
-    return getOfferDocumentTotals(offer.lineItems, offer.company?.vatRegistered !== false).totalInclVatNok
-  }, [offer])
-
   const chatPanelProps: OfferChatPanelProps = {
     companyName: offer?.company.name || "bedriften",
     messages,
@@ -721,7 +532,22 @@ export function CustomerOfferView({
           </div>
 
           <div className="order-2 lg:hidden">
-            <PublicOfferMobileDocument offer={offer} totalInclVat={totalInclVat} />
+            <OfferMobileDocument
+              className="lg:hidden"
+              showIntro={false}
+              title={offer.title}
+              projectName={offer.projectName}
+              offerReference={offer.offerReference}
+              customer={offer.customer}
+              lineItems={offer.lineItems}
+              company={offer.company}
+              issuedDate={offer.createdAt}
+              quoteValidUntil={offer.quoteValidUntil}
+              validityDays={offer.validityDays}
+              pricingModel={offer.pricingModel}
+              contractBasis={offer.contractBasis}
+              acceptance={offer.acceptance}
+            />
           </div>
 
           <div className="order-4 hidden overflow-x-auto rounded-2xl border border-neutral-200 bg-[#eceae4] p-3 shadow-sm sm:p-4 lg:block">
