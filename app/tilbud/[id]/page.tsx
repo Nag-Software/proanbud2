@@ -59,7 +59,6 @@ type OfferRecord = {
         postal_code: string | null
         city: string | null
         org_number: string | null
-        type?: string | null
       }
     | {
         name: string | null
@@ -69,7 +68,6 @@ type OfferRecord = {
         postal_code: string | null
         city: string | null
         org_number: string | null
-        type?: string | null
       }[]
     | null
   projects?:
@@ -85,7 +83,6 @@ type OfferRecord = {
               postal_code: string | null
               city: string | null
               org_number: string | null
-              type?: string | null
             }
           | {
               name: string | null
@@ -95,7 +92,6 @@ type OfferRecord = {
               postal_code: string | null
               city: string | null
               org_number: string | null
-              type?: string | null
             }[]
           | null
       }
@@ -111,7 +107,6 @@ type OfferRecord = {
               postal_code: string | null
               city: string | null
               org_number: string | null
-              type?: string | null
             }
           | {
               name: string | null
@@ -121,7 +116,6 @@ type OfferRecord = {
               postal_code: string | null
               city: string | null
               org_number: string | null
-              type?: string | null
             }[]
           | null
       }[]
@@ -250,7 +244,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
     supabase
       .from("offers")
       .select(
-        "id, title, description, status, amount_nok, subtotal_nok, discount_nok, quote_valid_until, created_at, updated_at, sent_at, recipient_name, recipient_email, recipient_phone, source_summary, source_documents, line_items, analysis_result, pricing_model, contract_basis, markup_percent, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, customer_id, project_id, customers(id, name, email, phone, address, postal_code, city, org_number, type), projects(id, name, customer_id, customers(id, name, email, phone, address, postal_code, city, org_number, type))"
+        "id, title, description, status, amount_nok, subtotal_nok, discount_nok, quote_valid_until, created_at, updated_at, sent_at, recipient_name, recipient_email, recipient_phone, source_summary, source_documents, line_items, analysis_result, pricing_model, contract_basis, markup_percent, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, customer_id, project_id, customers(id, name, email, phone, address, postal_code, city, org_number), projects(id, name, customer_id, customers(id, name, email, phone, address, postal_code, city, org_number))"
       )
       .eq("id", id)
       .eq("company_id", companyId)
@@ -303,7 +297,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
           postalCode: customer?.postal_code || "",
           city: customer?.city || "",
           orgNumber: customer?.org_number || "",
-          customerType: resolveCustomerKind({ type: customer?.type, orgNumber: customer?.org_number }),
+          customerType: customer ? resolveCustomerKind({ orgNumber: customer.org_number }) : null,
         }}
         initialOffer={{
           id: offer.id,

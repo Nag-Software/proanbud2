@@ -89,17 +89,13 @@ export const CONTRACT_BASIS_OPTIONS: ContractBasisOption[] = [
 ]
 
 /**
- * Kundetypen fra customers.type. Eldre kunder uten type regnes som bedrift når de
- * har org.nr. Ukjent (ingen kunde) → null, og da vises alle standardene.
+ * Kundetypen for en kunde. Det finnes ingen egen kolonne for den: som på
+ * Kunder-siden er en kunde med org.nr. en bedrift, ellers en privatperson.
+ * Ingen kunde → null, og da vises alle standardene.
  */
-export function resolveCustomerKind(input: {
-  type?: string | null
-  orgNumber?: string | null
-} | null | undefined): CustomerKind | null {
+export function resolveCustomerKind(input: { orgNumber?: string | null } | null | undefined): CustomerKind | null {
   if (!input) return null
-  if (input.type === "bedrift" || input.type === "privatperson") return input.type
-  if (input.orgNumber?.trim()) return "bedrift"
-  return null
+  return input.orgNumber?.trim() ? "bedrift" : "privatperson"
 }
 
 export function contractBasisOptionsFor(kind: CustomerKind | null | undefined): ContractBasisOption[] {

@@ -37,7 +37,6 @@ type CustomerRow = {
   address: string | null
   postal_code: string | null
   org_number: string | null
-  type: string | null
 }
 
 function normalizeCustomer(project: ProjectRow) {
@@ -166,7 +165,7 @@ export default async function NyttTilbudPage({ searchParams }: Props) {
   const { data: customerRow } = projectRow.customer_id
     ? await supabase
         .from("customers")
-        .select("id, name, email, phone, city, address, postal_code, org_number, type")
+        .select("id, name, email, phone, city, address, postal_code, org_number")
         .eq("id", projectRow.customer_id)
         .maybeSingle()
     : { data: null }
@@ -197,7 +196,7 @@ export default async function NyttTilbudPage({ searchParams }: Props) {
           address: customerRow.address,
           postalCode: customerRow.postal_code,
           orgNumber: customerRow.org_number,
-          customerType: resolveCustomerKind({ type: customerRow.type, orgNumber: customerRow.org_number }),
+          customerType: resolveCustomerKind({ orgNumber: customerRow.org_number }),
         },
       ]
     : joinedCustomer

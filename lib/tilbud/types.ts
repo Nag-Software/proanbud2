@@ -6,7 +6,7 @@ export type OfferPricingModel = "fixed" | "time_materials" | "unit_price" | "mix
 
 export type OfferContractBasis = "ns8405" | "ns8407" | "ns8416" | "ns8417" | "custom" | "none"
 
-/** customers.type — styrer bl.a. hvilke kontraktsstandarder som passer. */
+/** Privatperson eller bedrift (bedrift = kunden har org.nr.). Styrer bl.a. hvilke kontraktsstandarder som passer. */
 export type CustomerKind = "privatperson" | "bedrift"
 
 export type OfferSourceDocument = {

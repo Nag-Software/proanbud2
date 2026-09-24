@@ -64,10 +64,10 @@ describe("kontraktsgrunnlag etter kundetype", () => {
     expect(initialContractBasisFor(undefined, "privatperson")).toBe("none")
   })
 
-  it("leser kundetype, og regner kunder med org.nr. som bedrift når typen mangler", () => {
-    expect(resolveCustomerKind({ type: "privatperson", orgNumber: "123" })).toBe("privatperson")
-    expect(resolveCustomerKind({ type: null, orgNumber: "923456789" })).toBe("bedrift")
-    expect(resolveCustomerKind({ type: null, orgNumber: "" })).toBeNull()
+  it("regner kunder med org.nr. som bedrift og øvrige som privatperson, som Kunder-siden", () => {
+    expect(resolveCustomerKind({ orgNumber: "923456789" })).toBe("bedrift")
+    expect(resolveCustomerKind({ orgNumber: "" })).toBe("privatperson")
+    expect(resolveCustomerKind({ orgNumber: null })).toBe("privatperson")
     expect(resolveCustomerKind(null)).toBeNull()
   })
 

@@ -4,7 +4,8 @@
 -- NS 8405/8407 er laget for avtaler mellom næringsdrivende. Når kunden er en
 -- privatperson, tilbyr tilbudet i stedet NS 8416 (ny bolig/fritidsbolig,
 -- bustadoppføringslova) og NS 8417 (arbeid på eksisterende bolig,
--- håndverkertjenesteloven). Hvilke som vises styres av customers.type.
+-- håndverkertjenesteloven). Hvilke som vises styres av kundetypen
+-- (bedrift = kunden har org.nr., ellers privatperson — samme regel som Kunder-siden).
 --
 -- Utvider CHECK-reglene på offers.contract_basis, contracts.contract_basis og
 -- companies.default_contract_basis (db/23, db/96). Den gamle regelen fikk et
