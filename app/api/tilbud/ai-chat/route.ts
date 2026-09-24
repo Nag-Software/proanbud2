@@ -14,6 +14,7 @@ import {
   type CompanyPriceRow,
 } from "@/lib/tilbud/company-price-utils"
 import { matchNorwegianSupplierPrices } from "@/lib/tilbud/supplier-prices"
+import { fetchCompanyHourlyRates, formatHourlyRatesForPrompt, type CompanyHourlyRate } from "@/lib/tilbud/labor"
 import {
   formatNormalPriceForPrompt,
   mapNormalPriceRows,
@@ -219,6 +220,8 @@ type PriceContext = {
   normalPriceRow: NormalPriceRow | null
   savedJobs: SavedJobRow[]
   relevantSavedJobs: SavedJobRow[]
+  /** Bedriftens timepriser (Mine priser → Timepriser). Tom → standardsats. */
+  hourlyRates: CompanyHourlyRate[]
   companyId: string | null
 }
 
@@ -423,9 +426,12 @@ async function resolvePriceContext(
       normalPriceRow,
       savedJobs,
       relevantSavedJobs,
+      hourlyRates: [],
       companyId: null,
     }
   }
+
+  const hourlyRates = await fetchCompanyHourlyRates(supabase, companyId)
 
   const { data: fileData } = await supabase
     .from("supplier_price_files")
@@ -482,6 +488,7 @@ async function resolvePriceContext(
     normalPriceRow,
     savedJobs,
     relevantSavedJobs,
+    hourlyRates,
     companyId,
   }
 }
@@ -621,6 +628,8 @@ function buildContextEnvelope(
       egetFirma: body.company,
     },
     normalPrisIndikator: priceContext.normalPriceIndicator,
+    // Arbeid skal alltid prises med bedriftens egne timepriser — se systemprompten.
+    timepriser: formatHourlyRatesForPrompt(priceContext.hourlyRates),
     lagredeJobber: formatSavedJobsForPrompt(priceContext.savedJobs.slice(0, 200)),
     relevanteLagredeJobber: priceContext.relevantSavedJobs.map((job) => formatMatchedSavedJobForPrompt(job)),
     avklaringer:
@@ -865,6 +874,7 @@ function finalizeOfferLineItems(
     subprojects: requestBody.project?.name ? [requestBody.project.name] : [],
     companyName: requestBody.company?.name,
     preserveAiMaterialSelections: true,
+    hourlyRates: priceContext.hourlyRates,
   })
 
   const savedJobResult = applySavedJobsToOfferLineItems({

@@ -18,6 +18,13 @@ import {
   describeOfferLineItemChanges,
   diffOfferLineItems,
 } from "@/lib/tilbud/offer-line-item-diff"
+import { isHourUnit } from "@/lib/job-costing/calc"
+import {
+  fetchCompanyHourlyRates,
+  formatHourlyRatesForPrompt,
+  normalizeLaborLineItem,
+  type CompanyHourlyRate,
+} from "@/lib/tilbud/labor"
 
 const requestSchema = z.object({
   instruction: z.string().trim().min(3).max(2_000),
@@ -107,13 +114,14 @@ function normalizeExistingLineItems(input: unknown): OfferLineItem[] {
 
 function toOfferLineItems(
   proposed: z.infer<typeof lineItemSchema>[],
-  existing: OfferLineItem[]
+  existing: OfferLineItem[],
+  hourlyRates: CompanyHourlyRate[]
 ): OfferLineItem[] {
   const existingById = new Map(existing.map((item) => [item.id, item]))
 
   return proposed.map((item) => {
     const previous = item.id ? existingById.get(item.id) : undefined
-    return {
+    const merged: OfferLineItem = {
       ...previous,
       ...item,
       id: previous?.id || crypto.randomUUID(),
@@ -121,6 +129,11 @@ function toOfferLineItems(
       incomeAccountCategory:
         item.incomeAccountCategory ?? previous?.incomeAccountCategory,
     }
+    // Nye arbeidslinjer får bedriftens timepris. Eksisterende linjer røres ikke —
+    // der kan håndverkeren ha satt prisen selv.
+    return !previous && isHourUnit(merged.unit)
+      ? normalizeLaborLineItem(merged, hourlyRates)
+      : merged
   })
 }
 
@@ -190,6 +203,7 @@ export async function POST(
     }
 
     const currentLineItems = normalizeExistingLineItems(currentOffer.line_items)
+    const hourlyRates = await fetchCompanyHourlyRates(supabase, subscription.context.companyId)
     const model = process.env.OPENAI_MODEL || "gpt-5.2-mini"
     const response = await openaiFetch(
       "chat/completions",
@@ -207,6 +221,8 @@ export async function POST(
               "Behold id på eksisterende linjer. Utelat id bare for nye linjer.",
               "Ikke finn på leverandør, artikkelnummer eller pris.",
               "For en ny linje uten eksplisitt pris, bruk unitPriceNok 0 og priceSource anslag.",
+              "Alt arbeid skal være egne linjer med unit time og quantity = antall timer — aldri m2, stk, lm eller RS for arbeid.",
+              "Timepris for arbeid hentes fra timepriser; finn aldri på egne timepriser. Arbeid har markupPercent 0.",
               "Slett aldri en linje med mindre brukeren tydelig ber om det.",
               "Beløp er ekskludert mva. Skriv kort og tydelig norsk.",
             ].join(" "),
@@ -221,6 +237,7 @@ export async function POST(
                 sourceSummary: currentOffer.source_summary || "",
                 lineItems: currentLineItems,
               },
+              timepriser: formatHourlyRatesForPrompt(hourlyRates),
               requiredResponseShape: {
                 summary: "kort oppsummering",
                 title: "hele tittelen",
@@ -250,7 +267,8 @@ export async function POST(
 
     const lineItems = toOfferLineItems(
       parsedProposal.data.lineItems,
-      currentLineItems
+      currentLineItems,
+      hourlyRates
     )
     const changes = [
       ...(parsedProposal.data.title !== (currentOffer.title || "Uten tittel")

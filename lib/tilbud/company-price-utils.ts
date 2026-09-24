@@ -1,5 +1,7 @@
 import { normalizeQuoteLineItems } from "@/lib/tilbud/normalize-quote-line-items"
 import { type OfferLineItem } from "@/lib/tilbud/types"
+import { isHourUnit } from "@/lib/job-costing/calc"
+import { LABOR_UNIT, normalizeLaborLineItem, type CompanyHourlyRate } from "@/lib/tilbud/labor"
 
 export type CompanyPriceRow = {
   /** Radens id i supplier_price_rows. Brukes som referanse når KI velger en rad
@@ -46,7 +48,6 @@ export type CompanyPricePromptAttachment = {
   content: string
 }
 
-const DEFAULT_HOURLY_RATE_NOK = 795
 const DEFAULT_TRANSPORT_RATE_NOK = 950
 export const DEFAULT_MATERIAL_MARKUP_PERCENT = 15
 const DEFAULT_SERVICE_MARKUP_PERCENT = 0
@@ -341,32 +342,55 @@ function shouldExcludeRoofingProductForInsulationQuery(productText: string, quer
   return /(undertak|takpapp|underlagstak|tyvek)/.test(normalizedProduct)
 }
 
-function isServiceLineItem(item: OfferLineItem) {
-  const combined = `${item.title} ${item.description} ${item.unit}`
-  return item.unit.toLowerCase().includes("time") || isTransportText(combined) || isLaborText(combined)
+/** En ekte vare fra prisfil/leverandør — aldri arbeid, selv om navnet sier «montering». */
+function isSupplierProduct(item: OfferLineItem) {
+  return item.priceSource === "prisfil" || Boolean(item.nobb?.trim() || item.supplierSku?.trim())
+}
+
+function isTransportLineItem(item: OfferLineItem) {
+  return !isSupplierProduct(item) && isTransportText(item.title)
+}
+
+/**
+ * Arbeid: timeenhet, kategori «Arbeid …», eller en tittel som beskriver arbeid.
+ * Beskrivelsen teller ikke — «Skruer til montering» er en vare.
+ */
+function isLaborLineItem(item: OfferLineItem) {
+  if (isTransportLineItem(item)) return false
+  if (isHourUnit(item.unit)) return true
+  if (isSupplierProduct(item)) return false
+  return normalizeText(item.subproject).startsWith("arbeid") || isLaborText(item.title)
 }
 
 function buildServiceSupplier(companyName?: string | null) {
   return companyName?.trim() || SERVICE_SUPPLIER
 }
 
-function normalizeServiceLineItem(item: OfferLineItem, query: string, companyName?: string | null): OfferLineItem {
-  const isTransport = isTransportText(`${item.title} ${item.description}`)
-  const quantity = item.quantity > 0 ? item.quantity : isTransport ? 1 : estimateLaborHours(query, [])
-
+/**
+ * Transport er ikke arbeidstid: telles den som timer, blåser den opp timekalkylen
+ * prosjektet måles mot. Den føres derfor per tur (stk) med samme sum.
+ */
+function normalizeTransportLineItem(item: OfferLineItem, companyName?: string | null): OfferLineItem {
+  const quantity = item.quantity > 0 ? item.quantity : 1
   return {
     ...item,
     quantity,
-    unit: "time",
+    unit: isHourUnit(item.unit) || !item.unit.trim() ? "stk" : item.unit,
     supplier: item.supplier.trim() || buildServiceSupplier(companyName),
-    unitPriceNok:
-      item.unitPriceNok > 0
-        ? item.unitPriceNok
-        : isTransport
-          ? DEFAULT_TRANSPORT_RATE_NOK
-          : DEFAULT_HOURLY_RATE_NOK,
+    unitPriceNok: item.unitPriceNok > 0 ? item.unitPriceNok : DEFAULT_TRANSPORT_RATE_NOK,
     markupPercent: DEFAULT_SERVICE_MARKUP_PERCENT,
   }
+}
+
+function normalizeGeneratedLaborLineItem(
+  item: OfferLineItem,
+  query: string,
+  hourlyRates: CompanyHourlyRate[],
+  companyName?: string | null
+): OfferLineItem {
+  const withHours =
+    item.quantity > 0 ? item : { ...item, quantity: estimateLaborHours(query, []), unit: LABOR_UNIT }
+  return normalizeLaborLineItem(withHours, hourlyRates, { supplier: buildServiceSupplier(companyName) })
 }
 
 export function extractSearchTokens(input: string) {
@@ -830,22 +854,32 @@ function buildFallbackMaterialLineItems(input: {
   })
 }
 
-function createLaborLineItem(query: string, materialItems: OfferLineItem[], subprojects: string[], companyName?: string | null): OfferLineItem {
-  return {
-    id: crypto.randomUUID(),
-    subproject: subprojects[0] || "Generelt",
-    title: "Arbeidstid",
-    description: "Utførelse og montering beregnet som timearbeid for oppdraget.",
-    quantity: estimateLaborHours(query, materialItems),
-    unit: "time",
-    supplier: buildServiceSupplier(companyName),
-    nobb: undefined,
-    supplierSku: undefined,
-    supplierUrl: undefined,
-    unitPriceNok: DEFAULT_HOURLY_RATE_NOK,
-    markupPercent: DEFAULT_SERVICE_MARKUP_PERCENT,
-    discountPercent: 0,
-  }
+function createLaborLineItem(
+  query: string,
+  materialItems: OfferLineItem[],
+  subprojects: string[],
+  hourlyRates: CompanyHourlyRate[],
+  companyName?: string | null
+): OfferLineItem {
+  return normalizeLaborLineItem(
+    {
+      id: crypto.randomUUID(),
+      subproject: subprojects[0] || "Generelt",
+      title: "Arbeidstid",
+      description: "Utførelse og montering beregnet som timearbeid for oppdraget.",
+      quantity: estimateLaborHours(query, materialItems),
+      unit: LABOR_UNIT,
+      supplier: buildServiceSupplier(companyName),
+      nobb: undefined,
+      supplierSku: undefined,
+      supplierUrl: undefined,
+      unitPriceNok: 0,
+      markupPercent: DEFAULT_SERVICE_MARKUP_PERCENT,
+      discountPercent: 0,
+    },
+    hourlyRates,
+    { supplier: buildServiceSupplier(companyName) }
+  )
 }
 
 function createTransportLineItem(subprojects: string[], companyName?: string | null): OfferLineItem {
@@ -855,7 +889,7 @@ function createTransportLineItem(subprojects: string[], companyName?: string | n
     title: "Transport",
     description: "Transport, kjøring og logistikk til og fra prosjektet.",
     quantity: 1,
-    unit: "time",
+    unit: "stk",
     supplier: buildServiceSupplier(companyName),
     nobb: undefined,
     supplierSku: undefined,
@@ -873,15 +907,23 @@ export function finalizeGeneratedOfferLineItems(input: {
   subprojects: string[]
   companyName?: string | null
   preserveAiMaterialSelections?: boolean
+  /** Bedriftens timepriser. Tom liste → standardsatsen på alt arbeid. */
+  hourlyRates?: CompanyHourlyRate[]
 }) {
+  const hourlyRates = input.hourlyRates ?? []
   const warnings: string[] = []
   const materialItems: OfferLineItem[] = []
   const serviceItems: OfferLineItem[] = []
   const seenCompanyProducts = new Set<string>()
 
   for (const item of input.generatedItems) {
-    if (isServiceLineItem(item)) {
-      serviceItems.push(normalizeServiceLineItem(item, input.query, input.companyName))
+    if (isTransportLineItem(item)) {
+      serviceItems.push(normalizeTransportLineItem(item, input.companyName))
+      continue
+    }
+
+    if (isLaborLineItem(item)) {
+      serviceItems.push(normalizeGeneratedLaborLineItem(item, input.query, hourlyRates, input.companyName))
       continue
     }
 
@@ -932,12 +974,12 @@ export function finalizeGeneratedOfferLineItems(input: {
     }
   }
 
-  const hasLabor = serviceItems.some((item) => item.unit === "time" || isLaborText(`${item.title} ${item.description}`))
+  const hasLabor = serviceItems.some((item) => isHourUnit(item.unit))
   if (!hasLabor) {
-    serviceItems.push(createLaborLineItem(input.query, materialItems, input.subprojects, input.companyName))
+    serviceItems.push(createLaborLineItem(input.query, materialItems, input.subprojects, hourlyRates, input.companyName))
   }
 
-  const hasTransport = serviceItems.some((item) => item.unit === "time" && isTransportText(`${item.title} ${item.description}`))
+  const hasTransport = serviceItems.some((item) => isTransportLineItem(item))
   if (!hasTransport && shouldAddTransport(input.query, materialItems)) {
     serviceItems.push(createTransportLineItem(input.subprojects, input.companyName))
   }

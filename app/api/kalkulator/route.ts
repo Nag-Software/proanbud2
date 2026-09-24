@@ -20,6 +20,7 @@ import {
   pickBestNormalPrice,
 } from "@/lib/tilbud/normal-prices"
 import { finalizeGeneratedOfferLineItems } from "@/lib/tilbud/company-price-utils"
+import { formatHourlyRatesForPrompt } from "@/lib/tilbud/labor"
 import { calculateOfferTotals, type OfferLineItem } from "@/lib/tilbud/types"
 
 // Offentlig KI-tilbudskalkulator (lead-magnet, ingen innlogging).
@@ -216,6 +217,8 @@ export async function POST(request: Request) {
         },
         eksternePriser: externalPrices,
         normalPrisIndikator: normalPriceIndicator,
+        // Ingen bedrift her — standardsatsen, samme som etterbehandlingen setter.
+        timepriser: formatHourlyRatesForPrompt([]),
         lagredeJobber: [],
         relevanteLagredeJobber: [],
         outputRequirements: {

@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Briefcase, ChevronDown, FilePlus2, Loader2, Package, Plus, Search } from "lucide-react"
+import Link from "next/link"
+import { Briefcase, ChevronDown, Clock, FilePlus2, Loader2, Package, Plus, Search } from "lucide-react"
 
 import { reportClientError } from "@/lib/errors/client"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
@@ -28,6 +29,7 @@ import {
   type SearchMaterial,
 } from "@/lib/tilbud/company-price-utils"
 import { buildOfferLineItemFromSavedJob } from "@/lib/tilbud/saved-jobs"
+import { DEFAULT_HOURLY_RATE_NOK, LABOR_UNIT, mapHourlyRateRows, type CompanyHourlyRate } from "@/lib/tilbud/labor"
 import { formatNok, type OfferLineItem } from "@/lib/tilbud/types"
 
 type SearchJob = {
@@ -61,6 +63,8 @@ export function AddOfferLineItemMenu({
   const [jobResults, setJobResults] = useState<SearchJob[]>([])
   const [isSearchingMaterials, setIsSearchingMaterials] = useState(false)
   const [isSearchingJobs, setIsSearchingJobs] = useState(false)
+  const [laborDialogOpen, setLaborDialogOpen] = useState(false)
+  const [hourlyRates, setHourlyRates] = useState<CompanyHourlyRate[] | null>(null)
 
   const debouncedMaterialQuery = useDebouncedValue(materialQuery, 250)
   const debouncedJobQuery = useDebouncedValue(jobQuery, 250)
@@ -126,6 +130,50 @@ export function AddOfferLineItemMenu({
     },
     [companyName, defaultSubproject, onAddItems]
   )
+
+  // Arbeid legges alltid inn som timer med bedriftens timepris — da stemmer
+  // timekalkylen og dekningsgraden på prosjektet.
+  const addLaborHours = useCallback(
+    (jobType: string, rateNok: number) => {
+      onAddItems([
+        {
+          id: generateLocalId(),
+          subproject: defaultSubproject,
+          title: jobType,
+          description: "",
+          quantity: 1,
+          unit: LABOR_UNIT,
+          supplier: companyName?.trim() || "Eget arbeid",
+          unitPriceNok: rateNok,
+          markupPercent: 0,
+          discountPercent: 0,
+        },
+      ])
+      setLaborDialogOpen(false)
+    },
+    [companyName, defaultSubproject, onAddItems]
+  )
+
+  useEffect(() => {
+    if (!laborDialogOpen || hourlyRates !== null) return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const response = await fetch("/api/mine-priser/timepriser")
+        const payload = await response.json()
+        if (!response.ok) throw new Error(payload.error || "Kunne ikke hente timepriser")
+        if (!cancelled) setHourlyRates(mapHourlyRateRows(payload.rates))
+      } catch (error) {
+        reportClientError(error, { level: "warning", context: { action: "load hourly rates" } })
+        if (!cancelled) setHourlyRates([])
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [hourlyRates, laborDialogOpen])
 
   useEffect(() => {
     if (!materialDialogOpen) return
@@ -250,6 +298,14 @@ export function AddOfferLineItemMenu({
             <Briefcase className="mr-2 h-4 w-4" />
             Fast jobb
           </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              window.setTimeout(() => setLaborDialogOpen(true), 0)
+            }}
+          >
+            <Clock className="mr-2 h-4 w-4" />
+            Arbeidstimer
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={addBlankLineItem}>
             <FilePlus2 className="mr-2 h-4 w-4" />
@@ -357,6 +413,56 @@ export function AddOfferLineItemMenu({
                     <p className="shrink-0 text-sm font-semibold tabular-nums">{formatNok(job.price_nok)}</p>
                   </button>
                 ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={laborDialogOpen} onOpenChange={setLaborDialogOpen}>
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-lg">
+          <DialogHeader className="space-y-1 border-b px-4 py-4 text-left">
+            <DialogTitle>Legg til arbeidstimer</DialogTitle>
+            <DialogDescription>
+              Arbeid føres i timer med bedriftens timepris. Juster antall timer i tabellen etterpå.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[min(420px,50vh)] overflow-y-auto p-2">
+            {hourlyRates === null ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Henter timepriser...
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {(hourlyRates.length > 0
+                  ? hourlyRates.map((rate) => ({ jobType: rate.jobType, rateNok: rate.hourlyRateNok }))
+                  : [{ jobType: "Arbeid", rateNok: DEFAULT_HOURLY_RATE_NOK }]
+                ).map((rate) => (
+                  <button
+                    key={rate.jobType}
+                    type="button"
+                    onClick={() => addLaborHours(rate.jobType, rate.rateNok)}
+                    className="flex w-full items-start justify-between gap-3 rounded-lg border border-transparent px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-muted/50"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{rate.jobType}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {hourlyRates.length > 0 ? "Bedriftens timepris" : "Standard timepris"}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-sm font-semibold tabular-nums">{formatNok(rate.rateNok)}/t</p>
+                  </button>
+                ))}
+                {hourlyRates.length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-muted-foreground">
+                    Du har ikke lagt inn egne timepriser.{" "}
+                    <Link href="/mine-priser/timepriser" className="font-medium text-foreground underline underline-offset-2">
+                      Legg inn timepriser
+                    </Link>{" "}
+                    så brukes de i alle tilbud, også når KI lager kalkylen.
+                  </p>
+                ) : null}
               </div>
             )}
           </div>

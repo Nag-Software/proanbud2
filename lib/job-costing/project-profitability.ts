@@ -236,7 +236,14 @@ export async function fetchProjectProfitability(
 
   if (hasOfferCostBasis && rawPlanned) {
     plannedSource = "tilbud"
-    plannedLaborCostNok = rawPlanned.laborCostNok
+    // Timelinjene i tilbudet står med bedriftens timepris (salgspris) og 0 %
+    // påslag. Regnes de som kostnad, blir dekningsbidraget på arbeid 0 kr. Har
+    // bedriften kostpris, regnes kalkulerte timer derfor om med den — samme sats
+    // som førte timer, så kalkyle og faktisk er sammenlignbare.
+    plannedLaborCostNok =
+      costRateNok > 0 && rawPlanned.hours > 0
+        ? computeLaborCost(rawPlanned.hours, costRateNok)
+        : rawPlanned.laborCostNok
     plannedMaterialCostNok = rawPlanned.materialCostNok
     plannedHours = rawPlanned.hours > 0 ? rawPlanned.hours : null
   } else if (hasManualBudget) {

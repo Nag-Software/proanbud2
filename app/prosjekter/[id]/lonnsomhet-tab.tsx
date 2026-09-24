@@ -673,7 +673,9 @@ export function LonnsomhetTab({
                   ? "Det som faktisk er påløpt på prosjektet: førte timer, kjøring og registrerte materialkostnader."
                   : data.plannedSource === "budsjett"
                     ? "Budsjettkolonnen er målet du har satt på prosjektet. Timene er regnet om til kroner med kostprisen din."
-                    : "Kalkylekolonnen er selvkost i de aksepterte tilbudene — mengde × innkjøps- eller kostpris, før påslag og rabatt."}
+                    : data.costRateNok > 0
+                      ? `Kalkylekolonnen er selvkost i de aksepterte tilbudene: materialer til innkjøpspris før påslag, og timene regnet om med kostprisen din, ${formatNok(data.costRateNok)}/t.`
+                      : "Kalkylekolonnen er selvkost i de aksepterte tilbudene — mengde × innkjøps- eller kostpris, før påslag og rabatt."}
               </p>
               {showPlanned ? (
                 <p>

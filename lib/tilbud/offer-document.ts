@@ -169,7 +169,9 @@ export function formatDocumentQuantity(value: number) {
   return new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 2 }).format(Number.isFinite(value) ? value : 0)
 }
 
-const UNIT_DISPLAY: Record<string, string> = { m2: "m²", M2: "m²", m3: "m³", M3: "m³" }
+// «time» er den interne enheten for arbeid (se lib/tilbud/labor.ts). Kunden skal
+// lese «16 timer», ikke «16 time».
+const UNIT_DISPLAY: Record<string, string> = { m2: "m²", M2: "m²", m3: "m³", M3: "m³", time: "timer" }
 
 export function formatDocumentUnit(unit: string) {
   return UNIT_DISPLAY[unit.trim()] || unit
