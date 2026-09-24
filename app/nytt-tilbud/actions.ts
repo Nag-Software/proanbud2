@@ -6,6 +6,7 @@ import { z } from "zod"
 import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 import { calculateOfferTotals } from "@/lib/tilbud/types"
+import { DEFAULT_PRICING_MODEL } from "@/lib/tilbud/offer-terms"
 import { canSendOffers } from "@/lib/roles"
 import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 import { resolveOfferSendCompany, sendOfferToCustomer } from "@/lib/tilbud/send-offer"
@@ -250,7 +251,7 @@ function toOfferRow(input: SaveOfferInput, companyId: string, status: "draft" | 
     quote_valid_until: validUntil.toISOString().slice(0, 10),
     sent_at: status === "sent" ? new Date().toISOString() : null,
     status,
-    pricing_model: input.pricingModel || "fixed",
+    pricing_model: input.pricingModel || DEFAULT_PRICING_MODEL,
     contract_basis: input.contractBasis || "none",
     markup_percent: Number(input.markupPercent ?? 0),
   }

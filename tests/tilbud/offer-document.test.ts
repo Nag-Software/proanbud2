@@ -151,7 +151,15 @@ describe("buildOfferDocumentSheet", () => {
       })
     )
     expect(html).toContain("Prismodell: Fastpris.")
-    expect(html).toContain("Kontraktsgrunnlag: NS 8407.")
+    expect(html).toContain("Endringer og tilleggsarbeid avtales skriftlig")
+    expect(html).toContain("Kontraktsgrunnlag: NS 8407 (Alminnelige kontraktsbestemmelser for totalentrepriser).")
+  })
+
+  it("forklarer at regningsarbeid er et prisoverslag", () => {
+    const html = buildOfferDocumentSheet(makeData({ pricingModel: "time_materials", contractBasis: "none" }))
+    expect(html).toContain("Prismodell: Regningsarbeid.")
+    expect(html).toContain("prisoverslag")
+    expect(html).not.toContain("Kontraktsgrunnlag")
   })
 
   it("never mentions a payment plan — betalingsplan is out of the product", () => {

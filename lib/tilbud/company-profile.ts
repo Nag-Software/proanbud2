@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
-import { type OfferCompanyContext } from "@/lib/tilbud/types"
+import { DEFAULT_PRICING_MODEL, toSelectablePricingModel } from "@/lib/tilbud/offer-terms"
+import { toContractBasis, type OfferCompanyContext, type OfferContractBasis, type OfferPricingModel } from "@/lib/tilbud/types"
 
 export type CompanyPriceLevel = "low" | "normal" | "high"
 
@@ -164,4 +165,43 @@ export async function fetchOfferCompanyContext(
   }
 
   return mapCompanyRowToOfferContext(result.companyId, result.row)
+}
+
+export type CompanyOfferDefaults = {
+  defaultPricingModel: OfferPricingModel
+  defaultContractBasis: OfferContractBasis
+}
+
+export const FALLBACK_COMPANY_OFFER_DEFAULTS: CompanyOfferDefaults = {
+  defaultPricingModel: DEFAULT_PRICING_MODEL,
+  defaultContractBasis: "none",
+}
+
+/**
+ * Standard prismodell/kontraktsgrunnlag for nye tilbud (db/96). Egen spørring —
+ * ikke del av COMPANY_PROFILE_SELECT — fordi en manglende kolonne der får hele
+ * profilen til å falle tilbake til bare navn og org.nr. Mangler kolonnene,
+ * brukes standardverdiene. `available` sier om de kan lagres.
+ */
+export async function fetchCompanyOfferDefaults(
+  supabase: SupabaseClient,
+  companyId: string
+): Promise<CompanyOfferDefaults & { available: boolean }> {
+  const { data, error } = await supabase
+    .from("companies")
+    .select("default_pricing_model, default_contract_basis")
+    .eq("id", companyId)
+    .maybeSingle()
+
+  if (error || !data) {
+    return { ...FALLBACK_COMPANY_OFFER_DEFAULTS, available: false }
+  }
+
+  const row = data as { default_pricing_model?: string | null; default_contract_basis?: string | null }
+  return {
+    defaultPricingModel:
+      toSelectablePricingModel(row.default_pricing_model as OfferPricingModel) ?? DEFAULT_PRICING_MODEL,
+    defaultContractBasis: toContractBasis(row.default_contract_basis) ?? "none",
+    available: true,
+  }
 }

@@ -7,6 +7,7 @@ import {
   type OfferLineItem,
   type OfferPricingModel,
 } from "@/lib/tilbud/types"
+import { buildContractTerms } from "@/lib/tilbud/offer-terms"
 
 export type OfferDocumentCustomer = {
   name: string
@@ -263,6 +264,7 @@ export function buildOfferDocumentModel(data: OfferDocumentData) {
     validUntil,
     pricingModelLabel,
     contractBasisLabel,
+    contractTerms: buildContractTerms(data.pricingModel, data.contractBasis),
     showGroups,
     companyAddressLine,
     customerAddressLine,
@@ -451,8 +453,7 @@ export function buildOfferDocumentSheet(data: OfferDocumentData, options: OfferD
   } else {
     termsItems.push(`Tilbudet er gyldig i ${m.validityDays} dager fra utstedelsesdato.`)
   }
-  if (m.pricingModelLabel) termsItems.push(`Prismodell: ${m.pricingModelLabel}.`)
-  if (m.contractBasisLabel) termsItems.push(`Kontraktsgrunnlag: ${m.contractBasisLabel}.`)
+  termsItems.push(...m.contractTerms)
   termsItems.push("Alle priser er oppgitt i norske kroner. Merverdiavgift (25 %) er spesifisert.")
 
   const termsBlock = `

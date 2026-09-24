@@ -28,13 +28,14 @@ import {
 
 import { saveOfferDraftAction } from "@/app/nytt-tilbud/actions"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
+import { OfferTermsFields } from "@/components/tilbud/offer-terms-fields"
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table-lazy"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
-import { inferPricingModelFromLineItems } from "@/lib/contracts/pricing"
 import { getDistinctSuppliers } from "@/lib/tilbud/supplier-prices"
+import { DEFAULT_PRICING_MODEL } from "@/lib/tilbud/offer-terms"
 import {
   calculateOfferTotals,
   formatNok,
@@ -126,8 +127,10 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
   const [recipientPhone, setRecipientPhone] = useState(initialCustomer?.phone || "")
   const [validityDays, setValidityDays] = useState(company?.quoteValidityDays ?? 30)
   const [quoteMessage, setQuoteMessage] = useState("")
-  const [pricingModel, setPricingModel] = useState<OfferPricingModel>("fixed")
-  const [contractBasis, setContractBasis] = useState<OfferContractBasis>("none")
+  const [pricingModel, setPricingModel] = useState<OfferPricingModel>(
+    company?.defaultPricingModel ?? DEFAULT_PRICING_MODEL
+  )
+  const [contractBasis, setContractBasis] = useState<OfferContractBasis>(company?.defaultContractBasis ?? "none")
   const [markupPercent, setMarkupPercent] = useState(15)
 
   const [isPersisting, startPersisting] = useTransition()
@@ -794,7 +797,6 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 <Button
                   type="button"
                   onClick={() => {
-                    setPricingModel(inferPricingModelFromLineItems(lineItems))
                     setMarkupPercent(globalMarkupPercent)
                     setStep(3)
                   }}
@@ -809,6 +811,15 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
 
           {step === 3 ? (
             <div className="space-y-5">
+              <div className="rounded-lg border p-4">
+                <OfferTermsFields
+                  pricingModel={pricingModel}
+                  contractBasis={contractBasis}
+                  onPricingModelChange={setPricingModel}
+                  onContractBasisChange={setContractBasis}
+                />
+              </div>
+
               <div className="rounded-lg border p-4">
                 <div className="mb-3 flex items-center gap-2">
                   <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900">

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation"
 
 import { AppPageShell } from "@/components/app-page-shell"
 import { checkRoleAccess } from "@/lib/auth-utils"
-import { fetchCompanyProfileRow, mapCompanyRowToProfile } from "@/lib/tilbud/company-profile"
+import { fetchCompanyOfferDefaults, fetchCompanyProfileRow, mapCompanyRowToProfile } from "@/lib/tilbud/company-profile"
 import { createClient } from "@/lib/supabase/server"
 import { BedriftsprofilClient } from "./bedriftsprofil-client"
 import { DeleteCompanySection } from "./delete-company-section"
@@ -30,6 +30,10 @@ export default async function Page() {
   }
 
   const initialProfile = mapCompanyRowToProfile({ ...companyResult.row, id: companyResult.companyId })
+  const { available: offerDefaultsAvailable, ...initialOfferDefaults } = await fetchCompanyOfferDefaults(
+    supabase,
+    companyResult.companyId
+  )
 
   return (
     <AppPageShell segments={["Min bedrift", "Bedriftsprofil"]}>
@@ -37,6 +41,8 @@ export default async function Page() {
         <BedriftsprofilClient
           initialProfile={initialProfile}
           profileFieldsAvailable={companyResult.profileFieldsAvailable}
+          initialOfferDefaults={initialOfferDefaults}
+          offerDefaultsAvailable={offerDefaultsAvailable}
         />
         {canonicalRole === "admin" ? (
           <DeleteCompanySection companyName={initialProfile.name} />

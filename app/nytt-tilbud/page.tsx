@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { NyttTilbudClient } from "@/components/tilbud/nytt-tilbud-client"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
-import { fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
+import { fetchCompanyOfferDefaults, fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
 import { type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
 import { ACTIVE_PROJECT_STATUSES } from "@/app/prosjekter/project-utils"
 import { ProjectPicker, type PickerProject } from "./project-picker"
@@ -153,6 +153,12 @@ export default async function NyttTilbudPage({ searchParams }: Props) {
     redirect("/prosjekter")
   }
 
+  // Egen spørring: standard prismodell/kontraktsgrunnlag (db/96) skal ikke kunne
+  // velte resten av bedriftsprofilen om migrasjonen mangler.
+  const companyWithDefaults = company
+    ? { ...company, ...(await fetchCompanyOfferDefaults(supabase, company.id)) }
+    : null
+
   const joinedCustomer = normalizeCustomer(projectRow)
 
   const { data: customerRow } = projectRow.customer_id
@@ -211,7 +217,7 @@ export default async function NyttTilbudPage({ searchParams }: Props) {
       <NyttTilbudClient
         project={project}
         customers={customers}
-        company={company}
+        company={companyWithDefaults}
       />
     </AppPageShell>
   )

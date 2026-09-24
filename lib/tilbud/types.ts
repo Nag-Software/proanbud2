@@ -115,6 +115,9 @@ export type OfferCompanyContext = {
    * Udefinert behandles som true (dagens oppførsel).
    */
   vatRegistered?: boolean
+  /** Bedriftens standard for nye tilbud (Min bedrift → Bedriftsprofil). */
+  defaultPricingModel?: OfferPricingModel
+  defaultContractBasis?: OfferContractBasis
 }
 
 export type SaveOfferPayload = {

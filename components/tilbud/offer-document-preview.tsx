@@ -76,15 +76,14 @@ export function OfferDocumentPreview({
     } else {
       items.push(`Tilbudet er gyldig i ${m.validityDays} dager fra utstedelsesdato.`)
     }
-    if (m.pricingModelLabel) items.push(`Prismodell: ${m.pricingModelLabel}.`)
-    if (m.contractBasisLabel) items.push(`Kontraktsgrunnlag: ${m.contractBasisLabel}.`)
+    items.push(...m.contractTerms)
     items.push("Alle priser er oppgitt i norske kroner. Merverdiavgift (25 %) er spesifisert.")
     for (const term of extraTerms ?? []) {
       const trimmed = term.trim()
       if (trimmed) items.push(trimmed)
     }
     return items
-  }, [m.validUntil, m.validityDays, m.pricingModelLabel, m.contractBasisLabel, extraTerms])
+  }, [m.validUntil, m.validityDays, m.contractTerms, extraTerms])
 
   const footerParts = buildOfferFooterParts(company)
 

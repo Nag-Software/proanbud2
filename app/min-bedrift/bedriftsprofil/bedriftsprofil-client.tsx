@@ -20,18 +20,26 @@ import { reportClientError } from "@/lib/errors/client"
 import {
   COMPANY_INDUSTRY_OPTIONS,
   COMPANY_PRICE_LEVEL_OPTIONS,
+  type CompanyOfferDefaults,
   type CompanyPriceLevel,
   type CompanyProfile,
 } from "@/lib/tilbud/company-profile"
+import { OfferTermsFields } from "@/components/tilbud/offer-terms-fields"
+import type { OfferContractBasis, OfferPricingModel } from "@/lib/tilbud/types"
 
 type BedriftsprofilClientProps = {
   initialProfile: CompanyProfile
   profileFieldsAvailable?: boolean
+  initialOfferDefaults: CompanyOfferDefaults
+  /** False før db/96_company_offer_defaults.sql er kjørt. */
+  offerDefaultsAvailable?: boolean
 }
 
 export function BedriftsprofilClient({
   initialProfile,
   profileFieldsAvailable = true,
+  initialOfferDefaults,
+  offerDefaultsAvailable = true,
 }: BedriftsprofilClientProps) {
   const supabase = createClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -50,6 +58,12 @@ export function BedriftsprofilClient({
   const [priceLevel, setPriceLevel] = useState<CompanyPriceLevel>(initialProfile.priceLevel)
   const [vatRegistered, setVatRegistered] = useState(initialProfile.vatRegistered ? "ja" : "nei")
   const [industry, setIndustry] = useState(initialProfile.industry || "none")
+  const [defaultPricingModel, setDefaultPricingModel] = useState<OfferPricingModel>(
+    initialOfferDefaults.defaultPricingModel
+  )
+  const [defaultContractBasis, setDefaultContractBasis] = useState<OfferContractBasis>(
+    initialOfferDefaults.defaultContractBasis
+  )
 
   const [isSaving, setIsSaving] = useState(false)
   const [isUploadingLogo, setIsUploadingLogo] = useState(false)
@@ -150,6 +164,23 @@ export function BedriftsprofilClient({
         throw error
       }
 
+      // Egen oppdatering: mangler db/96, skal ikke resten av profilen feile.
+      let offerDefaultsSaved = false
+      if (offerDefaultsAvailable) {
+        const { error: defaultsError } = await supabase
+          .from("companies")
+          .update({
+            default_pricing_model: defaultPricingModel,
+            default_contract_basis: defaultContractBasis,
+          })
+          .eq("id", profile.id)
+        if (defaultsError) {
+          reportClientError(defaultsError.message, { context: { action: "save company offer defaults" } })
+        } else {
+          offerDefaultsSaved = true
+        }
+      }
+
       setProfile({
         ...profile,
         name: name.trim(),
@@ -167,11 +198,15 @@ export function BedriftsprofilClient({
         vatRegistered: vatRegistered === "ja",
       })
 
-      toast.success(
-        profileFieldsAvailable
-          ? "Bedriftsprofil lagret."
-          : "Grunnleggende firmainfo lagret. Kjør db/16_company_profile.sql for full profil."
-      )
+      if (offerDefaultsAvailable && !offerDefaultsSaved) {
+        toast.warning("Bedriftsprofil lagret, men standard prismodell og kontraktsgrunnlag kunne ikke lagres.")
+      } else {
+        toast.success(
+          profileFieldsAvailable
+            ? "Bedriftsprofil lagret."
+            : "Grunnleggende firmainfo lagret. Kjør db/16_company_profile.sql for full profil."
+        )
+      }
     } catch (error) {
       console.error("Save company profile error", error)
       reportClientError(error, { context: { action: "save company profile" } })
@@ -404,6 +439,24 @@ export function BedriftsprofilClient({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2 border-t pt-4 sm:col-span-3">
+            <p className="text-sm text-muted-foreground">
+              Startverdi i nye tilbud. Du kan alltid endre det i hvert enkelt tilbud.
+            </p>
+            <OfferTermsFields
+              pricingModel={defaultPricingModel}
+              contractBasis={defaultContractBasis}
+              onPricingModelChange={setDefaultPricingModel}
+              onContractBasisChange={setDefaultContractBasis}
+              disabled={!offerDefaultsAvailable}
+            />
+            {!offerDefaultsAvailable ? (
+              <p className="text-xs text-amber-700">
+                Kjør <code className="rounded bg-amber-100 px-1">db/96_company_offer_defaults.sql</code> for å
+                kunne lagre standardvalgene.
+              </p>
+            ) : null}
           </div>
         </CardContent>
       </Card>

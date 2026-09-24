@@ -45,6 +45,7 @@ import {
   type OfferEditProposal,
 } from "@/components/tilbud/ai-offer-editor"
 import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
+import { OfferTermsFields } from "@/components/tilbud/offer-terms-fields"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
 import {
@@ -758,6 +759,16 @@ export function OfferDetailClient({
                   : `Lagret${lastAutoSaveAt ? ` ${dateTimeLabel(lastAutoSaveAt)}` : ""}`}
               </p>
             </div>
+
+            <OfferTermsFields
+              className="border-t border-border pt-4"
+              pricingModel={offer.pricingModel}
+              contractBasis={offer.contractBasis}
+              onPricingModelChange={(value) => setOffer((previous) => ({ ...previous, pricingModel: value }))}
+              onContractBasisChange={(value) => setOffer((previous) => ({ ...previous, contractBasis: value }))}
+              // Akseptert tilbud er en inngått avtale — vilkårene kan ikke endres i etterkant.
+              disabled={Boolean(offer.acceptance) || offer.status === "accepted"}
+            />
 
             <div className="flex flex-wrap gap-2 border-t border-border pt-4">
               <Button

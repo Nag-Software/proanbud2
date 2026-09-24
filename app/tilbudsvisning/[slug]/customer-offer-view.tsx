@@ -22,8 +22,6 @@ import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  CONTRACT_BASIS_LABELS,
-  PRICING_MODEL_LABELS,
   calculateGroupTotal,
   computeValidityDays,
   computeValidUntilDate,
@@ -37,6 +35,7 @@ import {
   groupLineItemsBySubproject,
   type OfferDocumentAcceptance,
 } from "@/lib/tilbud/offer-document"
+import { buildContractTerms } from "@/lib/tilbud/offer-terms"
 import {
   calculateLineItemTotal,
   calculateLineItemUnitPriceWithMarkupBeforeDiscount,
@@ -182,9 +181,7 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
     offer.validityDays ?? computeValidityDays(String(offer.createdAt || ""), offer.quoteValidUntil)
   const validUntil = computeValidUntilDate(offer.createdAt, offer.quoteValidUntil, validityDays)
   const preDiscountSubtotal = Math.round((totals.subtotalNok + totals.discountNok) * 100) / 100
-  const pricingModelLabel = offer.pricingModel ? PRICING_MODEL_LABELS[offer.pricingModel] : ""
-  const contractBasisLabel =
-    offer.contractBasis && offer.contractBasis !== "none" ? CONTRACT_BASIS_LABELS[offer.contractBasis] : ""
+  const contractTerms = buildContractTerms(offer.pricingModel, offer.contractBasis)
 
   return (
     <div className="space-y-3 lg:hidden">
@@ -287,8 +284,7 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
           {validUntil
             ? `Tilbudet er gyldig til ${formatOfferDate(validUntil)} (${validityDays} dager fra utstedelsesdato).`
             : `Tilbudet er gyldig i ${validityDays} dager fra utstedelsesdato.`}
-          {pricingModelLabel ? ` Prismodell: ${pricingModelLabel}.` : ""}
-          {contractBasisLabel ? ` Kontraktsgrunnlag: ${contractBasisLabel}.` : ""}
+          {contractTerms.map((term) => ` ${term}`).join("")}
           {" Alle priser er i NOK."}
         </p>
       </div>
