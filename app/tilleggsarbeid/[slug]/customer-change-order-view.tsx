@@ -8,7 +8,13 @@ function formatNok(value: number) {
   return new Intl.NumberFormat("no-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(value)
 }
 
+const VAT_RATE = 0.25
+
 export function CustomerChangeOrderView({ co, slug }: { co: PublicChangeOrder; slug: string }) {
+  // Beløpene lagres eks. mva. Privatkunder skal se dem inkl. mva (prisopplysningsforskriften § 3).
+  const vatFactor = co.pricesInclVat ? 1 + VAT_RATE : 1
+  const amount = co.amountNok * vatFactor
+  const hourlyRate = co.hourlyRateNok !== null ? co.hourlyRateNok * vatFactor : null
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-neutral-100 px-4 py-10">
       <div className="w-full max-w-md overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
@@ -25,16 +31,19 @@ export function CustomerChangeOrderView({ co, slug }: { co: PublicChangeOrder; s
             <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-600">
               {co.billingType === "hourly" ? "Per time" : "Fastpris"}
             </span>
-            {co.billingType === "hourly" && co.hourlyRateNok !== null && co.estimatedHours !== null ? (
+            {co.billingType === "hourly" && hourlyRate !== null && co.estimatedHours !== null ? (
               <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-600">
-                {co.estimatedHours} t x {formatNok(co.hourlyRateNok)}/t
+                {co.estimatedHours} t × {formatNok(hourlyRate)}/t
               </span>
             ) : null}
           </div>
 
           <div className="mt-6 rounded-xl bg-neutral-50 px-4 py-4 text-center">
-            <p className="text-xs text-neutral-500">Pris (eks. mva)</p>
-            <p className="mt-1 text-3xl font-semibold text-neutral-900">{formatNok(co.amountNok)}</p>
+            <p className="text-xs text-neutral-500">{co.pricesInclVat ? "Pris inkl. mva" : "Pris eks. mva"}</p>
+            <p className="mt-1 text-3xl font-semibold text-neutral-900">{formatNok(amount)}</p>
+            {co.pricesInclVat ? (
+              <p className="mt-1 text-xs text-neutral-500">Herav mva {formatNok(amount - co.amountNok)}</p>
+            ) : null}
           </div>
 
           <div className="mt-6 flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-4 text-amber-800">

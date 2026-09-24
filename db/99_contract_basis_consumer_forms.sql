@@ -1,22 +1,26 @@
--- 98_consumer_contract_standards.sql
--- Tillater NS 8416 og NS 8417 som kontraktsgrunnlag.
+-- 99_contract_basis_consumer_forms.sql
+-- Rettelse av db/98: NS 8416 og NS 8417 er IKKE forbrukerstandarder.
 --
--- MERK: Denne migrasjonen omtalte opprinnelig NS 8416/8417 som
--- forbrukerstandarder. Det var feil — de er underentreprisestandarder mellom
--- profesjonelle parter. Se db/99, som også legger til byggblankettene for
--- forbrukere. Selve SQL-en her er uendret (den bare utvider tillatte verdier).
+-- NS 8416 (Forenklet norsk underentreprisekontrakt) og NS 8417 (Alminnelige
+-- kontraktsbestemmelser for totalunderentrepriser) gjelder mellom profesjonelle
+-- parter — de er nå valg for bedriftskunder (du som underentreprenør).
 --
--- Utvider CHECK-reglene på offers.contract_basis, contracts.contract_basis og
--- companies.default_contract_basis (db/23, db/96). Den gamle regelen fikk et
--- autogenerert navn, så vi fjerner enhver CHECK som gjelder kolonnen i stedet
--- for å gjette navnet.
+-- Overfor forbrukere bruker Standard Norge byggblanketter:
+--   bb3501  Byggblankett 3501/3502 — håndverkertjenesteloven, arbeid på fast
+--           eiendom (ikke nyoppføring). 3501 ved vederlag ≥ 2 G, 3502 under.
+--   bb3425  Byggblankett 3425/3426 — bustadoppføringslova, oppføring av bolig
+--           eller fritidsbolig.
+-- Kilde: standard.no → Kontraktstandarder → Forbrukerblanketter.
+--
+-- Utvider CHECK-reglene med bb3501/bb3425, uavhengig av hva regelen heter.
 -- Safe to run repeatedly.
 
 DO $$
 DECLARE
   target RECORD;
   existing RECORD;
-  allowed CONSTANT TEXT := '(''ns8405'', ''ns8407'', ''ns8416'', ''ns8417'', ''custom'', ''none'')';
+  allowed CONSTANT TEXT :=
+    '(''ns8405'', ''ns8407'', ''ns8416'', ''ns8417'', ''bb3501'', ''bb3425'', ''custom'', ''none'')';
 BEGIN
   FOR target IN
     SELECT * FROM (VALUES

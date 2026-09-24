@@ -39,22 +39,24 @@ describe("kontraktsgrunnlag etter kundetype", () => {
   const values = (kind: Parameters<typeof contractBasisOptionsFor>[0]) =>
     contractBasisOptionsFor(kind).map((option) => option.value)
 
-  it("privatkunde får forbrukerstandardene, ikke NS 8405/8407", () => {
-    expect(values("privatperson")).toEqual(["none", "ns8416", "ns8417", "custom"])
+  it("privatkunde får byggblankettene for forbruker, ikke NS-standardene", () => {
+    expect(values("privatperson")).toEqual(["none", "bb3501", "bb3425", "custom"])
   })
 
-  it("bedriftskunde får NS 8405/8407, ikke forbrukerstandardene", () => {
-    expect(values("bedrift")).toEqual(["none", "ns8405", "ns8407", "custom"])
+  it("bedriftskunde får NS 8405/8407 og underentreprise (NS 8416/8417)", () => {
+    expect(values("bedrift")).toEqual(["none", "ns8405", "ns8407", "ns8416", "ns8417", "custom"])
   })
 
-  it("ukjent kundetype viser alle standardene", () => {
-    expect(values(null)).toHaveLength(6)
+  it("ukjent kundetype viser alle", () => {
+    expect(values(null)).toHaveLength(8)
   })
 
-  it("advarer når standarden ikke passer kunden", () => {
-    expect(contractBasisWarning("ns8405", "privatperson")).toMatch(/NS 8417/)
-    expect(contractBasisWarning("ns8417", "bedrift")).toMatch(/forbrukerstandard/)
-    expect(contractBasisWarning("ns8417", "privatperson")).toBeNull()
+  it("advarer når kontraktsgrunnlaget ikke passer kunden", () => {
+    expect(contractBasisWarning("ns8405", "privatperson")).toMatch(/Byggblankett 3501\/3502/)
+    // NS 8416/8417 er underentreprise mellom profesjonelle — aldri for forbruker
+    expect(contractBasisWarning("ns8417", "privatperson")).toMatch(/profesjonelle parter/)
+    expect(contractBasisWarning("bb3501", "bedrift")).toMatch(/forbrukere/)
+    expect(contractBasisWarning("bb3501", "privatperson")).toBeNull()
     expect(contractBasisWarning("ns8405", null)).toBeNull()
   })
 
@@ -71,7 +73,22 @@ describe("kontraktsgrunnlag etter kundetype", () => {
     expect(resolveCustomerKind(null)).toBeNull()
   })
 
-  it("skriver forbrukerstandarden i vilkårene", () => {
-    expect(buildContractTerms("time_materials", "ns8417")[1]).toMatch(/^Kontraktsgrunnlag: NS 8417/)
+  it("skriver byggblanketten i vilkårene", () => {
+    expect(buildContractTerms("time_materials", "bb3501", "privatperson")[1]).toMatch(
+      /^Kontraktsgrunnlag: Byggblankett 3501\/3502 \(håndverkertjenesteloven/
+    )
+  })
+
+  it("prisoverslag til privatkunde har 15 %-taket, til bedrift ikke", () => {
+    const privat = buildContractTerms("time_materials", "none", "privatperson")[0]
+    expect(privat).toMatch(/ikke med mer enn 15 prosent/)
+    expect(privat).toMatch(/håndverkertjenesteloven § 32/)
+    // Varsling gir ingen rett til å overskride overfor forbruker
+    expect(privat).not.toMatch(/varsles kunden før arbeidet fortsetter/)
+    expect(buildContractTerms("time_materials", "none", "bedrift")[0]).not.toMatch(/15 prosent/)
+  })
+
+  it("fastpris til privatkunde nevner hastearbeid etter § 9", () => {
+    expect(buildContractTerms("fixed", "none", "privatperson")[0]).toMatch(/håndverkertjenesteloven § 9/)
   })
 })

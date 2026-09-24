@@ -5,7 +5,6 @@ import { Fragment, useMemo } from "react"
 import {
   buildOfferDocumentModel,
   buildOfferFooterParts,
-  calculateGroupTotal,
   formatDocumentAmount,
   formatDocumentCurrency,
   formatDocumentQuantity,
@@ -14,10 +13,6 @@ import {
   formatOfferDateTime,
   type OfferDocumentData,
 } from "@/lib/tilbud/offer-document"
-import {
-  calculateLineItemTotal,
-  calculateLineItemUnitPriceWithMarkupBeforeDiscount,
-} from "@/lib/tilbud/types"
 import { cn } from "@/lib/utils"
 
 type OfferDocumentPreviewProps = OfferDocumentData & {
@@ -77,13 +72,13 @@ export function OfferDocumentPreview({
       items.push(`Tilbudet er gyldig i ${m.validityDays} dager fra utstedelsesdato.`)
     }
     items.push(...m.contractTerms)
-    items.push("Alle priser er oppgitt i norske kroner. Merverdiavgift (25 %) er spesifisert.")
+    items.push(m.priceNote)
     for (const term of extraTerms ?? []) {
       const trimmed = term.trim()
       if (trimmed) items.push(trimmed)
     }
     return items
-  }, [m.validUntil, m.validityDays, m.contractTerms, extraTerms])
+  }, [m.validUntil, m.validityDays, m.contractTerms, m.priceNote, extraTerms])
 
   const footerParts = buildOfferFooterParts(company)
 
@@ -217,7 +212,7 @@ export function OfferDocumentPreview({
                         {groupName}
                       </td>
                       <td className="whitespace-nowrap border-b border-gray-200 pb-1 pl-3.5 pt-3.5 text-right text-[10px] font-semibold tabular-nums text-gray-400">
-                        {formatDocumentAmount(calculateGroupTotal(items.map(({ item }) => item)))}
+                        {formatDocumentAmount(m.displayGroupTotal(items.map(({ item }) => item)))}
                       </td>
                     </tr>
                   ) : null}
@@ -245,7 +240,7 @@ export function OfferDocumentPreview({
                           {formatDocumentUnit(item.unit)}
                         </td>
                         <td className="whitespace-nowrap border-b border-gray-100 py-[7px] text-right align-top text-[11px] tabular-nums text-gray-700">
-                          {formatDocumentAmount(calculateLineItemUnitPriceWithMarkupBeforeDiscount(item))}
+                          {formatDocumentAmount(m.displayUnitPrice(item))}
                         </td>
                         {showDiscountColumn ? (
                           <td className="whitespace-nowrap border-b border-gray-100 py-[7px] text-right align-top text-[11px] tabular-nums text-gray-500">
@@ -253,7 +248,7 @@ export function OfferDocumentPreview({
                           </td>
                         ) : null}
                         <td className="whitespace-nowrap border-b border-gray-100 py-[7px] pl-3.5 text-right align-top text-[11px] font-semibold tabular-nums text-gray-900">
-                          {formatDocumentAmount(calculateLineItemTotal(item))}
+                          {formatDocumentAmount(m.displayLineTotal(item))}
                         </td>
                       </tr>
                     )
@@ -266,45 +261,40 @@ export function OfferDocumentPreview({
 
         <div className="mx-12 border-t border-gray-900" />
 
-        {/* Totals */}
+        {/* Totals — privatkunder ser totalen inkl. mva som hovedtall, med mva som «herav». */}
         <div className="flex justify-end px-12 pt-3.5">
           <div className="w-[270px]">
-            <div className="flex justify-between gap-4 py-[3px]">
-              <span className="text-[11.5px] text-gray-600">Sum eks. mva</span>
-              <span className="whitespace-nowrap text-[11.5px] tabular-nums text-gray-900">
-                {formatDocumentCurrency(m.preDiscountSubtotalNok)}
-              </span>
-            </div>
-            {m.hasDiscount ? (
+            {m.pricesInclVat ? (
               <>
-                <div className="flex justify-between gap-4 py-[3px]">
-                  <span className="text-[11.5px] text-gray-600">Rabatt</span>
-                  <span className="whitespace-nowrap text-[11.5px] tabular-nums text-gray-900">
-                    − {formatDocumentCurrency(m.totals.discountNok)}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-4 py-[3px]">
-                  <span className="text-[11.5px] text-gray-600">Nettosum eks. mva</span>
-                  <span className="whitespace-nowrap text-[11.5px] tabular-nums text-gray-900">
-                    {formatDocumentCurrency(m.totals.subtotalNok)}
-                  </span>
-                </div>
+                {m.hasDiscount ? (
+                  <>
+                    <TotalsRow label="Sum før rabatt" value={formatDocumentCurrency(m.displayPreDiscountSubtotal)} />
+                    <TotalsRow label="Rabatt" value={`− ${formatDocumentCurrency(m.displayDiscount)}`} />
+                  </>
+                ) : null}
+                <GrandTotalRow label="Totalt inkl. mva" value={formatDocumentCurrency(m.totalInclVatNok)} />
+                <TotalsRow label="Herav mva (25 %)" value={formatDocumentCurrency(m.vatAmountNok)} muted />
               </>
-            ) : null}
-            <div className="flex justify-between gap-4 py-[3px]">
-              <span className="text-[11.5px] text-gray-500">Mva{m.vatRegistered ? " (25 %)" : ""}</span>
-              <span className="whitespace-nowrap text-[11.5px] tabular-nums text-gray-900">
-                {m.vatRegistered ? formatDocumentCurrency(m.vatAmountNok) : "Ikke mva-pliktig"}
-              </span>
-            </div>
-            <div className="mt-1.5 flex items-baseline justify-between gap-4 border-t border-gray-900 pt-[7px]">
-              <span className="text-[12px] font-bold text-gray-900">
-                {m.vatRegistered ? "Totalt inkl. mva" : "Totalt"}
-              </span>
-              <span className="whitespace-nowrap text-[14px] font-bold tabular-nums text-gray-900">
-                {formatDocumentCurrency(m.totalInclVatNok)}
-              </span>
-            </div>
+            ) : (
+              <>
+                <TotalsRow label="Sum eks. mva" value={formatDocumentCurrency(m.preDiscountSubtotalNok)} />
+                {m.hasDiscount ? (
+                  <>
+                    <TotalsRow label="Rabatt" value={`− ${formatDocumentCurrency(m.totals.discountNok)}`} />
+                    <TotalsRow label="Nettosum eks. mva" value={formatDocumentCurrency(m.totals.subtotalNok)} />
+                  </>
+                ) : null}
+                <TotalsRow
+                  label={`Mva${m.vatRegistered ? " (25 %)" : ""}`}
+                  value={m.vatRegistered ? formatDocumentCurrency(m.vatAmountNok) : "Ikke mva-pliktig"}
+                  muted
+                />
+                <GrandTotalRow
+                  label={m.vatRegistered ? "Totalt inkl. mva" : "Totalt"}
+                  value={formatDocumentCurrency(m.totalInclVatNok)}
+                />
+              </>
+            )}
           </div>
         </div>
 
@@ -369,6 +359,24 @@ export function OfferDocumentPreview({
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function TotalsRow({ label, value, muted = false }: { label: string; value: string; muted?: boolean }) {
+  return (
+    <div className="flex justify-between gap-4 py-[3px]">
+      <span className={cn("text-[11.5px]", muted ? "text-gray-500" : "text-gray-600")}>{label}</span>
+      <span className="whitespace-nowrap text-[11.5px] tabular-nums text-gray-900">{value}</span>
+    </div>
+  )
+}
+
+function GrandTotalRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="mt-1.5 flex items-baseline justify-between gap-4 border-t border-gray-900 pt-[7px]">
+      <span className="text-[12px] font-bold text-gray-900">{label}</span>
+      <span className="whitespace-nowrap text-[14px] font-bold tabular-nums text-gray-900">{value}</span>
     </div>
   )
 }

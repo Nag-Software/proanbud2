@@ -233,3 +233,39 @@ describe("buildOfferFooterParts", () => {
     ).toEqual(["Firma AS", "Org.nr. 999 999 999", "400 00 000"])
   })
 })
+
+describe("priser etter kundetype (prisopplysningsforskriften § 3)", () => {
+  const lines = [makeItem({ title: "Flislegging", quantity: 10, unitPriceNok: 100, markupPercent: 0 })]
+
+  it("privatkunde ser à-pris, beløp og total inkl. mva, med mva som «herav»", () => {
+    const html = buildOfferDocumentSheet(makeData({ lineItems: lines, customer: { name: "Kari", orgNumber: null } }))
+    // 100 × 1,25 = 125,00 per enhet, 10 × 125 = 1 250,00
+    expect(html).toContain(">125,00<")
+    expect(html).toContain(`>${formatDocumentAmount(1250)}<`)
+    expect(html).toContain("Totalt inkl. mva")
+    expect(html).toContain("Herav mva (25 %)")
+    expect(html).not.toContain("Sum eks. mva")
+    expect(html).toContain("inkl. merverdiavgift (25 %)")
+  })
+
+  it("bedriftskunde ser priser eks. mva som før", () => {
+    const html = buildOfferDocumentSheet(makeData({ lineItems: lines, customer: { name: "Bygg AS", orgNumber: "923456789" } }))
+    expect(html).toContain(">100,00<")
+    expect(html).toContain(`>${formatDocumentAmount(1000)}<`)
+    expect(html).toContain("Sum eks. mva")
+    expect(html).not.toContain("Herav mva")
+  })
+
+  it("ikke-mva-registrert bedrift legger aldri på mva, heller ikke for privatkunder", () => {
+    const m = buildOfferDocumentModel(
+      makeData({ lineItems: lines, company: { id: "c1", name: "Enkelt", orgNumber: null, vatRegistered: false } })
+    )
+    expect(m.pricesInclVat).toBe(false)
+    expect(m.displayLineTotal(lines[0])).toBe(1000)
+  })
+
+  it("prisoverslag til privatkunde får 15 %-taket i vilkårene", () => {
+    const html = buildOfferDocumentSheet(makeData({ pricingModel: "time_materials", customer: { name: "Kari" } }))
+    expect(html).toContain("ikke med mer enn 15 prosent")
+  })
+})

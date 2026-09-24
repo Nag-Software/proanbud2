@@ -73,16 +73,31 @@ export type PublicChangeOrder = {
   estimatedHours: number | null
   status: ChangeOrderStatus
   canRespond: boolean
+  /**
+   * Om prisen skal vises inkl. mva. Privatkunder (eller ukjent kunde) skal se
+   * priser inkl. mva (prisopplysningsforskriften § 3); bedriftskunder eks. mva.
+   */
+  pricesInclVat: boolean
 }
 
 export async function fetchPublicChangeOrderBySlug(slug: string): Promise<PublicChangeOrder | null> {
   const admin = createAdminClient()
   const { data } = await admin
     .from("change_orders")
-    .select("id, company_id, project_id, title, description, amount_nok, billing_type, hourly_rate_nok, estimated_hours, status, companies(name)")
+    .select("id, company_id, project_id, customer_id, title, description, amount_nok, billing_type, hourly_rate_nok, estimated_hours, status, companies(name)")
     .eq("public_slug", slug)
     .maybeSingle()
   if (!data) return null
+
+  // Egne oppslag som tåler feil: skal ikke kunne gjøre varselet om til 404.
+  const [{ data: customerRow }, { data: companyRow }] = await Promise.all([
+    data.customer_id
+      ? admin.from("customers").select("org_number").eq("id", data.customer_id as string).maybeSingle()
+      : Promise.resolve({ data: null }),
+    admin.from("companies").select("vat_registered").eq("id", data.company_id as string).maybeSingle(),
+  ])
+  const isBusinessCustomer = Boolean((customerRow as { org_number?: string | null } | null)?.org_number?.trim())
+  const vatRegistered = (companyRow as { vat_registered?: boolean | null } | null)?.vat_registered !== false
 
   const companies = (data as { companies?: { name: string | null } | { name: string | null }[] | null }).companies
   const company = Array.isArray(companies) ? companies[0] : companies
@@ -106,5 +121,6 @@ export async function fetchPublicChangeOrderBySlug(slug: string): Promise<Public
         : Number(data.estimated_hours),
     status,
     canRespond: status === "sent",
+    pricesInclVat: vatRegistered && !isBusinessCustomer,
   }
 }

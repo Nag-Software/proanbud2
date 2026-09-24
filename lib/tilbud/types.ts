@@ -4,7 +4,12 @@ export type OfferStatus = "draft" | "sent" | "accepted" | "rejected"
 
 export type OfferPricingModel = "fixed" | "time_materials" | "unit_price" | "mixed"
 
-export type OfferContractBasis = "ns8405" | "ns8407" | "ns8416" | "ns8417" | "custom" | "none"
+/**
+ * ns8405/ns8407: mellom profesjonelle. ns8416/ns8417: underentreprise (profesjonelle).
+ * bb3501: Byggblankett 3501/3502 (forbruker, håndverkertjenesteloven).
+ * bb3425: Byggblankett 3425/3426 (forbruker, bustadoppføringslova).
+ */
+export type OfferContractBasis = "ns8405" | "ns8407" | "ns8416" | "ns8417" | "bb3501" | "bb3425" | "custom" | "none"
 
 /** Privatperson eller bedrift (bedrift = kunden har org.nr.). Styrer bl.a. hvilke kontraktsstandarder som passer. */
 export type CustomerKind = "privatperson" | "bedrift"
@@ -150,7 +155,7 @@ export type SaveOfferPayload = {
 }
 
 const PRICING_MODELS: OfferPricingModel[] = ["fixed", "time_materials", "unit_price", "mixed"]
-const CONTRACT_BASES: OfferContractBasis[] = ["ns8405", "ns8407", "ns8416", "ns8417", "custom", "none"]
+const CONTRACT_BASES: OfferContractBasis[] = ["ns8405", "ns8407", "ns8416", "ns8417", "bb3501", "bb3425", "custom", "none"]
 
 export function toPricingModel(value: string | null | undefined): OfferPricingModel | null {
   return PRICING_MODELS.includes(value as OfferPricingModel) ? (value as OfferPricingModel) : null

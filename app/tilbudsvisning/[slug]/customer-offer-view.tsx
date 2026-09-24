@@ -22,9 +22,7 @@ import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  calculateGroupTotal,
-  computeValidityDays,
-  computeValidUntilDate,
+  buildOfferDocumentModel,
   formatDocumentAmount,
   formatDocumentCurrency,
   formatDocumentQuantity,
@@ -35,10 +33,7 @@ import {
   groupLineItemsBySubproject,
   type OfferDocumentAcceptance,
 } from "@/lib/tilbud/offer-document"
-import { buildContractTerms } from "@/lib/tilbud/offer-terms"
 import {
-  calculateLineItemTotal,
-  calculateLineItemUnitPriceWithMarkupBeforeDiscount,
   type OfferCompanyContext,
   type OfferContractBasis,
   type OfferLineItem,
@@ -171,17 +166,25 @@ function OfferChatPanel({
 }
 
 function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOfferPayload; totalInclVat: number }) {
-  const grouped = useMemo(() => groupLineItemsBySubproject(offer.lineItems), [offer.lineItems])
-  const vatRegistered = offer.company?.vatRegistered !== false
-  const { totals, vatAmountNok } = useMemo(
-    () => getOfferDocumentTotals(offer.lineItems, vatRegistered),
-    [offer.lineItems, vatRegistered]
+  // Samme modell som PDF-en og desktop-dokumentet: privatkunder ser priser inkl. mva,
+  // og vilkårsteksten følger kundetypen.
+  const m = useMemo(
+    () =>
+      buildOfferDocumentModel({
+        title: offer.title,
+        customer: offer.customer,
+        lineItems: offer.lineItems,
+        company: offer.company,
+        issuedDate: offer.createdAt,
+        quoteValidUntil: offer.quoteValidUntil,
+        validityDays: offer.validityDays,
+        pricingModel: offer.pricingModel,
+        contractBasis: offer.contractBasis,
+      }),
+    [offer]
   )
-  const validityDays =
-    offer.validityDays ?? computeValidityDays(String(offer.createdAt || ""), offer.quoteValidUntil)
-  const validUntil = computeValidUntilDate(offer.createdAt, offer.quoteValidUntil, validityDays)
-  const preDiscountSubtotal = Math.round((totals.subtotalNok + totals.discountNok) * 100) / 100
-  const contractTerms = buildContractTerms(offer.pricingModel, offer.contractBasis)
+  const grouped = useMemo(() => groupLineItemsBySubproject(offer.lineItems), [offer.lineItems])
+  const { totals, vatAmountNok, vatRegistered, validityDays, validUntil } = m
 
   return (
     <div className="space-y-3 lg:hidden">
@@ -225,7 +228,7 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
           <div className="flex items-center justify-between gap-3 border-b border-neutral-100 bg-neutral-50 px-4 py-2">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{groupName}</p>
             <p className="text-[11px] font-medium tabular-nums text-neutral-400">
-              {formatDocumentAmount(calculateGroupTotal(items))}
+              {formatDocumentAmount(m.displayGroupTotal(items))}
             </p>
           </div>
           <div className="divide-y divide-neutral-100">
@@ -234,7 +237,7 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-sm font-medium leading-snug text-neutral-900">{item.title}</p>
                   <p className="shrink-0 text-sm font-semibold tabular-nums text-neutral-900">
-                    {formatDocumentAmount(calculateLineItemTotal(item))}
+                    {formatDocumentAmount(m.displayLineTotal(item))}
                   </p>
                 </div>
                 {item.description ? (
@@ -242,7 +245,7 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
                 ) : null}
                 <p className="mt-1.5 text-xs text-neutral-500">
                   {formatDocumentQuantity(item.quantity)} {formatDocumentUnit(item.unit)} ×{" "}
-                  {formatDocumentAmount(calculateLineItemUnitPriceWithMarkupBeforeDiscount(item))}
+                  {formatDocumentAmount(m.displayUnitPrice(item))}
                   {item.discountPercent > 0 ? ` (−${formatDocumentQuantity(item.discountPercent)} %)` : ""}
                 </p>
               </div>
@@ -253,40 +256,71 @@ function PublicOfferMobileDocument({ offer, totalInclVat }: { offer: PublicOffer
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm shadow-sm">
         <div className="space-y-1.5">
-          <div className="flex justify-between text-neutral-600">
-            <span>Sum eks. mva</span>
-            <span className="tabular-nums">{formatDocumentCurrency(preDiscountSubtotal)}</span>
-          </div>
-          {totals.discountNok > 0 ? (
+          {m.pricesInclVat ? (
             <>
-              <div className="flex justify-between text-neutral-600">
-                <span>Rabatt</span>
-                <span className="tabular-nums">− {formatDocumentCurrency(totals.discountNok)}</span>
+              {totals.discountNok > 0 ? (
+                <>
+                  <div className="flex justify-between text-neutral-600">
+                    <span>Sum før rabatt</span>
+                    <span className="tabular-nums">{formatDocumentCurrency(m.displayPreDiscountSubtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-neutral-600">
+                    <span>Rabatt</span>
+                    <span className="tabular-nums">− {formatDocumentCurrency(m.displayDiscount)}</span>
+                  </div>
+                </>
+              ) : null}
+              <div className="flex items-baseline justify-between font-semibold text-neutral-900">
+                <span>Totalt inkl. mva</span>
+                <span className="tabular-nums">{formatDocumentCurrency(totalInclVat)}</span>
               </div>
-              <div className="flex justify-between text-neutral-600">
-                <span>Nettosum eks. mva</span>
-                <span className="tabular-nums">{formatDocumentCurrency(totals.subtotalNok)}</span>
+              <div className="flex justify-between text-xs text-neutral-500">
+                <span>Herav mva (25 %)</span>
+                <span className="tabular-nums">{formatDocumentCurrency(vatAmountNok)}</span>
               </div>
             </>
-          ) : null}
-          <div className="flex justify-between text-neutral-600">
-            <span>Mva{vatRegistered ? " (25 %)" : ""}</span>
-            <span className="tabular-nums">
-              {vatRegistered ? formatDocumentCurrency(vatAmountNok) : "Ikke mva-pliktig"}
-            </span>
-          </div>
-          <div className="mt-1 flex items-baseline justify-between border-t border-neutral-900 pt-2 font-semibold text-neutral-900">
-            <span>{vatRegistered ? "Totalt inkl. mva" : "Totalt"}</span>
-            <span className="tabular-nums">{formatDocumentCurrency(totalInclVat)}</span>
-          </div>
+          ) : (
+            <>
+              <div className="flex justify-between text-neutral-600">
+                <span>Sum eks. mva</span>
+                <span className="tabular-nums">{formatDocumentCurrency(m.preDiscountSubtotalNok)}</span>
+              </div>
+              {totals.discountNok > 0 ? (
+                <>
+                  <div className="flex justify-between text-neutral-600">
+                    <span>Rabatt</span>
+                    <span className="tabular-nums">− {formatDocumentCurrency(totals.discountNok)}</span>
+                  </div>
+                  <div className="flex justify-between text-neutral-600">
+                    <span>Nettosum eks. mva</span>
+                    <span className="tabular-nums">{formatDocumentCurrency(totals.subtotalNok)}</span>
+                  </div>
+                </>
+              ) : null}
+              <div className="flex justify-between text-neutral-600">
+                <span>Mva{vatRegistered ? " (25 %)" : ""}</span>
+                <span className="tabular-nums">
+                  {vatRegistered ? formatDocumentCurrency(vatAmountNok) : "Ikke mva-pliktig"}
+                </span>
+              </div>
+              <div className="mt-1 flex items-baseline justify-between border-t border-neutral-900 pt-2 font-semibold text-neutral-900">
+                <span>{vatRegistered ? "Totalt inkl. mva" : "Totalt"}</span>
+                <span className="tabular-nums">{formatDocumentCurrency(totalInclVat)}</span>
+              </div>
+            </>
+          )}
         </div>
-        <p className="mt-3 text-[11px] leading-relaxed text-neutral-400">
-          {validUntil
-            ? `Tilbudet er gyldig til ${formatOfferDate(validUntil)} (${validityDays} dager fra utstedelsesdato).`
-            : `Tilbudet er gyldig i ${validityDays} dager fra utstedelsesdato.`}
-          {contractTerms.map((term) => ` ${term}`).join("")}
-          {" Alle priser er i NOK."}
-        </p>
+        <ul className="mt-3 list-disc space-y-1 pl-4 text-[11px] leading-relaxed text-neutral-500">
+          <li>
+            {validUntil
+              ? `Tilbudet er gyldig til ${formatOfferDate(validUntil)} (${validityDays} dager fra utstedelsesdato).`
+              : `Tilbudet er gyldig i ${validityDays} dager fra utstedelsesdato.`}
+          </li>
+          {m.contractTerms.map((term) => (
+            <li key={term}>{term}</li>
+          ))}
+          <li>{m.priceNote}</li>
+        </ul>
       </div>
 
       {offer.acceptance ? (

@@ -6,8 +6,9 @@ import {
   type OfferContractBasis,
   type OfferLineItem,
   type OfferPricingModel,
+  type CustomerKind,
 } from "@/lib/tilbud/types"
-import { buildContractTerms } from "@/lib/tilbud/offer-terms"
+import { buildContractTerms, resolveCustomerKind } from "@/lib/tilbud/offer-terms"
 
 export type OfferDocumentCustomer = {
   name: string
@@ -48,6 +49,11 @@ export type OfferDocumentData = {
   quoteValidUntil?: string | null
   pricingModel?: OfferPricingModel | null
   contractBasis?: OfferContractBasis | null
+  /**
+   * Privatperson eller bedrift. Udefinert → utledes av kundens org.nr. (som på
+   * Kunder-siden). Styrer vilkårsteksten og om prisene vises inkl. mva.
+   */
+  customerKind?: CustomerKind | null
   acceptance?: OfferDocumentAcceptance | null
 }
 
@@ -65,6 +71,8 @@ export const CONTRACT_BASIS_LABELS: Record<Exclude<OfferContractBasis, "none">, 
   ns8407: "NS 8407",
   ns8416: "NS 8416",
   ns8417: "NS 8417",
+  bb3501: "Byggblankett 3501/3502",
+  bb3425: "Byggblankett 3425/3426",
   custom: "Egne kontraktsvilkår",
 }
 
@@ -245,6 +253,14 @@ export function buildOfferDocumentModel(data: OfferDocumentData) {
   const validityDays = data.validityDays ?? computeValidityDays(String(data.issuedDate || ""), data.quoteValidUntil)
   const validUntil = computeValidUntilDate(issuedDate, data.quoteValidUntil, validityDays)
 
+  const customerKind =
+    data.customerKind !== undefined ? data.customerKind : resolveCustomerKind({ orgNumber: data.customer.orgNumber })
+  // Priser til forbruker skal oppgis inkl. mva (prisopplysningsforskriften § 3, og
+  // angrerettloven § 8 e ved fjernsalg). Bedriftskunder ser priser eks. mva som før.
+  const pricesInclVat = vatRegistered && customerKind === "privatperson"
+  const priceFactor = pricesInclVat ? 1 + VAT_RATE : 1
+  const toDisplayPrice = (value: number) => Math.round(value * priceFactor * 100) / 100
+
   const pricingModelLabel = data.pricingModel ? PRICING_MODEL_LABELS[data.pricingModel] : ""
   const contractBasisLabel =
     data.contractBasis && data.contractBasis !== "none" ? CONTRACT_BASIS_LABELS[data.contractBasis] : ""
@@ -268,7 +284,21 @@ export function buildOfferDocumentModel(data: OfferDocumentData) {
     validUntil,
     pricingModelLabel,
     contractBasisLabel,
-    contractTerms: buildContractTerms(data.pricingModel, data.contractBasis),
+    contractTerms: buildContractTerms(data.pricingModel, data.contractBasis, customerKind),
+    customerKind,
+    pricesInclVat,
+    /** À-pris slik kunden skal se den (inkl. mva for privatkunder). */
+    displayUnitPrice: (item: OfferLineItem) => toDisplayPrice(calculateLineItemUnitPriceWithMarkupBeforeDiscount(item)),
+    /** Linjesum slik kunden skal se den (inkl. mva for privatkunder). */
+    displayLineTotal: (item: OfferLineItem) => toDisplayPrice(calculateLineItemTotal(item)),
+    displayGroupTotal: (items: OfferLineItem[]) => toDisplayPrice(calculateGroupTotal(items)),
+    displayPreDiscountSubtotal: toDisplayPrice(preDiscountSubtotalNok),
+    displayDiscount: toDisplayPrice(totals.discountNok),
+    priceNote: pricesInclVat
+      ? "Alle priser er oppgitt i norske kroner inkl. merverdiavgift (25 %)."
+      : vatRegistered
+        ? "Alle priser er oppgitt i norske kroner eks. merverdiavgift. Merverdiavgift (25 %) er spesifisert."
+        : "Alle priser er oppgitt i norske kroner. Bedriften er ikke registrert i Merverdiavgiftsregisteret.",
     showGroups,
     companyAddressLine,
     customerAddressLine,
@@ -378,7 +408,7 @@ export function buildOfferDocumentSheet(data: OfferDocumentData, options: OfferD
         ? `
         <tr style="break-after:avoid;page-break-after:avoid;">
           <td colspan="${columnCount - 1}" style="padding:14px 0 4px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#111827;">${escapeHtml(groupName)}</td>
-          <td style="padding:14px 0 4px 14px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:600;color:#9ca3af;text-align:right;white-space:nowrap;">${escapeHtml(formatDocumentAmount(calculateGroupTotal(items)))}</td>
+          <td style="padding:14px 0 4px 14px;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:600;color:#9ca3af;text-align:right;white-space:nowrap;">${escapeHtml(formatDocumentAmount(m.displayGroupTotal(items)))}</td>
         </tr>`
         : ""
 
@@ -402,9 +432,9 @@ export function buildOfferDocumentSheet(data: OfferDocumentData, options: OfferD
               ${cell(`<span style="font-weight:600;color:#111827;">${escapeHtml(item.title)}</span>${description}${supplier}`, {})}
               ${cell(escapeHtml(formatDocumentQuantity(item.quantity)), { align: "right", nowrap: true })}
               ${cell(escapeHtml(formatDocumentUnit(item.unit)), { align: "right", color: "#6b7280" })}
-              ${cell(escapeHtml(formatDocumentAmount(calculateLineItemUnitPriceWithMarkupBeforeDiscount(item))), { align: "right", nowrap: true })}
+              ${cell(escapeHtml(formatDocumentAmount(m.displayUnitPrice(item))), { align: "right", nowrap: true })}
               ${showDiscountColumn ? cell(item.discountPercent > 0 ? `${escapeHtml(formatDocumentQuantity(item.discountPercent))} %` : "–", { align: "right", color: "#6b7280", nowrap: true }) : ""}
-              ${cell(escapeHtml(formatDocumentAmount(calculateLineItemTotal(item))), { align: "right", weight: "600", color: "#111827", paddingLeft: "14px", nowrap: true })}
+              ${cell(escapeHtml(formatDocumentAmount(m.displayLineTotal(item))), { align: "right", weight: "600", color: "#111827", paddingLeft: "14px", nowrap: true })}
             </tr>`
         })
         .join("")
@@ -432,7 +462,23 @@ export function buildOfferDocumentSheet(data: OfferDocumentData, options: OfferD
       <span style="font-size:11.5px;color:#111827;font-variant-numeric:tabular-nums;white-space:nowrap;">${value}</span>
     </div>`
 
-  const totalsBlock = `
+  const grandTotalRow = `
+        <div style="margin-top:6px;display:flex;justify-content:space-between;gap:16px;align-items:baseline;border-top:1px solid #111827;padding:7px 0 0;">
+          <span style="font-size:12px;font-weight:700;color:#111827;">Totalt inkl. mva</span>
+          <span style="font-size:14px;font-weight:700;color:#111827;font-variant-numeric:tabular-nums;white-space:nowrap;">${escapeHtml(formatDocumentCurrency(m.totalInclVatNok))}</span>
+        </div>`
+
+  const totalsBlock = m.pricesInclVat
+    ? `
+    <div class="avoid-break" style="padding:14px 48px 0;display:flex;justify-content:flex-end;">
+      <div style="width:270px;">
+        ${m.hasDiscount ? totalsRow("Sum før rabatt", escapeHtml(formatDocumentCurrency(m.displayPreDiscountSubtotal))) : ""}
+        ${m.hasDiscount ? totalsRow("Rabatt", `− ${escapeHtml(formatDocumentCurrency(m.displayDiscount))}`) : ""}
+        ${grandTotalRow}
+        ${totalsRow("Herav mva (25 %)", escapeHtml(formatDocumentCurrency(m.vatAmountNok)), { muted: true })}
+      </div>
+    </div>`
+    : `
     <div class="avoid-break" style="padding:14px 48px 0;display:flex;justify-content:flex-end;">
       <div style="width:270px;">
         ${totalsRow("Sum eks. mva", escapeHtml(formatDocumentCurrency(m.preDiscountSubtotalNok)))}
@@ -458,7 +504,7 @@ export function buildOfferDocumentSheet(data: OfferDocumentData, options: OfferD
     termsItems.push(`Tilbudet er gyldig i ${m.validityDays} dager fra utstedelsesdato.`)
   }
   termsItems.push(...m.contractTerms)
-  termsItems.push("Alle priser er oppgitt i norske kroner. Merverdiavgift (25 %) er spesifisert.")
+  termsItems.push(m.priceNote)
 
   const termsBlock = `
     <div class="avoid-break" style="padding:22px 48px 0;">
