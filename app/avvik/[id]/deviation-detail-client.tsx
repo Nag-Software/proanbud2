@@ -18,7 +18,7 @@ import { PhotoCaptureField } from "@/components/hms/photo-capture-field"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import type { DeviationWithRelations } from "@/lib/hms/types"
 
 type Props = {
@@ -118,7 +118,7 @@ export function DeviationDetailClient({ deviation, canManage }: Props) {
       window.location.reload()
     } catch (err) {
       reportClientError(err, { context: { action: "Lukke avvik", deviationId: deviation.id } })
-      toast.error(err instanceof Error ? err.message : "Kunne ikke lukke avvik")
+      toast.error(actionErrorMessage(err, "Kunne ikke lukke avvik"))
     } finally {
       setBusy(false)
     }
@@ -140,7 +140,7 @@ export function DeviationDetailClient({ deviation, canManage }: Props) {
         reportClientError(err, {
           context: { action: "Laste opp avviksbilde", deviationId: deviation.id },
         })
-        toast.error(err instanceof Error ? err.message : "Kunne ikke laste opp bilde")
+        toast.error(actionErrorMessage(err, "Kunne ikke laste opp bilde"))
       }
     },
     [deviation.id]

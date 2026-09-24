@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { PROFF_INCLUDED_FEATURES } from "@/lib/billing/plans"
 import { track } from "@/lib/analytics/track"
 import { measureAdEvent } from "@/lib/analytics/openai-ads"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 
 function OnboardingAbonnementContent() {
   const router = useRouter()
@@ -86,7 +86,7 @@ function OnboardingAbonnementContent() {
     } catch (error) {
       track("prove_start_feilet")
       reportClientError(error, { context: { action: "start card-free trial" } })
-      toast.error(error instanceof Error ? error.message : "Noe gikk galt")
+      toast.error(actionErrorMessage(error, "Noe gikk galt"))
       setLoading(false)
     }
   }
@@ -118,7 +118,7 @@ function OnboardingAbonnementContent() {
       throw new Error("Manglende checkout-lenke")
     } catch (error) {
       reportClientError(error, { context: { action: "start paid checkout" } })
-      toast.error(error instanceof Error ? error.message : "Noe gikk galt")
+      toast.error(actionErrorMessage(error, "Noe gikk galt"))
       setLoading(false)
     }
   }

@@ -10,7 +10,7 @@ import { ScopeToggles, type ScopeItem } from "@/components/regnskap/scope-toggle
 import { StatusBadge, toneForSyncState } from "@/components/regnskap/status-badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import type { CapabilityStatus } from "@/lib/regnskap/capabilities"
 import { formatSyncState } from "@/lib/regnskap/labels"
 import type {
@@ -88,7 +88,7 @@ export function RegnskapClient({
       // Rull tilbake bryteren, ellers viser UI en innstilling som ikke ble lagret.
       setScopes(previous)
       reportClientError(error, { context: { action: "regnskap_update_scope", key } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke lagre")
+      toast.error(actionErrorMessage(error, "Kunne ikke lagre"))
     }
   }
 
@@ -99,7 +99,7 @@ export function RegnskapClient({
       await refreshJobs()
     } catch (error) {
       reportClientError(error, { context: { action: `regnskap_${action}` } })
-      toast.error(error instanceof Error ? error.message : "Noe gikk galt")
+      toast.error(actionErrorMessage(error, "Noe gikk galt"))
     }
   }
 

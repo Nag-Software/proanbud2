@@ -30,7 +30,7 @@ import {
 import { InfoHint } from "@/components/ui/info-hint"
 import { formatNok } from "@/lib/tilbud/types"
 import { formatHours } from "@/lib/time-tracking"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import type { ProjectProfitability } from "@/lib/job-costing/types"
 import type { SearchMaterial } from "@/lib/tilbud/company-price-utils"
@@ -252,7 +252,7 @@ function BudgetForm({
       onSaved()
     } catch (e) {
       reportClientError(e, { context: { action: "lagre prosjektbudsjett", projectId } })
-      toast.error(e instanceof Error ? e.message : "Kunne ikke lagre")
+      toast.error(actionErrorMessage(e, "Kunne ikke lagre"))
     } finally {
       setSaving(false)
     }
@@ -477,7 +477,7 @@ export function LonnsomhetTab({
       .then(setData)
       .catch((e) => {
         reportClientError(e, { context: { action: "laste lønnsomhet", projectId } })
-        toast.error(e instanceof Error ? e.message : "Kunne ikke laste lønnsomheten")
+        toast.error(actionErrorMessage(e, "Kunne ikke laste lønnsomheten"))
       })
       .finally(() => setLoading(false))
   }, [projectId])
@@ -510,7 +510,7 @@ export function LonnsomhetTab({
       toast.success("Materialkost lagt til")
     } catch (e) {
       reportClientError(e, { context: { action: "legge til materialkost", projectId } })
-      toast.error(e instanceof Error ? e.message : "Kunne ikke lagre")
+      toast.error(actionErrorMessage(e, "Kunne ikke lagre"))
     } finally {
       setSaving(false)
     }
@@ -522,7 +522,7 @@ export function LonnsomhetTab({
       load()
     } catch (e) {
       reportClientError(e, { context: { action: "slette materialkost", projectId, id } })
-      toast.error(e instanceof Error ? e.message : "Kunne ikke slette")
+      toast.error(actionErrorMessage(e, "Kunne ikke slette"))
     }
   }
 

@@ -10,7 +10,7 @@ import {
 } from "@/components/dashboard/dashboard-section"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import dynamic from "next/dynamic"
-import { MoreHorizontal } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,12 +22,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { createClient } from "@/lib/supabase/client"
 import { reportClientError } from "@/lib/errors/client"
 import { useRouter } from "next/navigation"
@@ -43,10 +37,23 @@ import {
 const formatNok = (val: number) =>
   new Intl.NumberFormat("no-NO", { style: "currency", currency: "NOK", maximumFractionDigits: 0 }).format(val)
 
+/** Tom streng når forrige periode er 0 – «+100 %» mot ingenting er støy, ikke en trend. */
 function pctChange(curr: number, prev: number): string {
-  if (prev === 0) return curr > 0 ? "+100%" : "0%"
+  if (prev === 0) return ""
   const pct = ((curr - prev) / prev) * 100
   return `${pct > 0 ? "+" : ""}${pct.toFixed(0)}%`
+}
+
+/**
+ * Godkjente tilbud telles i måneden de ble godkjent, ikke da de ble opprettet.
+ * Eldre tilbud uten `accepted_at` faller tilbake på opprettet-dato.
+ */
+function acceptedSince(from: string) {
+  return `accepted_at.gte.${from},and(accepted_at.is.null,created_at.gte.${from})`
+}
+
+function acceptedBetween(from: string, to: string) {
+  return `and(accepted_at.gte.${from},accepted_at.lte.${to}),and(accepted_at.is.null,created_at.gte.${from},created_at.lte.${to})`
 }
 
 function isUp(curr: number, prev: number) {
@@ -66,32 +73,14 @@ const statusLabel: Record<string, string> = {
   rejected: "Avvist",
 }
 
+/** Én handling per rad – de tidligere menyvalgene åpnet alle det samme tilbudet. */
 function OfferRowActions({ offerId }: { offerId: string }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="sr-only">Tilbudshandlinger</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuItem asChild>
-          <Link href={`/tilbud/${offerId}`}>Rediger</Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href={`/tilbud/${offerId}`}>Forhåndsvis</Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href={`/tilbud/${offerId}`}>Åpne tilbud</Link>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Button type="button" size="icon-sm" variant="ghost" asChild>
+      <Link href={`/tilbud/${offerId}`} aria-label="Åpne tilbud">
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+      </Link>
+    </Button>
   )
 }
 
@@ -198,10 +187,13 @@ export default function DashboardPage() {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      // Temporary: support ?mock=1 to inject static mock data for screenshots.
-      // Remove this block once screenshots are captured.
+      // ?mock=1 gir falske tall for skjermbilder – bare i utvikling, aldri i produksjon.
       try {
-        if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mock") === "1") {
+        if (
+          process.env.NODE_ENV !== "production" &&
+          typeof window !== "undefined" &&
+          new URLSearchParams(window.location.search).get("mock") === "1"
+        ) {
           // generate slightly varied mock data for more natural look
           const rand = (v: number, pct = 0.12) => Math.round(v * (1 + (Math.random() * 2 - 1) * pct))
           const months = ["jan", "feb", "mar", "apr", "mai", "jun"]
@@ -348,18 +340,19 @@ export default function DashboardPage() {
         chartOffersRes, recentOffersRes, tableOffersRes,
         topProjectsRes, companyRes,
       ] = await Promise.all([
-        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").gte("created_at", startOfMonth),
-        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").gte("created_at", startOfPrevMonth).lte("created_at", endOfPrevMonth),
+        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").or(acceptedSince(startOfMonth)),
+        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").or(acceptedBetween(startOfPrevMonth, endOfPrevMonth)),
         supabase.from("projects").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "active"),
         supabase.from("projects").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "active").lte("created_at", endOfPrevMonth),
         supabase.from("offers").select("id", { count: "exact", head: true }).eq("company_id", companyId).neq("status", "draft").gte("created_at", startOfMonth),
         supabase.from("offers").select("id", { count: "exact", head: true }).eq("company_id", companyId).neq("status", "draft").gte("created_at", startOfPrevMonth).lte("created_at", endOfPrevMonth),
         supabase.from("customers").select("id", { count: "exact", head: true }).eq("company_id", companyId),
         supabase.from("customers").select("id", { count: "exact", head: true }).eq("company_id", companyId).lte("created_at", endOfPrevMonth),
-        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").gte("created_at", startOfToday),
-        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").gte("created_at", startOfYesterday).lt("created_at", startOfToday),
+        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").or(acceptedSince(startOfToday)),
+        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").or(acceptedBetween(startOfYesterday, startOfToday)),
         supabase.from("offers").select("amount_nok, status, created_at").eq("company_id", companyId).neq("status", "draft").gte("created_at", sixMonthsAgo).order("created_at", { ascending: true }),
-        supabase.from("offers").select("id, title, status, created_at, amount_nok, project_id").eq("company_id", companyId).neq("status", "draft").order("created_at", { ascending: false }).limit(5),
+        // «Aktive tilbud» = sendt og venter på svar. Godkjente og avviste er avgjort.
+        supabase.from("offers").select("id, title, status, created_at, amount_nok, project_id").eq("company_id", companyId).eq("status", "sent").order("created_at", { ascending: false }).limit(5),
         supabase.from("offers").select("id, title, status, amount_nok, created_at, project_id").eq("company_id", companyId).order("created_at", { ascending: false }).limit(6),
         supabase.from("projects").select("id, name, customer_id").eq("company_id", companyId).eq("status", "active").limit(6),
         supabase.from("companies").select("name, logo_url").eq("id", companyId).single(),
@@ -544,7 +537,7 @@ export default function DashboardPage() {
   const gaugeValue = !data ? 0
     : data.omsetningPrev > 0
       ? Math.min(100, Math.round((data.omsetning / data.omsetningPrev) * 100))
-      : data.omsetning > 0 ? 75 : 10
+      : data.omsetning > 0 ? 100 : 0
 
   const formatter = new Intl.NumberFormat('default', {
         style: 'currency',
@@ -554,7 +547,7 @@ export default function DashboardPage() {
 
   const kpiCards = data ? [
     {
-      label: "Total omsetning",
+      label: "Godkjent denne måneden",
       value: `${formatter.format(data.omsetning)}`,
       change: pctChange(data.omsetning, data.omsetningPrev),
       up: isUp(data.omsetning, data.omsetningPrev),
@@ -714,7 +707,7 @@ export default function DashboardPage() {
                 <span className="text-2xl font-semibold tabular-nums tracking-tight">
                   {loading ? "—" : formatNok(data?.omsetning ?? 0)}
                 </span>
-                <span className="text-xs text-muted-foreground">Månedsomsetning</span>
+                <span className="text-xs text-muted-foreground">Godkjent denne måneden</span>
               </div>
             </div>
             <div className="mt-4 space-y-2">
@@ -723,7 +716,7 @@ export default function DashboardPage() {
                   <span className="size-2.5 bg-primary" />Omsetning
                 </span>
                 <span className="font-semibold tabular-nums">
-                  {loading || !data ? "—" : pctChange(data.omsetning, data.omsetningPrev)}
+                  {loading || !data ? "—" : pctChange(data.omsetning, data.omsetningPrev) || "–"}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
@@ -731,7 +724,7 @@ export default function DashboardPage() {
                   <span className="size-2.5 bg-accent" />Tilbud
                 </span>
                 <span className="font-semibold tabular-nums">
-                  {loading || !data ? "—" : pctChange(data.tilbudSendt, data.tilbudSentPrev)}
+                  {loading || !data ? "—" : pctChange(data.tilbudSendt, data.tilbudSentPrev) || "–"}
                 </span>
               </div>
               <div className="mt-1 flex justify-between border-t pt-2 text-sm">

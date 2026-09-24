@@ -35,7 +35,7 @@ import {
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { deleteTripAction, getCompanyTripsOverviewAction } from "@/app/kjorebok/actions"
 import { TripFormDialog } from "@/components/kjorebok/trip-form-dialog"
 import { LiveTracker } from "@/components/kjorebok/live-tracker"
@@ -141,7 +141,7 @@ export function KjorebokWorkerClient({ initialOverview, currentUserId }: Props) 
       void refresh()
     } catch (e) {
       reportClientError(e, { context: { action: "slette kjøretur" } })
-      toast.error(e instanceof Error ? e.message : "Kunne ikke slette")
+      toast.error(actionErrorMessage(e, "Kunne ikke slette"))
     }
   }
 

@@ -1,5 +1,6 @@
-import { AppPageShell } from "@/components/app-page-shell"
+import { redirect } from "next/navigation"
 
+// «Mine priser» har ingen egen oversikt – timeprisene er inngangen.
 export default function Page() {
-  return <AppPageShell segments={["Mine Priser"]} />
+  redirect("/mine-priser/timepriser")
 }

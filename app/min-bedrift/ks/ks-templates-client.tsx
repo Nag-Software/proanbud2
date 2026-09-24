@@ -23,7 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useConfirm } from "@/components/ui/confirm-dialog"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { TEMPLATE_LANGUAGE_LABELS } from "@/lib/ks/constants"
 import type { ChecklistTemplate, ChecklistTemplateCategory } from "@/lib/ks/types"
 
@@ -124,7 +124,7 @@ export function KsTemplatesClient() {
       await load()
     } catch (err) {
       reportClientError(err, { context: { action: editingId ? "update KS template" : "create KS template" } })
-      toast.error(err instanceof Error ? err.message : "Kunne ikke lagre mal")
+      toast.error(actionErrorMessage(err, "Kunne ikke lagre mal"))
     } finally {
       setSaving(false)
     }
@@ -144,7 +144,7 @@ export function KsTemplatesClient() {
       await load()
     } catch (err) {
       reportClientError(err, { context: { action: "delete KS template" } })
-      toast.error(err instanceof Error ? err.message : "Kunne ikke slette mal")
+      toast.error(actionErrorMessage(err, "Kunne ikke slette mal"))
     }
   }
 

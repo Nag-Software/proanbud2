@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { ExternalLink, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -187,7 +187,7 @@ export function FikenClient({
       router.refresh()
     } catch (error) {
       reportClientError(error, { context: { action: "fiken_connect_personal_token" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke koble til")
+      toast.error(actionErrorMessage(error, "Kunne ikke koble til"))
     } finally {
       setBusy(false)
     }
@@ -200,7 +200,7 @@ export function FikenClient({
       setCompanyChoices(json.companies as CompanyChoice[])
     } catch (error) {
       reportClientError(error, { context: { action: "fiken_list_companies" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke hente selskaper")
+      toast.error(actionErrorMessage(error, "Kunne ikke hente selskaper"))
     } finally {
       setBusy(false)
     }
@@ -226,7 +226,7 @@ export function FikenClient({
       router.refresh()
     } catch (error) {
       reportClientError(error, { context: { action: "fiken_select_company" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke velge selskap")
+      toast.error(actionErrorMessage(error, "Kunne ikke velge selskap"))
     } finally {
       setBusy(false)
     }
@@ -246,7 +246,7 @@ export function FikenClient({
       }
     } catch (error) {
       reportClientError(error, { context: { action: "fiken_list_bank_accounts" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke hente bankkontoer")
+      toast.error(actionErrorMessage(error, "Kunne ikke hente bankkontoer"))
     } finally {
       setBusy(false)
     }
@@ -262,7 +262,7 @@ export function FikenClient({
       router.refresh()
     } catch (error) {
       reportClientError(error, { context: { action: "fiken_set_bank_account" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke lagre bankkonto")
+      toast.error(actionErrorMessage(error, "Kunne ikke lagre bankkonto"))
     } finally {
       setBusy(false)
     }
@@ -275,7 +275,7 @@ export function FikenClient({
       toast.success("Synkronisering startet.")
     } catch (error) {
       reportClientError(error, { context: { action: "fiken_sync_now" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke synkronisere")
+      toast.error(actionErrorMessage(error, "Kunne ikke synkronisere"))
     } finally {
       setBusy(false)
     }
@@ -289,7 +289,7 @@ export function FikenClient({
       toast.success("Fiken er frakoblet.")
     } catch (error) {
       reportClientError(error, { context: { action: "fiken_disconnect" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke koble fra")
+      toast.error(actionErrorMessage(error, "Kunne ikke koble fra"))
     } finally {
       setBusy(false)
     }
@@ -304,7 +304,7 @@ export function FikenClient({
       router.refresh()
     } catch (error) {
       reportClientError(error, { context: { action: "fiken_remove" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke fjerne")
+      toast.error(actionErrorMessage(error, "Kunne ikke fjerne"))
     } finally {
       setBusy(false)
     }

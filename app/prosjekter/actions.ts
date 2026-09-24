@@ -122,6 +122,26 @@ export async function getProjectTasksAction(projectId: string) {
   return data
 }
 
+/**
+ * `tasks.assigned_to` er en bruker-ID. Bare deltakere på prosjektet kan tildeles –
+ * alt annet (fritekst, bruker i en annen bedrift) lagres som «ikke tildelt».
+ */
+async function resolveTaskAssignee(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  assignedTo: string | null | undefined
+): Promise<string | null> {
+  const userId = assignedTo?.trim()
+  if (!userId) return null
+  const { data } = await supabase
+    .from("project_members")
+    .select("user_id")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle()
+  return data ? userId : null
+}
+
 export async function createTaskAction(taskData: {
   project_id: string
   title: string
@@ -129,6 +149,7 @@ export async function createTaskAction(taskData: {
   status: string
   priority: string
   due_date?: string | null
+  assigned_to?: string | null
 }): Promise<ActionResult<{ id: string } & Record<string, unknown>>> {
   const supabase = await createClient()
 
@@ -174,6 +195,7 @@ export async function createTaskAction(taskData: {
         status: normalizeTaskStatus(taskData.status),
         priority: normalizeTaskPriority(taskData.priority),
         due_date: taskData.due_date ? new Date(taskData.due_date).toISOString() : null,
+        assigned_to: await resolveTaskAssignee(supabase, taskData.project_id, taskData.assigned_to),
       })
       .select()
       .single()
@@ -290,7 +312,9 @@ export async function updateTaskAction(taskData: {
   if (taskData.due_date !== undefined) {
     updates.due_date = taskData.due_date ? new Date(taskData.due_date).toISOString() : null
   }
-  if (taskData.assigned_to !== undefined) updates.assigned_to = taskData.assigned_to || null
+  if (taskData.assigned_to !== undefined) {
+    updates.assigned_to = await resolveTaskAssignee(supabase, taskData.project_id, taskData.assigned_to)
+  }
 
   const { data, error } = await supabase
     .from("tasks")

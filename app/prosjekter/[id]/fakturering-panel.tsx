@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { formatNok } from "@/lib/tilbud/types"
 import type { BillableItem } from "@/lib/fakturering/billable"
 import { computeInvoiceDueState, describeInvoiceDue } from "@/lib/fakturering/due"
@@ -101,7 +101,7 @@ export function FaktureringPanel({
       )
     } catch (error) {
       reportClientError(error, { context: { action: "fakturering_load" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke hente fakturagrunnlag")
+      toast.error(actionErrorMessage(error, "Kunne ikke hente fakturagrunnlag"))
     } finally {
       setLoading(false)
     }
@@ -148,7 +148,7 @@ export function FaktureringPanel({
       await load()
     } catch (error) {
       reportClientError(error, { context: { action: "fakturering_invoice_all" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke opprette faktura")
+      toast.error(actionErrorMessage(error, "Kunne ikke opprette faktura"))
     } finally {
       setBusy(false)
     }
@@ -189,7 +189,7 @@ export function FaktureringPanel({
       await load()
     } catch (error) {
       reportClientError(error, { context: { action: "fakturering_create" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke opprette faktura")
+      toast.error(actionErrorMessage(error, "Kunne ikke opprette faktura"))
     } finally {
       setBusy(false)
     }

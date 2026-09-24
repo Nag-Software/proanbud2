@@ -13,7 +13,7 @@ export type ChecklistResponse = (typeof CHECKLIST_RESPONSES)[number]
 export const CHECKLIST_RESPONSE_LABELS: Record<ChecklistResponse, string> = {
   ok: "OK",
   not_ok: "Ikke OK",
-  na: "N/A",
+  na: "Ikke relevant",
 }
 
 export const TEMPLATE_LANGUAGES = ["no", "en", "pl"] as const

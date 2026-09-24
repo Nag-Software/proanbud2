@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, generateLocalId } from "@/lib/utils";
-import { reportClientError } from "@/lib/errors/client";
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client";
 import { useUserRole } from "@/hooks/use-user-role";
 
 interface Customer {
@@ -272,7 +272,7 @@ export default function InboxClient({ companyId, currentUserId, initialCustomerI
       reportClientError(err, {
         context: { action: "Be om KI-svarforslag", customerId: selectedCustomerId },
       });
-      toast.error(err instanceof Error ? err.message : "Kunne ikke lage forslag");
+      toast.error(actionErrorMessage(err, "Kunne ikke lage forslag"));
     } finally {
       setIsSuggesting(false);
     }

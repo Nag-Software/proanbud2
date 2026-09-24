@@ -5,7 +5,7 @@ import Link from "next/link"
 import { ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -241,7 +241,7 @@ export function TripletexClient({
       await refreshState()
     } catch (error) {
       reportClientError(error, { context: { action: "tripletex_disconnect" } })
-      toast.error(error instanceof Error ? error.message : "Ukjent feil")
+      toast.error(actionErrorMessage(error, "Ukjent feil"))
     } finally {
       setIsDisconnecting(false)
     }
@@ -273,7 +273,7 @@ export function TripletexClient({
       await refreshState()
     } catch (error) {
       reportClientError(error, { context: { action: "tripletex_remove" } })
-      toast.error(error instanceof Error ? error.message : "Ukjent feil")
+      toast.error(actionErrorMessage(error, "Ukjent feil"))
     } finally {
       setIsRemoving(false)
     }

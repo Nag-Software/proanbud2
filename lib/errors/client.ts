@@ -74,3 +74,16 @@ export function reportClientError(input: ClientErrorReport | unknown, extra?: Pa
     /* never throw */
   }
 }
+
+/**
+ * Tekst til brukeren fra en feil. Feil kastet i en server action har i produksjon
+ * en generisk engelsk melding fra Next.js («An error occurred in the Server
+ * Components render…», med `digest`) – da vises den norske reserveteksten i stedet.
+ */
+export function actionErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error) || !error.message.trim()) return fallback
+  const isRedactedServerError =
+    "digest" in error ||
+    /omitted in production|Server Components render|An unexpected response was received/i.test(error.message)
+  return isRedactedServerError ? fallback : error.message
+}

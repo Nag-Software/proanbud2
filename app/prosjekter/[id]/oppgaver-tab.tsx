@@ -60,13 +60,23 @@ const priorityToLabel: Record<string, string> = {
   urgent: "Kritisk",
 };
 
+type TaskAssigneeOption = { id: string; name: string }
+
+const UNASSIGNED = "none"
+
 export default function OppgaverTab({
   projectId,
   canManageTasks = true,
+  members = [],
 }: {
   projectId: string
   canManageTasks?: boolean
+  /** Prosjektdeltakerne – bare de kan tildeles oppgaver. */
+  members?: TaskAssigneeOption[]
 }) {
+  const memberNameById = new Map(members.map((member) => [member.id, member.name]))
+  const assigneeLabel = (userId: string | null | undefined) =>
+    userId ? memberNameById.get(userId) ?? "Tidligere deltaker" : null
   const [view, setView] = useState<"liste" | "kanban" | "gantt">("liste");
   const [search, setSearch] = useState("");
   const [tasks, setTasks] = useState<any[]>([]);
@@ -112,6 +122,7 @@ export default function OppgaverTab({
         status: newTaskStatus,
         priority: newTaskPriority,
         due_date: newTaskDue ? newTaskDue.toISOString() : null,
+        assigned_to: newTaskAssignee || null,
       });
 
       if (!result.ok) {
@@ -238,8 +249,7 @@ export default function OppgaverTab({
         status: selectedTask.status,
         priority: selectedTask.priority,
         due_date: selectedTask.due_date,
-        // `assigned_to` is intentionally omitted: the column is a user UUID FK, but
-        // the drawer field is free-text — persisting it would violate the constraint.
+        assigned_to: selectedTask.assigned_to || null,
       });
       toast.success("Endringer lagret");
       setIsDrawerOpen(false);
@@ -351,7 +361,7 @@ export default function OppgaverTab({
                       </td>
                       <td className="px-3 py-2">{priorityToLabel[task.priority] || task.priority}</td>
                       <td className="px-3 py-3">{task.due_date ? new Date(task.due_date).toLocaleDateString("no-NO") : "-"}</td>
-                      <td className="px-3 py-3">{task.assigned_to || "Ufordelt"}</td>
+                      <td className="px-3 py-3">{assigneeLabel(task.assigned_to) ?? "Ikke tildelt"}</td>
                     </tr>
                   ))
                 )}
@@ -377,7 +387,7 @@ export default function OppgaverTab({
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Frist: {task.due_date ? new Date(task.due_date).toLocaleDateString("no-NO") : "-"}
-                    {task.assigned_to ? ` · ${task.assigned_to}` : ""}
+                    {task.assigned_to ? ` · ${assigneeLabel(task.assigned_to)}` : ""}
                   </p>
                 </button>
               ))
@@ -492,10 +502,10 @@ export default function OppgaverTab({
               </div>
               <div className="space-y-2 pt-2.5">
                 <Label>Tildelt</Label>
-                <Input 
-                  placeholder="Navn..." 
+                <AssigneeSelect
+                  members={members}
                   value={newTaskAssignee}
-                  onChange={e => setNewTaskAssignee(e.target.value)}
+                  onChange={setNewTaskAssignee}
                 />
               </div>
             </div>
@@ -618,10 +628,10 @@ export default function OppgaverTab({
                 </div>
                 <div className="space-y-2 pt-2.5">
                   <Label>Tildelt</Label>
-                  <Input 
-                    placeholder="Navn..." 
+                  <AssigneeSelect
+                    members={members}
                     value={selectedTask.assigned_to || ""}
-                    onChange={e => setSelectedTask({ ...selectedTask, assigned_to: e.target.value })}
+                    onChange={(value) => setSelectedTask({ ...selectedTask, assigned_to: value || null })}
                   />
                 </div>
               </div>
@@ -647,4 +657,30 @@ export default function OppgaverTab({
       </Drawer>
     </div>
   );
+}
+
+function AssigneeSelect({
+  members,
+  value,
+  onChange,
+}: {
+  members: TaskAssigneeOption[]
+  value: string
+  onChange: (userId: string) => void
+}) {
+  return (
+    <Select value={value || UNASSIGNED} onValueChange={(next) => onChange(next === UNASSIGNED ? "" : next)}>
+      <SelectTrigger className="w-full">
+        <SelectValue placeholder="Ikke tildelt" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={UNASSIGNED}>Ikke tildelt</SelectItem>
+        {members.map((member) => (
+          <SelectItem key={member.id} value={member.id}>
+            {member.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
 }

@@ -10,7 +10,7 @@ import { Search, Plus, MoreHorizontal, Shield, Mail, X, Copy, UserCheck, AlertTr
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuPortal } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
-import { reportClientError } from "@/lib/errors/client";
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client";
 import { updateUserRole, resendInvitation, revokeInvitation, setEmployeeActiveState } from "./actions";
 
 type Employee = {
@@ -93,7 +93,7 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: Employe
     } catch (error) {
       console.error(error);
       reportClientError(error, { context: { action: "send invitation to employee" } });
-      toast.error(error instanceof Error ? error.message : "Kunne ikke sende invitasjon.");
+      toast.error(actionErrorMessage(error, "Kunne ikke sende invitasjon."));
     } finally {
       setIsSubmitting(false);
     }

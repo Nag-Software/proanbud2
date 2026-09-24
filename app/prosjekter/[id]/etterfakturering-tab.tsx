@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useConfirm } from "@/components/ui/confirm-dialog"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { formatNok } from "@/lib/tilbud/types"
 import { cn } from "@/lib/utils"
 import type { ChangeOrder, ChangeOrderBillingType } from "@/lib/tilleggsarbeid/change-order"
@@ -86,7 +86,7 @@ export function EtterfaktureringTab({
       .then(setItems)
       .catch((error) => {
         reportClientError(error, { context: { action: "list project change orders", projectId } })
-        toast.error(error instanceof Error ? error.message : "Kunne ikke laste ekstrajobber")
+        toast.error(actionErrorMessage(error, "Kunne ikke laste ekstrajobber"))
       })
       .finally(() => setLoading(false))
   }, [projectId])
@@ -165,7 +165,7 @@ export function EtterfaktureringTab({
       toast.success("Ekstrajobb lagret")
     } catch (error) {
       reportClientError(error, { context: { action: "create project change order", projectId } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke lagre ekstrajobben")
+      toast.error(actionErrorMessage(error, "Kunne ikke lagre ekstrajobben"))
     } finally {
       setSaving(false)
     }
@@ -189,7 +189,7 @@ export function EtterfaktureringTab({
       toast.success("Ekstrajobb slettet")
     } catch (error) {
       reportClientError(error, { context: { action: "delete project change order", projectId, changeOrderId: id } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke slette")
+      toast.error(actionErrorMessage(error, "Kunne ikke slette"))
     } finally {
       setBusyId(null)
     }

@@ -20,7 +20,7 @@ import {
 } from "lucide-react"
 
 import { track } from "@/lib/analytics/track"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -368,7 +368,7 @@ export function OfferDetailClient({
           : `Faktura${beløp} registrert i ProAnbud. Send den fra regnskapssystemet ditt.`
       )
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Kunne ikke opprette faktura")
+      toast.error(actionErrorMessage(error, "Kunne ikke opprette faktura"))
     } finally {
       setIsInvoicing(false)
     }
@@ -539,7 +539,7 @@ export function OfferDetailClient({
         return true
       } catch (error) {
         reportClientError(error, { context: { action: "save offer snapshot", offerId: offer.id } })
-        toast.error(error instanceof Error ? error.message : "Kunne ikke lagre tilbud")
+        toast.error(actionErrorMessage(error, "Kunne ikke lagre tilbud"))
         return false
       } finally {
         if (requestId === saveSequenceRef.current) {

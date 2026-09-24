@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { track } from "@/lib/analytics/track"
 import { measureAdEvent } from "@/lib/analytics/openai-ads"
 import {
@@ -85,7 +85,7 @@ export function BillingPageClient() {
       setEnabledModules(new Set(data.modules.map((m) => m.module_key)))
     } catch (error) {
       reportClientError(error, { context: { action: "hent abonnement-sammendrag" } })
-      toast.error(error instanceof Error ? error.message : "Noe gikk galt")
+      toast.error(actionErrorMessage(error, "Noe gikk galt"))
     } finally {
       setLoading(false)
     }
@@ -123,7 +123,7 @@ export function BillingPageClient() {
       await loadSummary()
     } catch (error) {
       reportClientError(error, { context: { action: "start checkout / planbytte" } })
-      toast.error(error instanceof Error ? error.message : "Noe gikk galt")
+      toast.error(actionErrorMessage(error, "Noe gikk galt"))
     } finally {
       setActionLoading(null)
     }
@@ -146,7 +146,7 @@ export function BillingPageClient() {
       await loadSummary()
     } catch (error) {
       reportClientError(error, { context: { action: "start kortfri prøveperiode" } })
-      toast.error(error instanceof Error ? error.message : "Noe gikk galt")
+      toast.error(actionErrorMessage(error, "Noe gikk galt"))
     } finally {
       setActionLoading(null)
     }
@@ -163,7 +163,7 @@ export function BillingPageClient() {
     } catch (error) {
       setActionLoading(null)
       reportClientError(error, { context: { action: "åpne betalingsportal" } })
-      toast.error(error instanceof Error ? error.message : "Portal feilet")
+      toast.error(actionErrorMessage(error, "Portal feilet"))
     }
   }
 
@@ -177,7 +177,7 @@ export function BillingPageClient() {
       await loadSummary()
     } catch (error) {
       reportClientError(error, { context: { action: "avslutt prøveperiode" } })
-      toast.error(error instanceof Error ? error.message : "Noe gikk galt")
+      toast.error(actionErrorMessage(error, "Noe gikk galt"))
     } finally {
       setActionLoading(null)
     }
@@ -204,7 +204,7 @@ export function BillingPageClient() {
       await loadSummary()
     } catch (error) {
       reportClientError(error, { context: { action: "veksle modul", moduleKey, enabled } })
-      toast.error(error instanceof Error ? error.message : "Noe gikk galt")
+      toast.error(actionErrorMessage(error, "Noe gikk galt"))
       // Revert optimistic update
       setEnabledModules((prev) => {
         const next = new Set(prev)

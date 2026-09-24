@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Building2, User, Phone, Mail, MapPin, Briefcase, TrendingUp, Clock, FileCheck } from "lucide-react"
+import { Building2, User, Phone, Mail, MapPin, Briefcase, TrendingUp, FileCheck } from "lucide-react"
 import { updateCustomerAction } from "@/app/kunder/actions"
 import { toast } from "sonner"
 import { reportClientError } from "@/lib/errors/client"
@@ -150,14 +150,14 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
               {editType === "bedrift" && (
                 <div className="grid gap-2">
                   <Label htmlFor="edit-orgNumber">Organisasjonsnummer</Label>
-                  <Input id="edit-orgNumber" name="orgNumber" inputMode="numeric" autoComplete="organization" defaultValue={customer.orgNumber} />
+                  <Input id="edit-orgNumber" name="orgNumber" inputMode="numeric" autoComplete="off" defaultValue={customer.orgNumber} />
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="edit-email">E-post *</Label>
-                  <Input id="edit-email" name="email" type="email" inputMode="email" autoComplete="email" defaultValue={customer.email} required />
+                  <Label htmlFor="edit-email">E-post</Label>
+                  <Input id="edit-email" name="email" type="email" inputMode="email" autoComplete="email" defaultValue={customer.email} />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit-phone">Telefon</Label>
@@ -222,22 +222,6 @@ export function CustomerDrawer({ customer, open, onOpenChange, onUpdate }: Custo
                     </CardContent>
                   </Card>
 
-                  <Card className="shadow-sm">
-                    <CardHeader className="p-4 pb-2">
-                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-muted-foreground" /> Aktivitet & Notater
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-4 pt-2">
-                      <div className="text-xs text-muted-foreground mb-3 flex items-center justify-between">
-                        <span>Sist kontaktet:</span>
-                        <span className="font-medium text-foreground">—</span>
-                      </div>
-                      <div className="bg-muted/50 rounded-md p-3 text-sm border-l-2 border-primary/50 text-muted-foreground italic">
-                        Ingen notater enda.
-                      </div>
-                    </CardContent>
-                  </Card>
                 </div>
 
                 {/* Right Column: Statistics */}

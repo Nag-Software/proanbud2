@@ -29,9 +29,11 @@ const statusFilters = [
   { value: "archived", label: "Arkivert" },
 ] as const
 
+// Standard (ingen parameter) er sist oppdatert først – det serveren gjør uten `sort`.
+const DEFAULT_SORT = "updated_at"
 const sortOptions = [
-  { key: "name", label: "Navn" },
   { key: "updated_at", label: "Sist oppdatert" },
+  { key: "name", label: "Navn" },
 ] as const
 
 export function ProsjekterFilters() {
@@ -56,7 +58,7 @@ export function ProsjekterFilters() {
   const isBusy = isPending || isDebouncing
 
   const currentStatus = searchParams.get("status") || "all"
-  const currentSort = searchParams.get("sort") || "name"
+  const currentSort = searchParams.get("sort") || DEFAULT_SORT
   const currentQuery = searchParams.get("search") || ""
 
   const pushParams = React.useCallback(
@@ -81,7 +83,7 @@ export function ProsjekterFilters() {
 
   const handleSortChange = (sort: string) => {
     const params = new URLSearchParams(searchParams)
-    if (sort === "name") {
+    if (sort === DEFAULT_SORT) {
       params.delete("sort")
     } else {
       params.set("sort", sort)
@@ -114,7 +116,7 @@ export function ProsjekterFilters() {
   }
 
   const hasActiveFilters =
-    currentStatus !== "all" || currentSort !== "name" || currentQuery.trim().length > 0
+    currentStatus !== "all" || currentSort !== DEFAULT_SORT || currentQuery.trim().length > 0
 
   return (
     <div className="rounded-xl border-0 border-border/60 bg-card/60">
@@ -125,7 +127,7 @@ export function ProsjekterFilters() {
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="h-9 pl-9 pr-9"
-              placeholder="Søk prosjekt, kunde eller ID"
+              placeholder="Søk på prosjekt, kunde eller adresse"
               defaultValue={currentQuery}
               onChange={(event) => handleSearchChange(event.target.value)}
             />

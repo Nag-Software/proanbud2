@@ -92,6 +92,7 @@ export function DashboardKpiCard({
             >
               {value}
             </p>
+            {change ? (
             <div className="flex shrink-0 items-center gap-2 text-xs">
               <span
                 className={cn(
@@ -103,6 +104,7 @@ export function DashboardKpiCard({
                 {change.replace(/^[+-]/, "")}
               </span>
             </div>
+            ) : null}
           </div>
 
           <div

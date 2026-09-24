@@ -95,8 +95,17 @@ export function BedriftsprofilClient({
 
       const { data: publicUrlData } = supabase.storage.from("company-logos").getPublicUrl(filePath)
       const nextLogoUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`
+      // Lagres med en gang: logoen skal ikke avhenge av at man husker «Lagre endringer» nederst.
+      const { error: saveError } = await supabase
+        .from("companies")
+        .update({ logo_url: nextLogoUrl, updated_at: new Date().toISOString() })
+        .eq("id", profile.id)
+      if (saveError) {
+        throw saveError
+      }
       setLogoUrl(nextLogoUrl)
-      toast.success("Logo lastet opp.")
+      setProfile((previous) => ({ ...previous, logoUrl: nextLogoUrl }))
+      toast.success("Logoen er lagret og vises på nye tilbud.")
     } catch (error) {
       console.error("Logo upload error", error)
       reportClientError(error, { context: { action: "upload company logo" } })
@@ -106,9 +115,7 @@ export function BedriftsprofilClient({
       } else if (message.includes("mime") || message.includes("type") || message.includes("invalid")) {
         toast.error("Ugyldig filtype.", { description: "Velg en bildefil (PNG, JPG eller SVG)." })
       } else {
-        toast.error("Kunne ikke laste opp logo.", {
-          description: error instanceof Error ? error.message : undefined,
-        })
+        toast.error("Kunne ikke laste opp logo.", { description: "Prøv igjen, eller velg en annen fil." })
       }
     } finally {
       setIsUploadingLogo(false)
@@ -201,11 +208,7 @@ export function BedriftsprofilClient({
       if (offerDefaultsAvailable && !offerDefaultsSaved) {
         toast.warning("Bedriftsprofil lagret, men standard prismodell og kontraktsgrunnlag kunne ikke lagres.")
       } else {
-        toast.success(
-          profileFieldsAvailable
-            ? "Bedriftsprofil lagret."
-            : "Grunnleggende firmainfo lagret. Kjør db/16_company_profile.sql for full profil."
-        )
+        toast.success("Bedriftsprofil lagret.")
       }
     } catch (error) {
       console.error("Save company profile error", error)
@@ -225,13 +228,6 @@ export function BedriftsprofilClient({
         </p>
       </div>
 
-      {!profileFieldsAvailable ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          Database-migrasjonen for bedriftsprofil er ikke kjørt ennå. Kjør{" "}
-          <code className="rounded bg-amber-100 px-1">db/16_company_profile.sql</code> i Supabase for logo,
-          kontaktinfo og standardinnstillinger.
-        </div>
-      ) : null}
 
       <Card>
         <CardHeader>
@@ -451,12 +447,6 @@ export function BedriftsprofilClient({
               onContractBasisChange={setDefaultContractBasis}
               disabled={!offerDefaultsAvailable}
             />
-            {!offerDefaultsAvailable ? (
-              <p className="text-xs text-amber-700">
-                Kjør <code className="rounded bg-amber-100 px-1">db/96_company_offer_defaults.sql</code> for å
-                kunne lagre standardvalgene.
-              </p>
-            ) : null}
           </div>
         </CardContent>
       </Card>

@@ -64,6 +64,9 @@ async function enqueueCustomerSync(companyId: string, customerId: string) {
   }
 }
 
+/** Telefon holder – mange privatkunder har ikke oppgitt e-post. */
+const MISSING_CONTACT_ERROR = "Legg inn telefon eller e-post, så du kan nå kunden."
+
 export async function createCustomerAction(
   formData: FormData
 ): Promise<ActionResult<{ id: string }>> {
@@ -84,6 +87,9 @@ export async function createCustomerAction(
 
     if (!name) {
       return { ok: false, error: "Skriv inn navnet på kunden." }
+    }
+    if (!email?.trim() && !phone?.trim()) {
+      return { ok: false, error: MISSING_CONTACT_ERROR }
     }
 
     const { data, error } = await supabase
@@ -146,6 +152,9 @@ export async function updateCustomerAction(input: {
 
     if (!input.name?.trim()) {
       return { ok: false, error: "Skriv inn navnet på kunden." }
+    }
+    if (!input.email?.trim() && !input.phone?.trim()) {
+      return { ok: false, error: MISSING_CONTACT_ERROR }
     }
 
     const payload = {

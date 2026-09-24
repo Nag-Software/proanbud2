@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Loader2, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -82,7 +82,7 @@ export function LagredeJobberPage() {
     } catch (error) {
       console.error(error)
       reportClientError(error, { context: { action: "load saved jobs" } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke hente lagrede jobber")
+      toast.error(actionErrorMessage(error, "Kunne ikke hente lagrede jobber"))
     } finally {
       setIsLoading(false)
     }
@@ -177,7 +177,7 @@ export function LagredeJobberPage() {
     } catch (error) {
       console.error(error)
       reportClientError(error, { context: { action: "save job", jobId: editingJob?.id } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke lagre jobb")
+      toast.error(actionErrorMessage(error, "Kunne ikke lagre jobb"))
     } finally {
       setIsSaving(false)
     }
@@ -201,7 +201,7 @@ export function LagredeJobberPage() {
     } catch (error) {
       console.error(error)
       reportClientError(error, { context: { action: "delete job", jobId: jobToDelete?.id } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke slette jobb")
+      toast.error(actionErrorMessage(error, "Kunne ikke slette jobb"))
     } finally {
       setIsSaving(false)
     }

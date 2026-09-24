@@ -51,19 +51,21 @@ export default async function Page({
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(term)
     // Escape PostgREST `or()` reserved chars (commas/parens) that would otherwise break the filter.
     const safeTerm = term.replace(/[,()]/g, " ")
-    if (isUuid) {
-      queryBuilder = queryBuilder.or(`name.ilike.%${safeTerm}%,id.eq.${term}`)
-    } else {
-      queryBuilder = queryBuilder.ilike("name", `%${safeTerm}%`)
-    }
+    // Søket lover prosjekt, kunde og adresse: kundetreff slås opp først og tas med som customer_id.
+    const { data: matchingCustomers } = await supabase
+      .from("customers")
+      .select("id")
+      .ilike("name", `%${safeTerm}%`)
+      .limit(50)
+    const filters = [`name.ilike.%${safeTerm}%`, `site_address.ilike.%${safeTerm}%`]
+    const customerIds = (matchingCustomers ?? []).map((customer) => customer.id)
+    if (customerIds.length > 0) filters.push(`customer_id.in.(${customerIds.join(",")})`)
+    if (isUuid) filters.push(`id.eq.${term}`)
+    queryBuilder = queryBuilder.or(filters.join(","))
   }
 
-  if (params.sort) {
-    if (params.sort === "name") {
-      queryBuilder = queryBuilder.order("name", { ascending: true })
-    } else {
-      queryBuilder = queryBuilder.order(params.sort, { ascending: false })
-    }
+  if (params.sort === "name") {
+    queryBuilder = queryBuilder.order("name", { ascending: true })
   } else {
     queryBuilder = queryBuilder.order("updated_at", { ascending: false })
   }

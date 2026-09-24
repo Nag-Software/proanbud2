@@ -778,8 +778,9 @@ export function VenterPaDeg({ companyId }: { companyId: string | null }) {
                     <Icon className="size-4" style={{ color: tone.fg }} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold">{item.title}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{item.meta}</span>
+                    {/* To linjer i stedet for avkutting – beskjeden er selve poenget. */}
+                    <span className="line-clamp-2 block text-sm font-semibold leading-snug">{item.title}</span>
+                    <span className="line-clamp-2 block text-xs text-muted-foreground">{item.meta}</span>
                   </span>
                   <Button asChild size="sm" className="shrink-0">
                     <Link href={item.href}>{item.action}</Link>
@@ -789,7 +790,7 @@ export function VenterPaDeg({ companyId }: { companyId: string | null }) {
                     onClick={() => dismissSignal(item.key)}
                     aria-label={`Skjul «${item.title}» i ${DASHBOARD_DISMISS_DAYS} dager`}
                     title={`Skjul i ${DASHBOARD_DISMISS_DAYS} dager`}
-                    className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="-mr-2 flex size-10 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <XIcon className="size-4" />
                   </button>

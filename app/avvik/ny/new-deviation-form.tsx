@@ -29,6 +29,7 @@ import {
   type DeviationType,
 } from "@/lib/hms/constants"
 import { reportClientError } from "@/lib/errors/client"
+import { createDeviationSchema } from "@/app/avvik/schemas"
 
 export function NewDeviationForm() {
   const router = useRouter()
@@ -49,12 +50,13 @@ export function NewDeviationForm() {
   const [photos, setPhotos] = React.useState<File[]>([])
   const [submitting, setSubmitting] = React.useState(false)
 
+  // Hentes én gang – ikke på nytt hver gang brukeren bytter prosjekt.
   React.useEffect(() => {
     void getAccessibleProjectsAction().then((data) => {
       setProjects(data.map((p) => ({ id: p.id, name: p.name })))
-      if (!projectId && data[0]) setProjectId(data[0].id)
+      setProjectId((current) => current || data[0]?.id || "")
     })
-  }, [projectId])
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -63,33 +65,56 @@ export function NewDeviationForm() {
       return
     }
 
-    setSubmitting(true)
-    try {
-      const created = await createDeviationAction({
-        projectId,
-        type,
-        title,
-        description,
-        locationText,
-        checklistItemId: preselectedChecklistItemId || undefined,
-        source: preselectedChecklistItemId ? "checklist" : "manual",
-      })
+    const input = {
+      projectId,
+      type,
+      title: title.trim(),
+      description: description.trim(),
+      locationText,
+      checklistItemId: preselectedChecklistItemId || undefined,
+      source: preselectedChecklistItemId ? ("checklist" as const) : ("manual" as const),
+    }
+    // Sjekkes her: feilmeldinger fra serveren blir generiske (engelske) i produksjon.
+    const validation = createDeviationSchema.safeParse(input)
+    if (!validation.success) {
+      toast.error(validation.error.issues[0]?.message ?? "Sjekk feltene og prøv igjen")
+      return
+    }
 
-      for (const photo of photos) {
+    setSubmitting(true)
+    let created: { id: string }
+    try {
+      created = await createDeviationAction(validation.data)
+    } catch (err) {
+      reportClientError(err, { context: { action: "Registrere avvik" } })
+      toast.error("Kunne ikke registrere avviket. Sjekk nettforbindelsen og prøv igjen.")
+      setSubmitting(false)
+      return
+    }
+
+    // Avviket er lagret. Et bilde som feiler (dårlig dekning) skal ikke få brukeren
+    // til å sende inn på nytt og lage et duplikat.
+    const uploads = await Promise.allSettled(
+      photos.map((photo) => {
         const formData = new FormData()
         formData.append("deviationId", created.id)
         formData.append("file", photo)
-        await uploadDeviationPhotoAction(formData)
-      }
-
+        return uploadDeviationPhotoAction(formData)
+      })
+    )
+    const failed = uploads.filter((result) => result.status === "rejected")
+    if (failed.length > 0) {
+      reportClientError(failed[0].status === "rejected" ? failed[0].reason : "photo upload failed", {
+        level: "warning",
+        context: { action: "Laste opp avviksbilde", deviationId: created.id, failed: failed.length },
+      })
+      toast.warning(
+        `Avviket er registrert, men ${failed.length === 1 ? "ett bilde" : `${failed.length} bilder`} ble ikke lastet opp. Legg ${failed.length === 1 ? "det" : "dem"} til på nytt fra avviket.`
+      )
+    } else {
       toast.success("Avvik registrert")
-      router.push(`/avvik/${created.id}`)
-    } catch (err) {
-      reportClientError(err, { context: { action: "Registrere avvik" } })
-      toast.error(err instanceof Error ? err.message : "Kunne ikke registrere avvik")
-    } finally {
-      setSubmitting(false)
     }
+    router.push(`/avvik/${created.id}`)
   }
 
   return (

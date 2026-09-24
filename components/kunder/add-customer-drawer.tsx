@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -106,15 +105,15 @@ export function AddCustomerDrawer({ open, onOpenChange, onCreated }: AddCustomer
                 {type === "bedrift" && (
                   <div className="grid gap-2">
                     <Label htmlFor="orgNumber">Organisasjonsnummer</Label>
-                    <Input id="orgNumber" name="orgNumber" inputMode="numeric" autoComplete="organization" placeholder="9 sifre" />
+                    <Input id="orgNumber" name="orgNumber" inputMode="numeric" autoComplete="off" placeholder="9 sifre" />
                   </div>
                 )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="email">E-post *</Label>
-                  <Input id="email" name="email" type="email" inputMode="email" autoComplete="email" required placeholder="ola@eksempel.no" />
+                  <Label htmlFor="email">E-post</Label>
+                  <Input id="email" name="email" type="email" inputMode="email" autoComplete="email" placeholder="ola@eksempel.no" />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="phone">Telefon</Label>
@@ -139,10 +138,6 @@ export function AddCustomerDrawer({ open, onOpenChange, onCreated }: AddCustomer
                 </div>
               </div>
 
-              <div className="grid gap-2 pt-2 border-t">
-                <Label htmlFor="notes">Notater</Label>
-                <Textarea id="notes" name="notes" placeholder="Tilleggsinformasjon om kunden..." />
-              </div>
             </div>
           </div>
 

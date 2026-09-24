@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { createClient } from "@/lib/supabase/client"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { updateProjectAction } from "../actions"
 import { EDITABLE_PROJECT_STATUSES, PROJECT_TYPE_OPTIONS } from "../project-utils"
 
@@ -115,7 +115,7 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
     } catch (error) {
       console.error("Kunne ikke oppdatere prosjektet", error)
       reportClientError(error, { context: { action: "oppdatere prosjektinnstillinger", projectId: project.id } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke oppdatere prosjektet")
+      toast.error(actionErrorMessage(error, "Kunne ikke oppdatere prosjektet"))
     } finally {
       setIsSaving(false)
     }
@@ -132,7 +132,7 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
     } catch (error) {
       console.error("Kunne ikke arkivere prosjektet", error)
       reportClientError(error, { context: { action: "arkivere prosjekt", projectId: project.id } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke arkivere prosjektet")
+      toast.error(actionErrorMessage(error, "Kunne ikke arkivere prosjektet"))
     } finally {
       setIsArchiving(false)
     }

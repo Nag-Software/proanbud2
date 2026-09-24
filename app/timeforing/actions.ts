@@ -18,6 +18,7 @@ import { ACTIVE_PROJECT_STATUSES } from "@/app/prosjekter/project-utils"
 import { completedEntriesQuery, fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import { canManageProjects, normalizeRole } from "@/lib/roles"
 import { distanceToAreaMeters, haversineMeters, type AreaGeometry } from "@/lib/geo/point-in-polygon"
+import { osloDateString } from "@/lib/timeforing/oslo-date"
 
 const TIMEFORING_MODULE = "timeforing" as const
 
@@ -186,7 +187,7 @@ export async function startWorkSessionAction(
         project_id: projectId,
         user_id: user.id,
         company_id: companyId,
-        entry_date: now.toISOString().slice(0, 10),
+        entry_date: osloDateString(now),
         started_at: now.toISOString(),
         description: description?.trim() || null,
         hours: null,
@@ -306,7 +307,7 @@ export async function geofenceCheckInAction(
         project_id: projectId,
         user_id: user.id,
         company_id: companyId,
-        entry_date: now.toISOString().slice(0, 10),
+        entry_date: osloDateString(now),
         started_at: now.toISOString(),
         description: description?.trim() || null,
         hours: null,
@@ -384,7 +385,7 @@ export async function stopWorkSessionAction(
       .update({
         ended_at: endedAt.toISOString(),
         hours,
-        entry_date: endedAt.toISOString().slice(0, 10),
+        entry_date: osloDateString(endedAt),
         updated_at: endedAt.toISOString(),
       })
       .eq("id", activeSession.id)
@@ -463,7 +464,7 @@ export async function addManualTimeEntryAction(
 
     const entryDate = /^\d{4}-\d{2}-\d{2}$/.test(input.entryDate)
       ? input.entryDate
-      : startedAt.toISOString().slice(0, 10)
+      : osloDateString(startedAt)
 
     const { data, error } = await supabase
       .from("time_entries")
@@ -794,15 +795,6 @@ export type MyTimeTrackingOverview = {
   weekHours: number
 }
 
-/** `YYYY-MM-DD` for et tidspunkt, sett fra norsk tid (sv-SE gir ISO-format). */
-function osloDateString(date: Date): string {
-  return new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Europe/Oslo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date)
-}
 
 /**
  * Alt den dedikerte /timeforing-siden trenger, i ett kall:

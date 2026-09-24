@@ -6,6 +6,7 @@ import { logServerError } from "@/lib/errors/log"
 import { userFromBearer } from "@/lib/timeforing/native-auth"
 import { calculateSessionHours } from "@/lib/time-tracking"
 import { distanceToAreaMeters, haversineMeters, type AreaGeometry } from "@/lib/geo/point-in-polygon"
+import { osloDateString } from "@/lib/timeforing/oslo-date"
 
 export const runtime = "nodejs"
 
@@ -105,7 +106,7 @@ export async function POST(request: Request) {
         .update({
           ended_at: now.toISOString(),
           hours,
-          entry_date: now.toISOString().slice(0, 10),
+          entry_date: osloDateString(now),
           status: "pending",
           auto_closed: true,
           updated_at: now.toISOString(),
@@ -118,7 +119,7 @@ export async function POST(request: Request) {
       project_id: body.projectId,
       user_id: auth.userId,
       company_id: auth.companyId,
-      entry_date: now.toISOString().slice(0, 10),
+      entry_date: osloDateString(now),
       started_at: now.toISOString(),
       hours: null,
       ended_at: null,

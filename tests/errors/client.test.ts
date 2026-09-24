@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { buildClientErrorPayload } from "@/lib/errors/client"
+import { buildClientErrorPayload, actionErrorMessage } from "@/lib/errors/client"
 
 // Payloaden går gjennom JSON.stringify før den sendes — test det serveren faktisk mottar.
 function roundTrip(payload: unknown) {
@@ -42,5 +42,26 @@ describe("buildClientErrorPayload", () => {
     const payload = buildClientErrorPayload(error)
     expect(payload.message).toHaveLength(2000)
     expect(payload.stack).toHaveLength(8000)
+  })
+})
+
+describe("actionErrorMessage", () => {
+  it("viser egne feilmeldinger", () => {
+    expect(actionErrorMessage(new Error("Prosjektet finnes ikke"), "Noe gikk galt")).toBe("Prosjektet finnes ikke")
+  })
+
+  it("bytter ut Next.js' skjulte produksjonsfeil med norsk tekst", () => {
+    const redacted = Object.assign(
+      new Error(
+        "An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details."
+      ),
+      { digest: "123" }
+    )
+    expect(actionErrorMessage(redacted, "Kunne ikke lagre")).toBe("Kunne ikke lagre")
+  })
+
+  it("bruker reserveteksten for ukjente verdier og tomme meldinger", () => {
+    expect(actionErrorMessage("oops", "Kunne ikke lagre")).toBe("Kunne ikke lagre")
+    expect(actionErrorMessage(new Error("  "), "Kunne ikke lagre")).toBe("Kunne ikke lagre")
   })
 })

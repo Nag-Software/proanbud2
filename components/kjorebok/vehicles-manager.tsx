@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/responsive-dialog"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { toast } from "sonner"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import {
   createVehicleAction,
   deleteVehicleAction,
@@ -105,7 +105,7 @@ export function VehiclesManager({ vehicles, drivers, onChanged }: Props) {
       onChanged()
     } catch (e) {
       reportClientError(e, { context: { action: "lagre kjøretøy" } })
-      toast.error(e instanceof Error ? e.message : "Kunne ikke lagre kjøretøy")
+      toast.error(actionErrorMessage(e, "Kunne ikke lagre kjøretøy"))
     } finally {
       setSubmitting(false)
     }
@@ -127,7 +127,7 @@ export function VehiclesManager({ vehicles, drivers, onChanged }: Props) {
       onChanged()
     } catch (e) {
       reportClientError(e, { context: { action: "slette kjøretøy" } })
-      toast.error(e instanceof Error ? e.message : "Kunne ikke slette kjøretøy")
+      toast.error(actionErrorMessage(e, "Kunne ikke slette kjøretøy"))
     }
   }
 

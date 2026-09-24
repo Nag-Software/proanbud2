@@ -7,6 +7,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { calculateSessionHours } from "@/lib/time-tracking"
 import { logServerError } from "@/lib/errors/log"
+import { osloDateString } from "@/lib/timeforing/oslo-date"
 
 type Settings = {
   company_id: string
@@ -76,7 +77,7 @@ export async function runAutoCloseStaleSessions(now: Date = new Date()) {
       .update({
         ended_at: endAt.toISOString(),
         hours,
-        entry_date: endAt.toISOString().slice(0, 10),
+        entry_date: osloDateString(endAt),
         status: "pending",
         auto_closed: true,
         updated_at: now.toISOString(),

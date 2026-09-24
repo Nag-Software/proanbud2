@@ -6,7 +6,7 @@ import { nb } from "date-fns/locale"
 import { Check, Download, Loader2, MessageSquare, Send, X } from "lucide-react"
 import { toast } from "sonner"
 
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
 import { Button } from "@/components/ui/button"
 import {
@@ -205,7 +205,7 @@ export function CustomerOfferView({
         }
       } catch (error) {
         reportClientError(error, { context: { action: "load public offer", slug } })
-        toast.error(error instanceof Error ? error.message : "Kunne ikke laste tilbud")
+        toast.error(actionErrorMessage(error, "Kunne ikke laste tilbud"))
       } finally {
         setIsLoading(false)
       }
@@ -254,7 +254,7 @@ export function CustomerOfferView({
       toast.success("Tilbudet er avslått")
     } catch (error) {
       reportClientError(error, { context: { action: "respond to public offer", slug, response: "reject" } })
-      toast.error(error instanceof Error ? error.message : "Noe gikk galt")
+      toast.error(actionErrorMessage(error, "Noe gikk galt"))
     } finally {
       setIsResponding(false)
     }
@@ -367,7 +367,7 @@ export function CustomerOfferView({
       setMessageDraft("")
     } catch (error) {
       reportClientError(error, { context: { action: "send public offer message", slug } })
-      toast.error(error instanceof Error ? error.message : "Kunne ikke sende melding")
+      toast.error(actionErrorMessage(error, "Kunne ikke sende melding"))
     } finally {
       setIsSendingMessage(false)
     }

@@ -381,7 +381,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
             <ProjectTabPanel value="oppgaver">
               {hasTasks ? (
-                <OppgaverTab projectId={project.id} canManageTasks={isProjectAdmin || isWorker} />
+                <OppgaverTab
+                  projectId={project.id}
+                  canManageTasks={isProjectAdmin || isWorker}
+                  members={normalizedMembers
+                    .filter((member) => member.users?.id)
+                    .map((member) => ({
+                      id: member.users!.id,
+                      name: member.users!.full_name || member.users!.email || "Ukjent",
+                    }))}
+                />
               ) : (
                 <PlanGate
                   featureName="Oppgaver"

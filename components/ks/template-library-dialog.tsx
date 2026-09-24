@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { TEMPLATE_LANGUAGE_LABELS } from "@/lib/ks/constants"
 import type { ChecklistTemplate, ChecklistTemplateCategory } from "@/lib/ks/types"
 import { cn } from "@/lib/utils"
@@ -82,7 +82,7 @@ export function TemplateLibraryDialog({ open, onOpenChange, projectId, onAdded }
       onAdded?.(result.id)
     } catch (err) {
       reportClientError(err, { context: { action: "Legge til sjekkliste fra mal", projectId } })
-      toast.error(err instanceof Error ? err.message : "Kunne ikke legge til sjekkliste")
+      toast.error(actionErrorMessage(err, "Kunne ikke legge til sjekkliste"))
     } finally {
       setAdding(null)
     }

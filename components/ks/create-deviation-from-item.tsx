@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { reportClientError } from "@/lib/errors/client"
+import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import type { ProjectChecklistItem } from "@/lib/ks/types"
 
 type Props = {
@@ -61,7 +61,7 @@ export function CreateDeviationFromItemDialog({ open, onOpenChange, item, onCrea
       reportClientError(err, {
         context: { action: "Opprette avvik fra sjekklistepunkt", itemId: item.id },
       })
-      toast.error(err instanceof Error ? err.message : "Kunne ikke opprette avvik")
+      toast.error(actionErrorMessage(err, "Kunne ikke opprette avvik"))
     } finally {
       setSubmitting(false)
     }
