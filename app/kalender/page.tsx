@@ -2,7 +2,7 @@
 
 import { AppPageShell } from "@/components/app-page-shell"
 import { Button } from "@/components/ui/button"
-import { Suspense, useState, useEffect, useCallback, useMemo } from "react"
+import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from "react"
 import dynamic from "next/dynamic"
 import { useSearchParams } from "next/navigation"
 import {
@@ -346,6 +346,16 @@ function KalenderPage() {
       .filter((e) => e.start <= dayEnd && (e.end ?? e.start) >= dayStart)
       .sort((a, b) => a.start.getTime() - b.start.getTime())
   }, [daySheetDate, filteredEvents])
+
+  // «Ny avtale» fra hurtigarket (/kalender?ny=1) åpner skjemaet direkte.
+  const openedFromQueryRef = useRef(false)
+  useEffect(() => {
+    if (openedFromQueryRef.current || searchParams.get("ny") !== "1") return
+    openedFromQueryRef.current = true
+    const { start, end } = defaultSlotTimes(new Date())
+    openCreateDialog(start, end)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const handleAddEvent = () => {
     const { start, end } = defaultSlotTimes(date)

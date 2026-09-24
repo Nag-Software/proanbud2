@@ -16,6 +16,7 @@ import {
 } from "@/components/hms/deviation-badges"
 import { PhotoCaptureField } from "@/components/hms/photo-capture-field"
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
@@ -107,10 +108,20 @@ function PhotoGallery({
 }
 
 export function DeviationDetailClient({ deviation, canManage }: Props) {
+  const confirm = useConfirm()
   const [followUpNotes, setFollowUpNotes] = React.useState(deviation.follow_up_notes || "")
   const [busy, setBusy] = React.useState(false)
 
   async function handleClose() {
+    // Et lukket avvik kan ikke gjenåpnes i appen.
+    const ok = await confirm({
+      title: "Lukke avviket?",
+      description: followUpNotes.trim()
+        ? "Oppfølgingen lagres, og avviket markeres som lukket."
+        : "Du har ikke skrevet noe om oppfølgingen. Avviket markeres likevel som lukket.",
+      confirmText: "Lukk avvik",
+    })
+    if (!ok) return
     setBusy(true)
     try {
       await closeDeviationAction({ id: deviation.id, followUpNotes })

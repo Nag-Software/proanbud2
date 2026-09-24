@@ -16,6 +16,7 @@ import { ArrowLeft, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-reac
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -386,6 +387,7 @@ export function LonnsomhetTab({
   canManage: boolean
   initialData: ProjectProfitability | null
 }) {
+  const confirm = useConfirm()
   const [data, setData] = useState<ProjectProfitability | null>(initialData)
   const [loading, setLoading] = useState(!initialData)
   const [open, setOpen] = useState(false)
@@ -517,6 +519,13 @@ export function LonnsomhetTab({
   }
 
   async function handleDelete(id: string) {
+    const ok = await confirm({
+      title: "Slette materialkosten?",
+      description: "Kostnaden fjernes fra prosjektets lønnsomhet.",
+      confirmText: "Slett",
+      variant: "destructive",
+    })
+    if (!ok) return
     try {
       await deleteMaterialCostAction({ projectId, id })
       load()

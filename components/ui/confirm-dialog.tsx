@@ -66,11 +66,14 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             ) : null}
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => resolve(false)}>
+            {/* Mobil: stablet med bekreft øverst og store trykkflater. Bekreft har fokus,
+                så Enter (eller ett trykk) fortsetter. */}
+            <Button variant="outline" className="h-11 sm:h-9" onClick={() => resolve(false)}>
               {options?.cancelText ?? "Avbryt"}
             </Button>
             <Button
               variant={options?.variant === "destructive" ? "destructive" : "default"}
+              className="h-11 sm:h-9"
               onClick={() => resolve(true)}
               autoFocus
             >

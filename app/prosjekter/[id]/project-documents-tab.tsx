@@ -5,6 +5,7 @@ import { Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import {
   Dialog,
   DialogContent,
@@ -61,6 +62,7 @@ type Props = {
 }
 
 export default function ProjectDocumentsTab({ projectId }: Props) {
+  const confirm = useConfirm()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderPath = `prosjekter/${projectId}`
 
@@ -180,6 +182,14 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
   }
 
   async function onDelete(item: DocumentItem) {
+    // Søppelbøtta står ved siden av blyanten – og slettingen er permanent.
+    const ok = await confirm({
+      title: `Slette «${item.name}»?`,
+      description: "Filen slettes for godt og kan ikke hentes tilbake.",
+      confirmText: "Slett",
+      variant: "destructive",
+    })
+    if (!ok) return
     setBusyId(item.id)
     try {
       const params = new URLSearchParams({ provider: item.provider, id: item.id })

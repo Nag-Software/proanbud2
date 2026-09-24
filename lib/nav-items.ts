@@ -28,14 +28,15 @@ export type NavItem = {
   feature?: FeatureKey
 }
 
-// Bunnmenyen er tre daglige destinasjoner + «Mer» — ikke et sitemap. Alt
-// annet (tilbud, meldinger, kunder, dokumenter, HMS …) nås fra Mer-arket,
-// som bygges av lib/app-nav og derfor aldri kan komme i utakt med sidebaren.
-// Fire kolonner gir plass til ekte etiketter i stedet for 10 px avkortet tekst.
+// Bunnmenyen er tre daglige destinasjoner + «+» + «Mer» — ikke et sitemap. Alt
+// annet (meldinger, kunder, dokumenter, HMS …) nås fra Mer-arket, som bygges
+// av lib/app-nav og derfor aldri kan komme i utakt med sidebaren.
+// Tilbud er kjernen for leder/admin og ligger derfor fremme; stempling nås fra
+// «+»-arket (og Timer i Mer).
 export const FULL_NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashbord", icon: "dashboard", exact: true },
   { href: "/prosjekter", label: "Prosjekter", icon: "projects", exact: false },
-  { href: "/timeforing", label: "Timer", icon: "hours", exact: false },
+  { href: "/tilbud", label: "Tilbud", icon: "offers", exact: false },
 ]
 
 // Håndverkeren starter dagen på timeføring — den ligger derfor først.

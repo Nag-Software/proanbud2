@@ -15,6 +15,7 @@ import {
   ArrowUpDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -74,6 +75,7 @@ export default function OppgaverTab({
   /** Prosjektdeltakerne – bare de kan tildeles oppgaver. */
   members?: TaskAssigneeOption[]
 }) {
+  const confirm = useConfirm()
   const memberNameById = new Map(members.map((member) => [member.id, member.name]))
   const assigneeLabel = (userId: string | null | undefined) =>
     userId ? memberNameById.get(userId) ?? "Tidligere deltaker" : null
@@ -265,6 +267,13 @@ export default function OppgaverTab({
 
   const handleDeleteTask = async () => {
     if (!selectedTask) return;
+    const ok = await confirm({
+      title: `Slette «${selectedTask.title}»?`,
+      description: "Oppgaven slettes for godt.",
+      confirmText: "Slett",
+      variant: "destructive",
+    });
+    if (!ok) return;
     const snapshot = tasks;
     setIsDeletingTask(true);
     // Optimistic delete

@@ -56,7 +56,7 @@ export function DateTimeField({
       <Input
         type="time"
         aria-label="Klokkeslett"
-        className="w-28 shrink-0"
+        className="w-32 shrink-0"
         value={timeValue}
         step={300}
         onChange={(event) => {

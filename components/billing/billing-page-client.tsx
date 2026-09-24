@@ -6,6 +6,7 @@ import { CheckIcon, Loader2Icon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
 import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
@@ -70,6 +71,7 @@ function intervalLabel(interval: BillingInterval | null) {
 }
 
 export function BillingPageClient() {
+  const confirm = useConfirm()
   const [summary, setSummary] = useState<BillingSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -168,6 +170,14 @@ export function BillingPageClient() {
   }
 
   async function endTrial() {
+    const ok = await confirm({
+      title: "Starte betalt abonnement nå?",
+      description: planPriceLabel
+        ? `Prøveperioden avsluttes, og du belastes ${planPriceLabel} fra i dag.`
+        : "Prøveperioden avsluttes, og du belastes fra i dag.",
+      confirmText: "Start abonnement",
+    })
+    if (!ok) return
     setActionLoading("end-trial")
     try {
       const res = await fetch("/api/stripe/end-trial", { method: "POST" })
@@ -184,6 +194,18 @@ export function BillingPageClient() {
   }
 
   async function toggleModule(moduleKey: ModuleKey, label: string, enabled: boolean) {
+    // Å slå på en modul koster penger – bekreft med beløpet. Å slå av trenger ingen dialog.
+    if (enabled) {
+      const monthlyNok = MODULE_CATALOG.find((module) => module.key === moduleKey)?.monthlyNok
+      const ok = await confirm({
+        title: `Legge til ${label}?`,
+        description: monthlyNok
+          ? `${label} legges til abonnementet for ${monthlyNok} kr/mnd.`
+          : `${label} legges til abonnementet.`,
+        confirmText: "Legg til",
+      })
+      if (!ok) return
+    }
     setActionLoading(`module:${moduleKey}`)
     // Optimistic update
     setEnabledModules((prev) => {

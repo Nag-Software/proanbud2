@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 import { NavMoreMenu } from "@/components/nav-more-menu"
+import { QuickActionSheet } from "@/components/quick-action-sheet"
 import { useUnreadMessages } from "@/hooks/use-unread-messages"
 import { useNavItems } from "@/hooks/use-nav-items"
 import { useIsNativeApp } from "@/hooks/use-is-native-app"
@@ -51,24 +52,17 @@ export function MobileBottomNav() {
   // the web bar must not render a second menu.
   const isNative = useIsNativeApp()
 
-  // Meldinger ligger ikke lenger i baren, så ulest-varselet ville forsvunnet
-  // ut av syne på mobil. Det følger med til «Mer», der meldinger nå bor.
-  const moreBadge = unreadCount
+  const { isWorker } = useUserRole()
+  const [quickOpen, setQuickOpen] = React.useState(false)
+
+  // Meldinger ligger ikke i baren, så ulest-varselet følger med til «Mer», der
+  // meldinger bor. Arbeidere har ikke meldinger – da er merket bare støy.
+  const moreBadge = isWorker ? 0 : unreadCount
 
   const primaryHrefs = React.useMemo(() => navItems.map((item) => item.href), [navItems])
 
-  const { isWorker } = useUserRole()
-
-  // Den opphøyde midtknappen. Arbeidere kan ikke opprette tilbud, så for dem
-  // er stemplinga primærhandlingen — den ene tingen de gjør ute på plassen.
-  const primaryAction = isWorker
-    ? { href: "/timeforing", label: "Stemple inn" }
-    : { href: "/nytt-tilbud", label: "Nytt tilbud" }
-
-  // Fanene deles i to rundt knappen. Peker knappen på en side som ALLEREDE er
-  // en fane (timeføring for arbeidere), faller fanen bort — to innganger til
-  // samme side ved siden av hverandre er bare forvirrende.
-  const tabs = navItems.filter((item) => item.href !== primaryAction.href)
+  // Fanene deles i to rundt «+»-knappen, som åpner hurtigarket.
+  const tabs = navItems
   const splitAt = Math.ceil(tabs.length / 2)
   const leftTabs = tabs.slice(0, splitAt)
   const rightTabs = tabs.slice(splitAt)
@@ -146,13 +140,23 @@ export function MobileBottomNav() {
           // stikker opp entydig: alt annet her er «gå et sted», dette er
           // «gjør noe». Sirkelen er 52 px — treffbar med hansker.
           <div className="relative flex flex-1 items-center justify-center">
-            <Link
-              href={primaryAction.href}
-              aria-label={primaryAction.label}
+            <button
+              type="button"
+              onClick={() => setQuickOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={quickOpen}
+              aria-label={hasActiveSession ? "Hurtighandlinger – du er stemplet inn" : "Hurtighandlinger"}
               className="absolute bottom-2 flex size-13 items-center justify-center rounded-full bg-accent bg-[image:var(--control-sheen)] text-accent-foreground shadow-[var(--shadow-raised)] ring-4 ring-background transition-transform active:scale-95"
             >
               <PlusIcon className="size-6" strokeWidth={2.4} />
-            </Link>
+              {/* Stemplet inn: synlig på knappen man trykker for å stemple ut. */}
+              {hasActiveSession && (
+                <span
+                  aria-hidden
+                  className="absolute right-0 top-0 size-3.5 animate-pulse rounded-full bg-emerald-500 ring-2 ring-background"
+                />
+              )}
+            </button>
           </div>
         )}
 
@@ -189,6 +193,7 @@ export function MobileBottomNav() {
       {/* Samme ark som sidebarens «Mer» — gruppert, søkbart og bygget av
           lib/app-nav, så en ny side dukker opp her av seg selv. */}
       <NavMoreMenu open={moreOpen} onOpenChange={setMoreOpen} primaryHrefs={primaryHrefs} />
+      <QuickActionSheet open={quickOpen} onOpenChange={setQuickOpen} hasActiveSession={hasActiveSession} />
     </>
   )
 }

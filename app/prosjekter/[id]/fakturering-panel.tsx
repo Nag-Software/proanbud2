@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -64,6 +65,7 @@ export function FaktureringPanel({
   canManage: boolean
   refreshSignal?: number
 }) {
+  const confirm = useConfirm()
   const [billable, setBillable] = React.useState<BillableItem[] | null>(null)
   const [invoices, setInvoices] = React.useState<ProjectInvoice[]>([])
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>({})
@@ -122,7 +124,19 @@ export function FaktureringPanel({
 
   const remainingTotal = open.reduce((sum, item) => sum + item.remainingNok, 0)
 
+  // En faktura går ut til kunden via regnskapssystemet og kan ikke hentes tilbake.
+  async function confirmInvoice(amountNok: number) {
+    return confirm({
+      title: `${provider ? "Send faktura" : "Registrer faktura"} på ${formatNok(amountNok)}?`,
+      description: provider
+        ? `${PROVIDER_LABELS[provider]} oppretter fakturaen og sender den til kunden.`
+        : "Fakturaen registreres i Proanbud. Send den fra regnskapssystemet ditt.",
+      confirmText: provider ? "Send faktura" : "Registrer",
+    })
+  }
+
   async function handleInvoiceAll() {
+    if (!(await confirmInvoice(remainingTotal))) return
     setBusy(true)
     try {
       const result = await createProjectInvoiceAction({
@@ -167,6 +181,7 @@ export function FaktureringPanel({
       toast.error("Velg minst én linje å fakturere.")
       return
     }
+    if (!(await confirmInvoice(selectedTotal))) return
 
     setBusy(true)
     try {
@@ -196,6 +211,13 @@ export function FaktureringPanel({
   }
 
   async function handleCancel(invoiceId: string) {
+    const ok = await confirm({
+      title: "Kansellere fakturaen?",
+      description: "Beløpet blir ledig og kan faktureres på nytt.",
+      confirmText: "Kanseller faktura",
+      variant: "destructive",
+    })
+    if (!ok) return
     setBusy(true)
     try {
       const result = await cancelProjectInvoiceAction({ projectId, invoiceId })
