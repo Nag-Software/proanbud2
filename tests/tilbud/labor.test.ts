@@ -4,6 +4,7 @@ import { computePlannedCosts } from "@/lib/job-costing/calc"
 import { finalizeGeneratedOfferLineItems } from "@/lib/tilbud/company-price-utils"
 import {
   DEFAULT_HOURLY_RATE_NOK,
+  DEFAULT_TRANSPORT_RATE_NOK,
   mapHourlyRateRows,
   matchHourlyRate,
   normalizeLaborLineItem,
@@ -108,7 +109,7 @@ describe("finalizeGeneratedOfferLineItems — arbeid og transport", () => {
       ],
     })
 
-    const labor = lineItems.filter((line) => line.unit === "time")
+    const labor = lineItems.filter((line) => line.unit === "time" && line.title !== "Transport")
     expect(labor.map((line) => [line.title, line.quantity, line.unitPriceNok])).toEqual([
       ["Flislegging vegg", 10.5, 950],
       ["Riving", 8, 850],
@@ -116,19 +117,41 @@ describe("finalizeGeneratedOfferLineItems — arbeid og transport", () => {
     expect(lineItems.find((line) => line.title === "Membran 15 kg")).toMatchObject({ unit: "stk", unitPriceNok: 1054 })
   })
 
-  it("fører transport per tur, så den ikke teller som arbeidstimer", () => {
+  it("fører transport i timer med transportsats, og lar avfallscontainer være en kostnad", () => {
     const { lineItems } = finalizeGeneratedOfferLineItems({
       ...base,
       hourlyRates: RATES,
       generatedItems: [
         item({ subproject: "Arbeid", title: "Montering", unit: "time", quantity: 10, unitPriceNok: 0 }),
-        item({ title: "Transport", unit: "time", quantity: 2, unitPriceNok: 950, markupPercent: 0 }),
+        item({ title: "Transport", unit: "stk", quantity: 2, unitPriceNok: 950, markupPercent: 0 }),
+        item({ title: "Avfallscontainer 8 m³", unit: "stk", quantity: 1, unitPriceNok: 3500 }),
       ],
     })
 
-    const transport = lineItems.find((line) => line.title === "Transport")
-    expect(transport).toMatchObject({ unit: "stk", quantity: 2, unitPriceNok: 950 })
-    expect(computePlannedCosts(lineItems).hours).toBe(10)
+    // 2 × 950 = 1 900 kr → 2 timer à standard transportsats (bedriften har ingen «Transport»-sats)
+    expect(lineItems.find((line) => line.title === "Transport")).toMatchObject({
+      unit: "time",
+      quantity: 2,
+      unitPriceNok: DEFAULT_TRANSPORT_RATE_NOK,
+    })
+    expect(lineItems.find((line) => line.title === "Avfallscontainer 8 m³")).toMatchObject({ unit: "stk", quantity: 1 })
+    expect(computePlannedCosts(lineItems).hours).toBe(12)
+  })
+
+  it("bruker bedriftens egen transportsats når den finnes", () => {
+    const { lineItems } = finalizeGeneratedOfferLineItems({
+      ...base,
+      hourlyRates: [...RATES, { jobType: "Transport", hourlyRateNok: 700, costRateNok: null }],
+      generatedItems: [
+        item({ subproject: "Arbeid", title: "Montering", unit: "time", quantity: 10, unitPriceNok: 0 }),
+        item({ title: "Kjøring til byggeplass", unit: "time", quantity: 3, unitPriceNok: 0 }),
+      ],
+    })
+    expect(lineItems.find((line) => line.title === "Kjøring til byggeplass")).toMatchObject({
+      unit: "time",
+      quantity: 3,
+      unitPriceNok: 700,
+    })
   })
 
   it("gjør ikke en prisfil-vare med «montering» i navnet om til arbeid", () => {

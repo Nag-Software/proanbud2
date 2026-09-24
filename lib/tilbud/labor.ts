@@ -14,6 +14,8 @@ export const LABOR_UNIT = "time"
 
 /** Brukes når bedriften ikke har lagt inn egne timepriser (Mine priser → Timepriser). */
 export const DEFAULT_HOURLY_RATE_NOK = 795
+/** Transport/kjøring når bedriften ikke har en egen timepris for det. */
+export const DEFAULT_TRANSPORT_RATE_NOK = 950
 
 export type CompanyHourlyRate = {
   jobType: string
@@ -27,6 +29,7 @@ export type ResolvedHourlyRate = {
   rateNok: number
   jobType: string | null
   source: "company" | "default"
+  kind?: "labor" | "transport"
 }
 
 type HourlyRateRow = {
@@ -114,13 +117,28 @@ export function resolveHourlyRate(rates: CompanyHourlyRate[], text: string): Res
   return { rateNok: DEFAULT_HOURLY_RATE_NOK, jobType: null, source: "default" }
 }
 
+/**
+ * Timepris for transport/kjøring: bedriftens egen sats hvis den har en jobbtype som
+ * passer («Transport», «Kjøring»), ellers standard transportsats. Faller IKKE
+ * tilbake på første arbeidssats — kjøring er sjelden priset som fagarbeid.
+ */
+export function resolveTransportRate(rates: CompanyHourlyRate[], text: string): ResolvedHourlyRate {
+  // «Kjøring til byggeplass» skal treffe en sats som heter «Transport», og omvendt.
+  const matched = matchHourlyRate(rates, `${text} transport kjøring`)
+  if (matched) {
+    return { rateNok: matched.hourlyRateNok, jobType: matched.jobType, source: "company", kind: "transport" }
+  }
+  return { rateNok: DEFAULT_TRANSPORT_RATE_NOK, jobType: null, source: "default", kind: "transport" }
+}
+
 function roundToHalfHour(hours: number) {
   return Math.max(0.5, Math.round(hours * 2) / 2)
 }
 
 function describeRate(rate: ResolvedHourlyRate) {
-  return rate.source === "company"
-    ? `Timepris ${rate.rateNok} kr/t (${rate.jobType}, bedriftens timepriser).`
+  if (rate.source === "company") return `Timepris ${rate.rateNok} kr/t (${rate.jobType}, bedriftens timepriser).`
+  return rate.kind === "transport"
+    ? `Standard transportsats ${rate.rateNok} kr/t — legg inn en timepris for «Transport» under Mine priser → Timepriser.`
     : `Standard timepris ${rate.rateNok} kr/t — legg inn egne timepriser under Mine priser → Timepriser.`
 }
 
@@ -134,9 +152,9 @@ function describeRate(rate: ResolvedHourlyRate) {
 export function normalizeLaborLineItem(
   item: OfferLineItem,
   rates: CompanyHourlyRate[],
-  options: { supplier?: string } = {}
+  options: { supplier?: string; rate?: ResolvedHourlyRate } = {}
 ): OfferLineItem {
-  const rate = resolveHourlyRate(rates, `${item.title} ${item.subproject} ${item.description}`)
+  const rate = options.rate ?? resolveHourlyRate(rates, `${item.title} ${item.subproject} ${item.description}`)
   const quantity = Number.isFinite(item.quantity) && item.quantity > 0 ? item.quantity : 0
   const unitPrice = Number.isFinite(item.unitPriceNok) && item.unitPriceNok > 0 ? item.unitPriceNok : 0
 
@@ -169,20 +187,31 @@ export function normalizeLaborLineItem(
   }
 }
 
+/** Transport/kjøring føres også i timer, med transportsatsen. */
+export function normalizeTransportLineItem(
+  item: OfferLineItem,
+  rates: CompanyHourlyRate[],
+  options: { supplier?: string } = {}
+): OfferLineItem {
+  return normalizeLaborLineItem(item, rates, { ...options, rate: resolveTransportRate(rates, item.title) })
+}
+
 /** Kort tekst til KI-prompten med bedriftens timepriser. */
 export function formatHourlyRatesForPrompt(rates: CompanyHourlyRate[]) {
   if (rates.length === 0) {
     return {
       kilde: "standard",
       standardTimeprisNok: DEFAULT_HOURLY_RATE_NOK,
-      veiledning: `Bedriften har ikke lagt inn egne timepriser. Bruk ${DEFAULT_HOURLY_RATE_NOK} kr/t på alt arbeid.`,
+      transportTimeprisNok: DEFAULT_TRANSPORT_RATE_NOK,
+      veiledning: `Bedriften har ikke lagt inn egne timepriser. Bruk ${DEFAULT_HOURLY_RATE_NOK} kr/t på alt arbeid og ${DEFAULT_TRANSPORT_RATE_NOK} kr/t på transport.`,
     }
   }
   return {
     kilde: "bedriftens timepriser",
     standardTimeprisNok: rates[0].hourlyRateNok,
+    transportTimeprisNok: matchHourlyRate(rates, "transport kjøring")?.hourlyRateNok ?? DEFAULT_TRANSPORT_RATE_NOK,
     satser: rates.map((rate) => ({ jobbtype: rate.jobType, timeprisNok: rate.hourlyRateNok })),
     veiledning:
-      "Bruk timeprisen for jobbtypen som passer arbeidet. Passer ingen, bruk standardTimeprisNok. Finn aldri på egne timepriser.",
+      "Bruk timeprisen for jobbtypen som passer arbeidet. Passer ingen, bruk standardTimeprisNok. Transport: transportTimeprisNok. Finn aldri på egne timepriser.",
   }
 }

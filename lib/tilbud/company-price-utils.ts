@@ -1,7 +1,12 @@
 import { normalizeQuoteLineItems } from "@/lib/tilbud/normalize-quote-line-items"
 import { type OfferLineItem } from "@/lib/tilbud/types"
 import { isHourUnit } from "@/lib/job-costing/calc"
-import { LABOR_UNIT, normalizeLaborLineItem, type CompanyHourlyRate } from "@/lib/tilbud/labor"
+import {
+  LABOR_UNIT,
+  normalizeLaborLineItem,
+  normalizeTransportLineItem,
+  type CompanyHourlyRate,
+} from "@/lib/tilbud/labor"
 
 export type CompanyPriceRow = {
   /** Radens id i supplier_price_rows. Brukes som referanse når KI velger en rad
@@ -48,7 +53,6 @@ export type CompanyPricePromptAttachment = {
   content: string
 }
 
-const DEFAULT_TRANSPORT_RATE_NOK = 950
 export const DEFAULT_MATERIAL_MARKUP_PERCENT = 15
 const DEFAULT_SERVICE_MARKUP_PERCENT = 0
 const SERVICE_SUPPLIER = "Eget arbeid"
@@ -347,8 +351,15 @@ function isSupplierProduct(item: OfferLineItem) {
   return item.priceSource === "prisfil" || Boolean(item.nobb?.trim() || item.supplierSku?.trim())
 }
 
+/**
+ * Transport-/kjøretimer. Strammere enn isTransportText: «Avfallscontainer» og
+ * «Levering av flis» er kostnader med egen pris, ikke timer i bil.
+ */
 function isTransportLineItem(item: OfferLineItem) {
-  return !isSupplierProduct(item) && isTransportText(item.title)
+  return (
+    !isSupplierProduct(item) &&
+    /(transport|kjoring|kjøring|servicebil|varebil|reisetid)/.test(normalizeText(item.title))
+  )
 }
 
 /**
@@ -364,22 +375,6 @@ function isLaborLineItem(item: OfferLineItem) {
 
 function buildServiceSupplier(companyName?: string | null) {
   return companyName?.trim() || SERVICE_SUPPLIER
-}
-
-/**
- * Transport er ikke arbeidstid: telles den som timer, blåser den opp timekalkylen
- * prosjektet måles mot. Den føres derfor per tur (stk) med samme sum.
- */
-function normalizeTransportLineItem(item: OfferLineItem, companyName?: string | null): OfferLineItem {
-  const quantity = item.quantity > 0 ? item.quantity : 1
-  return {
-    ...item,
-    quantity,
-    unit: isHourUnit(item.unit) || !item.unit.trim() ? "stk" : item.unit,
-    supplier: item.supplier.trim() || buildServiceSupplier(companyName),
-    unitPriceNok: item.unitPriceNok > 0 ? item.unitPriceNok : DEFAULT_TRANSPORT_RATE_NOK,
-    markupPercent: DEFAULT_SERVICE_MARKUP_PERCENT,
-  }
 }
 
 function normalizeGeneratedLaborLineItem(
@@ -882,22 +877,30 @@ function createLaborLineItem(
   )
 }
 
-function createTransportLineItem(subprojects: string[], companyName?: string | null): OfferLineItem {
-  return {
-    id: crypto.randomUUID(),
-    subproject: subprojects[0] || "Generelt",
-    title: "Transport",
-    description: "Transport, kjøring og logistikk til og fra prosjektet.",
-    quantity: 1,
-    unit: "stk",
-    supplier: buildServiceSupplier(companyName),
-    nobb: undefined,
-    supplierSku: undefined,
-    supplierUrl: undefined,
-    unitPriceNok: DEFAULT_TRANSPORT_RATE_NOK,
-    markupPercent: DEFAULT_SERVICE_MARKUP_PERCENT,
-    discountPercent: 0,
-  }
+function createTransportLineItem(
+  subprojects: string[],
+  hourlyRates: CompanyHourlyRate[],
+  companyName?: string | null
+): OfferLineItem {
+  return normalizeTransportLineItem(
+    {
+      id: crypto.randomUUID(),
+      subproject: subprojects[0] || "Generelt",
+      title: "Transport",
+      description: "Transport, kjøring og logistikk til og fra prosjektet.",
+      quantity: 1,
+      unit: LABOR_UNIT,
+      supplier: buildServiceSupplier(companyName),
+      nobb: undefined,
+      supplierSku: undefined,
+      supplierUrl: undefined,
+      unitPriceNok: 0,
+      markupPercent: DEFAULT_SERVICE_MARKUP_PERCENT,
+      discountPercent: 0,
+    },
+    hourlyRates,
+    { supplier: buildServiceSupplier(companyName) }
+  )
 }
 
 export function finalizeGeneratedOfferLineItems(input: {
@@ -918,7 +921,11 @@ export function finalizeGeneratedOfferLineItems(input: {
 
   for (const item of input.generatedItems) {
     if (isTransportLineItem(item)) {
-      serviceItems.push(normalizeTransportLineItem(item, input.companyName))
+      serviceItems.push(
+        normalizeTransportLineItem(item.quantity > 0 ? item : { ...item, quantity: 1, unit: LABOR_UNIT }, hourlyRates, {
+          supplier: buildServiceSupplier(input.companyName),
+        })
+      )
       continue
     }
 
@@ -974,14 +981,14 @@ export function finalizeGeneratedOfferLineItems(input: {
     }
   }
 
-  const hasLabor = serviceItems.some((item) => isHourUnit(item.unit))
+  const hasLabor = serviceItems.some((item) => isHourUnit(item.unit) && !isTransportLineItem(item))
   if (!hasLabor) {
     serviceItems.push(createLaborLineItem(input.query, materialItems, input.subprojects, hourlyRates, input.companyName))
   }
 
   const hasTransport = serviceItems.some((item) => isTransportLineItem(item))
   if (!hasTransport && shouldAddTransport(input.query, materialItems)) {
-    serviceItems.push(createTransportLineItem(input.subprojects, input.companyName))
+    serviceItems.push(createTransportLineItem(input.subprojects, hourlyRates, input.companyName))
   }
 
   const normalized = normalizeQuoteLineItems({
