@@ -21,6 +21,8 @@ import {
   mapSavedJobRows,
   pickRelevantSavedJobs,
   type SavedJobRow,
+  savedJobColumns,
+  withSavedJobHoursFallback,
 } from "@/lib/tilbud/saved-jobs"
 import {
   ANALYSIS_SYSTEM_PROMPT,
@@ -345,12 +347,14 @@ export async function POST(request: Request) {
       priceFileAttachments = aiPriceSelectionContext.attachments
       companyName = (companyRow as { name?: string | null } | null)?.name ?? null
 
-      const { data: savedJobRows } = await supabase
-        .from("saved_jobs")
-        .select("id, name, price_nok")
-        .eq("company_id", companyId)
-        .order("sort_order", { ascending: true })
-        .order("name", { ascending: true })
+      const { data: savedJobRows } = await withSavedJobHoursFallback((withHours) =>
+        supabase
+          .from("saved_jobs")
+          .select(savedJobColumns("id, name, price_nok", withHours))
+          .eq("company_id", companyId)
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true })
+      )
 
       savedJobs = mapSavedJobRows((savedJobRows || []) as unknown[])
     }

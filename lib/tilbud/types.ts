@@ -43,6 +43,12 @@ export type OfferLineItem = {
    */
   priceSource?: "prisfil" | "lagret-jobb" | "anslag"
   /**
+   * Beregnede arbeidstimer per enhet på en fastprislinje (fra lagret jobb). Timelinjer
+   * (unit «time») bruker quantity; en fastprislinje har quantity 1 og trenger dette
+   * for å telle i timekalkylen.
+   */
+  plannedHours?: number
+  /**
    * Inntektskonto-kategori for regnskapet (speiler Fikens fire valg). Udefinert betyr
    * «ikke valgt» — da gjettes kategorien fra linja, se lib/tilbud/income-accounts.ts.
    */

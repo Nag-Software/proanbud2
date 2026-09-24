@@ -36,6 +36,7 @@ type SearchJob = {
   id: string
   name: string
   price_nok: number
+  estimated_hours?: number | null
 }
 
 type AddOfferLineItemMenuProps = {
@@ -120,6 +121,7 @@ export function AddOfferLineItemMenu({
             id: job.id,
             name: job.name,
             price_nok: job.price_nok,
+            estimated_hours: job.estimated_hours,
           },
           defaultSubproject,
           companyName
@@ -408,7 +410,9 @@ export function AddOfferLineItemMenu({
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground">{job.name}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">Fastpris · 1 jobb</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {job.estimated_hours ? `Fastpris · ${job.estimated_hours} t` : "Fastpris · 1 jobb"}
+                      </p>
                     </div>
                     <p className="shrink-0 text-sm font-semibold tabular-nums">{formatNok(job.price_nok)}</p>
                   </button>

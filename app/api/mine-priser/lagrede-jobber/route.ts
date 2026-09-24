@@ -3,6 +3,7 @@ import { z } from "zod"
 import { logServerError } from "@/lib/errors/log"
 import { zodValidationMessage } from "@/lib/errors/user-message"
 import { createClient } from "@/lib/supabase/server"
+import { savedJobColumns, withSavedJobHoursFallback } from "@/lib/tilbud/saved-jobs"
 
 const saveSchema = z.object({
   name: z.string().trim().min(1, "Oppgi navn på jobben").max(200, "Navnet er for langt (maks 200 tegn)"),
@@ -11,9 +12,19 @@ const saveSchema = z.object({
     .finite()
     .min(0, "Prisen kan ikke være negativ")
     .max(100_000_000, "Prisen er for høy"),
+  // Beregnede arbeidstimer — teller i timekalkylen når jobben brukes i et tilbud.
+  estimatedHours: z
+    .number()
+    .finite()
+    .min(0, "Timene kan ikke være negative")
+    .max(100_000, "Timeantallet er for høyt")
+    .nullable()
+    .optional(),
 })
 
-const FIELD_LABELS = { name: "Navn", priceNok: "Pris" }
+const FIELD_LABELS = { name: "Navn", priceNok: "Pris", estimatedHours: "Timer" }
+
+const JOB_COLUMNS = "id, name, price_nok, sort_order, created_at, updated_at"
 
 export async function GET() {
   try {
@@ -23,11 +34,13 @@ export async function GET() {
     } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: "Ikke autentisert" }, { status: 401 })
 
-    const { data, error } = await supabase
-      .from("saved_jobs")
-      .select("id, name, price_nok, sort_order, created_at, updated_at")
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true })
+    const { data, error } = await withSavedJobHoursFallback((withHours) =>
+      supabase
+        .from("saved_jobs")
+        .select(savedJobColumns(JOB_COLUMNS, withHours))
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true })
+    )
 
     if (error) {
       console.error("[lagrede-jobber GET]", error)
@@ -74,16 +87,19 @@ export async function POST(request: Request) {
       )
     }
 
-    const { data, error } = await supabase
-      .from("saved_jobs")
-      .insert({
-        company_id: companyId,
-        name: parsed.data.name,
-        price_nok: parsed.data.priceNok,
-        created_by: user.id,
-      })
-      .select("id, name, price_nok, sort_order, created_at, updated_at")
-      .single()
+    const { data, error } = await withSavedJobHoursFallback((withHours) =>
+      supabase
+        .from("saved_jobs")
+        .insert({
+          company_id: companyId,
+          name: parsed.data.name,
+          price_nok: parsed.data.priceNok,
+          ...(withHours ? { estimated_hours: parsed.data.estimatedHours ?? null } : {}),
+          created_by: user.id,
+        })
+        .select(savedJobColumns(JOB_COLUMNS, withHours))
+        .single()
+    )
 
     if (error || !data) {
       console.error("[lagrede-jobber POST]", error)

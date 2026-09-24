@@ -28,6 +28,8 @@ import {
   mapSavedJobRows,
   pickRelevantSavedJobs,
   type SavedJobRow,
+  savedJobColumns,
+  withSavedJobHoursFallback,
 } from "@/lib/tilbud/saved-jobs"
 import { ANALYSIS_SYSTEM_PROMPT, buildAnalysisUserPromptSections } from "@/lib/tilbud/analysis-system-prompt"
 import { loadProjectModelTakeoff, type ModelTakeoffContext } from "@/lib/tilbud/model-takeoff"
@@ -380,12 +382,14 @@ async function resolveSavedJobs(
     return { savedJobs: [] as SavedJobRow[], relevantSavedJobs: [] as SavedJobRow[] }
   }
 
-  const { data } = await supabase
-    .from("saved_jobs")
-    .select("id, name, price_nok")
-    .eq("company_id", companyId)
-    .order("sort_order", { ascending: true })
-    .order("name", { ascending: true })
+  const { data } = await withSavedJobHoursFallback((withHours) =>
+    supabase
+      .from("saved_jobs")
+      .select(savedJobColumns("id, name, price_nok", withHours))
+      .eq("company_id", companyId)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true })
+  )
 
   const savedJobs = mapSavedJobRows((data || []) as unknown[])
   return {

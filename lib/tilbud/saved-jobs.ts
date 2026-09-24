@@ -4,6 +4,34 @@ export type SavedJobRow = {
   id: string
   name: string
   price_nok: number
+  /** Beregnede arbeidstimer (db/97). Null/udefinert = ikke satt. */
+  estimated_hours?: number | null
+}
+
+type PostgrestLikeResult<T> = { data: T | null; error: { code?: string; message?: string } | null }
+
+/** Kolonnelisten for saved_jobs, med eller uten estimated_hours. */
+export function savedJobColumns(base: string, withHours: boolean) {
+  return withHours ? `${base}, estimated_hours` : base
+}
+
+/**
+ * Kjører en saved_jobs-spørring med estimated_hours, og på nytt uten hvis
+ * kolonnen ikke finnes ennå (db/97 ikke kjørt — PostgreSQL 42703). Da virker
+ * lagrede jobber som før, bare uten timer.
+ */
+export async function withSavedJobHoursFallback<T>(
+  run: (withHours: boolean) => PromiseLike<PostgrestLikeResult<T>>
+): Promise<PostgrestLikeResult<T>> {
+  const result = await run(true)
+  if (result.error?.code === "42703") return run(false)
+  return result
+}
+
+function toHours(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
 function normalizeText(value: string) {
@@ -62,6 +90,7 @@ export function mapSavedJobRows(input: unknown[]): SavedJobRow[] {
       id: String(value.id || ""),
       name: String(value.name || ""),
       price_nok: Number(value.price_nok || 0),
+      estimated_hours: toHours(value.estimated_hours),
     }
   })
 }
@@ -87,6 +116,7 @@ export function formatSavedJobsForPrompt(rows: SavedJobRow[]) {
   return rows.map((job) => ({
     navn: job.name,
     fastprisNok: job.price_nok,
+    ...(toHours(job.estimated_hours) ? { timer: toHours(job.estimated_hours) } : {}),
   }))
 }
 
@@ -94,6 +124,7 @@ export function formatMatchedSavedJobForPrompt(job: SavedJobRow) {
   return {
     navn: job.name,
     fastprisNok: job.price_nok,
+    ...(toHours(job.estimated_hours) ? { timer: toHours(job.estimated_hours) } : {}),
     veiledning:
       "Denne jobben har fastpris i bedriftens lagrede jobber. Bruk fastprisen som totalpris for jobben med quantity 1, unit 'fastpris' og markupPercent 0.",
   }
@@ -138,6 +169,7 @@ function createSavedJobLineItem(job: SavedJobRow, subproject: string, companyNam
     markupPercent: 0,
     discountPercent: 0,
     priceSource: "lagret-jobb",
+    plannedHours: toHours(job.estimated_hours) ?? undefined,
   }
 }
 
@@ -185,6 +217,7 @@ export function applySavedJobsToOfferLineItems(input: {
         unitPriceNok: job.price_nok,
         markupPercent: 0,
         priceSource: "lagret-jobb",
+        plannedHours: toHours(job.estimated_hours) ?? undefined,
       }
       appliedJobIds.add(job.id)
       warnings.push(`Oppdaterte «${job.name}» til fastpris ${formatSavedJobPrice(job.price_nok)}.`)

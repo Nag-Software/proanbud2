@@ -6,7 +6,13 @@ import {
   type CompanyPriceRow,
   rankCompanyPriceRowsForPicker,
 } from "@/lib/tilbud/company-price-utils"
-import { mapSavedJobRows, pickRelevantSavedJobs, type SavedJobRow } from "@/lib/tilbud/saved-jobs"
+import {
+  mapSavedJobRows,
+  pickRelevantSavedJobs,
+  savedJobColumns,
+  withSavedJobHoursFallback,
+  type SavedJobRow,
+} from "@/lib/tilbud/saved-jobs"
 import { createClient } from "@/lib/supabase/server"
 
 const querySchema = z.object({
@@ -155,12 +161,14 @@ export async function GET(request: Request) {
     }
 
     if (type === "job" || type === "all") {
-      const { data: savedJobRows, error } = await supabase
-        .from("saved_jobs")
-        .select("id, name, price_nok")
-        .eq("company_id", companyId)
-        .order("sort_order", { ascending: true })
-        .order("name", { ascending: true })
+      const { data: savedJobRows, error } = await withSavedJobHoursFallback((withHours) =>
+        supabase
+          .from("saved_jobs")
+          .select(savedJobColumns("id, name, price_nok", withHours))
+          .eq("company_id", companyId)
+          .order("sort_order", { ascending: true })
+          .order("name", { ascending: true })
+      )
 
       if (error) {
         console.error("[mine-priser/sok GET] saved jobs", error)

@@ -153,6 +153,10 @@ function toLineItems(input: unknown): OfferLineItem[] {
         markupPercent: Number(item.markupPercent || 0),
         discountPercent: Number(item.discountPercent || 0),
         priceSource: item.priceSource,
+        plannedHours:
+          Number.isFinite(Number(item.plannedHours)) && Number(item.plannedHours) > 0
+          ? Number(item.plannedHours)
+          : undefined,
       } satisfies OfferLineItem
     })
     .filter((item) => item.title.trim().length > 0)

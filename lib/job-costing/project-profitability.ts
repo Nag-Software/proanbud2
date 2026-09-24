@@ -241,8 +241,8 @@ export async function fetchProjectProfitability(
     // bedriften kostpris, regnes kalkulerte timer derfor om med den — samme sats
     // som førte timer, så kalkyle og faktisk er sammenlignbare.
     plannedLaborCostNok =
-      costRateNok > 0 && rawPlanned.hours > 0
-        ? computeLaborCost(rawPlanned.hours, costRateNok)
+      costRateNok > 0 && rawPlanned.costBasisHours > 0
+        ? computeLaborCost(rawPlanned.costBasisHours, costRateNok)
         : rawPlanned.laborCostNok
     plannedMaterialCostNok = rawPlanned.materialCostNok
     plannedHours = rawPlanned.hours > 0 ? rawPlanned.hours : null

@@ -35,6 +35,8 @@ type SavedJob = {
   id: string
   name: string
   price_nok: number
+  /** Null på eldre jobber, eller før db/97 er kjørt. */
+  estimated_hours?: number | null
   sort_order: number
   created_at: string
   updated_at: string
@@ -42,6 +44,11 @@ type SavedJob = {
 
 function formatPrice(value: number) {
   return `${Math.round(value).toLocaleString("no-NO")} kr`
+}
+
+function formatHours(value?: number | null) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value)) || Number(value) <= 0) return "—"
+  return `${Number(value).toLocaleString("no-NO", { maximumFractionDigits: 2 })} t`
 }
 
 function parsePriceInput(value: string) {
@@ -61,6 +68,7 @@ export function LagredeJobberPage() {
   const [jobToDelete, setJobToDelete] = useState<SavedJob | null>(null)
   const [name, setName] = useState("")
   const [priceInput, setPriceInput] = useState("")
+  const [hoursInput, setHoursInput] = useState("")
 
   const loadJobs = useCallback(async () => {
     setIsLoading(true)
@@ -90,6 +98,7 @@ export function LagredeJobberPage() {
     setEditingJob(null)
     setName("")
     setPriceInput("")
+    setHoursInput("")
     setDialogOpen(true)
   }
 
@@ -97,6 +106,7 @@ export function LagredeJobberPage() {
     setEditingJob(job)
     setName(job.name)
     setPriceInput(String(Math.round(job.price_nok)))
+    setHoursInput(job.estimated_hours ? String(job.estimated_hours).replace(".", ",") : "")
     setDialogOpen(true)
   }
 
@@ -111,6 +121,7 @@ export function LagredeJobberPage() {
       setEditingJob(null)
       setName("")
       setPriceInput("")
+      setHoursInput("")
     }, 200)
   }
 
@@ -128,10 +139,18 @@ export function LagredeJobberPage() {
       return
     }
 
+    // Timene er det timekalkylen på prosjektet måles mot — uten dem kan en
+    // fastprisjobb ikke sammenlignes med førte timer.
+    const estimatedHours = parsePriceInput(hoursInput)
+    if (estimatedHours == null || estimatedHours <= 0) {
+      toast.error("Oppgi hvor mange arbeidstimer jobben tar.")
+      return
+    }
+
     setIsSaving(true)
 
     try {
-      const payload = { name: trimmedName, priceNok }
+      const payload = { name: trimmedName, priceNok, estimatedHours }
       const res = await fetch(
         editingJob ? `/api/mine-priser/lagrede-jobber/${editingJob.id}` : "/api/mine-priser/lagrede-jobber",
         {
@@ -220,6 +239,7 @@ export function LagredeJobberPage() {
           <TableHeader>
             <TableRow className="bg-muted/50 hover:bg-muted/50">
               <TableHead>Jobb</TableHead>
+              <TableHead className="text-right">Timer</TableHead>
               <TableHead className="text-right">Fastpris</TableHead>
               <TableHead className="w-[70px]" />
             </TableRow>
@@ -227,13 +247,13 @@ export function LagredeJobberPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                 </TableCell>
               </TableRow>
             ) : filteredJobs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
                   {jobs.length === 0
                     ? "Ingen lagrede jobber ennå. Legg til din første fastprisjobb."
                     : "Ingen jobber matcher søket."}
@@ -243,6 +263,9 @@ export function LagredeJobberPage() {
               filteredJobs.map((job) => (
                 <TableRow key={job.id}>
                   <TableCell className="font-medium">{job.name}</TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">
+                    {formatHours(job.estimated_hours)}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">{formatPrice(job.price_nok)}</TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
@@ -289,7 +312,9 @@ export function LagredeJobberPage() {
             <div key={job.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
                 <p className="font-medium">{job.name}</p>
-                <p className="mt-1 text-sm tabular-nums text-muted-foreground">{formatPrice(job.price_nok)}</p>
+                <p className="mt-1 text-sm tabular-nums text-muted-foreground">
+                  {formatPrice(job.price_nok)} · {formatHours(job.estimated_hours)}
+                </p>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -321,7 +346,7 @@ export function LagredeJobberPage() {
           <DialogHeader>
             <DialogTitle>{editingJob ? "Rediger jobb" : "Ny lagret jobb"}</DialogTitle>
             <DialogDescription>
-              Gi jobben et navn og sett fastprisen som skal brukes i tilbud.
+              Gi jobben et navn, fastprisen som skal brukes i tilbud, og hvor mange timer jobben tar.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -343,6 +368,25 @@ export function LagredeJobberPage() {
                 value={priceInput}
                 onChange={(event) => setPriceInput(event.target.value)}
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="job-hours">Arbeidstimer</Label>
+              <Input
+                id="job-hours"
+                inputMode="decimal"
+                placeholder="8"
+                value={hoursInput}
+                onChange={(event) => setHoursInput(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                {(() => {
+                  const price = parsePriceInput(priceInput)
+                  const hours = parsePriceInput(hoursInput)
+                  return price && hours && hours > 0
+                    ? `Tilsvarer ${formatPrice(price / hours)} per time. Timene teller i timekalkylen på prosjektet.`
+                    : "Timene teller i timekalkylen på prosjektet, så førte timer kan måles mot jobben."
+                })()}
+              </p>
             </div>
           </div>
           <DialogFooter>

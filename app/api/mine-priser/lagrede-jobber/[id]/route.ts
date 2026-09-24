@@ -3,6 +3,7 @@ import { z } from "zod"
 import { logServerError } from "@/lib/errors/log"
 import { zodValidationMessage } from "@/lib/errors/user-message"
 import { createClient } from "@/lib/supabase/server"
+import { savedJobColumns, withSavedJobHoursFallback } from "@/lib/tilbud/saved-jobs"
 
 const updateSchema = z.object({
   name: z.string().trim().min(1, "Oppgi navn på jobben").max(200, "Navnet er for langt (maks 200 tegn)"),
@@ -11,9 +12,19 @@ const updateSchema = z.object({
     .finite()
     .min(0, "Prisen kan ikke være negativ")
     .max(100_000_000, "Prisen er for høy"),
+  // Beregnede arbeidstimer — teller i timekalkylen når jobben brukes i et tilbud.
+  estimatedHours: z
+    .number()
+    .finite()
+    .min(0, "Timene kan ikke være negative")
+    .max(100_000, "Timeantallet er for høyt")
+    .nullable()
+    .optional(),
 })
 
-const FIELD_LABELS = { name: "Navn", priceNok: "Pris" }
+const FIELD_LABELS = { name: "Navn", priceNok: "Pris", estimatedHours: "Timer" }
+
+const JOB_COLUMNS = "id, name, price_nok, sort_order, created_at, updated_at"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -33,16 +44,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       )
     }
 
-    const { data, error } = await supabase
-      .from("saved_jobs")
-      .update({
-        name: parsed.data.name,
-        price_nok: parsed.data.priceNok,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .select("id, name, price_nok, sort_order, created_at, updated_at")
-      .maybeSingle()
+    const { data, error } = await withSavedJobHoursFallback((withHours) =>
+      supabase
+        .from("saved_jobs")
+        .update({
+          name: parsed.data.name,
+          price_nok: parsed.data.priceNok,
+          // Bare når klienten sendte feltet — ellers ville en eldre klient nullstilt timene.
+          ...(withHours && parsed.data.estimatedHours !== undefined
+            ? { estimated_hours: parsed.data.estimatedHours }
+            : {}),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select(savedJobColumns(JOB_COLUMNS, withHours))
+        .maybeSingle()
+    )
 
     if (error) {
       console.error("[lagrede-jobber PATCH]", error)

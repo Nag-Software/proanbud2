@@ -83,11 +83,24 @@ describe("job-costing calc", () => {
     expect(planned.costBasisRevenueNok).toBe(0)
   })
 
-  it("kalkylen tåler tomme og ugyldige linjer", () => {
+  it("fastprislinjer med timer teller i timekalkylen, men ikke i kostgrunnlaget", () => {
+    const planned = computePlannedCosts([
+      ...lineItems,
+      { id: "3", subproject: "Bad", title: "Vindusbytte", description: "", quantity: 2, unit: "fastpris", supplier: "", unitPriceNok: 6000, markupPercent: 0, discountPercent: 0, plannedHours: 3.5 },
+    ])
+    // 8 timer fra timelinjen + 2 × 3,5 fra fastprisjobben
+    expect(planned.hours).toBe(15)
+    expect(planned.costBasisHours).toBe(8)
+    expect(planned.fixedPriceRevenueNok).toBe(12000)
+    expect(planned.laborCostNok).toBe(7600)
+  })
+
+    it("kalkylen tåler tomme og ugyldige linjer", () => {
     const empty = {
       laborCostNok: 0,
       materialCostNok: 0,
       hours: 0,
+      costBasisHours: 0,
       costBasisRevenueNok: 0,
       fixedPriceRevenueNok: 0,
     }

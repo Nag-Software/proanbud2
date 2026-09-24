@@ -58,8 +58,17 @@ export type PlannedCosts = {
   laborCostNok: number
   /** Kalkulert materialkost = øvrige linjers mengde × innkjøpspris (før påslag). */
   materialCostNok: number
-  /** Kalkulerte timer = summen av mengde på timelinjene. */
+  /**
+   * Kalkulerte timer = mengde på timelinjene + beregnede timer på fastprislinjer
+   * (lagrede jobber). Dette er timetallet førte timer måles mot.
+   */
   hours: number
+  /**
+   * Timer på timelinjene alene — de som også har kostgrunnlag. Brukes når
+   * lønnskosten regnes om med kostpris, så fastprislinjenes timer ikke gir
+   * kostnad uten tilhørende omsetning i kostgrunnlaget.
+   */
+  costBasisHours: number
   /** Salgsverdien av linjene vi HAR kostgrunnlag for. */
   costBasisRevenueNok: number
   /** Salgsverdien av fastprislinjer — pris uten kostnadsdeling. */
@@ -77,6 +86,7 @@ export function computePlannedCosts(lineItems: OfferLineItem[]): PlannedCosts {
   let laborCostNok = 0
   let materialCostNok = 0
   let hours = 0
+  let costBasisHours = 0
   let costBasisRevenueNok = 0
   let fixedPriceRevenueNok = 0
 
@@ -89,6 +99,10 @@ export function computePlannedCosts(lineItems: OfferLineItem[]): PlannedCosts {
 
     if (SALES_PRICE_UNITS.has(unit)) {
       fixedPriceRevenueNok += lineRevenue
+      const plannedHours = Number(item.plannedHours)
+      if (Number.isFinite(plannedHours) && plannedHours > 0) {
+        hours += qty * plannedHours
+      }
       continue
     }
 
@@ -96,6 +110,7 @@ export function computePlannedCosts(lineItems: OfferLineItem[]): PlannedCosts {
     if (isHourUnit(unit)) {
       laborCostNok += cost
       hours += qty
+      costBasisHours += qty
     } else {
       materialCostNok += cost
     }
@@ -105,6 +120,7 @@ export function computePlannedCosts(lineItems: OfferLineItem[]): PlannedCosts {
     laborCostNok: round(laborCostNok),
     materialCostNok: round(materialCostNok),
     hours: round(hours),
+    costBasisHours: round(costBasisHours),
     costBasisRevenueNok: round(costBasisRevenueNok),
     fixedPriceRevenueNok: round(fixedPriceRevenueNok),
   }

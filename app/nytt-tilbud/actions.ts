@@ -42,6 +42,8 @@ const lineItemSchema = z.object({
   // Intern kildemerking (prisfil/lagret-jobb/anslag). Uten den her stripper zod
   // feltet ved lagring, og «Anslag»-merket forsvinner i det tilbudet lagres.
   priceSource: z.enum(["prisfil", "lagret-jobb", "anslag"]).optional(),
+  // Timer på fastprislinjer fra lagrede jobber — teller i timekalkylen.
+  plannedHours: z.number().min(0).optional(),
 })
 
 const analysisSchema = z
