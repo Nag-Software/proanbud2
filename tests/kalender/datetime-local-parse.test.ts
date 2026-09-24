@@ -15,17 +15,22 @@ describe('kalender datetime-local parsing (Safari timezone safety)', () => {
     resolve(__dirname, '../../app/kalender/page.tsx'),
     'utf-8'
   )
+  // Kalenderen bruker nå DateTimeField (DatePicker + klokkeslett); tolkningen bor der.
+  const field = readFileSync(
+    resolve(__dirname, '../../components/ui/date-time-field.tsx'),
+    'utf-8'
+  )
 
-  it('does NOT pass the raw datetime-local input value into new Date()', () => {
-    // The Safari-divergent pattern: new Date(e.target.value) on a datetime-local
-    // string. It must not reappear in any onChange handler.
-    expect(page).not.toMatch(/new Date\(\s*e\.target\.value\s*\)/)
+  it('does NOT pass a raw input value into new Date()', () => {
+    // The Safari-divergent pattern: new Date(e.target.value) on a date/time string.
+    expect(page).not.toMatch(/new Date\(\s*e(vent)?\.target\.value\s*\)/)
+    expect(field).not.toMatch(/new Date\(\s*e(vent)?\.target\.value\s*\)/)
+    expect(page).not.toContain('type="datetime-local"')
   })
 
-  it('parses datetime-local input via the local-time helper', () => {
-    expect(page).toContain('parseLocalDatetimeInput(e.target.value)')
-    // The helper must use the local-time Date constructor (new Date(y, m, d, ...)),
-    // which every engine interprets as local time — never the string parser.
-    expect(page).toMatch(/new Date\(\s*year,\s*month - 1,\s*day,\s*hour,\s*minute/)
+  it('builds dates with the local-time constructor', () => {
+    expect(page).toContain('<DateTimeField')
+    // new Date(y, m, d, ...) is local time in every engine — never the string parser.
+    expect(field).toMatch(/new Date\(\s*year,\s*month - 1,\s*day,\s*hour,\s*minute/)
   })
 })
