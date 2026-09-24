@@ -60,6 +60,7 @@ import {
   type OfferContractBasis,
   type OfferLineItem,
   type OfferPricingModel,
+  type CustomerKind,
   type OfferSourceDocument,
   calculateOfferTotals,
   formatNok,
@@ -95,6 +96,7 @@ type LinkedCustomer = {
   postalCode: string
   city: string
   orgNumber: string
+  customerType: CustomerKind | null
 }
 
 type OfferPageModel = {
@@ -768,6 +770,7 @@ export function OfferDetailClient({
               onContractBasisChange={(value) => setOffer((previous) => ({ ...previous, contractBasis: value }))}
               // Akseptert tilbud er en inngått avtale — vilkårene kan ikke endres i etterkant.
               disabled={Boolean(offer.acceptance) || offer.status === "accepted"}
+              customerKind={linkedCustomer.customerType}
             />
 
             <div className="flex flex-wrap gap-2 border-t border-border pt-4">

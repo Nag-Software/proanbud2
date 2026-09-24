@@ -8,6 +8,7 @@ import { NyttTilbudClient } from "@/components/tilbud/nytt-tilbud-client"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { fetchCompanyOfferDefaults, fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
+import { resolveCustomerKind } from "@/lib/tilbud/offer-terms"
 import { type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
 import { ACTIVE_PROJECT_STATUSES } from "@/app/prosjekter/project-utils"
 import { ProjectPicker, type PickerProject } from "./project-picker"
@@ -36,6 +37,7 @@ type CustomerRow = {
   address: string | null
   postal_code: string | null
   org_number: string | null
+  type: string | null
 }
 
 function normalizeCustomer(project: ProjectRow) {
@@ -164,7 +166,7 @@ export default async function NyttTilbudPage({ searchParams }: Props) {
   const { data: customerRow } = projectRow.customer_id
     ? await supabase
         .from("customers")
-        .select("id, name, email, phone, city, address, postal_code, org_number")
+        .select("id, name, email, phone, city, address, postal_code, org_number, type")
         .eq("id", projectRow.customer_id)
         .maybeSingle()
     : { data: null }
@@ -195,6 +197,7 @@ export default async function NyttTilbudPage({ searchParams }: Props) {
           address: customerRow.address,
           postalCode: customerRow.postal_code,
           orgNumber: customerRow.org_number,
+          customerType: resolveCustomerKind({ type: customerRow.type, orgNumber: customerRow.org_number }),
         },
       ]
     : joinedCustomer

@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest"
 import {
   DEFAULT_PRICING_MODEL,
   buildContractTerms,
+  contractBasisOptionsFor,
+  contractBasisWarning,
+  initialContractBasisFor,
+  resolveCustomerKind,
   toSelectablePricingModel,
 } from "@/lib/tilbud/offer-terms"
 
@@ -28,5 +32,46 @@ describe("offer terms", () => {
     expect(toSelectablePricingModel("unit_price")).toBeNull()
     expect(toSelectablePricingModel("mixed")).toBeNull()
     expect(toSelectablePricingModel("fixed")).toBe("fixed")
+  })
+})
+
+describe("kontraktsgrunnlag etter kundetype", () => {
+  const values = (kind: Parameters<typeof contractBasisOptionsFor>[0]) =>
+    contractBasisOptionsFor(kind).map((option) => option.value)
+
+  it("privatkunde får forbrukerstandardene, ikke NS 8405/8407", () => {
+    expect(values("privatperson")).toEqual(["none", "ns8416", "ns8417", "custom"])
+  })
+
+  it("bedriftskunde får NS 8405/8407, ikke forbrukerstandardene", () => {
+    expect(values("bedrift")).toEqual(["none", "ns8405", "ns8407", "custom"])
+  })
+
+  it("ukjent kundetype viser alle standardene", () => {
+    expect(values(null)).toHaveLength(6)
+  })
+
+  it("advarer når standarden ikke passer kunden", () => {
+    expect(contractBasisWarning("ns8405", "privatperson")).toMatch(/NS 8417/)
+    expect(contractBasisWarning("ns8417", "bedrift")).toMatch(/forbrukerstandard/)
+    expect(contractBasisWarning("ns8417", "privatperson")).toBeNull()
+    expect(contractBasisWarning("ns8405", null)).toBeNull()
+  })
+
+  it("bruker bedriftens standard bare når den passer kunden", () => {
+    expect(initialContractBasisFor("ns8405", "bedrift")).toBe("ns8405")
+    expect(initialContractBasisFor("ns8405", "privatperson")).toBe("none")
+    expect(initialContractBasisFor(undefined, "privatperson")).toBe("none")
+  })
+
+  it("leser kundetype, og regner kunder med org.nr. som bedrift når typen mangler", () => {
+    expect(resolveCustomerKind({ type: "privatperson", orgNumber: "123" })).toBe("privatperson")
+    expect(resolveCustomerKind({ type: null, orgNumber: "923456789" })).toBe("bedrift")
+    expect(resolveCustomerKind({ type: null, orgNumber: "" })).toBeNull()
+    expect(resolveCustomerKind(null)).toBeNull()
+  })
+
+  it("skriver forbrukerstandarden i vilkårene", () => {
+    expect(buildContractTerms("time_materials", "ns8417")[1]).toMatch(/^Kontraktsgrunnlag: NS 8417/)
   })
 })

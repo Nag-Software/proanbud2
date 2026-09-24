@@ -98,7 +98,7 @@ const offerFieldsSchema = z.object({
   recipientPhone: z.string().trim().default(""),
   validityDays: z.number().int().min(1).max(365).default(30),
   pricingModel: z.enum(["fixed", "time_materials", "unit_price", "mixed"]).optional(),
-  contractBasis: z.enum(["ns8405", "ns8407", "custom", "none"]).optional(),
+  contractBasis: z.enum(["ns8405", "ns8407", "ns8416", "ns8417", "custom", "none"]).optional(),
   markupPercent: z.number().min(0).max(200).optional(),
 })
 

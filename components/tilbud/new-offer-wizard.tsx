@@ -35,7 +35,7 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
 import { getDistinctSuppliers } from "@/lib/tilbud/supplier-prices"
-import { DEFAULT_PRICING_MODEL } from "@/lib/tilbud/offer-terms"
+import { DEFAULT_PRICING_MODEL, initialContractBasisFor } from "@/lib/tilbud/offer-terms"
 import {
   calculateOfferTotals,
   formatNok,
@@ -130,7 +130,12 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
   const [pricingModel, setPricingModel] = useState<OfferPricingModel>(
     company?.defaultPricingModel ?? DEFAULT_PRICING_MODEL
   )
-  const [contractBasis, setContractBasis] = useState<OfferContractBasis>(company?.defaultContractBasis ?? "none")
+  // Kundetypen avgjør hvilke kontraktsstandarder som passer (NS 8405/8407 for bedrift,
+  // NS 8416/8417 for privatkunder). Bedriftens standard brukes bare når den passer.
+  const customerKind = initialCustomer?.customerType ?? null
+  const [contractBasis, setContractBasis] = useState<OfferContractBasis>(() =>
+    initialContractBasisFor(company?.defaultContractBasis, customerKind)
+  )
   const [markupPercent, setMarkupPercent] = useState(15)
 
   const [isPersisting, startPersisting] = useTransition()
@@ -817,6 +822,7 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   contractBasis={contractBasis}
                   onPricingModelChange={setPricingModel}
                   onContractBasisChange={setContractBasis}
+                  customerKind={customerKind}
                 />
               </div>
 

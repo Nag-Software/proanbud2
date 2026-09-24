@@ -63,6 +63,8 @@ export const PRICING_MODEL_LABELS: Record<OfferPricingModel, string> = {
 export const CONTRACT_BASIS_LABELS: Record<Exclude<OfferContractBasis, "none">, string> = {
   ns8405: "NS 8405",
   ns8407: "NS 8407",
+  ns8416: "NS 8416",
+  ns8417: "NS 8417",
   custom: "Egne kontraktsvilkår",
 }
 

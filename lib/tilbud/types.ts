@@ -4,7 +4,10 @@ export type OfferStatus = "draft" | "sent" | "accepted" | "rejected"
 
 export type OfferPricingModel = "fixed" | "time_materials" | "unit_price" | "mixed"
 
-export type OfferContractBasis = "ns8405" | "ns8407" | "custom" | "none"
+export type OfferContractBasis = "ns8405" | "ns8407" | "ns8416" | "ns8417" | "custom" | "none"
+
+/** customers.type — styrer bl.a. hvilke kontraktsstandarder som passer. */
+export type CustomerKind = "privatperson" | "bedrift"
 
 export type OfferSourceDocument = {
   id: string
@@ -99,6 +102,7 @@ export type OfferCustomerOption = {
   address?: string | null
   postalCode?: string | null
   orgNumber?: string | null
+  customerType?: CustomerKind | null
 }
 
 export type OfferCompanyContext = {
@@ -146,7 +150,7 @@ export type SaveOfferPayload = {
 }
 
 const PRICING_MODELS: OfferPricingModel[] = ["fixed", "time_materials", "unit_price", "mixed"]
-const CONTRACT_BASES: OfferContractBasis[] = ["ns8405", "ns8407", "custom", "none"]
+const CONTRACT_BASES: OfferContractBasis[] = ["ns8405", "ns8407", "ns8416", "ns8417", "custom", "none"]
 
 export function toPricingModel(value: string | null | undefined): OfferPricingModel | null {
   return PRICING_MODELS.includes(value as OfferPricingModel) ? (value as OfferPricingModel) : null

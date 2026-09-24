@@ -1,6 +1,6 @@
 "use client"
 
-import { ExternalLink } from "lucide-react"
+import { AlertTriangle, ExternalLink } from "lucide-react"
 
 import { InfoHint } from "@/components/ui/info-hint"
 import { Label } from "@/components/ui/label"
@@ -13,12 +13,14 @@ import {
 } from "@/components/ui/select"
 import {
   CONTRACT_BASIS_OPTIONS,
+  contractBasisOptionsFor,
+  contractBasisWarning,
   OFFER_TERMS_GUIDE_URL,
   PRICING_MODEL_OPTIONS,
   SELECTABLE_PRICING_MODELS,
   toSelectablePricingModel,
 } from "@/lib/tilbud/offer-terms"
-import type { OfferContractBasis, OfferPricingModel } from "@/lib/tilbud/types"
+import type { CustomerKind, OfferContractBasis, OfferPricingModel } from "@/lib/tilbud/types"
 import { cn } from "@/lib/utils"
 
 function GuideLink() {
@@ -45,6 +47,7 @@ export function OfferTermsFields({
   contractBasis,
   onPricingModelChange,
   onContractBasisChange,
+  customerKind = null,
   disabled = false,
   className,
 }: {
@@ -52,11 +55,21 @@ export function OfferTermsFields({
   contractBasis: OfferContractBasis
   onPricingModelChange: (value: OfferPricingModel) => void
   onContractBasisChange: (value: OfferContractBasis) => void
+  /** Kundens type. Styrer hvilke standarder som vises; null = alle (f.eks. bedriftens standardvalg). */
+  customerKind?: CustomerKind | null
   disabled?: boolean
   className?: string
 }) {
   const selectedModel = toSelectablePricingModel(pricingModel)
   const selectedBasis = CONTRACT_BASIS_OPTIONS.find((option) => option.value === contractBasis)
+  const basisOptions = contractBasisOptionsFor(customerKind)
+  const basisWarning = contractBasisWarning(contractBasis, customerKind)
+  // Et eldre valg som ikke passer kunden vises likevel i listen, så feltet ikke
+  // står tomt — advarselen under forklarer hva som bør velges i stedet.
+  const visibleBasisOptions =
+    selectedBasis && !basisOptions.some((option) => option.value === contractBasis)
+      ? [...basisOptions, selectedBasis]
+      : basisOptions
 
   return (
     <div className={cn("grid gap-4 sm:grid-cols-2", className)}>
@@ -112,14 +125,20 @@ export function OfferTermsFields({
         <div className="flex items-center gap-1">
           <Label htmlFor="offer-contract-basis">Kontraktsgrunnlag</Label>
           <InfoHint title="Kontraktsgrunnlag">
-            {CONTRACT_BASIS_OPTIONS.map((option) => (
+            {customerKind ? (
+              <p>
+                Kunden er {customerKind === "privatperson" ? "privatperson" : "bedrift"}, så bare standardene som
+                passer vises.
+              </p>
+            ) : null}
+            {basisOptions.map((option) => (
               <p key={option.value}>
                 <strong className="text-foreground">{option.label}:</strong> {option.description}
               </p>
             ))}
             <p>
               Overfor privatkunder gjelder håndverkertjenesteloven eller bustadoppføringslova uansett hva som
-              velges her.
+              velges her. NS 8405 og NS 8407 er for avtaler mellom næringsdrivende.
             </p>
             <p>
               <GuideLink />
@@ -135,14 +154,21 @@ export function OfferTermsFields({
             <SelectValue placeholder="Velg kontraktsgrunnlag" />
           </SelectTrigger>
           <SelectContent>
-            {CONTRACT_BASIS_OPTIONS.map((option) => (
+            {visibleBasisOptions.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {selectedBasis ? <p className="text-xs text-muted-foreground">{selectedBasis.description}</p> : null}
+        {basisWarning ? (
+          <p role="alert" className="flex gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+            <span>{basisWarning}</span>
+          </p>
+        ) : selectedBasis ? (
+          <p className="text-xs text-muted-foreground">{selectedBasis.description}</p>
+        ) : null}
       </div>
     </div>
   )
