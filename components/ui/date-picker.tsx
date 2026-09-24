@@ -16,6 +16,7 @@ type DatePickerProps = {
   placeholder?: string
   className?: string
   maxDate?: string
+  minDate?: string
 }
 
 function parseDateValue(value?: string): Date | undefined {
@@ -31,9 +32,15 @@ export function DatePicker({
   placeholder = "Velg dato",
   className,
   maxDate,
+  minDate,
 }: DatePickerProps) {
   const selected = parseDateValue(value)
   const maximum = parseDateValue(maxDate)
+  const minimum = parseDateValue(minDate)
+  const disabled = [
+    ...(minimum ? [{ before: minimum }] : []),
+    ...(maximum ? [{ after: maximum }] : []),
+  ]
 
   return (
     <Popover>
@@ -57,7 +64,8 @@ export function DatePicker({
           mode="single"
           selected={selected}
           onSelect={(date) => onChange(date ? format(date, "yyyy-MM-dd") : "")}
-          disabled={maximum ? { after: maximum } : undefined}
+          disabled={disabled.length > 0 ? disabled : undefined}
+          defaultMonth={selected}
           locale={nb}
         />
       </PopoverContent>

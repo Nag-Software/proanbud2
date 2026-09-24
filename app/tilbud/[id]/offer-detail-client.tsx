@@ -35,6 +35,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "@/components/ui/responsive-dialog"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -740,15 +741,14 @@ export function OfferDetailClient({
                 >
                   Gyldig til
                 </Label>
-                <Input
+                <DatePicker
                   id="valid-until"
-                  type="date"
-                  className="h-8 w-36 bg-background text-xs"
                   value={toInputDate(offer.quoteValidUntil)}
-                  onChange={(event) =>
+                  minDate={toInputDate(offer.createdAt)}
+                  onChange={(value) =>
                     setOffer((previous) => ({
                       ...previous,
-                      quoteValidUntil: event.target.value || null,
+                      quoteValidUntil: value || null,
                     }))
                   }
                 />
