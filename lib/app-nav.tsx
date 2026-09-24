@@ -73,7 +73,8 @@ export const APP_NAV_ENTRIES: AppNavEntry[] = [
   { title: "Kalender", href: "/kalender", icon: CalendarDays, keywords: "avtaler møter frister", group: "arbeid", workerVisible: true, feature: "kalender" },
   { title: "Meldinger", href: "/meldinger", icon: InboxIcon, keywords: "sms epost dialog", group: "arbeid", feature: "meldinger" },
   { title: "Dokumenter", href: "/dokumenter", icon: FilesIcon, keywords: "filer mapper vedlegg", group: "arbeid" },
-  { title: "HMS", href: "/hms", icon: ShieldCheckIcon, keywords: "sikkerhet sja vernerunde", group: "arbeid", feature: "hms" },
+  // Håndverkere ser håndboka (lesevisning) og kan melde avvik derfra.
+  { title: "HMS", href: "/hms", icon: ShieldCheckIcon, keywords: "sikkerhet sja vernerunde håndbok", group: "arbeid", feature: "hms", workerVisible: true },
   { title: "Avvik", href: "/avvik", icon: ShieldCheckIcon, keywords: "ruh rapport uønsket hendelse", group: "arbeid", feature: "avvik" },
 
   // ── Mine priser ───────────────────────────────────────────────────────

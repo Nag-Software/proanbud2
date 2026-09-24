@@ -4,7 +4,8 @@ import { createClient as createServerSupabase } from "@/lib/supabase/server"
 /**
  * Mint fresh signed URLs on demand for the given Supabase file ids.
  * Used when opening/previewing/downloading a file (and to refresh URLs that
- * may have expired during a long session). RLS-scoped: only the caller's rows.
+ * may have expired during a long session). RLS-scoped: the caller's own rows plus
+ * files in projects they have access to.
  */
 export async function POST(request: Request) {
   const supabase = await createServerSupabase()
@@ -29,13 +30,13 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from("document_items")
     .select("id,storage_bucket,storage_path")
-    .eq("user_id", user.id)
+    // RLS avgjør: egne filer, pluss filer i prosjekter man har tilgang til (db/101).
     .eq("provider", "supabase")
     .eq("item_type", "file")
     .in("id", ids.slice(0, 200))
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: "Kunne ikke hente lenker til filene. Prøv igjen." }, { status: 500 })
   }
 
   const rows = (data ?? []) as { id: string; storage_bucket: string | null; storage_path: string | null }[]

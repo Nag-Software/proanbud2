@@ -16,7 +16,9 @@ export default async function ChecklistFillPage({
   params: Promise<{ id: string; checklistId: string }>
 }) {
   const { id: projectId, checklistId } = await params
-  const { user } = await checkRoleAccess(["admin", "manager"])
+  // Arbeidere fyller ut sjekklister på prosjekter de er med på – RLS (has_project_access)
+  // gir «ikke funnet» for prosjekter de ikke har tilgang til.
+  const { user } = await checkRoleAccess(["admin", "manager", "worker"])
 
   const companyId = await getCurrentCompanyIdForUser(user.id)
   if (!companyId || !(await companyHasFeature(companyId, "ks"))) {

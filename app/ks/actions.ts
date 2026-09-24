@@ -42,6 +42,27 @@ async function getAuthContext() {
   }
 }
 
+/**
+ * Utfylling (svar, bilder, avvik fra et punkt) er for den som gjør jobben: ledere,
+ * og arbeidere som er med på prosjektet. Maler og nye sjekklister er fortsatt
+ * forbeholdt ledere. RLS (has_project_access) håndhever det samme i databasen.
+ */
+async function assertCanFillChecklist(
+  supabase: Awaited<ReturnType<typeof getAuthContext>>["supabase"],
+  userId: string,
+  role: string | null | undefined,
+  projectId: string
+) {
+  if (canManageProjects(role)) return
+  const { data } = await supabase
+    .from("project_members")
+    .select("user_id")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle()
+  if (!data) throw new Error("Du er ikke med på dette prosjektet")
+}
+
 function computeProgress(items: Array<{ response: string | null }>) {
   const total = items.length
   const answered = items.filter((i) => i.response !== null).length
@@ -390,7 +411,6 @@ export async function updateChecklistItemAction(
 ) {
   const parsed = updateChecklistItemSchema.parse(input)
   const { supabase, user, companyId, role } = await getAuthContext()
-  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
   await assertPlanFeature(companyId, "ks", "KS")
 
   const { data: item } = await supabase
@@ -405,6 +425,7 @@ export async function updateChecklistItemAction(
   const checklist = Array.isArray(item.checklist) ? item.checklist[0] : item.checklist
   const projectId = checklist?.project_id
   if (!projectId) throw new Error("Fant ikke prosjekt")
+  await assertCanFillChecklist(supabase, user.id, role, projectId)
 
   const now = new Date().toISOString()
   const { error } = await supabase
@@ -447,7 +468,6 @@ export async function createDeviationFromChecklistItemAction(
 ) {
   const parsed = createDeviationFromItemSchema.parse(input)
   const { supabase, user, companyId, role } = await getAuthContext()
-  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
   await assertPlanFeature(companyId, "ks", "KS")
 
   const { data: item } = await supabase
@@ -467,6 +487,7 @@ export async function createDeviationFromChecklistItemAction(
   const checklist = Array.isArray(item.checklist) ? item.checklist[0] : item.checklist
   const projectId = checklist?.project_id
   if (!projectId) throw new Error("Fant ikke prosjekt")
+  await assertCanFillChecklist(supabase, user.id, role, projectId)
 
   const { data: deviation, error } = await supabase
     .from("deviations")
@@ -506,7 +527,6 @@ export async function createDeviationFromChecklistItemAction(
 
 export async function uploadChecklistItemPhotoAction(formData: FormData) {
   const { supabase, user, companyId, role } = await getAuthContext()
-  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
   await assertPlanFeature(companyId, "ks", "KS")
 
   const itemId = String(formData.get("itemId") || "")
@@ -529,6 +549,7 @@ export async function uploadChecklistItemPhotoAction(formData: FormData) {
 
   const checklist = Array.isArray(item.checklist) ? item.checklist[0] : item.checklist
   if (!checklist) throw new Error("Fant ikke sjekkliste")
+  await assertCanFillChecklist(supabase, user.id, role, checklist.project_id)
 
   const ext = file.name.split(".").pop() || "jpg"
   const storagePath = `${companyId}/${checklist.project_id}/${checklist.id}/${itemId}/${Date.now()}.${ext}`
@@ -566,18 +587,21 @@ export async function getChecklistPhotoUrlAction(storagePath: string) {
 }
 
 export async function deleteChecklistItemPhotoAction(attachmentId: string) {
-  const { supabase, companyId, role } = await getAuthContext()
-  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
+  const { supabase, user, companyId, role } = await getAuthContext()
   await assertPlanFeature(companyId, "ks", "KS")
 
   const { data: attachment } = await supabase
     .from("checklist_item_attachments")
-    .select("id, storage_path, item:project_checklist_items(checklist:project_checklists(project_id, id))")
+    .select("id, storage_path, uploaded_by, item:project_checklist_items(checklist:project_checklists(project_id, id))")
     .eq("id", attachmentId)
     .eq("company_id", companyId)
     .maybeSingle()
 
   if (!attachment) throw new Error("Fant ikke bilde")
+  // Ledere kan rydde alt; en arbeider kan fjerne sine egne bilder.
+  if (!canManageProjects(role) && attachment.uploaded_by !== user.id) {
+    throw new Error("Du kan bare slette bilder du har tatt selv")
+  }
 
   await supabase.storage.from("ks_checklists").remove([attachment.storage_path])
   await supabase.from("checklist_item_attachments").delete().eq("id", attachmentId)

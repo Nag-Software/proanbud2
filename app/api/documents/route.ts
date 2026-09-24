@@ -35,6 +35,7 @@ type SupabaseDocumentRow = {
   download_url: string | null
   last_modified_at: string | null
   updated_at: string
+  user_id?: string
 }
 
 function sanitizeName(name: string) {
@@ -183,13 +184,20 @@ export async function GET(request: Request) {
       return NextResponse.json({ items })
     }
 
+    // Prosjektmapper (prosjekter/{id}/…) deles med alle som har tilgang til
+    // prosjektet – der avgjør RLS (db/101) hvem som ser hva, ikke user_id.
+    // Andre mapper er private for eieren som før.
+    const projectFolderId = parentId ? parseProjectIdFromDocumentPath(sanitizeFolderPath(parentId)) : null
+
     // Only fetch exactly what we need, filtering natively in the DB instead of fetching ALL rows
     let query = supabase
       .from("document_items")
-      .select("id,name,item_type,external_parent_id,mime_type,extension,size_bytes,storage_bucket,storage_path,web_url,download_url,last_modified_at,updated_at")
-      .eq("user_id", user.id)
+      .select("id,name,item_type,external_parent_id,mime_type,extension,size_bytes,storage_bucket,storage_path,web_url,download_url,last_modified_at,updated_at,user_id")
       .eq("provider", "supabase")
       .order("updated_at", { ascending: false })
+    if (!projectFolderId || queryIsRootOnly) {
+      query = query.eq("user_id", user.id)
+    }
 
     // If queryIsRootOnly is true, we ONLY fetch the root folders explicitly to heavily optimize sidebar fetching.
     if (queryIsRootOnly) {
@@ -221,8 +229,16 @@ export async function GET(request: Request) {
     // Compute standard UI structure mapping
     const childRows = rows
 
+    // I en delt prosjektmappe kan flere ha laget en mappe med samme navn – vis den én gang.
+    const seenFolderNames = new Set<string>()
     const folders = childRows
       .filter((row) => row.item_type === "folder")
+      .filter((row) => {
+        const key = row.name.toLocaleLowerCase("nb")
+        if (seenFolderNames.has(key)) return false
+        seenFolderNames.add(key)
+        return true
+      })
       .sort((a, b) => a.name.localeCompare(b.name, "nb"))
       .map((folder) => ({
         id: folder.id,
@@ -246,8 +262,21 @@ export async function GET(request: Request) {
     const directFiles = childRows.filter((row) => row.item_type === "file")
     const signedByPath = await batchSignUrls(supabase, directFiles)
 
+    // Hvem som lastet opp, for filer fra andre i en delt prosjektmappe.
+    const otherUploaderIds = [
+      ...new Set(directFiles.map((row) => row.user_id).filter((id): id is string => Boolean(id) && id !== user.id)),
+    ]
+    const uploaderNames = new Map<string, string>()
+    if (otherUploaderIds.length > 0) {
+      const { data: uploaders } = await supabase.from("users").select("id, full_name, email").in("id", otherUploaderIds)
+      for (const uploader of uploaders ?? []) {
+        uploaderNames.set(uploader.id as string, (uploader.full_name as string | null) || (uploader.email as string | null) || "En kollega")
+      }
+    }
+
     const filesWithSignedUrls = directFiles.map((row) => {
       const signedUrl = row.storage_path ? signedByPath.get(row.storage_path) ?? null : null
+      const ownedByMe = !row.user_id || row.user_id === user.id
       return {
         id: row.id,
         folderPath: currentFolder || null,
@@ -261,6 +290,9 @@ export async function GET(request: Request) {
         downloadUrl: signedUrl ?? row.download_url,
         lastModifiedAt: row.last_modified_at,
         updatedAt: row.updated_at,
+        // Andres filer kan leses, men bare den som lastet opp kan endre eller slette.
+        canEdit: ownedByMe,
+        uploadedBy: ownedByMe ? null : uploaderNames.get(row.user_id as string) ?? "En kollega",
       }
     })
 

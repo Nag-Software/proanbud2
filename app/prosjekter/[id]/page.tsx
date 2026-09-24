@@ -164,9 +164,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const hasKs = hasFeature(plan, modules, "ks")
   const hasAvvik = hasFeature(plan, modules, "avvik")
   const hasTasks = hasFeature(plan, modules, "project_tasks")
-  // KS og Avvik deler «KS & Avvik»-fanen. KS er skjult for håndverkere, Avvik
-  // er ikke — fanen vises så lenge minst én av delene er tilgjengelig.
-  const showKsSub = !isWorker && hasKs
+  // KS og Avvik deler «KS & Avvik»-fanen. Håndverkere fyller ut sjekklistene på
+  // plassen; å legge til sjekklister fra maler er forbeholdt ledere (KsTab).
+  const showKsSub = hasKs
   const showAvvikSub = hasAvvik
   const showKvalitet = showKsSub || showAvvikSub
 
@@ -455,6 +455,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   deviations={projectDeviations}
                   showChecklists={showKsSub}
                   showDeviations={showAvvikSub}
+                  canManageChecklists={!isWorker}
                 />
               </ProjectTabPanel>
             )}

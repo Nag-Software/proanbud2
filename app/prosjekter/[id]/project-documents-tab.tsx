@@ -35,6 +35,10 @@ type DocumentItem = {
   webUrl: string | null
   downloadUrl: string | null
   updatedAt: string
+  /** Prosjektmappen er delt: andres filer kan leses, men ikke endres eller slettes. */
+  canEdit?: boolean
+  /** Navnet på den som lastet opp, når det er noen andre enn deg. */
+  uploadedBy?: string | null
 }
 
 function formatSize(size?: number | null) {
@@ -242,6 +246,9 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
           </Button>
         </div>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Tegninger, bilder og papirer her er delt med alle som er med på prosjektet.
+      </p>
 
       <div className="hidden rounded-lg border md:block">
         <Table>
@@ -275,6 +282,9 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
                   <TableRow key={item.id} onClick={() => openFile(item)} className="cursor-pointer">
                     <TableCell className="font-medium">
                       {item.name}
+                      {item.uploadedBy ? (
+                        <span className="block text-xs font-normal text-muted-foreground">Fra {item.uploadedBy}</span>
+                      ) : null}
                     </TableCell>
                     <TableCell>
                       {item.extension?.toUpperCase() ?? "Fil"}
@@ -282,26 +292,28 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
                     <TableCell>{formatSize(item.sizeBytes)}</TableCell>
                     <TableCell>{formatDate(item.updatedAt)}</TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={disabled}
-                          onClick={() => askRename(item)}
-                          aria-label={`Endre navn pa ${item.name}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={disabled}
-                          onClick={() => void onDelete(item)}
-                          aria-label={`Slett ${item.name}`}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                      {item.canEdit !== false ? (
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={disabled}
+                            onClick={() => askRename(item)}
+                            aria-label={`Endre navn på ${item.name}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={disabled}
+                            onClick={() => void onDelete(item)}
+                            aria-label={`Slett ${item.name}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 )
@@ -324,16 +336,33 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
                   <p className="truncate font-medium">{item.name}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {item.extension?.toUpperCase() ?? "Fil"} · {formatSize(item.sizeBytes)} · {formatDate(item.updatedAt)}
+                    {item.uploadedBy ? ` · fra ${item.uploadedBy}` : ""}
                   </p>
                 </button>
-                <div className="flex shrink-0 gap-1">
-                  <Button variant="ghost" size="icon" disabled={disabled} onClick={() => askRename(item)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" disabled={disabled} onClick={() => void onDelete(item)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
+                {item.canEdit !== false ? (
+                  <div className="flex shrink-0 gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-10"
+                      disabled={disabled}
+                      onClick={() => askRename(item)}
+                      aria-label={`Endre navn på ${item.name}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-10"
+                      disabled={disabled}
+                      onClick={() => void onDelete(item)}
+                      aria-label={`Slett ${item.name}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             )
           })

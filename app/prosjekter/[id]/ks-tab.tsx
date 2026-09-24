@@ -13,9 +13,11 @@ import type { ChecklistSummary } from "@/lib/ks/types"
 type Props = {
   projectId: string
   checklists: ChecklistSummary[]
+  /** Ledere legger til sjekklister fra maler; håndverkere fyller ut de som finnes. */
+  canManage?: boolean
 }
 
-export default function KsTab({ projectId, checklists }: Props) {
+export default function KsTab({ projectId, checklists, canManage = true }: Props) {
   const router = useRouter()
   const [libraryOpen, setLibraryOpen] = React.useState(false)
 
@@ -38,25 +40,31 @@ export default function KsTab({ projectId, checklists }: Props) {
             {notStarted > 0 && ` · ${notStarted} ikke startet`}
           </p>
         </div>
-        <Button
-          size="sm"
-          className="w-full sm:w-auto"
-          onClick={() => setLibraryOpen(true)}
-        >
-          <Plus className="mr-2 size-4" />
-          Legg til sjekkliste
-        </Button>
+        {canManage ? (
+          <Button
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={() => setLibraryOpen(true)}
+          >
+            <Plus className="mr-2 size-4" />
+            Legg til sjekkliste
+          </Button>
+        ) : null}
       </div>
 
       {checklists.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center">
           <p className="text-muted-foreground">
-            Ingen sjekklister ennå. Legg til fra malbiblioteket — ingenting blir glemt.
+            {canManage
+              ? "Ingen sjekklister ennå. Legg til fra malbiblioteket — ingenting blir glemt."
+              : "Ingen sjekklister på prosjektet ennå. Lederen legger dem til."}
           </p>
-          <Button className="mt-4" onClick={() => setLibraryOpen(true)}>
-            <Plus className="mr-2 size-4" />
-            Velg mal
-          </Button>
+          {canManage ? (
+            <Button className="mt-4" onClick={() => setLibraryOpen(true)}>
+              <Plus className="mr-2 size-4" />
+              Velg mal
+            </Button>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-3">
@@ -68,12 +76,14 @@ export default function KsTab({ projectId, checklists }: Props) {
 
       <ChecklistPhotoGallery projectId={projectId} />
 
-      <TemplateLibraryDialog
-        open={libraryOpen}
-        onOpenChange={setLibraryOpen}
-        projectId={projectId}
-        onAdded={handleAdded}
-      />
+      {canManage ? (
+        <TemplateLibraryDialog
+          open={libraryOpen}
+          onOpenChange={setLibraryOpen}
+          projectId={projectId}
+          onAdded={handleAdded}
+        />
+      ) : null}
     </div>
   )
 }

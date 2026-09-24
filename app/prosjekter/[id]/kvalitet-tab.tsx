@@ -20,10 +20,12 @@ type Props = {
   projectId: string
   checklists: ChecklistSummary[]
   deviations: DeviationWithRelations[]
-  /** KS er Proff-funksjon og skjules for håndverkere. */
+  /** KS er Proff-funksjon. Håndverkere fyller ut, ledere legger også til sjekklister. */
   showChecklists: boolean
   /** Avvik er Proff-funksjon, men synlig for alle roller. */
   showDeviations: boolean
+  /** Kan legge til sjekklister fra malbiblioteket (ledere). */
+  canManageChecklists?: boolean
 }
 
 /**
@@ -42,6 +44,7 @@ export default function KvalitetTab({
   deviations,
   showChecklists,
   showDeviations,
+  canManageChecklists = true,
 }: Props) {
   const searchParams = useSearchParams()
   const setSubTab = useProjectSubTabNavigation()
@@ -164,7 +167,7 @@ export default function KvalitetTab({
           liggende skjult slik at bytte frem og tilbake er umiddelbart. */}
       {showChecklists && visited.has("sjekklister") && (
         <div className={cn(active !== "sjekklister" && "hidden")}>
-          <KsTab projectId={projectId} checklists={checklists} />
+          <KsTab projectId={projectId} checklists={checklists} canManage={canManageChecklists} />
         </div>
       )}
       {showDeviations && visited.has("avvik") && (

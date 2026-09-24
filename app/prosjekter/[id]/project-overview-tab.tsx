@@ -250,7 +250,7 @@ export function ProjectOverviewTab({
       onAction: () => navigateToTab("avvik"),
     })
   }
-  if (flags.hasKs && !flags.isWorker && activeChecklists.length > 0) {
+  if (flags.hasKs && activeChecklists.length > 0) {
     attention.push({
       key: "checklists",
       tone: "warning",
