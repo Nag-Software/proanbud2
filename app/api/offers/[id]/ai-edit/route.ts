@@ -11,6 +11,15 @@ import { openaiFetch } from "@/lib/llm/openai-fetch"
 import { canSendOffers } from "@/lib/roles"
 import { createClient } from "@/lib/supabase/server"
 import {
+  AI_EDIT_SYSTEM_PROMPT,
+  buildAiEditUserMessage,
+  normalizeExistingLineItems,
+  proposeOfferEdit,
+  type AiEditProposal,
+  type ChatMessage,
+  type ModelReply,
+} from "@/lib/tilbud/ai-edit-proposal"
+import {
   calculateOfferTotals,
   type OfferLineItem,
 } from "@/lib/tilbud/types"
@@ -31,44 +40,6 @@ const requestSchema = z.object({
   generationId: z.string().uuid(),
 })
 
-const optionalText = (max: number) =>
-  z.preprocess(
-    (value) => (value === null || value === "" ? undefined : value),
-    z.string().max(max).optional()
-  )
-
-const lineItemSchema = z.object({
-  id: z.string().optional(),
-  subproject: z.string().trim().min(1).max(120).default("Generelt"),
-  title: z.string().trim().min(1).max(240),
-  description: z.string().max(2_000).default(""),
-  reasoning: optionalText(2_000),
-  quantity: z.number().min(0).max(1_000_000),
-  unit: z.string().trim().min(1).max(40).default("stk"),
-  supplier: z.string().max(160).default(""),
-  nobb: optionalText(100),
-  supplierSku: optionalText(100),
-  supplierUrl: z.preprocess(
-    (value) => (value === null || value === "" ? undefined : value),
-    z.string().url().optional()
-  ),
-  unitPriceNok: z.number().min(0).max(1_000_000_000),
-  markupPercent: z.number().min(0).max(100),
-  discountPercent: z.number().min(0).max(100),
-  priceSource: z.enum(["prisfil", "lagret-jobb", "anslag"]).optional(),
-  incomeAccountCategory: z
-    .enum(["vare_videresalg", "vare_egenprodusert", "tjeneste", "annet"])
-    .optional(),
-})
-
-const proposalSchema = z.object({
-  summary: z.string().trim().min(1).max(500),
-  title: z.string().trim().min(1).max(240),
-  description: z.string().max(10_000),
-  sourceSummary: z.string().max(5_000),
-  lineItems: z.array(lineItemSchema).max(100),
-})
-
 type OfferRow = {
   id: string
   title: string | null
@@ -78,42 +49,8 @@ type OfferRow = {
   line_items: unknown
 }
 
-function normalizeJsonFromModel(raw: string) {
-  const trimmed = raw.trim()
-  if (!trimmed.startsWith("```")) return trimmed
-  return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
-}
-
-function normalizeExistingLineItems(input: unknown): OfferLineItem[] {
-  if (!Array.isArray(input)) return []
-
-  return input
-    .map((row) => {
-      const item = row as Partial<OfferLineItem>
-      return {
-        id: String(item.id || crypto.randomUUID()),
-        subproject: String(item.subproject || "Generelt"),
-        title: String(item.title || ""),
-        description: String(item.description || ""),
-        reasoning: item.reasoning ? String(item.reasoning) : undefined,
-        quantity: Number(item.quantity || 0),
-        unit: String(item.unit || "stk"),
-        supplier: String(item.supplier || ""),
-        nobb: item.nobb ? String(item.nobb) : undefined,
-        supplierSku: item.supplierSku ? String(item.supplierSku) : undefined,
-        supplierUrl: item.supplierUrl ? String(item.supplierUrl) : undefined,
-        unitPriceNok: Number(item.unitPriceNok || 0),
-        markupPercent: Number(item.markupPercent || 0),
-        discountPercent: Number(item.discountPercent || 0),
-        priceSource: item.priceSource,
-        incomeAccountCategory: item.incomeAccountCategory,
-      }
-    })
-    .filter((item) => item.title.trim())
-}
-
 function toOfferLineItems(
-  proposed: z.infer<typeof lineItemSchema>[],
+  proposed: AiEditProposal["lineItems"],
   existing: OfferLineItem[],
   hourlyRates: CompanyHourlyRate[]
 ): OfferLineItem[] {
@@ -143,6 +80,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Ti sekunder margin til måling og svar etter at KI-en er ferdig.
+  const deadline = Date.now() + (maxDuration - 10) * 1_000
   const subscription = await requireActiveSubscription()
   if (!subscription.ok) return subscription.response
 
@@ -205,80 +144,96 @@ export async function POST(
     const currentLineItems = normalizeExistingLineItems(currentOffer.line_items)
     const hourlyRates = await fetchCompanyHourlyRates(supabase, subscription.context.companyId)
     const model = process.env.OPENAI_MODEL || "gpt-5.2-mini"
-    const response = await openaiFetch(
-      "chat/completions",
-      {
-        model,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: [
-              "Du redigerer norske håndverkertilbud.",
-              "Gjør bare endringene brukeren uttrykkelig ber om.",
-              "Returner hele tilbudet i gyldig JSON, uten markdown.",
-              "Behold alle uendrede felt og linjer nøyaktig.",
-              "Behold id på eksisterende linjer. Utelat id bare for nye linjer.",
-              "Ikke finn på leverandør, artikkelnummer eller pris.",
-              "For en ny linje uten eksplisitt pris, bruk unitPriceNok 0 og priceSource anslag.",
-              "Alt arbeid skal være egne linjer med unit time og quantity = antall timer — aldri m2, stk, lm eller RS for arbeid.",
-              "Timepris for arbeid hentes fra timepriser; finn aldri på egne timepriser. Arbeid har markupPercent 0.",
-              "Slett aldri en linje med mindre brukeren tydelig ber om det.",
-              "Beløp er ekskludert mva. Skriv kort og tydelig norsk.",
-            ].join(" "),
-          },
-          {
-            role: "user",
-            content: JSON.stringify({
-              instruction: body.data.instruction,
-              currentOffer: {
-                title: currentOffer.title || "Uten tittel",
-                description: currentOffer.description || "",
-                sourceSummary: currentOffer.source_summary || "",
-                lineItems: currentLineItems,
-              },
-              timepriser: formatHourlyRatesForPrompt(hourlyRates),
-              requiredResponseShape: {
-                summary: "kort oppsummering",
-                title: "hele tittelen",
-                description: "hele beskrivelsen",
-                sourceSummary: "hele kundemeldingen",
-                lineItems: "hele listen med tilbudslinjer",
-              },
-            }),
-          },
-        ],
-      },
-      { timeoutMs: 90_000, retries: 1 }
-    )
-
-    const openAiPayload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string | null } }>
-      model?: string
-    }
-    const raw = openAiPayload.choices?.[0]?.message?.content || "{}"
-    const parsedProposal = proposalSchema.safeParse(
-      JSON.parse(normalizeJsonFromModel(raw))
-    )
-
-    if (!parsedProposal.success) {
-      throw new Error("KI returnerte et ugyldig endringsforslag")
+    const callModel = async (
+      messages: ChatMessage[],
+      timeoutMs: number
+    ): Promise<ModelReply> => {
+      const response = await openaiFetch(
+        "chat/completions",
+        { model, response_format: { type: "json_object" }, messages },
+        // Reparasjonskallet får resten av tidsbudsjettet og ingen nye forsøk.
+        { timeoutMs, retries: messages.length > 2 ? 0 : 1 }
+      )
+      const payload = (await response.json()) as {
+        choices?: Array<{
+          message?: { content?: string | null }
+          finish_reason?: string
+        }>
+        model?: string
+      }
+      return {
+        content: payload.choices?.[0]?.message?.content ?? "",
+        model: payload.model,
+        finishReason: payload.choices?.[0]?.finish_reason,
+      }
     }
 
+    const result = await proposeOfferEdit({
+      deadline,
+      callModel,
+      messages: [
+        { role: "system", content: AI_EDIT_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: buildAiEditUserMessage({
+            instruction: body.data.instruction,
+            currentOffer: {
+              title: currentOffer.title || "Uten tittel",
+              description: currentOffer.description || "",
+              sourceSummary: currentOffer.source_summary || "",
+              lineItems: currentLineItems,
+            },
+            timepriser: formatHourlyRatesForPrompt(hourlyRates),
+          }),
+        },
+      ],
+    })
+
+    if (!result.ok) {
+      // Loggen sa før bare «ugyldig endringsforslag». Nå står det hvilket felt
+      // modellen bommet på, og med hva — det er det som trengs for å rette.
+      await logServerError({
+        message: "AI offer edit failed",
+        error: new Error("KI returnerte et ugyldig endringsforslag"),
+        source: "api",
+        route: "POST /api/offers/[id]/ai-edit",
+        statusCode: 422,
+        level: "warning",
+        companyId: subscription.context.companyId,
+        userId: subscription.context.userId,
+        context: {
+          offerId: id,
+          model: result.reply.model || model,
+          finishReason: result.reply.finishReason,
+          repaired: result.repaired,
+          repairError: result.repairError,
+          issues: result.issues,
+        },
+      })
+
+      return NextResponse.json(
+        {
+          error:
+            "KI klarte ikke å lage et gyldig forslag. Prøv å formulere endringen litt annerledes.",
+        },
+        { status: 422 }
+      )
+    }
+
+    const proposal = result.proposal
     const lineItems = toOfferLineItems(
-      parsedProposal.data.lineItems,
+      proposal.lineItems,
       currentLineItems,
       hourlyRates
     )
     const changes = [
-      ...(parsedProposal.data.title !== (currentOffer.title || "Uten tittel")
+      ...(proposal.title !== (currentOffer.title || "Uten tittel")
         ? ["Endret tilbudstittel"]
         : []),
-      ...(parsedProposal.data.description !== (currentOffer.description || "")
+      ...(proposal.description !== (currentOffer.description || "")
         ? ["Endret tilbudsbeskrivelsen"]
         : []),
-      ...(parsedProposal.data.sourceSummary !==
-      (currentOffer.source_summary || "")
+      ...(proposal.sourceSummary !== (currentOffer.source_summary || "")
         ? ["Endret melding til kunde"]
         : []),
       ...describeOfferLineItemChanges(
@@ -292,8 +247,9 @@ export async function POST(
       metadata: {
         user_id: subscription.context.userId,
         offer_id: id,
-        model: openAiPayload.model || model,
+        model: result.reply.model || model,
         mode: "edit",
+        repaired: result.repaired,
       },
     })
 
@@ -309,7 +265,7 @@ export async function POST(
 
     return NextResponse.json({
       proposal: {
-        ...parsedProposal.data,
+        ...proposal,
         changes,
         lineItems,
         currentTotals: calculateOfferTotals(currentLineItems),
