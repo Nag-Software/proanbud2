@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 
 import { OfferCard, type OfferCardData } from "@/components/tilbud/offer-card"
-import { type Quota } from "@/components/tilbud/columns"
+import { offerStatusConfigByValue, type Quota } from "@/components/tilbud/columns"
 import { readProjectSummaryFromAnalysis } from "@/lib/tilbud/project-summary.shared"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -59,7 +59,7 @@ export default function TilbudTab({ offers, readOnly = false }: TilbudTabProps) 
             return {
                 id: item.id,
                 title: item.title?.trim() || item.description?.trim() || "Uten navn",
-                description: aiDescription || "Ingen KI-beskrivelse",
+                description: aiDescription,
                 created: formatDisplayDate(item.created_at),
                 createdRaw,
                 amount,
@@ -74,7 +74,9 @@ export default function TilbudTab({ offers, readOnly = false }: TilbudTabProps) 
         let filtered = cardData
         if (needle) {
             filtered = cardData.filter((item) => {
-                const haystack = `${item.id} ${item.title} ${item.description} ${item.status}`.toLowerCase()
+                // Statusen søkes på norsk, slik den står på kortet («sendt», ikke «sent»).
+                const statusLabel = offerStatusConfigByValue[item.status].label
+                const haystack = `${item.id} ${item.title} ${item.description} ${statusLabel}`.toLowerCase()
                 return haystack.includes(needle)
             })
         }
@@ -101,15 +103,18 @@ export default function TilbudTab({ offers, readOnly = false }: TilbudTabProps) 
 
     return (
         <div className="mt-2 flex w-full max-w-full min-w-0 flex-col gap-3 pb-2">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            {/* Søk og sortering deler én rad også på mobil, så kortene
+                kommer høyere opp på skjermen. */}
+            <div className="flex items-center gap-2 sm:justify-between sm:gap-3">
                 <Input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder="Søk i tilbud..."
-                    className="sm:max-w-sm"
+                    aria-label="Søk i tilbud"
+                    className="min-w-0 flex-1 sm:max-w-sm"
                 />
                 <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
-                    <SelectTrigger className="w-full sm:w-[220px]">
+                    <SelectTrigger className="shrink-0 sm:w-[220px]">
                         <SelectValue placeholder="Sorter etter" />
                     </SelectTrigger>
                     <SelectContent>
@@ -125,7 +130,9 @@ export default function TilbudTab({ offers, readOnly = false }: TilbudTabProps) 
             </div>
 
             {visibleData.length > 0 ? (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5">
+                // Sidemenyen tar 256 px fra md og opp. Med fire kolonner allerede
+                // fra lg ble kortene ~175 px brede — for smalt for beløpet.
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                     {visibleData.map((offer) => (
                         <OfferCard key={offer.id} offer={offer} readOnly={readOnly} />
                     ))}

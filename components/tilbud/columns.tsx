@@ -31,6 +31,14 @@ type StatusConfig = {
   label: string
   filledBars: number
   fillClass: string
+  /** Samme merke som tilbudslisten, tilbudsdetaljen og dashbordet (theme-badge-status-* i globals.css). */
+  badgeClass: string
+  /**
+   * Prikk inne i merket. Merket alene skiller nesten ikke statusene: outline-
+   * varianten til Badge overstyrer tekst- og kantfargen fra theme-badge-status-*,
+   * så bare en svak bakgrunnstone blir igjen. Prikken bærer fargen.
+   */
+  dotClass: string
 }
 
 export const offerStatusConfigByValue: Record<Quota["status"], StatusConfig> = {
@@ -38,21 +46,29 @@ export const offerStatusConfigByValue: Record<Quota["status"], StatusConfig> = {
     label: "Utkast",
     filledBars: 0,
     fillClass: "bg-gray-300",
+    badgeClass: "theme-badge-status-draft",
+    dotClass: "bg-[var(--tone-neutral)]",
   },
   sent: {
     label: "Sendt",
     filledBars: 1,
     fillClass: "bg-rose-500",
+    badgeClass: "theme-badge-status-sent",
+    dotClass: "bg-[var(--tone-warning)]",
   },
   accepted: {
     label: "Godkjent",
     filledBars: 3,
     fillClass: "bg-emerald-500",
+    badgeClass: "theme-badge-status-accepted",
+    dotClass: "bg-[var(--tone-success)]",
   },
   rejected: {
     label: "Avvist",
     filledBars: 2,
     fillClass: "bg-slate-400",
+    badgeClass: "theme-badge-status-rejected",
+    dotClass: "bg-[var(--tone-danger)]",
   },
 }
 
