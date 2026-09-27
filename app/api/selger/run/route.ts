@@ -48,6 +48,7 @@ export async function POST(request: Request) {
       targetType: "prospects",
       metadata: {
         segment,
+        hentet: summary.refill?.imported ?? 0,
         queued: summary.queued,
         researched: summary.research.succeeded,
         drafted: summary.drafts.succeeded,

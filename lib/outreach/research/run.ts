@@ -238,6 +238,7 @@ export async function researchProspect(prospectId: string): Promise<ResearchOutc
         phone: prospect.phone,
         knownWebsite: website,
         kommune: prospect.kommune,
+        email,
       }),
     ])
 

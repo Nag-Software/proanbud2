@@ -86,6 +86,7 @@ export const sellerActionLabels: Record<string, string> = {
   task_done: "Fullførte oppgave",
   qualify_prospect: "Kvalifiserte lead",
   import_prospects: "Importerte leads",
+  auto_import: "Hentet nye firmaer fra Brønnøysund",
   won_prospect: "Vant lead",
   lost_prospect: "Tapte lead",
   regate_prospects: "Sjekket leads mot Brønnøysund",

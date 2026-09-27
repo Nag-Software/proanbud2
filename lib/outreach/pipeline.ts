@@ -12,6 +12,8 @@ import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { Hook } from "@/lib/outreach/research/synthesize"
 import { researchProspect } from "@/lib/outreach/research/run"
+import { refillIfLow, type RefillSummary } from "@/lib/outreach/pafyll"
+import { isSegmentKey } from "@/lib/outreach/segments"
 import { loadSettings } from "@/lib/outreach/settings"
 import type { ProspectRow } from "@/lib/outreach/types"
 import { draftMessage, persistDraft } from "@/lib/outreach/write/generate"
@@ -277,6 +279,8 @@ export async function draftOne(
 
 export type RunSummary = {
   ok: boolean
+  /** Påfyll fra Brønnøysund før køingen — null når det ikke trengtes. */
+  refill: RefillSummary | null
   queued: number
   research: StepResult
   drafts: StepResult
@@ -303,6 +307,14 @@ export async function runPipeline(options: {
   const deadline = started + budgetMs
   const settings = await loadSettings()
 
+  // Et trykk på «Kjør nå» skal gi noe å jobbe med. Er lista tom, hentes nye
+  // firmaer først (uten å vente tre timer siden forrige — men innenfor døgntaket).
+  const refill = await refillIfLow({
+    segment: isSegmentKey(options.segment) ? options.segment : null,
+    capacity: settings.daily_new_drafts,
+    manual: true,
+  })
+
   const { queued } = await queueForResearch({
     segment: options.segment,
     limit: options.queueLimit ?? 30,
@@ -323,6 +335,7 @@ export async function runPipeline(options: {
 
   return {
     ok: true,
+    refill: refill.attempted ? refill : null,
     queued,
     research,
     drafts,

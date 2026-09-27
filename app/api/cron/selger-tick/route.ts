@@ -45,6 +45,7 @@ async function run(request: Request) {
       (summary.drafts?.succeeded ?? 0) > 0 ||
       (summary.warm?.drafted ?? 0) > 0 ||
       (summary.warm?.closed ?? 0) > 0 ||
+      (summary.refill?.imported ?? 0) > 0 ||
       bridged > 0 ||
       summary.expired > 0
 
@@ -60,6 +61,7 @@ async function run(request: Request) {
           researchet: summary.research?.succeeded ?? 0,
           utkast: summary.drafts?.succeeded ?? 0,
           varme_utkast: summary.warm?.drafted ?? 0,
+          hentet: summary.refill?.imported ?? 0,
           analyser_nye: summary.bridge?.created ?? 0,
           analyser_oppgaver: summary.bridge?.tasks ?? 0,
           analyser_varm: summary.bridge?.warm ?? 0,

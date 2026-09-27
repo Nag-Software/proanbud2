@@ -38,6 +38,7 @@ function SegmentCard({ segment }: { segment: SegmentStats }) {
         body: JSON.stringify({ segment: segment.key, queueLimit: 30 }),
       })
       const payload = (await response.json().catch(() => ({}))) as {
+        refill?: { imported?: number; emailOk?: number } | null
         queued?: number
         research?: { succeeded?: number }
         drafts?: { succeeded?: number }
@@ -48,7 +49,14 @@ function SegmentCard({ segment }: { segment: SegmentStats }) {
         return
       }
       toast.success(
-        `${payload.queued ?? 0} køet · ${payload.research?.succeeded ?? 0} researchet · ${payload.drafts?.succeeded ?? 0} utkast`,
+        [
+          payload.refill ? `${payload.refill.imported ?? 0} nye fra Brønnøysund (${payload.refill.emailOk ?? 0} kan få e-post)` : null,
+          `${payload.queued ?? 0} køet`,
+          `${payload.research?.succeeded ?? 0} researchet`,
+          `${payload.drafts?.succeeded ?? 0} utkast`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
       )
       router.refresh()
     } finally {

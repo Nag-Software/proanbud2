@@ -194,7 +194,7 @@ const COMMON_FIRST_NAMES = new Set([
 ])
 
 const STOP_TOKENS = new Set(["og", "i", "pa", "av", "the", "and", "med", "for", "til"])
-const LEGAL_SUFFIX_TOKENS = new Set(["as", "asa", "ans", "da", "enk", "nuf", "sa", "ba", "ks", "sp", "z", "o"])
+export const LEGAL_SUFFIX_TOKENS = new Set(["as", "asa", "ans", "da", "enk", "nuf", "sa", "ba", "ks", "sp", "z", "o"])
 
 /** Små bokstaver, æøå → ae/o/a, fjern alt som ikke er a–z/0–9. */
 export function normalizeForMatch(value: string): string {

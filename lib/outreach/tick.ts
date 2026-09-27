@@ -13,7 +13,8 @@
 //   3. helse      Er domenet i trøbbel, skal vi ikke sende noe mer i dag.
 //   4. sending    Godkjente meldinger som har forfalt.
 //   5. oppfølging Utkast til steg 2 og 3.
-//   6. research   Ny research og nye utkast — det som tåler å vente.
+//   6. research   Påfyll fra Brønnøysund når maskinen er i ferd med å gå tom,
+//                 så ny research og nye utkast — det som tåler å vente.
 //   7. attio      Speiling til Attio, med tiden som er igjen. Kjører også når
 //                 maskinen er pauset — den sender ingen e-post.
 //
@@ -32,6 +33,7 @@ import { isWithinSendWindow } from "@/lib/outreach/sendetid"
 import { loadSettings } from "@/lib/outreach/settings"
 import { runWarmBatch, type WarmSummary } from "@/lib/outreach/varm"
 import { runAttioSync, type AttioSyncSummary } from "@/lib/attio/sync"
+import { refillIfLow, type RefillSummary } from "@/lib/outreach/pafyll"
 
 export type SendSummary = {
   claimed: number
@@ -54,6 +56,7 @@ export type TickSummary = {
   followups: FollowupSummary | null
   warm: WarmSummary | null
   attio: AttioSyncSummary | null
+  refill: RefillSummary | null
   research: StepResult | null
   drafts: StepResult | null
   queued: number
@@ -170,6 +173,7 @@ export async function runTick(options: { budgetMs?: number } = {}): Promise<Tick
     followups: null,
     warm: null,
     attio: null,
+    refill: null,
     research: null,
     drafts: null,
     queued: 0,
@@ -247,6 +251,13 @@ export async function runTick(options: { budgetMs?: number } = {}): Promise<Tick
 
     // ── 6) Ny research og nye utkast — det som tåler å vente.
     if (Date.now() < deadline - 20_000) {
+      // Påfyll først: er det lite å jobbe med, hentes nye firmaer fra
+      // Brønnøysund, så de kan researches i samme kjøring. Uten dette gikk
+      // maskinen tom og stod stille til noen importerte for hånd.
+      if (Date.now() < deadline - 60_000) {
+        summary.refill = await refillIfLow({ capacity: settings.daily_new_drafts })
+      }
+
       const { queued } = await queueForResearch({ limit: 20 })
       summary.queued = queued
 

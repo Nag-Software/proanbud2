@@ -60,7 +60,9 @@ async function resolvePublicTarget(target: URL) {
     return null
   }
 
-  return addresses[0]
+  // IPv4 først når vi bare skal gi én: ikke alle miljøer har IPv6 ut.
+  const preferred = addresses.find(({ family }) => family === 4) ?? addresses[0]
+  return { address: preferred.address, family: preferred.family, all: addresses }
 }
 
 /** Henter en side og gir både innholdet og den endelige URL-en. */
@@ -79,7 +81,15 @@ export async function fetchPage(
   const resolved = await resolvePublicTarget(target)
   if (!resolved) return null
 
-  const pinnedLookup: LookupFunction = (_hostname, _options, callback) => {
+  // Fra Node 20 spør http-klienten om ALLE adressene (autoSelectFamily prøver
+  // IPv4 og IPv6 parallelt). Svarte vi da med én adresse, feilet hver eneste
+  // forespørsel med «Invalid IP address: undefined» — research leste aldri en
+  // nettside. Vi gir bare adressene vi allerede har sjekket at er offentlige.
+  const pinnedLookup: LookupFunction = (_hostname, options, callback) => {
+    if (options?.all) {
+      callback(null, resolved.all)
+      return
+    }
     callback(null, resolved.address, resolved.family)
   }
   const transport = target.protocol === "https:" ? https : http
