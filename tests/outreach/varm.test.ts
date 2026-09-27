@@ -177,6 +177,11 @@ describe("analysisTask", () => {
     expect(task.note).toContain("sa ikke ja til e-postoppfølging")
   })
 
+  it("foreslår aldri e-post til en som ikke sa ja, når vi mangler telefon", () => {
+    const task = analysisTask({ facts: FACTS, phone: null, stage: "ingen", consent: false })
+    expect(task.type).toBe("annet")
+  })
+
   it("skiller ut dem som begynte på registreringen og stoppet", () => {
     const task = analysisTask({ facts: FACTS, phone: null, stage: "konto", consent: true })
     expect(task.title).toBe("Startet registreringen uten å fullføre — ta kontakt")

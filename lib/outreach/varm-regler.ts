@@ -234,7 +234,9 @@ export function analysisTask(input: {
   stage: RegistrationStage
   consent: boolean
 }): AnalysisTask {
-  const type: TaskType = input.phone ? "ring" : "epost"
+  // Uten telefon og uten samtykke er e-post til adressen de oppga utelukket —
+  // skjemaet lovet det. Da er oppgaven å finne en annen vei inn.
+  const type: TaskType = input.phone ? "ring" : input.consent ? "epost" : "annet"
   const title =
     input.stage === "konto"
       ? "Startet registreringen uten å fullføre — ta kontakt"

@@ -83,6 +83,10 @@ export async function dispatchMessage(
   if (message.status === "sendt") {
     return { ok: false, code: "allerede_sendt", message: "Meldingen er allerede sendt", retryable: false }
   }
+  // En kansellert eller avvist melding sendes aldri, uansett hvem som ber om det.
+  if (message.status === "kansellert" || message.status === "avvist") {
+    return { ok: false, code: "kansellert", message: "Meldingen er kansellert", retryable: false }
+  }
 
   const { data: prospect } = await admin
     .from("prospects")

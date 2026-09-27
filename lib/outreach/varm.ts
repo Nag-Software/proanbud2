@@ -45,6 +45,31 @@ export async function loadAnalyseFacts(
 }
 
 /**
+ * Analysen den varme e-posten skal handle om: den siste som bar samtykket fra
+ * samtykkeadressen. Ikke bare den siste analysen på firmaet — kjører en kollega
+ * analysen uten å krysse av, skal e-posten til den som sa ja ikke handle om
+ * kollegaens tilbud.
+ */
+export async function loadWarmFacts(
+  admin: AdminClient,
+  prospect: Pick<ProspectRow, "consent_email" | "analyse_lead_id">,
+): Promise<AnalyseFacts | null> {
+  const email = prospect.consent_email?.trim().toLowerCase()
+  if (email) {
+    const { data } = await admin
+      .from("analyse_leads")
+      .select(ANALYSE_FACT_COLUMNS)
+      .eq("email", email)
+      .eq("follow_up_consent", true)
+      .order("submitted_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+    const row = (data ?? [])[0] as AnalyseLeadRecord | undefined
+    if (row) return analyseFactsFrom(row)
+  }
+  return loadAnalyseFacts(admin, prospect.analyse_lead_id)
+}
+
+/**
  * Gir leadet til Casper: stopper sekvensen og lager oppgaven. Brukes når
  * maskinen ikke kan gjøre jobben ordentlig — da er en telefon bedre enn en
  * generisk e-post, og mye bedre enn ingenting.
@@ -88,7 +113,7 @@ async function closeWarmSequence(admin: AdminClient, prospect: ProspectRow): Pro
   await stopSequence(admin, prospect.id, "fullfort")
   if (!prospect.phone) return
 
-  const facts = await loadAnalyseFacts(admin, prospect.analyse_lead_id)
+  const facts = await loadWarmFacts(admin, prospect)
   await ensureTask(admin, prospect.id, {
     type: "ring",
     title: "To e-poster om eksempeltilbudet uten svar — ring",
@@ -208,7 +233,7 @@ export async function runWarmBatch(options: {
         if (registration.stage === "firma") {
           await linkProspectToCompany(admin, prospect, registration)
         } else {
-          const facts = await loadAnalyseFacts(admin, prospect.analyse_lead_id)
+          const facts = await loadWarmFacts(admin, prospect)
           if (facts) {
             const task = analysisTask({ facts, phone: prospect.phone, stage: "konto", consent: true })
             await ensureTask(admin, prospect.id, { ...task, dueAt: now })
@@ -218,7 +243,7 @@ export async function runWarmBatch(options: {
         continue
       }
 
-      const facts = await loadAnalyseFacts(admin, prospect.analyse_lead_id)
+      const facts = await loadWarmFacts(admin, prospect)
       if (!facts) {
         await handOverWarmLead(admin, prospect, { title: "Kjørte analysen — følg opp eksempeltilbudet" })
         summary.stopped += 1

@@ -299,12 +299,10 @@ export async function POST(request: Request) {
           if (!match) continue
 
           // Firmaet kan allerede være koblet på org.nr. over; da slår den unike
-          // indeksen til, og det kortet er dealen.
-          const { error: linkError } = await supabaseAdmin
-            .from('prospects')
-            .update(conversion)
-            .eq('id', match.id)
-          if (!linkError) await stopSequence(supabaseAdmin, match.id, 'registrert')
+          // indeksen til, og det kortet er dealen. Sekvensen stoppes uansett —
+          // de har registrert seg, og skal ikke få mer salgspost.
+          await supabaseAdmin.from('prospects').update(conversion).eq('id', match.id)
+          await stopSequence(supabaseAdmin, match.id, 'registrert')
           break
         }
       } catch (prospectError) {

@@ -164,8 +164,10 @@ export async function ensureProspectsForCompanies(admin: AdminClient): Promise<v
         updates.status = targetStatusFor(company.billingStatus)
         updates.stage_entered_at = now
       }
-      const { error: linkError } = await admin.from("prospects").update(updates).eq("id", existing.id)
-      if (!linkError && hasRunningSequence(existing)) {
+      await admin.from("prospects").update(updates).eq("id", existing.id)
+      // Stopp uansett om koblingen gikk — et annet kort kan ha fått firmaet
+      // først (unik indeks), men dette leadet har registrert seg likevel.
+      if (hasRunningSequence(existing)) {
         await stopSequence(admin, existing.id, "registrert")
       }
     }

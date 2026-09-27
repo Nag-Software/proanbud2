@@ -236,11 +236,13 @@ export async function runFollowupBatch(options: {
     }
 
     // Finnes utkastet allerede (forrige tick rakk det), er vi ferdige her.
+    // Bare den kalde sekvensen — den varme har sine egne steg.
     const { data: existing } = await admin
       .from("outreach_messages")
       .select("id, status")
       .eq("prospect_id", prospect.id)
       .eq("step", step)
+      .neq("kind", "varm")
       .not("status", "in", "(avvist,kansellert)")
       .maybeSingle<{ id: string; status: string }>()
 

@@ -7,7 +7,7 @@ import { logSellerActivity } from "@/lib/selger/activity-log"
 import { logServerError } from "@/lib/errors/log"
 import { dispatchMessage } from "@/lib/outreach/dispatch"
 import type { Hook } from "@/lib/outreach/research/synthesize"
-import { handOverWarmLead, loadAnalyseFacts } from "@/lib/outreach/varm"
+import { handOverWarmLead, loadWarmFacts } from "@/lib/outreach/varm"
 import { analysisTask, lintWarmMessage } from "@/lib/outreach/varm-regler"
 import { editRatio, isRejectReason } from "@/lib/outreach/write/learning"
 import { lintMessage, type LintReport } from "@/lib/outreach/write/lint"
@@ -98,11 +98,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       // nytt hver gang. De ba om oppfølging, så det blir en oppgave i stedet.
       const { data: prospect } = await admin
         .from("prospects")
-        .select("id, phone, analyse_lead_id")
+        .select("id, phone, analyse_lead_id, consent_email")
         .eq("id", message.prospect_id)
-        .maybeSingle<{ id: string; phone: string | null; analyse_lead_id: string | null }>()
+        .maybeSingle<{ id: string; phone: string | null; analyse_lead_id: string | null; consent_email: string | null }>()
       if (prospect) {
-        const facts = await loadAnalyseFacts(admin, prospect.analyse_lead_id)
+        const facts = await loadWarmFacts(admin, prospect)
         await handOverWarmLead(admin, prospect, {
           title: "Du avviste oppfølgingen — ta den selv",
           note: facts ? analysisTask({ facts, phone: prospect.phone, stage: "ingen", consent: true }).note : null,
@@ -137,6 +137,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   // ── Godkjenn (og send) ────────────────────────────────────────────────────
+  // Bare et utkast som fortsatt venter, kan godkjennes. Har ticken kansellert
+  // det i mellomtiden — fordi de svarte, meldte seg av eller registrerte seg —
+  // skal et klikk i en gammel fane aldri sende det likevel.
+  if (message.status !== "til_godkjenning" && message.status !== "utkast" && message.status !== "godkjent") {
+    return NextResponse.json(
+      { error: "Utkastet er ikke lenger aktuelt — det er kansellert eller avvist. Oppdater siden." },
+      { status: 409 },
+    )
+  }
+
   const subject = parsed.data.subject?.trim() || message.subject
   const body = parsed.data.body?.trim() || message.body_ai
   const edited = body !== message.body_ai || subject !== message.subject
@@ -214,10 +224,10 @@ async function lintEdited(
   if (message.kind === "varm") {
     const { data: prospect } = await admin
       .from("prospects")
-      .select("analyse_lead_id")
+      .select("analyse_lead_id, consent_email")
       .eq("id", message.prospect_id)
-      .maybeSingle<{ analyse_lead_id: string | null }>()
-    const facts = await loadAnalyseFacts(admin, prospect?.analyse_lead_id)
+      .maybeSingle<{ analyse_lead_id: string | null; consent_email: string | null }>()
+    const facts = prospect ? await loadWarmFacts(admin, prospect) : null
     if (facts) return lintWarmMessage({ subject, body, step: message.step, facts })
   }
 

@@ -7,11 +7,12 @@
 //                 svaret først, blir sekvensen stoppet FØR steg 2 går ut, og
 //                 vi slipper å sende en oppfølging til noen som allerede har
 //                 svart. Det er den mest pinlige feilen maskinen kan gjøre.
-//   2. analyser   Nye analyser fra proanbud.no blir varme leads, og en kald
-//                 sekvens mot samme firma stoppes før noe mer sendes.
+//   2. analyser   Nye analyser fra proanbud.no blir varme leads, en kald
+//                 sekvens mot samme firma stoppes, og den varme oppfølgingen
+//                 skrives til godkjenningskøen. Ingenting av dette sender.
 //   3. helse      Er domenet i trøbbel, skal vi ikke sende noe mer i dag.
 //   4. sending    Godkjente meldinger som har forfalt.
-//   5. oppfølging Utkast til steg 2 og 3, og den varme oppfølgingen.
+//   5. oppfølging Utkast til steg 2 og 3.
 //   6. research   Ny research og nye utkast — det som tåler å vente.
 //
 // Hele kjøringen holdes bak én lease, så to overlappende ticks ikke sender
@@ -190,6 +191,16 @@ export async function runTick(options: { budgetMs?: number } = {}): Promise<Tick
     //       den lager varme leads og oppgaver — og stopper kald post mot dem.
     summary.bridge = await bridgeAnalyseLeads({ limit: 25 })
 
+    // ── Varm oppfølging av analysene. Også når maskinen er pauset: den skriver
+    //    bare utkast til godkjenningskøen og lager oppgaver — den sender ingenting
+    //    (utsendingen sjekker pausen). Ellers ville et lead som sa ja til
+    //    oppfølging fått verken e-post eller oppgave mens maskinen sto.
+    summary.warm = await runWarmBatch({
+      deadline: Math.min(deadline, started + 130_000),
+      budgetUsd: Math.max(0, settings.llm_daily_budget_usd - summary.cost_usd),
+    })
+    summary.cost_usd += summary.warm.cost_usd
+
     // ── 3) Helse
     summary.health = await checkHealth()
 
@@ -221,13 +232,6 @@ export async function runTick(options: { budgetMs?: number } = {}): Promise<Tick
       budgetUsd: remainingBudget,
     })
     summary.cost_usd += summary.followups.cost_usd
-
-    // Varm oppfølging av analysene. Før research: de har selv bedt om det.
-    summary.warm = await runWarmBatch({
-      deadline: Math.min(deadline, started + 205_000),
-      budgetUsd: Math.max(0, settings.llm_daily_budget_usd - summary.cost_usd),
-    })
-    summary.cost_usd += summary.warm.cost_usd
 
     // ── 6) Ny research og nye utkast — det som tåler å vente.
     if (Date.now() < deadline - 20_000) {

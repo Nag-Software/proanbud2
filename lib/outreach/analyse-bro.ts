@@ -89,6 +89,8 @@ type BridgeRow = AnalyseLeadRecord & {
   bridged_submitted_at: string | null
 }
 
+const BRIDGE_LEASE = "analyse_bro"
+
 const BRIDGE_COLUMNS = `${ANALYSE_FACT_COLUMNS}, phone, company_email, utm, synced_at, prospect_id, bridged_at, bridged_submitted_at`
 
 /** Går det en sekvens (eller ligger et kaldt utkast og venter) som må stoppes? */
@@ -261,12 +263,17 @@ async function foldEmptyAnalyseShell(admin: AdminClient, shell: ProspectRow): Pr
   return true
 }
 
+/**
+ * Merker raden som behandlet — med versjonen vi faktisk behandlet (synced_at),
+ * ikke klokka nå. Lander en ny synk midt i kjøringen, er den nyere enn dette,
+ * og raden blir behandlet på nytt neste gang i stedet for å bli hoppet over.
+ */
 async function markBridged(admin: AdminClient, row: BridgeRow, prospectId: string | null): Promise<void> {
   await admin
     .from("analyse_leads")
     .update({
       prospect_id: prospectId,
-      bridged_at: new Date().toISOString(),
+      bridged_at: row.synced_at ?? new Date().toISOString(),
       bridged_submitted_at: row.submitted_at,
     })
     .eq("id", row.id)
@@ -383,14 +390,28 @@ async function bridgeOne(
     update.last_activity_at = latestIso(prospect.last_activity_at, submittedAt)
 
     // De kom tilbake. Et tapt lead som ber om et nytt tilbud, er åpent igjen —
-    // med mindre de har reservert seg.
-    if (prospect.status === "tapt" && !optedOut) {
+    // men bare når analysen kom ETTER at det ble tapt, og aldri når de har
+    // reservert seg. En gammel analyse skal ikke gjenåpne noe Casper har lukket.
+    const lostAt = prospect.stage_entered_at ? Date.parse(prospect.stage_entered_at) : Number.NaN
+    const analysedAfterLoss = Number.isNaN(lostAt) || Date.parse(submittedAt) > lostAt
+    if (prospect.status === "tapt" && !optedOut && analysedAfterLoss) {
       update.status = "kvalifisert"
       update.stage_entered_at = nowIso
     }
   }
 
   // ── 3) Samtykke → varm sekvens. Uten samtykke → oppgave.
+  //
+  // Samme person som analyserer på nytt uten å krysse av, har sagt nei denne
+  // gangen — og neste varme e-post ville handlet om det nye tilbudet. Da
+  // trekkes samtykket, og sekvensen stoppes. Det blir en oppgave i stedet.
+  if (newEvent && !consentGiven(row) && prospect.consent_email?.toLowerCase() === email) {
+    if (prospect.sequence_kind === "varm" && !prospect.sequence_stopped_at) {
+      await stopSequence(admin, prospect.id, "overlatt")
+    }
+    Object.assign(update, { consent_email: null, consent_at: null, consent_text: null })
+  }
+
   let warmStarted = false
   if (newEvent && consentGiven(row)) {
     const consent = {
@@ -461,9 +482,21 @@ export async function bridgeAnalyseLeads(options: { limit?: number } = {}): Prom
     notes: [],
   }
 
-  try {
-    const admin = createAdminClient()
+  const admin = createAdminClient()
 
+  // Broen kjøres både av ticken og av nattjobben. Uten en lås kunne to
+  // samtidige kjøringer laget to kort — og to varme utkast — for samme analyse.
+  const { data: gotLease } = await admin.rpc("take_selger_lease", {
+    p_name: BRIDGE_LEASE,
+    p_seconds: 180,
+    p_holder: process.env.VERCEL_DEPLOYMENT_ID ?? "lokal",
+  })
+  if (gotLease !== true) {
+    summary.notes.push("En annen kjøring holder broen")
+    return summary
+  }
+
+  try {
     const sync = await syncAnalyseLeads(admin)
     if (sync.ok) summary.synced = sync.synced
     else summary.notes.push(`Synk fra Sanity feilet: ${sync.error}`)
@@ -519,5 +552,7 @@ export async function bridgeAnalyseLeads(options: { limit?: number } = {}): Prom
     })
     summary.notes.push(error instanceof Error ? error.message : "Ukjent feil")
     return summary
+  } finally {
+    await admin.rpc("release_selger_lease", { p_name: BRIDGE_LEASE })
   }
 }

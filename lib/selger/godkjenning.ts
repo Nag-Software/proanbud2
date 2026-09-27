@@ -186,12 +186,19 @@ export async function fetchApprovalQueue(options: {
       }
     }
 
-    // Analysene bak de varme utkastene — jobben, summen og samtykket.
-    const analyseIds = rows
-      .filter((row) => row.kind === "varm")
-      .map((row) => asRecord(row.prospects).analyse_lead_id)
+    // Analysene bak de varme utkastene — jobben, summen og samtykket. Den som
+    // bar samtykket fra samtykkeadressen først (samme regel som skriveren,
+    // loadWarmFacts), ellers den siste analysen på leadet.
+    const warmProspects = rows.filter((row) => row.kind === "varm").map((row) => asRecord(row.prospects))
+    const analyseIds = warmProspects
+      .map((prospect) => prospect.analyse_lead_id)
       .filter((id): id is string => typeof id === "string")
+    const consentEmails = warmProspects
+      .map((prospect) => (typeof prospect.consent_email === "string" ? prospect.consent_email.toLowerCase() : null))
+      .filter((email): email is string => Boolean(email))
+
     const analyses = new Map<string, AnalyseFacts>()
+    const consented = new Map<string, AnalyseFacts>()
     if (analyseIds.length > 0) {
       const { data: analyseRows } = await admin
         .from("analyse_leads")
@@ -199,6 +206,18 @@ export async function fetchApprovalQueue(options: {
         .in("id", analyseIds)
       for (const analyseRow of (analyseRows ?? []) as AnalyseLeadRecord[]) {
         analyses.set(analyseRow.id, analyseFactsFrom(analyseRow))
+      }
+    }
+    if (consentEmails.length > 0) {
+      const { data: consentRows } = await admin
+        .from("analyse_leads")
+        .select(ANALYSE_FACT_COLUMNS)
+        .in("email", consentEmails)
+        .eq("follow_up_consent", true)
+        .order("submitted_at", { ascending: false, nullsFirst: false })
+      for (const analyseRow of (consentRows ?? []) as AnalyseLeadRecord[]) {
+        const email = analyseRow.email.toLowerCase()
+        if (!consented.has(email)) consented.set(email, analyseFactsFrom(analyseRow))
       }
     }
 
@@ -244,8 +263,12 @@ export async function fetchApprovalQueue(options: {
         },
         dossier: typeof row.research_id === "string" ? dossiers.get(row.research_id) ?? null : null,
         analyse:
-          kind === "varm" && typeof prospect.analyse_lead_id === "string"
-            ? analyses.get(prospect.analyse_lead_id) ?? null
+          kind === "varm"
+            ? (typeof prospect.consent_email === "string"
+                ? consented.get(prospect.consent_email.toLowerCase())
+                : undefined) ??
+              (typeof prospect.analyse_lead_id === "string" ? analyses.get(prospect.analyse_lead_id) : undefined) ??
+              null
             : null,
       }
     })

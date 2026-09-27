@@ -231,6 +231,8 @@ export async function draftOne(
           .select("subject, body_ai, body_final")
           .eq("prospect_id", prospect.id)
           .eq("step", 1)
+          .neq("kind", "varm")
+          .not("status", "in", "(avvist,kansellert)")
           .maybeSingle()
       : null
 

@@ -98,7 +98,8 @@ export function AnalysePanel({ detail }: { detail: ProspectDetail }) {
           </p>
         ) : (
           <p className="mt-1 text-muted-foreground">
-            Nei. Skjemaet lover at adressen de oppga bare brukes til eksempeltilbudet — ring dem.
+            Nei. Skjemaet lover at adressen de oppga bare brukes til eksempeltilbudet —{" "}
+            {detail.prospect.phone ? "ring dem." : "finn et telefonnummer og ring."}
           </p>
         )}
         {status && (
