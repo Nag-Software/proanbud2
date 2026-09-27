@@ -8,6 +8,9 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
 import { logSellerActivity } from "@/lib/selger/activity-log"
 import { reconcileProspectStatus } from "@/lib/selger/billing-transition"
+import { domainFromWebsite, emailDomainOf, FREEMAIL_DOMAINS, isDirectoryDomain } from "@/lib/outreach/gates"
+import { stopSequence } from "@/lib/outreach/sequence"
+import type { ProspectRow } from "@/lib/outreach/types"
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -17,7 +20,61 @@ type CompanyForSync = {
   org_number: string | null
   email: string | null
   phone: string | null
+  website: string | null
   billingStatus: string
+}
+
+/**
+ * Har leadet en sekvens som fortsatt kan sende? Da skal den stoppes — de har
+ * registrert seg, og det er onboardingen som snakker med dem nå.
+ */
+function hasRunningSequence(prospect: Partial<ProspectRow>): boolean {
+  if (prospect.sequence_stopped_at) return false
+  return (
+    (prospect.sequence_step ?? 0) > 0 ||
+    prospect.sequence_kind === "varm" ||
+    prospect.pipeline_state === "til_godkjenning" ||
+    prospect.pipeline_state === "i_sekvens"
+  )
+}
+
+/**
+ * Et lead uten org.nr. som hører til firmaet — typisk et analyse-lead: de
+ * kjørte analysen først og registrerte seg etterpå. Uten dette sporet fikk
+ * firmaet et nytt kort ved siden av analysekortet.
+ *
+ * select("*") og feil som «ingen treff»: consent_email finnes ikke før db/103,
+ * og da skal broen oppføre seg som før, ikke feile.
+ */
+async function findUnlinkedByContact(
+  admin: AdminClient,
+  input: { emails: string[]; domain: string | null },
+): Promise<Partial<ProspectRow> | null> {
+  if (input.emails.length > 0) {
+    for (const column of ["consent_email", "email"] as const) {
+      const { data, error } = await admin
+        .from("prospects")
+        .select("*")
+        .is("matched_company_id", null)
+        .in(column, input.emails)
+        .order("last_activity_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+      if (!error && data?.[0]) return data[0] as Partial<ProspectRow>
+    }
+  }
+  // Aldri Gmail o.l., og aldri facebook.com eller en katalog — en nettside som
+  // peker dit, sier ingenting om hvilket firma det er.
+  if (input.domain && !FREEMAIL_DOMAINS.has(input.domain) && !isDirectoryDomain(input.domain)) {
+    const { data, error } = await admin
+      .from("prospects")
+      .select("*")
+      .is("matched_company_id", null)
+      .eq("domain", input.domain)
+      .order("last_activity_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+    if (!error && data?.[0]) return data[0] as Partial<ProspectRow>
+  }
+  return null
 }
 
 function targetStatusFor(billingStatus: string): "trial" | "kunde" {
@@ -42,7 +99,7 @@ export async function ensureProspectsForCompanies(admin: AdminClient): Promise<v
 
     const { data: billingRows, error } = await admin
       .from("company_billing")
-      .select("company_id, status, companies(id, name, org_number, email, phone)")
+      .select("company_id, status, companies(id, name, org_number, email, phone, website)")
       .in("status", ["trialing", "active", "past_due"])
 
     if (error || !billingRows?.length) return
@@ -55,6 +112,7 @@ export async function ensureProspectsForCompanies(admin: AdminClient): Promise<v
         org_number: string | null
         email: string | null
         phone: string | null
+        website: string | null
       } | null
       if (!company) continue
       companies.push({
@@ -63,6 +121,7 @@ export async function ensureProspectsForCompanies(admin: AdminClient): Promise<v
         org_number: company.org_number?.trim() || null,
         email: company.email?.trim().toLowerCase() || null,
         phone: company.phone?.trim() || null,
+        website: company.website?.trim() || null,
         billingStatus: row.status as string,
       })
     }
@@ -78,7 +137,38 @@ export async function ensureProspectsForCompanies(admin: AdminClient): Promise<v
     const unlinked = companies.filter((c) => !linkedIds.has(c.id))
     if (unlinked.length === 0) return
 
+    // Brukernes e-post per firma — analysen ble ofte kjørt med den adressen
+    // de senere registrerte seg med.
+    const { data: members } = await admin
+      .from("users")
+      .select("company_id, email")
+      .in("company_id", unlinked.map((c) => c.id))
+    const emailsByCompany = new Map<string, string[]>()
+    for (const member of (members ?? []) as Array<{ company_id: string; email: string | null }>) {
+      const email = member.email?.trim().toLowerCase()
+      if (!email) continue
+      emailsByCompany.set(member.company_id, [...(emailsByCompany.get(member.company_id) ?? []), email])
+    }
+
     const now = new Date().toISOString()
+
+    /** Kobler et eksisterende lead til firmaet — den ønskede koblingen: leadet ble kunde/trial av seg selv. */
+    const linkExisting = async (existing: Partial<ProspectRow> & { id: string; status: string }, company: CompanyForSync) => {
+      const updates: Record<string, unknown> = {
+        matched_company_id: company.id,
+        is_existing_customer: true,
+        updated_at: now,
+      }
+      // Aldri degrader et lukket lead; ellers følg billing.
+      if (existing.status !== "kunde" && existing.status !== "tapt") {
+        updates.status = targetStatusFor(company.billingStatus)
+        updates.stage_entered_at = now
+      }
+      const { error: linkError } = await admin.from("prospects").update(updates).eq("id", existing.id)
+      if (!linkError && hasRunningSequence(existing)) {
+        await stopSequence(admin, existing.id, "registrert")
+      }
+    }
 
     for (const company of unlinked) {
       const status = targetStatusFor(company.billingStatus)
@@ -88,24 +178,24 @@ export async function ensureProspectsForCompanies(admin: AdminClient): Promise<v
         // koblingen: selgerens lead ble kunde/trial av seg selv.
         const { data: existing } = await admin
           .from("prospects")
-          .select("id, status")
+          .select("*")
           .eq("org_number", company.org_number)
           .maybeSingle()
 
         if (existing) {
-          const updates: Record<string, unknown> = {
-            matched_company_id: company.id,
-            is_existing_customer: true,
-            updated_at: now,
-          }
-          // Aldri degrader et lukket lead; ellers følg billing.
-          if (existing.status !== "kunde" && existing.status !== "tapt") {
-            updates.status = status
-            updates.stage_entered_at = now
-          }
-          await admin.from("prospects").update(updates).eq("id", existing.id)
+          await linkExisting(existing as Partial<ProspectRow> & { id: string; status: string }, company)
           continue
         }
+      }
+
+      // Ingen på org.nr. — et lead på samme e-post eller domene (analysen).
+      const byContact = await findUnlinkedByContact(admin, {
+        emails: [...new Set([company.email, ...(emailsByCompany.get(company.id) ?? [])].filter(Boolean) as string[])],
+        domain: domainFromWebsite(company.website) ?? (company.email ? emailDomainOf(company.email) : null),
+      })
+      if (byContact?.id && byContact.status) {
+        await linkExisting(byContact as Partial<ProspectRow> & { id: string; status: string }, company)
+        continue
       }
 
       // Ingen eksisterende rad — opprett bro-raden. Ved kappløp tar den unike

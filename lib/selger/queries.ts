@@ -18,6 +18,12 @@ import { OPEN_PIPELINE_STATUSES, type ProspectRow, type ProspectStatus } from "@
 import { PROSPECT_STATUS_LABELS } from "@/lib/outreach/types"
 import { ensureProspectsForCompanies } from "@/lib/selger/sync"
 import { isOptedOut } from "@/lib/outreach/send"
+import {
+  ANALYSE_FACT_COLUMNS,
+  analyseFactsFrom,
+  type AnalyseFacts,
+  type AnalyseLeadRecord,
+} from "@/lib/outreach/varm-regler"
 
 function getAdmin() {
   return createAdminClient()
@@ -468,6 +474,13 @@ export async function fetchClosedLeads(limit = 100): Promise<PipelineLeadRow[]> 
 // Lead-record (detaljside)
 // ============================================================
 
+export type WarmMessageRow = {
+  step: number
+  status: string
+  sent_at: string | null
+  scheduled_for: string | null
+}
+
 export type ProspectDetail = {
   prospect: ProspectRow
   billing: { status: string; plan_key: string | null; trial_ends_at: string | null } | null
@@ -475,6 +488,10 @@ export type ProspectDetail = {
   /** Står e-posten/org.nr på suppresjonslisten? Da er e-post-kanalen stengt. */
   optedOut: boolean
   scoreReasons: string[]
+  /** Analysen leadet kjørte på proanbud.no, hvis det gjorde det. */
+  analyse: AnalyseFacts | null
+  /** Den varme oppfølgingens meldinger, eldste steg først. */
+  warmMessages: WarmMessageRow[]
 }
 
 export async function fetchProspectDetail(prospectId: string): Promise<ProspectDetail | null> {
@@ -487,7 +504,9 @@ export async function fetchProspectDetail(prospectId: string): Promise<ProspectD
 
   if (error || !prospect) return null
 
-  const [taskRes, billingRes, optedOut] = await Promise.all([
+  const analyseLeadId = (prospect.analyse_lead_id as string | null | undefined) ?? null
+
+  const [taskRes, billingRes, optedOut, analyseRes, warmRes] = await Promise.all([
     admin
       .from("prospect_tasks")
       .select("id, prospect_id, task_type, title, due_at, done_at, note, created_at")
@@ -506,6 +525,18 @@ export async function fetchProspectDetail(prospectId: string): Promise<ProspectD
       orgNumber: (prospect.org_number as string | null) ?? null,
       domain: (prospect.domain as string | null | undefined) ?? null,
     }),
+    analyseLeadId
+      ? admin.from("analyse_leads").select(ANALYSE_FACT_COLUMNS).eq("id", analyseLeadId).maybeSingle()
+      : Promise.resolve({ data: null }),
+    analyseLeadId
+      ? admin
+          .from("outreach_messages")
+          .select("step, status, sent_at, scheduled_for")
+          .eq("prospect_id", prospectId)
+          .eq("kind", "varm")
+          .not("status", "in", "(avvist,kansellert)")
+          .order("step", { ascending: true })
+      : Promise.resolve({ data: [] }),
   ])
 
   const reasons = Array.isArray(prospect.lead_score_reason)
@@ -524,6 +555,8 @@ export async function fetchProspectDetail(prospectId: string): Promise<ProspectD
     openTask: (taskRes.data as ProspectTaskRow | null) ?? null,
     optedOut,
     scoreReasons: reasons,
+    analyse: analyseRes.data ? analyseFactsFrom(analyseRes.data as unknown as AnalyseLeadRecord) : null,
+    warmMessages: (warmRes.data ?? []) as WarmMessageRow[],
   }
 }
 
@@ -649,7 +682,9 @@ export async function fetchProspectTimeline(prospectId: string): Promise<Prospec
       kind: "email",
       title: historic
         ? `Automatisk utsendelse (historisk): ${row.subject ?? row.template_id}`
-        : `E-post sendt: ${row.subject ?? row.template_id}`,
+        : row.template_id === "outreach-warm"
+          ? `Oppfølging av analysen: ${row.subject ?? row.template_id}`
+          : `E-post sendt: ${row.subject ?? row.template_id}`,
       description: row.recipient_email,
       created_at: row.created_at,
       seller_email: row.sent_by ? sellerEmails.get(row.sent_by) ?? null : null,
@@ -684,7 +719,9 @@ export async function fetchProspectTimeline(prospectId: string): Promise<Prospec
           ? "Registrerte seg selv (trial)"
           : prospectRes.data.source === "manual"
             ? "Lagt til manuelt"
-            : "Importert fra Brønnøysundregistrene",
+            : prospectRes.data.source === "analyse"
+              ? "Kjørte analysen på proanbud.no"
+              : "Importert fra Brønnøysundregistrene",
       description: null,
       created_at: prospectRes.data.created_at as string,
       seller_email: null,

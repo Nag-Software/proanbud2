@@ -37,6 +37,13 @@ export type OpenPipelineStatus = (typeof OPEN_PIPELINE_STATUSES)[number]
 
 export const CLOSED_PIPELINE_STATUSES = ["kunde", "tapt"] as const satisfies readonly ProspectStatus[]
 
+/**
+ * Steg der et menneske har tatt over: de har svart, er i demo eller prøve,
+ * er kunde eller tapt. Maskinen sender aldri av seg selv til et lead her —
+ * bare når Casper selv godkjenner og sender.
+ */
+export const HUMAN_OWNED_STATUSES: ReadonlySet<string> = new Set(["dialog", "demo", "trial", "kunde", "tapt"])
+
 export function isOpenPipelineStatus(status: string | null | undefined): status is OpenPipelineStatus {
   return OPEN_PIPELINE_STATUSES.includes(status as OpenPipelineStatus)
 }
@@ -99,6 +106,14 @@ export type ProspectRow = {
   sequence_next_at?: string | null
   sequence_stopped_at?: string | null
   sequence_stop_reason?: string | null
+  // Varm oppfølging (db/103). Valgfrie av samme grunn.
+  /** null = kald. «varm» = oppfølging av en analyse med samtykke. */
+  sequence_kind?: "kald" | "varm" | null
+  /** Adressen som krysset av for oppfølging — kan være en annen enn `email`. */
+  consent_email?: string | null
+  consent_at?: string | null
+  consent_text?: string | null
+  analyse_lead_id?: string | null
 }
 
 /** Maskinens steg. `status` er fortsatt Caspers handelssteg (kanban). */

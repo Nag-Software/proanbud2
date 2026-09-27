@@ -7,24 +7,27 @@
 //                 svaret først, blir sekvensen stoppet FØR steg 2 går ut, og
 //                 vi slipper å sende en oppfølging til noen som allerede har
 //                 svart. Det er den mest pinlige feilen maskinen kan gjøre.
-//   2. helse      Er domenet i trøbbel, skal vi ikke sende noe mer i dag.
-//   3. sending    Godkjente meldinger som har forfalt.
-//   4. oppfølging Utkast til steg 2 og 3.
-//   5. research   Ny research og nye utkast — det som tåler å vente.
+//   2. analyser   Nye analyser fra proanbud.no blir varme leads, og en kald
+//                 sekvens mot samme firma stoppes før noe mer sendes.
+//   3. helse      Er domenet i trøbbel, skal vi ikke sende noe mer i dag.
+//   4. sending    Godkjente meldinger som har forfalt.
+//   5. oppfølging Utkast til steg 2 og 3, og den varme oppfølgingen.
+//   6. research   Ny research og nye utkast — det som tåler å vente.
 //
 // Hele kjøringen holdes bak én lease, så to overlappende ticks ikke sender
 // samme melding to ganger.
 
 import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { bridgeAnalyseLeads, type BridgeSummary } from "@/lib/outreach/analyse-bro"
 import { dispatchMessage } from "@/lib/outreach/dispatch"
 import { checkHealth, type HealthReport } from "@/lib/outreach/health"
 import { runInboxBatch, type InboxSummary } from "@/lib/outreach/inbox/run"
 import { queueForResearch, runDraftBatch, runResearchBatch, type StepResult } from "@/lib/outreach/pipeline"
-import { expireStaleDrafts, runFollowupBatch, scheduleNextStep, type FollowupSummary } from "@/lib/outreach/sequence"
+import { expireStaleDrafts, runFollowupBatch, type FollowupSummary } from "@/lib/outreach/sequence"
 import { isWithinSendWindow } from "@/lib/outreach/sendetid"
 import { loadSettings } from "@/lib/outreach/settings"
-import type { ProspectRow } from "@/lib/outreach/types"
+import { runWarmBatch, type WarmSummary } from "@/lib/outreach/varm"
 
 export type SendSummary = {
   claimed: number
@@ -41,9 +44,11 @@ export type TickSummary = {
   paused: boolean
   expired: number
   inbox: InboxSummary | null
+  bridge: BridgeSummary | null
   health: HealthReport | null
   send: SendSummary
   followups: FollowupSummary | null
+  warm: WarmSummary | null
   research: StepResult | null
   drafts: StepResult | null
   queued: number
@@ -92,21 +97,13 @@ async function runSendBatch(options: {
       break
     }
 
+    // Utsendingen planlegger selv neste steg — også når det er Casper som
+    // godkjenner og sender, ikke bare når ticken gjør det.
     const result = await dispatchMessage(message.id)
 
     if (result.ok) {
       if (result.simulated) summary.simulated += 1
       else summary.sent += 1
-
-      // Planlegg neste steg med én gang, så sekvensen aldri stopper opp bare
-      // fordi ingen har regnet ut når neste melding skal gå.
-      const { data: prospect } = await admin
-        .from("prospects")
-        .select("id, sequence_step, sequence_stopped_at")
-        .eq("id", message.prospect_id)
-        .maybeSingle<Pick<ProspectRow, "id" | "sequence_step" | "sequence_stopped_at">>()
-
-      if (prospect) await scheduleNextStep(admin, prospect)
     } else {
       summary.failed += 1
       if (!result.retryable) summary.notes.push(`${message.id}: ${result.message}`)
@@ -157,9 +154,11 @@ export async function runTick(options: { budgetMs?: number } = {}): Promise<Tick
     paused: false,
     expired: 0,
     inbox: null,
+    bridge: null,
     health: null,
     send: { claimed: 0, sent: 0, simulated: 0, failed: 0, notes: [] },
     followups: null,
+    warm: null,
     research: null,
     drafts: null,
     queued: 0,
@@ -187,10 +186,14 @@ export async function runTick(options: { budgetMs?: number } = {}): Promise<Tick
     })
     summary.cost_usd += summary.inbox.cost_usd
 
-    // ── 2) Helse
+    // ── 2) Nye analyser. Også når maskinen er pauset: broen sender ingenting,
+    //       den lager varme leads og oppgaver — og stopper kald post mot dem.
+    summary.bridge = await bridgeAnalyseLeads({ limit: 25 })
+
+    // ── 3) Helse
     summary.health = await checkHealth()
 
-    // ── 3) Ryddejobb: utkast som er blitt for gamle
+    // ── Ryddejobb: utkast som er blitt for gamle
     summary.expired = await expireStaleDrafts()
 
     const stopped = summary.paused || summary.health.paused_now || !summary.health.healthy
@@ -218,6 +221,13 @@ export async function runTick(options: { budgetMs?: number } = {}): Promise<Tick
       budgetUsd: remainingBudget,
     })
     summary.cost_usd += summary.followups.cost_usd
+
+    // Varm oppfølging av analysene. Før research: de har selv bedt om det.
+    summary.warm = await runWarmBatch({
+      deadline: Math.min(deadline, started + 205_000),
+      budgetUsd: Math.max(0, settings.llm_daily_budget_usd - summary.cost_usd),
+    })
+    summary.cost_usd += summary.warm.cost_usd
 
     // ── 6) Ny research og nye utkast — det som tåler å vente.
     if (Date.now() < deadline - 20_000) {

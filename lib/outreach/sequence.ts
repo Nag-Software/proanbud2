@@ -21,7 +21,9 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { draftOne } from "@/lib/outreach/pipeline"
 import { loadSettings } from "@/lib/outreach/settings"
 import { nextSendSlot, type SendWindow } from "@/lib/outreach/sendetid"
-import type { ProspectRow } from "@/lib/outreach/types"
+import { ensureTask } from "@/lib/outreach/oppgaver"
+import { isStopReason, STOP_REASON_LABELS, type StopReason } from "@/lib/outreach/stoppgrunner"
+import { HUMAN_OWNED_STATUSES, type ProspectRow } from "@/lib/outreach/types"
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -30,26 +32,7 @@ export const MAX_SEQUENCE_STEP = 3
 /** Dager etter steg 1 hvert steg sendes. */
 export const STEP_OFFSET_DAYS: Record<number, number> = { 2: 4, 3: 11 }
 
-export type StopReason =
-  | "svar"
-  | "avmeldt"
-  | "bounce"
-  | "klage"
-  | "pipeline"
-  | "fullfort"
-  | "manuelt"
-  | "diskvalifisert"
-
-export const STOP_REASON_LABELS: Record<StopReason, string> = {
-  svar: "Svarte",
-  avmeldt: "Meldte seg av",
-  bounce: "Adressen finnes ikke",
-  klage: "Meldte som spam",
-  pipeline: "Flyttet videre i pipelinen",
-  fullfort: "Sekvensen er ferdig",
-  manuelt: "Stoppet manuelt",
-  diskvalifisert: "Diskvalifisert",
-}
+export { STOP_REASON_LABELS, type StopReason }
 
 /**
  * Stopp sekvensen for ett prospekt. No-op hvis den allerede er stoppet —
@@ -90,9 +73,19 @@ export async function stopSequenceForEmail(
   reason: string,
 ): Promise<void> {
   const normalized = email.trim().toLowerCase()
-  const { data } = await admin.from("prospects").select("id").eq("email", normalized)
-  for (const row of (data ?? []) as Array<{ id: string }>) {
-    await stopSequence(admin, row.id, (reason as StopReason) ?? "manuelt")
+  const stopReason: StopReason = isStopReason(reason) ? reason : "manuelt"
+
+  // Den varme sekvensen sender til samtykkeadressen, ikke til prospects.email.
+  // En retur eller klage derfra skal stoppe den like sikkert.
+  const [byEmail, byConsent] = await Promise.all([
+    admin.from("prospects").select("id").eq("email", normalized),
+    admin.from("prospects").select("id").eq("consent_email", normalized),
+  ])
+  const ids = new Set(
+    [...(byEmail.data ?? []), ...(byConsent.data ?? [])].map((row) => (row as { id: string }).id),
+  )
+  for (const id of ids) {
+    await stopSequence(admin, id, stopReason)
   }
 }
 
@@ -122,12 +115,15 @@ export async function scheduleNextStep(
 
   // Offsettet regnes fra steg 1, ikke fra forrige steg, så en forsinket steg 2
   // ikke skyver steg 3 like langt ut.
+  // Bare den kalde sekvensens steg 1. Et firma kan ha fått både kald og varm
+  // post, og da er det to «steg 1» — det varme har sin egen klokke (varm.ts).
   const { data: firstStep } = await admin
     .from("outreach_messages")
     .select("sent_at")
     .eq("prospect_id", prospect.id)
     .eq("step", 1)
     .eq("status", "sendt")
+    .neq("kind", "varm")
     .maybeSingle<{ sent_at: string | null }>()
 
   const anchor = firstStep?.sent_at ? new Date(firstStep.sent_at) : new Date()
@@ -223,6 +219,15 @@ export async function runFollowupBatch(options: {
     summary.due += 1
     const step = (prospect.sequence_step ?? 1) + 1
 
+    // Flyttet videre i pipelinen siden forrige steg? Da er det Caspers samtale,
+    // og det skal ikke skrives flere oppfølginger.
+    if (HUMAN_OWNED_STATUSES.has(prospect.status)) {
+      await stopSequence(admin, prospect.id, "pipeline")
+      await admin.from("prospects").update({ pipeline_state: "overlevert" }).eq("id", prospect.id)
+      summary.stopped += 1
+      continue
+    }
+
     if (step > MAX_SEQUENCE_STEP) {
       await stopSequence(admin, prospect.id, "fullfort")
       await admin.from("prospects").update({ pipeline_state: "avsluttet" }).eq("id", prospect.id)
@@ -297,14 +302,31 @@ export async function expireStaleDrafts(): Promise<number> {
     const admin = createAdminClient()
     const { data, error } = await admin
       .from("outreach_messages")
-      .update({ status: "kansellert", last_error: "Utløpt — research var for gammel" })
+      .update({ status: "kansellert", last_error: "Utløpt — ble ikke godkjent i tide" })
       .eq("status", "til_godkjenning")
       .lt("expires_at", new Date().toISOString())
-      .select("id, prospect_id")
+      .select("id, prospect_id, kind")
 
     if (error || !data) return 0
 
-    for (const row of data as Array<{ prospect_id: string }>) {
+    for (const row of data as Array<{ prospect_id: string; kind: string | null }>) {
+      if (row.kind === "varm") {
+        // En oppfølging av en analyse fra forrige uke er ikke lenger en
+        // oppfølging. Vi skriver ikke en ny — leadet går til Casper.
+        await stopSequence(admin, row.prospect_id, "overlatt")
+        const { data: prospect } = await admin
+          .from("prospects")
+          .select("phone")
+          .eq("id", row.prospect_id)
+          .maybeSingle<{ phone: string | null }>()
+        await ensureTask(admin, row.prospect_id, {
+          type: prospect?.phone ? "ring" : "epost",
+          title: "Oppfølgingen av analysen ble aldri sendt — ta den selv",
+          dueAt: new Date(),
+        })
+        continue
+      }
+
       await admin
         .from("prospects")
         .update({ pipeline_state: "kvalifisert" })

@@ -8,37 +8,9 @@
 // nettside, og prospektet blir `for_tynn` framfor å få en oppdiktet krok.
 
 import { logServerError } from "@/lib/errors/log"
-import { companyNameTokens, normalizeForMatch } from "@/lib/outreach/gates"
+import { companyNameTokens, isDirectoryDomain, normalizeForMatch } from "@/lib/outreach/gates"
 import { extractPage } from "@/lib/outreach/research/extract"
 import { fetchPage } from "@/lib/outreach/research/fetch"
-
-/** Domener som aldri er firmaets egen side, uansett hvor godt de matcher. */
-const DIRECTORY_DOMAINS = new Set([
-  "proff.no",
-  "purehelp.no",
-  "gulesider.no",
-  "1881.no",
-  "brreg.no",
-  "forvalt.no",
-  "regnskapstall.no",
-  "bizweb.no",
-  "facebook.com",
-  "instagram.com",
-  "linkedin.com",
-  "youtube.com",
-  "mittanbud.no",
-  "byggstart.no",
-  "anbudstorget.no",
-  "finn.no",
-  "indeed.com",
-  "nav.no",
-  "wikipedia.org",
-  "x.com",
-  "twitter.com",
-  "tiktok.com",
-  "google.com",
-  "bing.com",
-])
 
 export type DiscoveryCandidate = {
   url: string
@@ -54,9 +26,6 @@ function registrableHost(url: string): string | null {
   }
 }
 
-function isDirectory(host: string): boolean {
-  return [...DIRECTORY_DOMAINS].some((bad) => host === bad || host.endsWith(`.${bad}`))
-}
 
 async function searchBrave(query: string): Promise<DiscoveryCandidate[]> {
   const apiKey = process.env.BRAVE_SEARCH_API_KEY?.trim()
@@ -122,7 +91,7 @@ async function verifyCandidate(
   input: VerifyInput,
 ): Promise<DiscoveredSite | null> {
   const host = registrableHost(candidateUrl)
-  if (!host || isDirectory(host)) return null
+  if (!host || isDirectoryDomain(host)) return null
 
   const page = await fetchPage(candidateUrl, 8000)
   if (!page) return null
@@ -171,7 +140,7 @@ export async function discoverWebsite(
   const seen = new Set<string>()
   for (const candidate of candidates) {
     const host = registrableHost(candidate.url)
-    if (!host || seen.has(host) || isDirectory(host)) continue
+    if (!host || seen.has(host) || isDirectoryDomain(host)) continue
     seen.add(host)
 
     const verified = await verifyCandidate(candidate.url, input)

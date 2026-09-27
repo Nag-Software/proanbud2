@@ -7,6 +7,7 @@ import {
   AlertTriangleIcon,
   CheckIcon,
   ExternalLinkIcon,
+  FlameIcon,
   LoaderIcon,
   PencilIcon,
   SkipForwardIcon,
@@ -22,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import type { ApprovalItem, MachineFunnel } from "@/lib/selger/godkjenning"
+import { formatNok, formatNorwegianDate, WARM_MAX_STEP, type AnalyseFacts } from "@/lib/outreach/varm-regler"
 import { REJECT_REASON_LABELS, REJECT_REASONS } from "@/lib/outreach/write/learning"
 
 type Props = {
@@ -42,6 +44,68 @@ const SEND_MODE_LABELS: Record<Props["sendMode"], string> = {
 function Quote({ text }: { text: string }) {
   return (
     <span className="bg-amber-100 px-1 py-0.5 text-foreground dark:bg-amber-950/60">«{text}»</span>
+  )
+}
+
+/**
+ * Venstresiden for varm oppfølging: det de selv gjorde, og samtykket som er
+ * grunnlaget for å skrive. Ingen kroker — vi trenger ingen, vi vet hva de ba om.
+ */
+function WarmContext({ analyse, consentEmail }: { analyse: AnalyseFacts | null; consentEmail: string | null }) {
+  if (!analyse) {
+    return <p className="text-sm text-muted-foreground">Fant ikke analysen bak denne oppfølgingen.</p>
+  }
+
+  const consentAt = analyse.consentAt
+    ? new Intl.DateTimeFormat("nb-NO", {
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Europe/Oslo",
+      }).format(new Date(analyse.consentAt))
+    : null
+
+  return (
+    <>
+      <div className="space-y-1.5">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Analysen</h3>
+        <p className="text-sm leading-relaxed">
+          Laget et eksempeltilbud på proanbud.no
+          {analyse.submittedAt ? ` ${formatNorwegianDate(analyse.submittedAt)}` : ""}.
+        </p>
+        {(analyse.jobTitle || analyse.offerTotal !== null) && (
+          <p className="border bg-muted/40 p-2.5 text-sm">
+            {analyse.jobTitle ?? "Ukjent jobb"}
+            {analyse.offerTotal !== null && (
+              <span className="text-muted-foreground"> · {formatNok(analyse.offerTotal)} kr eks. mva</span>
+            )}
+          </p>
+        )}
+        {analyse.services.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Tjenester på nettsiden: {analyse.services.slice(0, 8).join(", ")}
+          </p>
+        )}
+      </div>
+
+      <Separator />
+
+      {/* Samtykket er grunnlaget for å sende i det hele tatt. */}
+      <div className="space-y-1.5">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Samtykke</h3>
+        <p className="text-sm">
+          {consentEmail ?? analyse.email} krysset av{consentAt ? ` ${consentAt}` : ""}:
+        </p>
+        {analyse.consentText ? (
+          <p className="text-xs leading-relaxed">
+            <Quote text={analyse.consentText} />
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">Ordlyden ble ikke lagret.</p>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -252,10 +316,17 @@ export function GodkjenningClient({ initialQueue, funnel, sendMode, paused, paus
             <header className="space-y-1">
               <div className="flex items-start justify-between gap-2">
                 <h2 className="text-base font-semibold">{item.prospect.name}</h2>
-                {item.prospect.fit_tier && (
-                  <Badge variant={item.prospect.fit_tier === "A" ? "default" : "outline"}>
-                    {item.prospect.fit_tier} · {item.prospect.fit_score}/5
+                {item.message.kind === "varm" ? (
+                  <Badge className="gap-1">
+                    <FlameIcon className="size-3" />
+                    Varm · kjørte analysen
                   </Badge>
+                ) : (
+                  item.prospect.fit_tier && (
+                    <Badge variant={item.prospect.fit_tier === "A" ? "default" : "outline"}>
+                      {item.prospect.fit_tier} · {item.prospect.fit_score}/5
+                    </Badge>
+                  )
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -263,7 +334,7 @@ export function GodkjenningClient({ initialQueue, funnel, sendMode, paused, paus
                   item.prospect.trade_label,
                   item.prospect.city,
                   item.prospect.employee_count ? `${item.prospect.employee_count} ansatte` : null,
-                  item.prospect.email,
+                  item.message.kind === "varm" ? item.prospect.consent_email : item.prospect.email,
                 ]
                   .filter(Boolean)
                   .join(" · ")}
@@ -281,6 +352,13 @@ export function GodkjenningClient({ initialQueue, funnel, sendMode, paused, paus
               )}
             </header>
 
+            {item.message.kind === "varm" ? (
+              <>
+                <Separator />
+                <WarmContext analyse={item.analyse} consentEmail={item.prospect.consent_email} />
+              </>
+            ) : (
+            <>
             {item.dossier?.summary && (
               <p className="text-sm leading-relaxed">{item.dossier.summary}</p>
             )}
@@ -377,6 +455,8 @@ export function GodkjenningClient({ initialQueue, funnel, sendMode, paused, paus
                 </ul>
               </div>
             )}
+            </>
+            )}
 
             <div className="mt-auto flex flex-wrap gap-2 pt-2 text-xs text-muted-foreground">
               <Link
@@ -398,7 +478,9 @@ export function GodkjenningClient({ initialQueue, funnel, sendMode, paused, paus
           <section className="flex min-h-0 flex-col gap-3 border p-4">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Steg {item.message.step} · {item.message.angle || "ingen vinkel"}
+                {item.message.kind === "varm"
+                  ? `Varm oppfølging · steg ${item.message.step} av ${WARM_MAX_STEP}`
+                  : `Steg ${item.message.step} · ${item.message.angle || "ingen vinkel"}`}
               </h2>
               <ScoreDot score={item.message.grade} />
             </div>

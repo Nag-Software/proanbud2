@@ -7,8 +7,10 @@ import { logSellerActivity } from "@/lib/selger/activity-log"
 import { logServerError } from "@/lib/errors/log"
 import { dispatchMessage } from "@/lib/outreach/dispatch"
 import type { Hook } from "@/lib/outreach/research/synthesize"
+import { handOverWarmLead, loadAnalyseFacts } from "@/lib/outreach/varm"
+import { analysisTask, lintWarmMessage } from "@/lib/outreach/varm-regler"
 import { editRatio, isRejectReason } from "@/lib/outreach/write/learning"
-import { lintMessage } from "@/lib/outreach/write/lint"
+import { lintMessage, type LintReport } from "@/lib/outreach/write/lint"
 
 // Godkjenning sender med én gang i fase 1 — det inkluderer et MX-oppslag og
 // et Resend-kall.
@@ -34,6 +36,7 @@ type MessageRow = {
   prospect_id: string
   research_id: string | null
   step: number
+  kind: string | null
   subject: string
   body_ai: string
   body_final: string | null
@@ -62,7 +65,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const admin = createAdminClient()
   const { data: message } = await admin
     .from("outreach_messages")
-    .select("id, prospect_id, research_id, step, subject, body_ai, body_final, hook_id, status")
+    .select("id, prospect_id, research_id, step, kind, subject, body_ai, body_final, hook_id, status")
     .eq("id", id)
     .maybeSingle<MessageRow>()
 
@@ -90,13 +93,30 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       })
       .eq("id", id)
 
-    // Prospektet går tilbake til «trenger deg»-lista, ikke ut av pipelinen —
-    // et dårlig utkast betyr ikke at firmaet er feil.
-    await admin
-      .from("prospects")
-      .update({ pipeline_state: "for_tynn" })
-      .eq("id", message.prospect_id)
-      .eq("pipeline_state", "til_godkjenning")
+    if (message.kind === "varm") {
+      // Et avvist varmt utkast skrives ikke på nytt — da ville ticken laget et
+      // nytt hver gang. De ba om oppfølging, så det blir en oppgave i stedet.
+      const { data: prospect } = await admin
+        .from("prospects")
+        .select("id, phone, analyse_lead_id")
+        .eq("id", message.prospect_id)
+        .maybeSingle<{ id: string; phone: string | null; analyse_lead_id: string | null }>()
+      if (prospect) {
+        const facts = await loadAnalyseFacts(admin, prospect.analyse_lead_id)
+        await handOverWarmLead(admin, prospect, {
+          title: "Du avviste oppfølgingen — ta den selv",
+          note: facts ? analysisTask({ facts, phone: prospect.phone, stage: "ingen", consent: true }).note : null,
+        })
+      }
+    } else {
+      // Prospektet går tilbake til «trenger deg»-lista, ikke ut av pipelinen —
+      // et dårlig utkast betyr ikke at firmaet er feil.
+      await admin
+        .from("prospects")
+        .update({ pipeline_state: "for_tynn" })
+        .eq("id", message.prospect_id)
+        .eq("pipeline_state", "til_godkjenning")
+    }
 
     await logSellerActivity({
       sellerUserId: auth.user!.id,
@@ -124,14 +144,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   // Caspers redigering går ikke utenom faktabrannmuren. Har han skrevet inn et
   // tall uten dekning eller en forbudt påstand, skal det stoppes her også.
   if (edited) {
-    const hook = await loadHook(admin, message)
-    const lint = lintMessage({
-      subject,
-      body,
-      step: message.step,
-      hook,
-      allowLink: message.step > 1,
-    })
+    const lint = await lintEdited(admin, message, subject, body)
     const blocking = lint.issues.filter((issue) => issue.severity === "blokkerende")
     if (blocking.length > 0) {
       return NextResponse.json(
@@ -186,6 +199,36 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     })
     return NextResponse.json({ error: "Sendingen feilet — prøv igjen" }, { status: 502 })
   }
+}
+
+/**
+ * Lint på Caspers redigerte tekst, med de samme reglene utkastet ble skrevet
+ * etter: kroken for kald post, analysen for varm.
+ */
+async function lintEdited(
+  admin: ReturnType<typeof createAdminClient>,
+  message: MessageRow,
+  subject: string,
+  body: string,
+): Promise<LintReport> {
+  if (message.kind === "varm") {
+    const { data: prospect } = await admin
+      .from("prospects")
+      .select("analyse_lead_id")
+      .eq("id", message.prospect_id)
+      .maybeSingle<{ analyse_lead_id: string | null }>()
+    const facts = await loadAnalyseFacts(admin, prospect?.analyse_lead_id)
+    if (facts) return lintWarmMessage({ subject, body, step: message.step, facts })
+  }
+
+  const hook = await loadHook(admin, message)
+  return lintMessage({
+    subject,
+    body,
+    step: message.step,
+    hook,
+    allowLink: message.step > 1,
+  })
 }
 
 /** Kroken utkastet ble bygget på, så lint kan sjekke første setning på nytt. */

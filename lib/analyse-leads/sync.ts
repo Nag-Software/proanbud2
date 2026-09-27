@@ -38,6 +38,9 @@ type SanityExampleLead = {
   referralCode?: string
   submittedAt?: string
   completedAt?: string
+  followUpConsent?: boolean
+  followUpConsentAt?: string
+  followUpConsentText?: string
 }
 
 // dateTime() på begge sider: uten den sammenligner GROQ tekst, og Postgres'
@@ -47,7 +50,7 @@ const LEADS_QUERY = `*[_type == "exampleLead" && !(_id in path("drafts.**")) && 
     _id, _updatedAt, email, website, domain, status, manual, companyName, location,
     phone, companyEmail, hasLogo, services, detectedTrade, tradeConfidence,
     askedQuestions, trade, jobTitle, offerTotal, emailSent, utm, referralCode,
-    submittedAt, completedAt
+    submittedAt, completedAt, followUpConsent, followUpConsentAt, followUpConsentText
   }`
 
 /** En treg Sanity skal ikke holde sjefen-siden igjen. */
@@ -80,6 +83,15 @@ function toRow(doc: SanityExampleLead) {
     completed_at: doc.completedAt || null,
     sanity_updated_at: doc._updatedAt,
     synced_at: new Date().toISOString(),
+    // Samtykket (db/103) tas bare med når skjemaet faktisk spurte. Eldre
+    // dokumenter har ikke feltet, og da skal raden heller ikke nevne kolonnen.
+    ...(typeof doc.followUpConsent === "boolean"
+      ? {
+          follow_up_consent: doc.followUpConsent,
+          follow_up_consent_at: doc.followUpConsent ? doc.followUpConsentAt || doc.submittedAt || null : null,
+          follow_up_consent_text: doc.followUpConsent ? doc.followUpConsentText || null : null,
+        }
+      : {}),
   }
 }
 
@@ -99,7 +111,11 @@ async function runSync(admin: SupabaseClient): Promise<number> {
   const rows = docs.filter((doc) => doc.email).map(toRow)
   if (rows.length === 0) return 0
 
-  const { error } = await admin.from("analyse_leads").upsert(rows, { onConflict: "id" })
+  // defaultToNull: false — en rad uten samtykkefeltene (eldre dokument) skal få
+  // kolonnens standardverdi, ikke null, når den står i samme batch som en med.
+  const { error } = await admin
+    .from("analyse_leads")
+    .upsert(rows, { onConflict: "id", defaultToNull: false })
   if (error) throw new Error(error.message)
   return rows.length
 }

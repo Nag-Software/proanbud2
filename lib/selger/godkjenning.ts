@@ -10,6 +10,12 @@ import type { Hook } from "@/lib/outreach/research/synthesize"
 import type { FitCriterion } from "@/lib/outreach/research/synthesize"
 import type { LintIssue } from "@/lib/outreach/write/lint"
 import { TRADE_LABELS, type TradeKey } from "@/lib/outreach/segments"
+import {
+  ANALYSE_FACT_COLUMNS,
+  analyseFactsFrom,
+  type AnalyseFacts,
+  type AnalyseLeadRecord,
+} from "@/lib/outreach/varm-regler"
 
 export type ResearchSourceRow = {
   kind: string
@@ -41,6 +47,8 @@ export type ApprovalItem = {
   message: {
     id: string
     step: number
+    /** «varm» = oppfølging av en analyse med samtykke. Ellers kald post. */
+    kind: string
     subject: string
     body: string
     /** KI-originalen, alltid — også når Casper har redigert. */
@@ -76,8 +84,12 @@ export type ApprovalItem = {
     fit_tier: string | null
     contact_policy: string | null
     email_kind: string | null
+    /** Adressen som ga samtykke — varm post går dit, ikke til `email`. */
+    consent_email: string | null
   }
   dossier: ApprovalDossier | null
+  /** Analysen den varme oppfølgingen bygger på. Null for kald post. */
+  analyse: AnalyseFacts | null
 }
 
 type RawRow = Record<string, unknown>
@@ -133,12 +145,9 @@ export async function fetchApprovalQueue(options: {
     let query = admin
       .from("outreach_messages")
       .select(
-        `id, step, subject, body_ai, body_final, angle, hook_id, grade, grade_report, lint,
+        `id, step, kind, subject, body_ai, body_final, angle, hook_id, grade, grade_report, lint,
          expires_at, created_at, research_id,
-         prospects!inner (
-           id, name, org_number, email, website, city, kommune, employee_count,
-           segment, trade, fit_score, fit_tier, contact_policy, email_kind
-         )`,
+         prospects!inner (*)`,
       )
       .eq("status", "til_godkjenning")
       .order("created_at", { ascending: true })
@@ -177,15 +186,33 @@ export async function fetchApprovalQueue(options: {
       }
     }
 
+    // Analysene bak de varme utkastene — jobben, summen og samtykket.
+    const analyseIds = rows
+      .filter((row) => row.kind === "varm")
+      .map((row) => asRecord(row.prospects).analyse_lead_id)
+      .filter((id): id is string => typeof id === "string")
+    const analyses = new Map<string, AnalyseFacts>()
+    if (analyseIds.length > 0) {
+      const { data: analyseRows } = await admin
+        .from("analyse_leads")
+        .select(ANALYSE_FACT_COLUMNS)
+        .in("id", analyseIds)
+      for (const analyseRow of (analyseRows ?? []) as AnalyseLeadRecord[]) {
+        analyses.set(analyseRow.id, analyseFactsFrom(analyseRow))
+      }
+    }
+
     const items: ApprovalItem[] = rows.map((row) => {
       const prospect = asRecord(row.prospects)
       const lint = asRecord(row.lint)
       const trade = (prospect.trade as string | null) ?? null
+      const kind = String(row.kind ?? "kald")
 
       return {
         message: {
           id: String(row.id),
           step: Number(row.step ?? 1),
+          kind,
           subject: String(row.subject ?? ""),
           body: String((row.body_final as string) || (row.body_ai as string) || ""),
           body_ai: String(row.body_ai ?? ""),
@@ -213,13 +240,22 @@ export async function fetchApprovalQueue(options: {
           fit_tier: (prospect.fit_tier as string) ?? null,
           contact_policy: (prospect.contact_policy as string) ?? null,
           email_kind: (prospect.email_kind as string) ?? null,
+          consent_email: (prospect.consent_email as string) ?? null,
         },
         dossier: typeof row.research_id === "string" ? dossiers.get(row.research_id) ?? null : null,
+        analyse:
+          kind === "varm" && typeof prospect.analyse_lead_id === "string"
+            ? analyses.get(prospect.analyse_lead_id) ?? null
+            : null,
       }
     })
 
-    // Beste først. Uten score havner de nederst — de er ikke vurdert ennå.
-    return items.sort((a, b) => (b.prospect.fit_score ?? 0) - (a.prospect.fit_score ?? 0))
+    // Varme først — de har selv bedt om det, og de blir kalde av å vente.
+    // Deretter beste fit først; uten score havner de nederst.
+    return items.sort((a, b) => {
+      const warm = Number(b.message.kind === "varm") - Number(a.message.kind === "varm")
+      return warm !== 0 ? warm : (b.prospect.fit_score ?? 0) - (a.prospect.fit_score ?? 0)
+    })
   } catch (error) {
     await logServerError({
       message: "Godkjenningskøen feilet",

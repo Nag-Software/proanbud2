@@ -50,6 +50,17 @@ export default function PrivacyPage() {
         <li>oppfylle lovpålagte krav, for eksempel regnskaps- og bokføringsplikt (rettslig forpliktelse)</li>
         <li>forbedre produktet og analysere bruk (berettiget interesse, der det er tillatt)</li>
       </ul>
+      <p>
+        <strong>Eksempeltilbud på proanbud.no.</strong> Når du lager et eksempeltilbud, lagrer vi e-postadressen og
+        nettsiden du oppgir, det vi leser på nettsiden (firmanavn, tjenester og kontaktinformasjon) og tilbudet vi
+        lager. Vi bruker det til å sende deg tilbudet og til å fylle ut kontoen hvis du prøver Proanbud (din
+        forespørsel). Vi kan også ta kontakt med bedriften på telefon om tilbudet (berettiget interesse).
+      </p>
+      <p>
+        Krysser du av for oppfølging, sender vi deg inntil to e-poster om eksempeltilbudet (samtykke). Du kan trekke
+        samtykket når som helst med lenken nederst i e-posten, eller ved å svare «stopp». Uten avkrysning bruker vi
+        ikke e-postadressen til noe annet enn å sende deg tilbudet.
+      </p>
 
       <h2>4. Deling av opplysninger</h2>
       <p>

@@ -32,12 +32,20 @@ async function run(request: Request) {
 
     // Loggfør bare kjøringer som faktisk gjorde noe — ellers drukner
     // aktivitetsloggen i 144 tomme ticks i døgnet.
+    const bridged =
+      (summary.bridge?.created ?? 0) +
+      (summary.bridge?.tasks ?? 0) +
+      (summary.bridge?.warm ?? 0) +
+      (summary.bridge?.registered ?? 0)
     const didSomething =
       summary.send.sent > 0 ||
       summary.send.simulated > 0 ||
       (summary.inbox?.stored ?? 0) > 0 ||
       (summary.research?.succeeded ?? 0) > 0 ||
       (summary.drafts?.succeeded ?? 0) > 0 ||
+      (summary.warm?.drafted ?? 0) > 0 ||
+      (summary.warm?.closed ?? 0) > 0 ||
+      bridged > 0 ||
       summary.expired > 0
 
     if (didSomething) {
@@ -51,6 +59,10 @@ async function run(request: Request) {
           svar: summary.inbox?.stored ?? 0,
           researchet: summary.research?.succeeded ?? 0,
           utkast: summary.drafts?.succeeded ?? 0,
+          varme_utkast: summary.warm?.drafted ?? 0,
+          analyser_nye: summary.bridge?.created ?? 0,
+          analyser_oppgaver: summary.bridge?.tasks ?? 0,
+          analyser_varm: summary.bridge?.warm ?? 0,
           utlopt: summary.expired,
           cost_usd: Number(summary.cost_usd.toFixed(4)),
         },

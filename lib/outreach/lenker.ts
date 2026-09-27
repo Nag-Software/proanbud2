@@ -33,6 +33,50 @@ export function buildAnalyseGiftUrl(input: {
   return url.toString()
 }
 
+/** Kort tilfeldig token til ?r= og pluss-adressen. Kollisjon fanges av unik indeks. */
+export function newTrackingToken(random: () => number = Math.random): string {
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
+  let token = ""
+  for (let i = 0; i < 10; i++) {
+    token += alphabet[Math.floor(random() * alphabet.length)]
+  }
+  return token
+}
+
+/**
+ * Sporingstokenet ut av kampanjeparametrene analysen lagret.
+ *
+ * Markedssiden lagrer hele spørrestrengen («utm_source=salg&utm_content=abc»),
+ * ikke bare tokenet. Broen sammenlignet tidligere hele strengen med
+ * tracking_token — og traff aldri.
+ */
+export function trackingTokenFromUtm(utm: string | null | undefined): string | null {
+  const raw = utm?.trim()
+  if (!raw) return null
+  const candidate = raw.includes("=")
+    ? new URLSearchParams(raw.replace(/^\?/, "")).get("utm_content")
+    : raw
+  const token = candidate?.trim().toLowerCase() ?? ""
+  return /^[a-z0-9]{6,32}$/.test(token) ? token : null
+}
+
+/**
+ * Lenken i siste varme e-post: registreringen, merket så vi ser hvor de kom fra.
+ *
+ * Ingen e-postadresse eller firmaopplysninger i lenken — registreringen leser
+ * dem ikke, og en adresse i en URL havner i logger og historikk.
+ */
+export function buildWarmSignupUrl(): string {
+  const url = new URL(
+    "/signup",
+    process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://app.proanbud.no",
+  )
+  url.searchParams.set("utm_source", "salg")
+  url.searchParams.set("utm_medium", "epost")
+  url.searchParams.set("utm_campaign", "varm-oppfolging")
+  return url.toString()
+}
+
 /**
  * «Casper Nag <post@proanbud.no>» + token → «Casper Nag <post+abc@proanbud.no>».
  *

@@ -50,6 +50,7 @@ import {
   type GateReason,
 } from "@/lib/outreach/gates"
 import type { ApprovalDossier } from "@/lib/selger/godkjenning"
+import { AnalysePanel } from "./analyse-panel"
 import { DossierPanel } from "./dossier-panel"
 import { RepliesPanel } from "./replies-panel"
 import type { PendingReply } from "@/lib/selger/cockpit"
@@ -216,6 +217,7 @@ export function LeadRecordClient({
         {/* ============ VENSTRE: hvem er dette ============ */}
         <div className="order-3 flex flex-col gap-3 lg:order-1">
           <InfoPanel detail={detail} />
+          <AnalysePanel detail={detail} />
           <RepliesPanel replies={replies} openId={openReplyId} />
           <DossierPanel
             prospectId={prospect.id}
@@ -712,7 +714,9 @@ function InfoPanel({ detail }: { detail: ProspectDetail }) {
                 ? "Registrerte seg selv"
                 : prospect.source === "manual"
                   ? "Manuell"
-                  : "Brønnøysund"}
+                  : prospect.source === "analyse"
+                    ? "Analysen på proanbud.no"
+                    : "Brønnøysund"}
             </dd>
           </div>
           <div className="flex justify-between gap-2">

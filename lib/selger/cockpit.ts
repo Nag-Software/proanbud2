@@ -144,9 +144,10 @@ export async function fetchCockpitData(): Promise<CockpitData> {
         .eq("status", "til_godkjenning"),
 
       // Varme: klikket, eller merket hot, og ikke allerede i dialog.
+      // select("*"): analyse_lead_id (db/103) skal ikke velte lista før migrasjonen er kjørt.
       admin
         .from("prospects")
-        .select("id, name, click_count, hot_since, last_activity_at, status, source")
+        .select("*")
         .eq("is_hot", true)
         .in("status", ["kvalifisert", "kontaktet", "trial"])
         .order("hot_since", { ascending: false, nullsFirst: false })
@@ -228,7 +229,9 @@ export async function fetchCockpitData(): Promise<CockpitData> {
     const warmSignals: WarmSignal[] = ((warmRes.data ?? []) as unknown[]).map((row) => {
       const record = row as Record<string, unknown>
       const clicks = Number(record.click_count ?? 0)
-      const fromAnalyse = record.source === "analyse"
+      // source beholdes fra der leadet kom fra (Brønnøysund o.l.) — analysen
+      // står i analyse_lead_id når et kjent firma kjører den.
+      const fromAnalyse = record.source === "analyse" || Boolean(record.analyse_lead_id)
       return {
         id: `warm-${record.id}`,
         prospectId: String(record.id),

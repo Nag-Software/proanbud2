@@ -31,12 +31,21 @@ export function buildOutreachPlaintextFooter(args: {
   unsubscribeUrl: string
   /** Hvor vi fant adressen — «Brønnøysundregistrene» eller «nettsiden deres». */
   sourceLabel?: string
+  /**
+   * Grunnlaget for e-posten. «kald»: berettiget interesse overfor en
+   * firmaadresse. «samtykke»: de laget et eksempeltilbud og sa ja til
+   * oppfølging — da er det det bunnteksten skal si, ikke hvor adressen kom fra.
+   */
+  reason?: "kald" | "samtykke"
 }): string {
-  const source = args.sourceLabel || "Brønnøysundregistrene"
+  const why =
+    args.reason === "samtykke"
+      ? "Du får denne e-posten fordi du laget et eksempeltilbud på proanbud.no og sa ja til at vi kunne følge opp."
+      : `Du får denne e-posten fordi bedriften er registrert i bygg- og anleggsbransjen. Adressen er hentet fra ${args.sourceLabel || "Brønnøysundregistrene"}.`
   return [
     "--",
     "Proanbud — utviklet av Nag Software, Sydhøyveien 1, 3084 Holmestrand (org.nr. 936593127).",
-    `Du får denne e-posten fordi bedriften er registrert i bygg- og anleggsbransjen. Adressen er hentet fra ${source}.`,
+    why,
     `Vil du ikke ha flere e-poster: ${args.unsubscribeUrl}`,
   ].join("\n")
 }
@@ -46,6 +55,7 @@ export function buildOutreachPlaintext(args: {
   bodyText: string
   unsubscribeUrl: string
   sourceLabel?: string
+  reason?: "kald" | "samtykke"
 }): string {
   return `${args.bodyText.trim()}\n\n${buildOutreachPlaintextFooter(args)}\n`
 }

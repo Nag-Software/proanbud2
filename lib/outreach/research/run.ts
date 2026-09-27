@@ -29,6 +29,7 @@ import { fetchRegnskap, omsetningPerAnsatt, type Regnskap } from "@/lib/outreach
 import { fetchPlaces, type PlacesResult } from "@/lib/outreach/research/places"
 import { computeFit, synthesizeDossier, type Dossier, type Fit } from "@/lib/outreach/research/synthesize"
 import { getSegment } from "@/lib/outreach/segments"
+import { newTrackingToken } from "@/lib/outreach/lenker"
 import type { ProspectRow } from "@/lib/outreach/types"
 
 /** Maks sidetekst vi tar vare på, så en enkelt rad ikke sprenger tabellen. */
@@ -62,16 +63,6 @@ function nowIso(): string {
 
 function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max)}\n…[kappet]`
-}
-
-/** Kort tilfeldig token til ?r= og pluss-adressen. Kollisjon fanges av unik indeks. */
-function newTrackingToken(): string {
-  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
-  let token = ""
-  for (let i = 0; i < 10; i++) {
-    token += alphabet[Math.floor(Math.random() * alphabet.length)]
-  }
-  return token
 }
 
 function regnskapNote(regnskap: Regnskap | null, employeeCount: number | null): string | null {
@@ -121,11 +112,18 @@ export async function researchProspect(prospectId: string): Promise<ResearchOutc
   const supabase = createAdminClient()
   const sources: ResearchSource[] = []
 
+  // Et lead et menneske har tatt over (svar, analyse), skal ikke tilbake i
+  // maskinens køer av at noen oppdaterer researchen. Dossieret lagres, men
+  // pipeline_state blir stående — ellers ville utkastskøen skrevet en kald
+  // e-post til noen som selv har bedt om et tilbud.
+  let handedOver = false
+  const stateFor = (state: string) => (handedOver ? "overlevert" : state)
+
   const fail = async (reason: string, verdict: Verdict, state: string): Promise<ResearchOutcome> => {
     await supabase
       .from("prospects")
       .update({
-        pipeline_state: state,
+        pipeline_state: stateFor(state),
         research_error: reason,
         research_locked_at: null,
         researched_at: nowIso(),
@@ -150,6 +148,7 @@ export async function researchProspect(prospectId: string): Promise<ResearchOutc
       .maybeSingle<ProspectRow>()
 
     if (error || !prospect) return fail("Fant ikke prospektet", "diskvalifisert", "diskvalifisert")
+    handedOver = prospect.pipeline_state === "overlevert"
 
     // ── 1) Friske Brreg-data + porter, før vi bruker penger ──────────────────
     const orgNumber = prospect.org_number?.replace(/\D/g, "") || ""
@@ -330,7 +329,7 @@ export async function researchProspect(prospectId: string): Promise<ResearchOutc
       await supabase
         .from("prospects")
         .update({
-          pipeline_state: "for_tynn",
+          pipeline_state: stateFor("for_tynn"),
           research_id: row?.id ?? null,
           researched_at: nowIso(),
           research_locked_at: null,
@@ -450,7 +449,7 @@ export async function researchProspect(prospectId: string): Promise<ResearchOutc
     await supabase
       .from("prospects")
       .update({
-        pipeline_state: pipelineState,
+        pipeline_state: stateFor(pipelineState),
         research_id: row.id,
         researched_at: nowIso(),
         research_locked_at: null,

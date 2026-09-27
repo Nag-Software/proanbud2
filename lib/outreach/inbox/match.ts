@@ -4,7 +4,7 @@
 //
 //   1. plusstoken   post+abc123@proanbud.no → eksakt, ingen tvil
 //   2. in_reply_to  Message-ID-en vi lagret da vi sendte
-//   3. avsender     nøyaktig e-postadresse vi har skrevet til
+//   3. avsender     nøyaktig e-postadresse vi har skrevet til (også samtykkeadressen)
 //   4. domene       noen andre i samme firma svarer (vanlig: «jeg sender
 //                   dette videre til Per»)
 //   5. emne         siste utvei, og bare når emnet faktisk er vårt
@@ -74,14 +74,17 @@ export async function matchMessage(
     if (hit) return { prospectId: hit.prospect_id, method: "in_reply_to" }
   }
 
-  // 3) Nøyaktig avsenderadresse
-  const { data: byEmail } = await admin
-    .from("prospects")
-    .select("id")
-    .eq("email", message.fromEmail)
-    .limit(1)
-  const emailHit = (byEmail ?? [])[0] as { id: string } | undefined
-  if (emailHit) return { prospectId: emailHit.id, method: "avsender" }
+  // 3) Nøyaktig avsenderadresse — firmaadressen, eller adressen som ga
+  //    samtykke til varm oppfølging (ofte en annen enn firmaets).
+  for (const column of ["email", "consent_email"] as const) {
+    const { data: byEmail } = await admin
+      .from("prospects")
+      .select("id")
+      .eq(column, message.fromEmail)
+      .limit(1)
+    const emailHit = (byEmail ?? [])[0] as { id: string } | undefined
+    if (emailHit) return { prospectId: emailHit.id, method: "avsender" }
+  }
 
   // 4) Firmadomene — men aldri freemail. Én gmail-bruker skal ikke kunne
   //    kobles til et tilfeldig prospekt med gmail-adresse.

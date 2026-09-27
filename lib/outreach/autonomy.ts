@@ -98,6 +98,9 @@ export async function computeAutonomy(
       .select("status, reject_reason, edit_ratio, prospects!inner(segment)")
       .eq("prospects.segment", segment)
       .eq("step", 1)
+      // Autopilot fortjenes på kald post. Varme utkast er lettere å godkjenne
+      // og ville blåst opp tallet.
+      .neq("kind", "varm")
       .in("status", ["godkjent", "planlagt", "sendt", "avvist"])
       .order("approved_at", { ascending: false, nullsFirst: false })
       .limit(AUTONOMY_WINDOW)

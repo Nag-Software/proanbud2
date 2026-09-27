@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { recordUnsubscribe } from "@/lib/outreach/send"
 import { purgeOnUnsubscribe } from "@/lib/outreach/retention"
+import { stopSequence } from "@/lib/outreach/sequence"
 import { logServerError } from "@/lib/errors/log"
 
 /**
@@ -18,6 +19,9 @@ async function suppressProspect(prospectId: string | null): Promise<void> {
   const { data: prospect } = await admin.from("prospects").select("*").eq("id", prospectId).maybeSingle()
   if (!prospect) return
 
+  // Planlagte og godkjente meldinger skal aldri gå ut etter en avmelding.
+  await stopSequence(admin, prospect.id, "avmeldt")
+
   const now = new Date().toISOString()
   await admin
     .from("prospects")
@@ -30,6 +34,13 @@ async function suppressProspect(prospectId: string | null): Promise<void> {
     domain: (prospect as { domain?: string | null }).domain ?? null,
     reason: "link",
   })
+
+  // Den varme oppfølgingen går til adressen som ga samtykket. Den må på
+  // suppresjonslisten også — det er den de meldte seg av fra.
+  const consentEmail = (prospect as { consent_email?: string | null }).consent_email ?? null
+  if (consentEmail && consentEmail.toLowerCase() !== (prospect.email ?? "").toLowerCase()) {
+    await recordUnsubscribe(admin, { email: consentEmail, orgNumber: null, reason: "link" })
+  }
 
   // Slett det vi har samlet inn om dem (dossier, sidetekst, svar). Rekkefølgen
   // er viktig: suppresjonsraden er skrevet FØRST og blir stående — det er den

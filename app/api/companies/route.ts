@@ -223,20 +223,19 @@ export async function POST(request: Request) {
     // seg med et annet org.nr enn det vi prospekterte på — for eksempel et
     // datterselskap, eller fordi vi fant feil enhet i Brreg.
     const trackingRef = typeof r === 'string' && /^[a-z0-9]{6,32}$/i.test(r) ? r : null
+    const nowIso = new Date().toISOString()
+    const conversion = {
+      status: 'trial',
+      matched_company_id: companyData.id,
+      is_existing_customer: true,
+      pipeline_state: 'overlevert',
+      stage_entered_at: nowIso,
+      last_activity_at: nowIso,
+      updated_at: nowIso,
+    }
 
     if (org_number || trackingRef) {
       try {
-        const nowIso = new Date().toISOString()
-        const conversion = {
-          status: 'trial',
-          matched_company_id: companyData.id,
-          is_existing_customer: true,
-          pipeline_state: 'overlevert',
-          stage_entered_at: nowIso,
-          last_activity_at: nowIso,
-          updated_at: nowIso,
-        }
-
         if (org_number) {
           await supabaseAdmin
             .from('prospects')
@@ -276,6 +275,46 @@ export async function POST(request: Request) {
             orgNumber: org_number,
             trackingRef,
           },
+        })
+      }
+    }
+
+    // Tredje vei inn: de kjørte analysen på proanbud.no med samme adresse som
+    // de nå registrerte seg med. Signup sender ikke sporingstokenet videre, så
+    // e-posten er det sikreste vi har — og uten den fikk firmaet et nytt kort
+    // ved siden av analysekortet, og oppfølgingen fortsatte.
+    const signupEmail = user.email?.trim().toLowerCase() || null
+    if (signupEmail) {
+      try {
+        for (const column of ['consent_email', 'email'] as const) {
+          const { data: matches, error: matchError } = await supabaseAdmin
+            .from('prospects')
+            .select('id')
+            .is('matched_company_id', null)
+            .eq(column, signupEmail)
+            .not('status', 'in', '(kunde,tapt)')
+            .limit(1)
+          // consent_email finnes ikke før db/103 — da prøver vi bare neste spor.
+          const match = matchError ? null : (matches?.[0] as { id: string } | undefined)
+          if (!match) continue
+
+          // Firmaet kan allerede være koblet på org.nr. over; da slår den unike
+          // indeksen til, og det kortet er dealen.
+          const { error: linkError } = await supabaseAdmin
+            .from('prospects')
+            .update(conversion)
+            .eq('id', match.id)
+          if (!linkError) await stopSequence(supabaseAdmin, match.id, 'registrert')
+          break
+        }
+      } catch (prospectError) {
+        await logServerError({
+          message: 'Kunne ikke koble analyse-lead til ny bedrift',
+          error: prospectError,
+          source: 'api',
+          route: 'POST /api/companies',
+          level: 'warning',
+          context: { companyId: companyData.id, userId: user.id },
         })
       }
     }

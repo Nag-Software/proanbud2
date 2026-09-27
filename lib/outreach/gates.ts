@@ -49,6 +49,40 @@ export const FREEMAIL_DOMAINS = new Set([
   "gmx.net",
 ])
 
+/** Domener som aldri er firmaets egen side, uansett hvor godt de matcher. */
+export const DIRECTORY_DOMAINS = new Set([
+  "proff.no",
+  "purehelp.no",
+  "gulesider.no",
+  "1881.no",
+  "brreg.no",
+  "forvalt.no",
+  "regnskapstall.no",
+  "bizweb.no",
+  "facebook.com",
+  "instagram.com",
+  "linkedin.com",
+  "youtube.com",
+  "mittanbud.no",
+  "byggstart.no",
+  "anbudstorget.no",
+  "finn.no",
+  "indeed.com",
+  "nav.no",
+  "wikipedia.org",
+  "x.com",
+  "twitter.com",
+  "tiktok.com",
+  "google.com",
+  "bing.com",
+])
+
+/** Katalog, sosialt medium eller søkemotor — aldri et firmas eget domene. */
+export function isDirectoryDomain(host: string): boolean {
+  const value = host.trim().toLowerCase().replace(/^www\./, "")
+  return [...DIRECTORY_DOMAINS].some((bad) => value === bad || value.endsWith(`.${bad}`))
+}
+
 /** Lokaldeler som er en funksjon, ikke en person. */
 export const ROLE_LOCALPARTS = new Set([
   "post",

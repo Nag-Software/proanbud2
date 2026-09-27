@@ -22,7 +22,7 @@ import { gradeMessage, type GradeReport } from "@/lib/outreach/write/grade"
 import { lintMessage, WORD_LIMITS, type LintReport } from "@/lib/outreach/write/lint"
 import { loadLearningMemory, memoryForPrompt } from "@/lib/outreach/write/learning"
 import { anglesFor, FOLLOWUP_BRIEF, playbookForPrompt } from "@/lib/outreach/write/playbooks"
-import { buildAnalyseGiftUrl } from "@/lib/outreach/analyse-bro"
+import { buildAnalyseGiftUrl } from "@/lib/outreach/lenker"
 
 export const SIGNATURE = "Casper Nag\nProanbud — et produkt fra Nag Software, Holmestrand"
 

@@ -62,10 +62,11 @@ export function getOutreachSignupUrl(): string {
 }
 
 /** Template ids logged to seller_email_log for outbound lead emails. Historic
- *  motor sends (outreach-cold/-followup) and today's manual per-lead sends
- *  (selger-manual) all count toward the same daily cap, so the sending volume
- *  stays safe for the domain no matter how the email was triggered. */
-export const OUTREACH_TEMPLATE_IDS = ["outreach-cold", "outreach-followup", "selger-manual"] as const
+ *  motor sends (outreach-cold/-followup), the warm follow-up of analyses
+ *  (outreach-warm) and today's manual per-lead sends (selger-manual) all count
+ *  toward the same daily cap, so the sending volume stays safe for the domain
+ *  no matter how the email was triggered. */
+export const OUTREACH_TEMPLATE_IDS = ["outreach-cold", "outreach-followup", "outreach-warm", "selger-manual"] as const
 
 /** Daily send cap protecting sender reputation (cold + follow-up combined).
  *  Default is deliberately conservative (50/day): cold outreach currently sends from
@@ -301,6 +302,8 @@ export async function sendOutreachPlaintext(args: {
   body: string
   unsubscribeUrl: string
   sourceLabel?: string
+  /** Grunnlaget for e-posten — styrer hva bunnteksten sier. */
+  reason?: "kald" | "samtykke"
   replyToToken?: string | null
   /** outreach_messages.id — hindrer dobbeltsending ved retry. */
   idempotencyKey?: string
@@ -310,6 +313,7 @@ export async function sendOutreachPlaintext(args: {
     bodyText: args.body,
     unsubscribeUrl: args.unsubscribeUrl,
     sourceLabel: args.sourceLabel,
+    reason: args.reason,
   })
 
   const replyTo = args.replyToToken

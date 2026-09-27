@@ -65,6 +65,9 @@ export async function loadLearningMemory(segment: string): Promise<LearningMemor
       .select("subject, body_ai, body_final, status, reject_reason, reject_note, prospects!inner(segment)")
       .eq("prospects.segment", segment)
       .eq("step", 1)
+      // Bare kald post. Den varme oppfølgingen er skrevet til noen som ba om
+      // den, og er ikke et forbilde for en førstegangs henvendelse.
+      .neq("kind", "varm")
       .in("status", ["godkjent", "planlagt", "sendt", "avvist"])
       .order("created_at", { ascending: false })
       .limit(50)

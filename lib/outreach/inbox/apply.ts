@@ -16,6 +16,7 @@
 import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 import type { Classification, ReplyClass } from "@/lib/outreach/inbox/classify"
+import { ensureTask } from "@/lib/outreach/oppgaver"
 import { postponeSequence, stopSequence } from "@/lib/outreach/sequence"
 import { recordUnsubscribe } from "@/lib/outreach/send"
 import type { ProspectRow } from "@/lib/outreach/types"
@@ -30,30 +31,6 @@ export type ApplyOutcome = {
   notify: boolean
   status: string | null
   note: string
-}
-
-async function ensureTask(
-  admin: AdminClient,
-  prospectId: string,
-  input: { type: "ring" | "epost"; title: string; dueInHours: number },
-): Promise<void> {
-  // Unik indeks på (prospect_id) der done_at is null: ett åpent gjøremål av
-  // gangen. Finnes det allerede ett, er det Caspers — vi overstyrer ikke.
-  const { data: existing } = await admin
-    .from("prospect_tasks")
-    .select("id")
-    .eq("prospect_id", prospectId)
-    .is("done_at", null)
-    .maybeSingle()
-
-  if (existing) return
-
-  await admin.from("prospect_tasks").insert({
-    prospect_id: prospectId,
-    task_type: input.type,
-    title: input.title,
-    due_at: new Date(Date.now() + input.dueInHours * 60 * 60 * 1000).toISOString(),
-  })
 }
 
 /**
@@ -91,7 +68,7 @@ export async function applyClassification(
         await ensureTask(admin, prospect.id, {
           type: "epost",
           title: klasse === "positiv" ? "Svar på positivt svar" : "Svar på spørsmål",
-          dueInHours: 2,
+          dueAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
         })
         return {
           stopped: true,
