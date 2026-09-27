@@ -58,6 +58,31 @@ describe("classifyContactEmail", () => {
     expect(classifyContactEmail("ole@johansenbygg.no", { companyName: "JOHANSEN BYGG AS" })).toBe("personnavn")
   })
 
+  it("ser at et firma oppkalt etter en person har personens adresser (ekte tilfelle 2026-09-27)", () => {
+    const john = { companyName: "JOHN KLEVELAND AS", companyDomain: "kleveland.no", personNames: [] }
+    expect(classifyContactEmail("john@kleveland.no", john)).toBe("personnavn")
+    expect(classifyContactEmail("jkleveland@kleveland.no", john)).toBe("personnavn")
+    expect(classifyContactEmail("johnkleveland@gmail.com", { companyName: "JOHN KLEVELAND AS" })).toBe("personnavn")
+    expect(classifyContactEmail("post@kleveland.no", john)).toBe("generisk_firmadomene")
+  })
+
+  it("kjenner vanlige norske fornavn — også når etternavnet er firmanavnet", () => {
+    expect(classifyContactEmail("ola@olabygg.no", { companyName: "OLA BYGG AS" })).toBe("personnavn")
+    expect(classifyContactEmail("ola.nordmann@gmail.com", { companyName: "NORDMANN BYGG AS" })).toBe("personnavn")
+    expect(classifyContactEmail("stig.berg@gmail.com", { companyName: "BERG BYGG AS" })).toBe("personnavn")
+    expect(classifyContactEmail("post@olabygg.no", { companyName: "OLA BYGG AS" })).toBe("generisk_firmadomene")
+    expect(classifyContactEmail("bergbygg@gmail.com", { companyName: "BERG BYGG AS" })).toBe("firmanavn_freemail")
+  })
+
+  it("regner aldri en funksjonsadresse som person, selv med et navn inni ordet", () => {
+    expect(
+      classifyContactEmail("kontor@torhansen.no", { companyName: "TOR HANSEN AS", personNames: ["Tor Hansen"] }),
+    ).toBe("generisk_firmadomene")
+    expect(classifyContactEmail("administrasjon@jonbygg.no", { companyName: "JON BYGG AS" })).toBe(
+      "generisk_firmadomene",
+    )
+  })
+
   it("krever at freemail-adressen faktisk inneholder firmanavnet", () => {
     expect(classifyContactEmail("byggmester123@gmail.com", { companyName: "TIMRE BYGG AS" })).toBe("ukjent")
   })

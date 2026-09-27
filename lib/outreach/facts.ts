@@ -76,7 +76,7 @@ export const FACTS: Fact[] = [
   },
   {
     id: "ki_tilbud",
-    text: "Du beskriver jobben med tekst eller bilde, og KI-en setter opp et komplett tilbud med linjer du kan redigere.",
+    text: "Du beskriver jobben med tekst eller bilde, og Proanbud setter opp et komplett tilbud med linjer du kan redigere.",
     verified: true,
     source: "Kjerneflyten i /nytt-tilbud",
     segments: ["handverker"],

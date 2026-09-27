@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { MODULE_PRICING, PLAN_PRICING } from "@/lib/billing/plans"
 import type { Hook } from "@/lib/outreach/research/synthesize"
+import { SIGNATURE } from "@/lib/outreach/write/form"
 import { countWords, lintMessage, allowedNumbers } from "@/lib/outreach/write/lint"
 import { editRatio } from "@/lib/outreach/write/learning"
 
@@ -15,7 +16,7 @@ const HOOK: Hook = {
   grounding_reason: "ok",
 }
 
-const SIGNATUR = "\n\nCasper Nag\nProanbud — et produkt fra Nag Software, Holmestrand"
+const SIGNATUR = `\n\n${SIGNATURE}`
 
 const GOD_EPOST = `Hei,
 
@@ -44,7 +45,7 @@ describe("lintMessage", () => {
 
   it("teller ord uten signaturen", () => {
     const report = lint(GOD_EPOST)
-    expect(report.word_count).toBe(countWords(GOD_EPOST.split("Casper Nag")[0]))
+    expect(report.word_count).toBe(countWords(GOD_EPOST.replace(SIGNATUR, "")))
   })
 
   it("stopper e-post over ordgrensen i steg 2", () => {
@@ -86,6 +87,30 @@ describe("lintMessage", () => {
         allowLink: true,
       }).issues.some((issue) => issue.rule === "lenke"),
     ).toBe(false)
+  })
+
+  it("stopper «KI» og «AI» — aldri i utadrettet tekst", () => {
+    const ki = lint(GOD_EPOST.replace("Proanbud er laget for", "KI-en i Proanbud er laget for"))
+    expect(ki.issues.some((issue) => issue.rule === "ki")).toBe(true)
+
+    const ai = lint(GOD_EPOST.replace("Proanbud er laget for", "Proanbud er AI-drevet og laget for"))
+    expect(ai.issues.some((issue) => issue.rule === "ki")).toBe(true)
+  })
+
+  it("lar «AI» inne i en lenke være — sporingstokenet er ikke en påstand", () => {
+    const report = lintMessage({
+      subject: "Kort oppfølging",
+      body: `Hei,\n\nDere tar tilbygg og garasjer — her er analysen av nettsiden deres: https://proanbud.no/analyse?t=x-AI-3\n\nGir det mening for dere?${SIGNATUR}`,
+      step: 3,
+      hook: HOOK,
+      allowLink: true,
+    })
+    expect(report.issues.some((issue) => issue.rule === "ki")).toBe(false)
+  })
+
+  it("regner ikke en hilsen før signaturen som siste setning", () => {
+    const report = lint(GOD_EPOST.replace(SIGNATUR, "\n\nMed vennlig hilsen\nCasper Nag"))
+    expect(report.issues.some((issue) => issue.rule === "mangler_sporsmal")).toBe(false)
   })
 
   it("krever at kroken står i første setning", () => {

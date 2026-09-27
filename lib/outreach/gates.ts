@@ -172,25 +172,59 @@ const GENERIC_NAME_TOKENS = new Set([
   "totalentreprise",
 ])
 
-/** Vanlige fornavn i Norge (normalisert, uten æøå) — fanger «kasperjohansen@»
- *  og «roy@» der Brreg-rollene ikke nevner personen (ansatte på /om-oss). */
+/** Vanlige fornavn i Norge (normalisert, uten æøå) — fanger «kasperjohansen@»,
+ *  «roy@» og «john@» der Brreg-rollene ikke nevner personen (ansatte på
+ *  /om-oss, eller firmaet er oppkalt etter en som ikke lenger sitter i rollene).
+ *  Bare navn på minst tre bokstaver, og ingen som også er vanlige ord i et
+ *  firmanavn («Rene», «Ask», «Mark»). */
 const COMMON_FIRST_NAMES = new Set([
-  "adrian", "alexander", "anders", "andre", "andreas", "anne", "arne", "arild", "arvid", "asbjorn",
-  "aleksander", "atle", "audun", "bjorn", "bjarne", "bard", "bent", "bernt", "birger", "christian",
-  "christoffer", "dag", "daniel", "david", "egil", "einar", "eirik", "eivind", "elias", "emil",
-  "endre", "erik", "erlend", "espen", "even", "fredrik", "frode", "geir", "gunnar", "gustav",
-  "haakon", "hakon", "hans", "harald", "helge", "henrik", "henning", "helene", "hilde", "ida",
-  "ingrid", "ivar", "jakob", "jan", "jarle", "jens", "joachim", "johan", "johannes", "johnny",
-  "jon", "jonas", "jorgen", "jostein", "karl", "kasper", "kenneth", "kim", "kjell", "kjetil",
-  "knut", "kristian", "kristoffer", "lars", "leif", "lene", "lise", "magnus", "marius", "markus",
-  "martin", "mathias", "mats", "mikael", "mona", "morten", "nils", "odd", "olav", "ole",
-  "oskar", "ove", "oyvind", "paal", "pal", "per", "petter", "preben", "rolf", "roger",
-  "ronny", "rune", "roy", "ruben", "sander", "sebastian", "sigurd", "simen", "sindre", "sivert",
-  "stein", "steinar", "stian", "sven", "svein", "sverre", "terje", "thomas", "tobias", "tom",
-  "tommy", "tor", "tore", "torbjorn", "torgeir", "trond", "trygve", "vegard", "vidar", "william",
-  "anna", "astrid", "camilla", "caroline", "elisabeth", "emma", "hanne", "heidi", "ingvild", "julie",
-  "kari", "karin", "kristin", "linda", "maria", "marianne", "marte", "nina", "nora", "randi",
-  "silje", "siri", "sofie", "stine", "tone", "tonje", "trine", "tuva", "vilde",
+  "aase", "adrian", "age", "agnes", "ahmed", "aivars", "aksel", "aleksander", "alex", "alexander", "alf",
+  "ali", "amalie", "anders", "andre", "andreas", "andrius", "andrzej", "anette", "anita", "anja", "ann",
+  "anna", "anne", "annette", "anton", "arild", "arne", "arnfinn", "arnt", "artur", "arturas", "arvid",
+  "asbjorn", "ase", "asgeir", "aslak", "asle", "asmund", "astrid", "atle", "aud", "audun", "aurimas",
+  "aurora", "bard", "bengt", "bent", "bente", "berit", "bernt", "birger", "bjarne", "bjarte", "bjorg",
+  "bjorge", "bjorn", "bjornar", "bodil", "borge", "borghild", "britt", "camilla", "caroline", "cecilie",
+  "charlotte", "chris", "christian", "christine", "christoffer", "dag", "dagfinn", "dagny", "daniel",
+  "darius", "dariusz", "david", "dmitri", "edvard", "egil", "eigil", "eilif", "einar", "eirik", "eirin",
+  "eivind", "eli", "elias", "elin", "elisabeth", "elise", "ellen", "emil", "emilie", "emma", "endre", "erik",
+  "erlend", "erling", "eskil", "espen", "ester", "eva", "even", "eyvind", "filip", "finn", "frank",
+  "fredrik", "frida", "frode", "gaute", "geir", "georg", "gerd", "gintaras", "gisle", "gjermund", "gjert",
+  "glenn", "grete", "grethe", "gro", "grzegorz", "gudmund", "gudrun", "gunhild", "gunn", "gunnar", "gunvor",
+  "guri", "gustav", "guttorm", "haakon", "hakon", "hallgeir", "hallvard", "halvard", "halvor", "hanna",
+  "hannah", "hanne", "hans", "harald", "harry", "hassan", "havard", "hege", "heidi", "helene", "helga",
+  "helge", "helmer", "henning", "henriette", "henrik", "herman", "hermann", "hilde", "hugo", "ida", "idar",
+  "igor", "inge", "ingeborg", "inger", "ingrid", "ingunn", "ingvild", "irene", "isak", "iselin", "ivan",
+  "ivar", "iver", "jacek", "jack", "jacob", "jakob", "james", "jan", "janis", "janne", "jannicke", "janusz",
+  "jardar", "jarl", "jarle", "jaroslaw", "jenny", "jens", "jesper", "jimmy", "joachim", "joakim", "johan",
+  "johanne", "johannes", "john", "johnny", "jon", "jonas", "jorgen", "jorn", "jorund", "jorunn", "jostein",
+  "julian", "julie", "jurgis", "juris", "kaare", "kai", "kaj", "kaja", "kamil", "kare", "karen", "kari",
+  "karin", "karl", "karoline", "karsten", "kasper", "kathrine", "katrine", "kenneth", "kent", "ketil",
+  "kevin", "kim", "kine", "kirsten", "kjartan", "kjell", "kjersti", "kjetil", "klaus", "knut", "kolbein",
+  "kolbjorn", "konrad", "kristen", "kristian", "kristin", "kristina", "kristine", "kristofer", "kristoffer",
+  "krzysztof", "kurt", "laila", "lars", "lasse", "leif", "leiv", "lene", "lillian", "lina", "linda", "line",
+  "linn", "lisa", "lise", "liv", "lorentz", "ludvig", "lukas", "lukasz", "mads", "magnar", "magne",
+  "magnhild", "magnus", "maja", "malin", "marcin", "marcus", "marek", "maren", "mari", "maria", "marianne",
+  "marie", "marit", "marius", "mariusz", "markus", "marte", "marthe", "martin", "martine", "mathias",
+  "mathilde", "mats", "mattias", "merete", "mette", "mia", "michael", "michal", "mikael", "mike", "mikkel",
+  "mindaugas", "mohammad", "mohammed", "mona", "monica", "monika", "mons", "morten", "muhammad", "nicolai",
+  "niklas", "nikolai", "nils", "nina", "nora", "oda", "odd", "oddbjorn", "oddgeir", "oddmund", "oddvar",
+  "oistein", "oivind", "ola", "olaf", "olai", "olav", "ole", "oleg", "oliver", "olve", "omar", "oscar",
+  "oskar", "ottar", "ove", "oystein", "oyvind", "paal", "pal", "patrick", "paul", "pawel", "peder", "per",
+  "peter", "petter", "philip", "piotr", "preben", "rafal", "ragnar", "ragnhild", "ragnvald", "ralf", "randi",
+  "rasmus", "rebecca", "reidar", "reidun", "reinert", "remi", "renate", "richard", "rikard", "rita", "roald",
+  "roar", "robert", "robin", "roger", "rolf", "rolv", "ronny", "roy", "ruben", "rudi", "runar", "rune",
+  "ruth", "sakarias", "sander", "sandra", "sara", "sebastian", "selma", "sergei", "sergey", "sigbjorn",
+  "sigmund", "signe", "sigrid", "sigurd", "sigve", "silje", "simen", "sindre", "siri", "sissel", "siv",
+  "sivert", "sjur", "slawomir", "snorre", "sofie", "solfrid", "solveig", "sondre", "sonja", "stale",
+  "stefan", "steffen", "stein", "steinar", "stephen", "steve", "stian", "stig", "stine", "sturla", "sunniva",
+  "susanne", "svein", "sveinung", "sven", "svend", "svenn", "sverre", "synne", "synnove", "syver", "tallak",
+  "tarjei", "teodor", "terje", "thea", "theodor", "therese", "thomas", "thor", "thorbjorn", "thore",
+  "thorleif", "tina", "tine", "tiril", "tobias", "tollef", "tom", "tomas", "tomasz", "tommy", "tone",
+  "tonje", "tony", "tor", "torbjorn", "tore", "torfinn", "torgeir", "torgrim", "torhild", "torill", "torjus",
+  "torkel", "torleif", "tormod", "torodd", "torolf", "torstein", "torunn", "torvald", "tove", "trine",
+  "trond", "trude", "trygve", "trym", "turid", "tuva", "ulf", "ulrik", "unni", "vebjorn", "vegard", "vemund",
+  "veronica", "vetle", "vibeke", "victoria", "vidar", "vigdis", "viggo", "vilde", "vilhelm", "vilje",
+  "vladimir", "vytautas", "wenche", "william", "willy", "wojciech", "yngve", "yvonne", "zbigniew",
 ])
 
 const STOP_TOKENS = new Set(["og", "i", "pa", "av", "the", "and", "med", "for", "til"])
@@ -226,6 +260,19 @@ export function personNameTokens(names: string[]): string[] {
     }
   }
   return [...tokens]
+}
+
+/**
+ * Heter firmaet det samme som en person — «John Kleveland AS», «Ola Nordmann
+ * Bygg AS»? Da er fornavnet og ordet etter det et personnavn, også når
+ * personen ikke står i Brreg-rollene. «john@kleveland.no» og
+ * «johnkleveland@gmail.com» er Johns adresser, ikke firmaets, selv om de
+ * matcher firmanavnet.
+ */
+export function personNameInCompanyName(companyTokens: string[]): string[] {
+  const [first, second] = companyTokens
+  if (!first || !second || !COMMON_FIRST_NAMES.has(first)) return []
+  return GENERIC_NAME_TOKENS.has(second) || second.length < 3 ? [first] : [first, second]
 }
 
 function distinctiveTokens(tokens: string[]): string[] {
@@ -328,8 +375,9 @@ function sameSite(a: string, b: string): boolean {
  *
  * Reglene (i rekkefølge):
  *  1. Systemadresser og ugyldig syntaks → ugyldig.
- *  2. Personnavn i lokaldelen (fra Brreg-rollene, eller «a.b»-mønster med
- *     initial) → personnavn — også når etternavnet er firmanavnet (e.lunn@).
+ *  2. Personnavn i lokaldelen (fra Brreg-rollene, fra et firmanavn som er et
+ *     personnavn, eller «a.b»-mønster med initial) → personnavn — også når
+ *     etternavnet er firmanavnet (e.lunn@, john@ for John Kleveland AS).
  *  3. Firmadomene: rollelokaldel eller firmanavnet → generisk; alt annet er en
  *     navngitt ansatt → personnavn.
  *  4. Freemail: firmanavnet i lokaldelen → firmanavn_freemail; «fornavn.etternavn»
@@ -344,17 +392,24 @@ export function classifyContactEmail(email: string, input: ClassifyEmailInput): 
   if (BLOCKED_LOCALPARTS.has(local)) return "ugyldig"
 
   const companyTokens = companyNameTokens(input.companyName)
-  const personTokens = personNameTokens(input.personNames ?? [])
+  const personTokens = [
+    ...new Set([...personNameTokens(input.personNames ?? []), ...personNameInCompanyName(companyTokens)]),
+  ]
   const localNorm = normalizeForMatch(local.replace(/\d+$/, ""))
   const parts = localParts(local)
   const baseLocal = normalizeForMatch(local.replace(/\d+$/, ""))
 
   // 2) Personnavn slår alt: en rolleperson i lokaldelen, eller initial + navn.
+  // Unntatt rene funksjonsadresser — «kontor@» er ikke Tor, og «administrasjon@»
+  // er ikke Jon, selv om navnet står inni ordet.
   const initialPlusSurname = personTokens.some(
     (token) => localNorm.length === token.length + 1 && localNorm.endsWith(token),
   )
   const initialPlusName = parts.length >= 2 && parts.some((part) => part.length === 1)
-  if (initialPlusSurname || initialPlusName || containsPersonName(localNorm, personTokens, companyTokens)) {
+  if (
+    !ROLE_LOCALPARTS.has(baseLocal) &&
+    (initialPlusSurname || initialPlusName || containsPersonName(localNorm, personTokens, companyTokens))
+  ) {
     return "personnavn"
   }
 

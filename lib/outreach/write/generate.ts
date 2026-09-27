@@ -22,9 +22,8 @@ import { gradeMessage, type GradeReport } from "@/lib/outreach/write/grade"
 import { lintMessage, WORD_LIMITS, type LintReport } from "@/lib/outreach/write/lint"
 import { loadLearningMemory, memoryForPrompt } from "@/lib/outreach/write/learning"
 import { anglesFor, FOLLOWUP_BRIEF, playbookForPrompt } from "@/lib/outreach/write/playbooks"
+import { finishBody } from "@/lib/outreach/write/form"
 import { buildAnalyseGiftUrl } from "@/lib/outreach/lenker"
-
-export const SIGNATURE = "Casper Nag\nProanbud — et produkt fra Nag Software, Holmestrand"
 
 const SCHEMA: Record<string, unknown> = {
   type: "object",
@@ -35,7 +34,7 @@ const SCHEMA: Record<string, unknown> = {
     brodtekst: {
       type: "string",
       description:
-        "Hele e-posten, ren tekst, fra «Hei,» til og med signaturen. Ingen lenker, ingen avmeldingstekst.",
+        "E-posten i ren tekst, fra «Hei,» til og med spørsmålet. Ett avsnitt per linje. Ingen hilsen eller signatur, ingen avmeldingstekst.",
     },
     krok_id: { type: "string", description: "Id-en til kroken du bygde på." },
     fakta_ids: {
@@ -58,8 +57,7 @@ Stilen er Caspers egen:
 - Avslutt med ETT lavterskel-spørsmål som kan besvares med én setning. Aldri «book et møte».
 - Maks ${WORD_LIMITS[step] ?? 120} ord før signaturen. Ingen emojier. Ingen utropstegn.
 - ${step === 1 ? "Ingen lenker i det hele tatt" : "Høyst én lenke, og bare den du eventuelt får oppgitt"}. Ingen kontaktinfo, ingen avmeldingstekst — det legges på automatisk.
-- Avslutt brødteksten med nøyaktig denne signaturen:
-${SIGNATURE}
+- Ikke skriv hilsen eller signatur. Den legges på automatisk.
 
 Faktaarket er ALT du kan påstå om Proanbud:
 ${factsForPrompt("handverker")}
@@ -68,6 +66,7 @@ Ufravikelig:
 - Hvert tall du skriver må stå i faktaarket eller i dossieret. Ingen unntak, heller ikke «rundt 20 %».
 - Aldri tall om mottakerens omsetning, resultat eller antall ansatte. De er interne.
 - Aldri: løsning, synergi, digitalisering, effektivisering, sømløs, revolusjonerende.
+- Skriv aldri «KI» eller «AI». Si hva systemet gjør.
 - Nevner du pris sammen med regnskapsintegrasjon, må du også si hva integrasjonen koster (inkludert i Proff, tillegg på Mini).`
 }
 
@@ -231,9 +230,12 @@ export async function draftMessage(input: DraftInput): Promise<DraftResult> {
       continue
     }
 
+    // Signaturen og avsnittene legges på her, ikke av modellen — lint og
+    // sensoren skal se nøyaktig det som blir sendt.
+    const body = finishBody(draft.body)
     const lint = lintMessage({
       subject: draft.subject,
-      body: draft.body,
+      body,
       step: input.step,
       hook,
       dossierText,
@@ -245,7 +247,7 @@ export async function draftMessage(input: DraftInput): Promise<DraftResult> {
       try {
         grade = await gradeMessage({
           subject: draft.subject,
-          body: draft.body,
+          body,
           step: input.step,
           hookText: hook.text,
           hookQuote: hook.quote,
@@ -265,7 +267,7 @@ export async function draftMessage(input: DraftInput): Promise<DraftResult> {
       return {
         ok: true,
         subject: draft.subject,
-        body: draft.body,
+        body,
         hook,
         hookId: draft.hookId,
         factIds: draft.factIds,

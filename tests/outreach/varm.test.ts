@@ -19,6 +19,7 @@ import {
   lintWarmMessage,
   type AnalyseFacts,
 } from "@/lib/outreach/varm-regler"
+import { SIGNATURE } from "@/lib/outreach/write/form"
 
 const FACTS: AnalyseFacts = analyseFactsFrom({
   id: "exampleLead.abc",
@@ -38,7 +39,7 @@ const FACTS: AnalyseFacts = analyseFactsFrom({
   follow_up_consent_text: "Ja, Casper i Proanbud kan følge meg opp på e-post om eksempeltilbudet.",
 })
 
-const SIGNATUR = "\n\nCasper Nag\nProanbud — et produkt fra Nag Software, Holmestrand"
+const SIGNATUR = `\n\n${SIGNATURE}`
 
 const GOD_STEG_1 = `Hei,
 

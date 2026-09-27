@@ -274,15 +274,11 @@ function jobKeywords(jobTitle: string | null): string[] {
 
 const REFERS_TO_OFFER = /eksempel|analyse|tilbud/i
 
-/** «KI», «KI-en», «KI-generert» — aldri i utadrettet tekst. */
-const MENTIONS_AI = /\bKI(-[a-zæøå]+)?\b/
-
 /**
  * Lint for varm post: de samme harde reglene som den kalde (faktabrannmuren,
- * tall med dekning, tone, ett spørsmål), pluss tre av sine egne:
+ * tall med dekning, tone, aldri «KI», ett spørsmål), pluss to av sine egne:
  *   - første setning viser til eksempeltilbudet de laget
  *   - strammere ordgrense
- *   - aldri «KI»
  * Steg 1 har ingen lenke; steg 2 kan ha én.
  */
 export function lintWarmMessage(input: {
@@ -315,10 +311,6 @@ export function lintWarmMessage(input: {
   const alreadyTooLong = issues.some((issue) => issue.rule === "lengde" && issue.severity === "blokkerende")
   if (limit && words > limit && !alreadyTooLong) {
     block("lengde", `${words} ord i varm oppfølging steg ${input.step}, grensen er ${limit}`)
-  }
-
-  if (MENTIONS_AI.test(`${input.subject}\n${body}`)) {
-    block("ki", "Ikke skriv «KI» — si hva det gjør")
   }
 
   const blocking = issues.filter((issue) => issue.severity === "blokkerende")

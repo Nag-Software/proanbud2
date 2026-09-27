@@ -7,8 +7,7 @@
 
 import { openaiFetch } from "@/lib/llm/openai-fetch"
 import { factsForPrompt, findBannedClaims, findBannedWords } from "@/lib/outreach/facts"
-
-const SIGNATURE = "Casper Nag\nProanbud — et produkt fra Nag Software, Holmestrand"
+import { finishBody } from "@/lib/outreach/write/form"
 
 function systemPrompt(): string {
   return `Du skriver kalde førstekontakt-e-poster på vegne av Casper Nag, som har laget Proanbud — et norsk system for håndverksbedrifter der tilbud, prosjekter, timer og faktura henger sammen. Målet er et svar, ikke et salg.
@@ -22,8 +21,7 @@ Stil (Caspers egen):
 - Maks 120 ord før signaturen. Ingen emojier. Ingen utropstegn.
 - Aldri ordene: løsning, synergi, digitalisering, effektivisering, sømløs, revolusjonerende, banebrytende.
 - Ikke skriv lenker, kontaktinfo eller avmeldingstekst — det legges til automatisk.
-- Avslutt med nøyaktig denne signaturen:
-${SIGNATURE}
+- Ikke skriv hilsen eller signatur. Den legges på automatisk.
 
 Faktaarket — dette er ALT du kan påstå om Proanbud:
 ${factsForPrompt("handverker")}
@@ -130,7 +128,7 @@ export async function generateOutreachDraft(input: DraftInput): Promise<Draft> {
 
   const { subject, body } = await completeGuarded(userPrompt, 0.5)
   if (!subject || !body) throw new Error("KI returnerte tomt utkast")
-  return { subject, body }
+  return { subject, body: finishBody(body) }
 }
 
 /** One-tap tone instructions for the approval-card "skriv om"-chips. */
@@ -163,5 +161,5 @@ export async function regenerateOutreachDraft(
   const draft = await completeGuarded(userPrompt, 0.6)
   const subject = (draft.subject || opts.currentSubject || "").trim()
   if (!subject || !draft.body) throw new Error("KI returnerte tomt utkast")
-  return { subject, body: draft.body }
+  return { subject, body: finishBody(draft.body) }
 }

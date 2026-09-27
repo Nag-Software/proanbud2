@@ -11,8 +11,8 @@ import { logServerError } from "@/lib/errors/log"
 import { factsForPrompt } from "@/lib/outreach/facts"
 import { buildWarmSignupUrl } from "@/lib/outreach/lenker"
 import { gradeMessage, type GradeReport } from "@/lib/outreach/write/grade"
+import { finishBody } from "@/lib/outreach/write/form"
 import type { LintReport } from "@/lib/outreach/write/lint"
-import { SIGNATURE } from "@/lib/outreach/write/generate"
 import {
   analyseFactsText,
   formatNok,
@@ -29,7 +29,8 @@ const SCHEMA: Record<string, unknown> = {
     emne: { type: "string", description: "2-5 ord. Konkret, om jobben i eksempeltilbudet. Ingen emojier." },
     brodtekst: {
       type: "string",
-      description: "Hele e-posten, ren tekst, fra «Hei,» til og med signaturen. Ingen avmeldingstekst.",
+      description:
+        "E-posten i ren tekst, fra «Hei,» til og med spørsmålet. Ett avsnitt per linje. Ingen hilsen eller signatur, ingen avmeldingstekst.",
     },
     fakta_ids: {
       type: "array",
@@ -52,15 +53,14 @@ Stilen er Caspers egen:
 - Avslutt med ETT spørsmål som kan besvares med én setning. Aldri «book et møte».
 - Maks ${WARM_WORD_LIMITS[step] ?? 60} ord før signaturen. Ingen emojier. Ingen utropstegn.
 - ${step === 1 ? "Ingen lenker" : "Høyst én lenke, og bare den du får oppgitt"}. Ingen kontaktinfo, ingen avmeldingstekst — det legges på automatisk.
-- Avslutt brødteksten med nøyaktig denne signaturen:
-${SIGNATURE}
+- Ikke skriv hilsen eller signatur. Den legges på automatisk.
 
 Faktaarket er ALT du kan påstå om Proanbud:
 ${factsForPrompt("handverker")}
 
 Ufravikelig:
 - Hvert tall du skriver må stå i faktaarket eller i opplysningene om analysen. Ingen unntak.
-- Skriv aldri «KI». Si hva systemet gjør.
+- Skriv aldri «KI» eller «AI». Si hva systemet gjør.
 - Eksempeltilbudet var et eksempel. Ikke påstå at prisen var riktig for dem — spør.
 - Aldri: løsning, synergi, digitalisering, effektivisering, sømløs, revolusjonerende.`
 }
@@ -182,14 +182,16 @@ export async function draftWarmMessage(input: WarmDraftInput): Promise<WarmDraft
         ? input.previousSubject.replace(/^re:\s*/i, "")
         : draft.subject
 
-    const lint = lintWarmMessage({ subject, body: draft.body, step: input.step, facts: input.facts })
+    // Signaturen og avsnittene legges på her, ikke av modellen.
+    const body = finishBody(draft.body)
+    const lint = lintWarmMessage({ subject, body, step: input.step, facts: input.facts })
 
     if (lint.ok) {
       let grade: GradeReport | null = null
       try {
         grade = await gradeMessage({
           subject,
-          body: draft.body,
+          body,
           step: input.step,
           hookText: [
             "Mottakeren laget selv et eksempeltilbud på proanbud.no og ba om oppfølging",
@@ -214,7 +216,7 @@ export async function draftWarmMessage(input: WarmDraftInput): Promise<WarmDraft
       return {
         ok: true,
         subject,
-        body: draft.body,
+        body,
         factIds: draft.factIds,
         lint,
         grade,

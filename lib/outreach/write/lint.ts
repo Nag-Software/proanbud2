@@ -10,6 +10,7 @@ import { MODULE_PRICING, PLAN_PRICING } from "@/lib/billing/plans"
 import { BANNED_WORDS, findBannedClaims, findBannedWords, verifiedFacts } from "@/lib/outreach/facts"
 import { numbersIn } from "@/lib/outreach/research/ground"
 import type { Hook } from "@/lib/outreach/research/synthesize"
+import { withoutSignature } from "@/lib/outreach/write/form"
 
 export type LintSeverity = "blokkerende" | "advarsel"
 
@@ -38,13 +39,15 @@ const LINK = /\bhttps?:\/\/\S+|\b[a-z0-9-]+\.(?:no|com|io|app)\/\S*/gi
 /** Ord som signaliserer at vi snakker om regnskapsintegrasjon. */
 const INTEGRATION_WORDS = /\b(tripletex|fiken|poweroffice|regnskapsintegrasjon|integrasjon(en|er)?)\b/i
 
+/** «KI», «KI-en», «AI-drevet», «kunstig intelligens» — aldri i utadrettet tekst (Caspers regel). */
+const MENTIONS_AI = [/\bKI(-[a-zæøå]+)?\b/, /\bAI(-[a-zæøå]+)?\b/, /kunstig\s+intelligens/i]
+
 /**
- * Klipper bort signaturen, så ordgrensen måler det Casper faktisk har skrevet
- * og ikke navnet sitt.
+ * Klipper bort signaturen og hilsenen, så ordgrensen måler det Casper faktisk
+ * har skrevet og ikke navnet sitt.
  */
 export function bodyWithoutSignature(body: string): string {
-  const index = body.indexOf("Casper Nag")
-  return (index === -1 ? body : body.slice(0, index)).trim()
+  return withoutSignature(body)
 }
 
 export function countWords(text: string): number {
@@ -137,6 +140,9 @@ export function lintMessage(input: LintInput): LintReport {
   const issues: LintIssue[] = []
   const body = bodyWithoutSignature(input.body)
   const full = `${input.subject}\n${body}`
+  // Sifre og bokstaver inne i en lenke er ikke en påstand — sporingstokenet vårt
+  // kan inneholde både tall og «AI», og det skal ikke stoppe et godt utkast.
+  const withoutLinks = full.replace(LINK, " ")
   const wordCount = countWords(body)
 
   const block = (rule: string, message: string) =>
@@ -163,6 +169,9 @@ export function lintMessage(input: LintInput): LintReport {
   if (EMOJI.test(full)) block("emoji", "Ingen emojier")
   if (/!/.test(body)) block("utropstegn", "Ingen utropstegn")
   if (/\bkjære\b/i.test(body)) warn("tone", "«Kjære» er ikke Caspers stemme")
+  if (MENTIONS_AI.some((pattern) => pattern.test(withoutLinks))) {
+    block("ki", "Ikke skriv «KI» eller «AI» — si hva systemet gjør")
+  }
 
   // ── Lenker ────────────────────────────────────────────────────────────────
   const links = body.match(LINK) ?? []
@@ -185,10 +194,7 @@ export function lintMessage(input: LintInput): LintReport {
   }
 
   // ── Alle tall må ha dekning ───────────────────────────────────────────────
-  // Sifre inne i en lenke er ikke en påstand — sporingstokenet vårt inneholder
-  // tall, og det skal ikke stoppe et ellers godt utkast.
   const allowed = allowedNumbers({ hooks: input.hook ? [input.hook] : [], dossierText: input.dossierText })
-  const withoutLinks = full.replace(LINK, " ")
   for (const number of numbersIn(withoutLinks)) {
     if (!allowed.has(number)) {
       block("tall_uten_dekning", `Tallet ${number} står verken i faktaarket eller i dossieret`)
