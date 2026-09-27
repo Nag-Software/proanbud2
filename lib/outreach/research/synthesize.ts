@@ -45,12 +45,27 @@ export type Hook = {
   grounding_reason: string
 }
 
+/**
+ * Grunner som faktisk tar et firma ut av målgruppen. Fast liste, så modellen
+ * ikke kan finne på nye — og hver må bevises med et sitat fra siden.
+ */
+export const DISQUALIFIER_REASONS = [
+  "kjede_eller_franchise",
+  "kun_offentlige_anbud",
+  "har_konkurrerende_system",
+  "nedlagt_eller_solgt",
+  "ikke_handverk",
+] as const
+
+export type DisqualifierReason = (typeof DISQUALIFIER_REASONS)[number]
+
 export type Dossier = {
   fag: string
   kundetype: "privat" | "borettslag" | "naering" | "offentlig" | "ukjent"
   storrelse: string
   hooks: Hook[]
   pains: string[]
+  /** Bare diskvalifiserere med et sitat som faktisk står på siden. */
   disqualifiers: string[]
   best_angle: string
   summary: string
@@ -94,8 +109,21 @@ const SCHEMA: Record<string, unknown> = {
     },
     diskvalifiserere: {
       type: "array",
-      items: { type: "string" },
-      description: "Tegn på at de IKKE er i målgruppen (kjede, kun offentlige anbud, har allerede et system).",
+      description:
+        "BARE forhold som står rett ut i teksten, med ordrett sitat som bevis. Aldri «hvis …», aldri «ingen indikasjon på …», aldri gjetning. At firmaet er lokalt eller lite, er målgruppen — ikke en diskvalifiserer. Tom liste er det vanlige svaret.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["grunn", "tekst", "sitat"],
+        properties: {
+          grunn: { type: "string", enum: [...DISQUALIFIER_REASONS] },
+          tekst: { type: "string", description: "Hva som gjør at de ikke passer, én setning." },
+          sitat: {
+            type: "string",
+            description: "ORDRETT fra sideteksten, minst 4 meningsbærende ord, som beviser det.",
+          },
+        },
+      },
     },
     beste_vinkel: { type: "string" },
     oppsummering: { type: "string", description: "3-4 setninger Casper kan lese på 10 sekunder." },
@@ -112,6 +140,7 @@ Ufravikelige regler:
 - Et sitat som ikke finnes ordrett i teksten blir forkastet automatisk, og da står selgeren uten noe å skrive om. Det er bedre å levere én ekte krok enn tre pene.
 - Finner du ikke noe konkret å henge en krok på, lever en tom liste. Tomt er et gyldig og nyttig svar.
 - Ingen påstander om omsetning, resultat eller antall ansatte i krokene. De tallene er interne.
+- Diskvalifiserere er ikke tvil eller forbehold. Bruk dem bare når teksten sier rett ut at firmaet er en kjede, bare tar offentlige anbud, allerede bruker et annet tilbuds- eller prosjektsystem, er nedlagt eller solgt, eller ikke driver med håndverk — med sitatet som viser det. Ellers: tom liste.
 - Skriv på norsk bokmål.`
 }
 
@@ -155,8 +184,9 @@ function userPrompt(input: SynthesizeInput): string {
     .join("\n")
 }
 
-function parseDossier(value: unknown, pageUrls: string[]): Omit<Dossier, "hooks"> & {
+function parseDossier(value: unknown, pageUrls: string[]): Omit<Dossier, "hooks" | "disqualifiers"> & {
   rawHooks: Array<{ type: HookType; text: string; quote: string; source_url: string }>
+  rawDisqualifiers: Array<{ reason: DisqualifierReason; text: string; quote: string }>
 } {
   const root = asRecord(value)
   const kundetype = asString(root.kundetype, "ukjent")
@@ -168,9 +198,17 @@ function parseDossier(value: unknown, pageUrls: string[]): Omit<Dossier, "hooks"
       : "ukjent") as Dossier["kundetype"],
     storrelse: asString(root.storrelse),
     pains: asArray(root.smerter).map((item) => asString(item)).filter(Boolean).slice(0, 5),
-    disqualifiers: asArray(root.diskvalifiserere)
-      .map((item) => asString(item))
-      .filter(Boolean)
+    rawDisqualifiers: asArray(root.diskvalifiserere)
+      .map((item) => {
+        const record = asRecord(item)
+        const reason = asString(record.grunn) as DisqualifierReason
+        return {
+          reason,
+          text: asString(record.tekst),
+          quote: asString(record.sitat),
+        }
+      })
+      .filter((item) => DISQUALIFIER_REASONS.includes(item.reason) && item.text && item.quote)
       .slice(0, 5),
     best_angle: asString(root.beste_vinkel),
     summary: asString(root.oppsummering),
@@ -228,6 +266,13 @@ export async function synthesizeDossier(
     }
   })
 
+  // Samme bevisplikt for diskvalifiserere som for kroker. Før tok modellens
+  // forbehold («hvis de kun …», «ingen indikasjon på …») ut firmaer som passet
+  // midt i målgruppen — også dem med nivå A og tre bekreftede kroker.
+  const disqualifiers = result.data.rawDisqualifiers
+    .filter((item) => checkQuoteGrounding(item.quote, input.pageText).grounded)
+    .map((item) => `${item.text} («${item.quote}»)`)
+
   return {
     ok: true,
     dossier: {
@@ -236,7 +281,7 @@ export async function synthesizeDossier(
       storrelse: result.data.storrelse,
       hooks,
       pains: result.data.pains,
-      disqualifiers: result.data.disqualifiers,
+      disqualifiers,
       best_angle: result.data.best_angle,
       summary: result.data.summary,
     },

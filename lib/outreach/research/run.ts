@@ -395,8 +395,10 @@ export async function researchProspect(prospectId: string): Promise<ResearchOutc
       vekst: regnskap?.vekst ?? null,
     })
 
+    // Diskvalifisererne er bevist med sitat fra siden (synthesize.ts), så én
+    // er nok. Forbehold og gjetning kommer ikke hit lenger.
     const verdict: Verdict =
-      dossier.disqualifiers.length >= 2
+      dossier.disqualifiers.length >= 1
         ? "diskvalifisert"
         : groundedHooks.length === 0
           ? "for_tynn"
