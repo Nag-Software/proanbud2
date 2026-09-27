@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { verifyAttioSignature } from "@/lib/attio/signatur"
-import { isAttioEnabled } from "@/lib/attio/sync"
+import { getAttioApiKey } from "@/lib/attio/client"
 import { handleAttioEvent, loadWebhookSecret, type AttioEvent } from "@/lib/attio/webhook"
 
 // Attio gir opp etter fem sekunder. Én hendelse er ett oppslag mot Attio og
@@ -29,9 +29,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Ugyldig signatur" }, { status: 401 })
   }
 
-  // Skrudd av: svar 200, så Attio ikke markerer webhooken som degradert.
-  if (!isAttioEnabled()) {
-    return NextResponse.json({ ok: true, ignored: "Attio-synk er av" })
+  // Endringer Casper gjør i Attio, gjelder også når synken ut er skrudd av —
+  // en slettet deal som ble ignorert her, ville blitt laget på nytt senere.
+  // Uten nøkkel kan vi ikke lese dealen; da ber vi Attio prøve igjen.
+  if (!getAttioApiKey()) {
+    return NextResponse.json({ ok: false, error: "ATTIO_API_KEY mangler" }, { status: 503 })
   }
 
   let payload: { events?: AttioEvent[] }

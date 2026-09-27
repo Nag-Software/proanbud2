@@ -51,7 +51,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ queued, status: await fetchAttioStatus() })
     }
 
-    const summary = await runAttioSync({ budgetMs: 45_000 })
+    // Godt under maxDuration: ett enkelt kall mot Attio kan bruke opptil 15 s.
+    const summary = await runAttioSync({ budgetMs: 35_000 })
     return NextResponse.json({ summary, status: await fetchAttioStatus() })
   } catch (error) {
     await logServerError({

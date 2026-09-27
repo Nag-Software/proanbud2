@@ -14,6 +14,8 @@
 //   4. sending    Godkjente meldinger som har forfalt.
 //   5. oppfølging Utkast til steg 2 og 3.
 //   6. research   Ny research og nye utkast — det som tåler å vente.
+//   7. attio      Speiling til Attio, med tiden som er igjen. Kjører også når
+//                 maskinen er pauset — den sender ingen e-post.
 //
 // Hele kjøringen holdes bak én lease, så to overlappende ticks ikke sender
 // samme melding to ganger.
@@ -116,6 +118,11 @@ async function runSendBatch(options: {
   return summary
 }
 
+/** Tiden Attio får: det som er igjen, minus en margin, og aldri mer enn 25 s. */
+function attioBudget(deadline: number): number {
+  return Math.max(0, Math.min(25_000, deadline - Date.now() - 10_000))
+}
+
 /** Tar leasen. Returnerer false hvis en annen kjøring allerede holder den. */
 async function takeLease(seconds: number): Promise<boolean> {
   try {
@@ -204,11 +211,6 @@ export async function runTick(options: { budgetMs?: number } = {}): Promise<Tick
     })
     summary.cost_usd += summary.warm.cost_usd
 
-    // ── Attio. Reserve for pg_cron-jobben (db/104), som tømmer køen hvert
-    //    minutt. Sender ingen e-post, så pausen gjelder ikke. No-op uten
-    //    ATTIO_SYNC=on.
-    summary.attio = await runAttioSync({ budgetMs: 25_000 })
-
     // ── 3) Helse
     summary.health = await checkHealth()
 
@@ -218,6 +220,8 @@ export async function runTick(options: { budgetMs?: number } = {}): Promise<Tick
     const stopped = summary.paused || summary.health.paused_now || !summary.health.healthy
     if (stopped) {
       summary.skipped = summary.health.pause_reason ?? settings.pause_reason ?? "Maskinen er pauset"
+      // Attio sender ingen e-post, så pausen gjelder ikke der.
+      summary.attio = await runAttioSync({ budgetMs: attioBudget(deadline) })
       summary.ok = true
       summary.duration_ms = Date.now() - started
       return summary
@@ -261,6 +265,11 @@ export async function runTick(options: { budgetMs?: number } = {}): Promise<Tick
         summary.cost_usd += summary.drafts.cost_usd
       }
     }
+
+    // ── 7) Attio. Sist, med det som er igjen av tiden — synken skal aldri spise
+    //       tiden e-postene over skulle hatt. Reserve for pg_cron-jobben (db/104),
+    //       som tømmer køen hvert minutt. No-op uten ATTIO_SYNC=on.
+    summary.attio = await runAttioSync({ budgetMs: attioBudget(deadline) })
 
     summary.ok = true
     return summary

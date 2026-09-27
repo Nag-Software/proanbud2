@@ -15,7 +15,14 @@ const ACTIVE_STATUSES: ReadonlySet<string> = new Set(["kontaktet", "dialog", "de
 /**
  * «Varme og aktive»: analyse-leads, varme, alle vi har kontaktet, og alt fra
  * Kontaktet og utover — pluss alt som allerede ligger i Attio, så et lead som
- * blir tapt også blir tapt der. Samme regel som attio_skal_synkes i db/104.
+ * blir tapt også blir tapt der.
+ *
+ * Et tapt lead sendes bare når det allerede er i Attio. Ellers ville oppsettet
+ * laget en deal — med hele e-posthistorikken — for hvert tapt og avmeldt lead
+ * vi noen gang har skrevet til.
+ *
+ * attio_skal_synkes i db/104 er litt rausere (den tar også tapte som er
+ * kontaktet); den legger bare leadet i køen, og denne regelen avgjør.
  */
 export function shouldSyncProspect(
   prospect: Pick<ProspectRow, "status" | "source" | "is_hot" | "last_contacted_at"> & {
@@ -26,6 +33,7 @@ export function shouldSyncProspect(
 ): boolean {
   if (prospect.attio_ignored) return false
   if (prospect.status === "ny") return false
+  if (prospect.status === "tapt") return Boolean(prospect.attio_deal_id)
   return Boolean(
     prospect.attio_deal_id ||
       prospect.source === "analyse" ||
@@ -126,6 +134,18 @@ export function leadCardUrl(prospectId: string, appUrl: string): string {
 }
 
 // ── Notatene ────────────────────────────────────────────────────────────────
+
+/**
+ * Tidspunktet et notat skal stå med i Attio. Attio avviser datoer i framtiden
+ * og før 1970 — og received_at på svar er avsenderens egen Date-header, som kan
+ * være hva som helst. Da bruker vi «nå» heller enn å la ett notat stoppe leadet.
+ */
+export function safeNoteDate(iso: string | null | undefined, now: Date = new Date()): string | null {
+  if (!iso) return null
+  const time = Date.parse(iso)
+  if (Number.isNaN(time) || time < 0) return null
+  return time > now.getTime() ? now.toISOString() : new Date(time).toISOString()
+}
 
 /** Attio har tak på notater; vi kapper lenge før det, og sier fra når vi gjør det. */
 export const NOTE_MAX_CHARS = 8000

@@ -223,6 +223,9 @@ export async function backfillAttioQueue(admin: AdminClient): Promise<number> {
   const ids = ((data ?? []) as ProspectRow[]).filter(shouldSyncProspect).map((row) => row.id)
   if (ids.length === 0) return 0
 
+  // Samme som attio_enqueue: ny queued_at, men locked_at røres ikke. En rad
+  // som behandles akkurat nå, skal ikke kunne tas av en kjøring til samtidig —
+  // da ville begge sendt de samme notatene.
   const now = new Date().toISOString()
   for (let index = 0; index < ids.length; index += 500) {
     const chunk = ids.slice(index, index + 500).map((prospect_id) => ({
@@ -230,9 +233,11 @@ export async function backfillAttioQueue(admin: AdminClient): Promise<number> {
       queued_at: now,
       attempts: 0,
       last_error: null,
-      locked_at: null,
     }))
-    await admin.from("attio_outbox").upsert(chunk, { onConflict: "prospect_id" })
+    const { error } = await admin
+      .from("attio_outbox")
+      .upsert(chunk, { onConflict: "prospect_id", defaultToNull: false })
+    if (error) throw new Error(`Kunne ikke legge leadene i køen: ${error.message}`)
   }
   return ids.length
 }

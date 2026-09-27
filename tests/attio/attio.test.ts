@@ -8,6 +8,7 @@ import {
   missingScopes,
   payloadHash,
   replyNote,
+  safeNoteDate,
   shouldSyncProspect,
   STAGE_ORDER,
   STAGE_TITLES,
@@ -68,6 +69,12 @@ describe("hvem som synkes", () => {
   it("fortsetter med et lead som allerede er i Attio — også når det blir tapt", () => {
     expect(shouldSyncProspect(prospect({ status: "tapt", attio_deal_id: "d1" }))).toBe(true)
     expect(shouldSyncProspect(prospect({ status: "tapt" }))).toBe(false)
+  })
+
+  it("lager aldri en ny deal for et tapt eller avmeldt lead, selv om vi har skrevet til det", () => {
+    expect(
+      shouldSyncProspect(prospect({ status: "tapt", last_contacted_at: "2026-08-01T10:00:00Z", is_hot: true })),
+    ).toBe(false)
   })
 
   it("aldri innboksen, og aldri en deal Casper har slettet i Attio", () => {
@@ -200,6 +207,24 @@ describe("notatene", () => {
     expect(taskContent({ task_type: "ring", title: "Ring om analysen", note: "Jobb: Takrenner" }, "Tak og Blikk AS")).toBe(
       "Tak og Blikk AS: Ring om analysen — Jobb: Takrenner",
     )
+  })
+})
+
+describe("datoen på notatene", () => {
+  const now = new Date("2026-09-27T12:00:00Z")
+
+  it("beholder en vanlig dato", () => {
+    expect(safeNoteDate("2026-09-25T08:00:00Z", now)).toBe("2026-09-25T08:00:00.000Z")
+  })
+
+  it("flytter en dato i framtiden til nå — en skjev Date-header skal ikke stoppe leadet", () => {
+    expect(safeNoteDate("2027-01-01T00:00:00Z", now)).toBe(now.toISOString())
+  })
+
+  it("dropper datoer Attio ikke tar imot", () => {
+    expect(safeNoteDate("1969-12-31T23:00:00Z", now)).toBeNull()
+    expect(safeNoteDate("ikke en dato", now)).toBeNull()
+    expect(safeNoteDate(null, now)).toBeNull()
   })
 })
 

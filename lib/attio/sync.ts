@@ -22,6 +22,7 @@ import {
   emailNote,
   payloadHash,
   replyNote,
+  safeNoteDate,
   shouldSyncProspect,
   taskContent,
   type NoteDraft,
@@ -179,7 +180,7 @@ export function prospectHash(
 async function upsertDeal(
   prospect: ProspectRow,
   input: { companyId: string | null; personId: string | null; ctx: AttioContext },
-): Promise<string> {
+): Promise<{ dealId: string } | { deleted: true }> {
   // Steget skrives når statusen har endret seg her siden forrige gang vi var
   // enige med Attio — eller når dealen lages.
   const stageChanged = prospect.attio_stage !== prospect.status
@@ -200,10 +201,12 @@ async function upsertDeal(
         method: "PATCH",
         body: { data: { values } },
       })
-      return prospect.attio_deal_id!
+      return { dealId: prospect.attio_deal_id! }
     } catch (error) {
-      if (!(error instanceof AttioError && error.isNotFound)) throw error
-      // Borte i Attio uten at webhooken fortalte oss det — lag den på nytt.
+      // Slettet i Attio. Webhooken skulle fortalt oss det; kom den ikke fram,
+      // respekterer vi det likevel — en slettet deal lages aldri igjen.
+      if (error instanceof AttioError && error.isNotFound) return { deleted: true }
+      throw error
     }
   }
 
@@ -224,24 +227,44 @@ async function upsertDeal(
   })
   const dealId = recordIdOf(response)
   if (!dealId) throw new AttioError("Attio returnerte ikke deal-id", 500, null)
-  return dealId
+  return { dealId }
 }
 
 // ── Notater og oppgaver ─────────────────────────────────────────────────────
 
 type LinkRow = { kind: string; local_id: string; attio_id: string; state: string | null }
 
+/** Kan ikke lese hva som er sendt? Da stopper vi — ellers ville alt se nytt ut og bli sendt på nytt. */
 async function loadLinks(admin: AdminClient, prospectId: string): Promise<Map<string, LinkRow>> {
-  const { data } = await admin
+  const { data, error } = await admin
     .from("attio_links")
     .select("kind, local_id, attio_id, state")
     .eq("prospect_id", prospectId)
+  if (error) throw new Error(`Kunne ikke lese hva som er sendt til Attio: ${error.message}`)
   const links = new Map<string, LinkRow>()
   for (const row of (data ?? []) as LinkRow[]) links.set(`${row.kind}:${row.local_id}`, row)
   return links
 }
 
+async function saveLink(
+  admin: AdminClient,
+  row: { kind: string; local_id: string; prospect_id: string; attio_id: string; state?: string | null },
+): Promise<void> {
+  const { error } = await admin.from("attio_links").upsert(row)
+  if (error) throw new Error(`Kunne ikke huske hva som er sendt til Attio: ${error.message}`)
+}
+
+/**
+ * Gjelder feilen bare dette ene notatet eller denne oppgaven (ugyldig innhold,
+ * for stort)? Da hopper vi over den og går videre — én dårlig rad skal ikke
+ * stoppe resten av leadet. Nettverk, 429 og 5xx prøves igjen senere.
+ */
+function isItemError(error: unknown): boolean {
+  return error instanceof AttioError && (error.status === 400 || error.status === 413 || error.status === 422)
+}
+
 async function createNote(dealId: string, note: NoteDraft): Promise<string | null> {
+  const createdAt = safeNoteDate(note.createdAt)
   const response = await attioRequest<{ data?: { id?: { note_id?: string } } }>(`/v2/notes`, {
     method: "POST",
     body: {
@@ -251,7 +274,7 @@ async function createNote(dealId: string, note: NoteDraft): Promise<string | nul
         title: note.title,
         format: "plaintext",
         content: note.content || " ",
-        ...(note.createdAt ? { created_at: note.createdAt } : {}),
+        ...(createdAt ? { created_at: createdAt } : {}),
       },
     },
   })
@@ -268,12 +291,24 @@ async function syncNotes(
   prospect: ProspectRow,
   dealId: string,
   links: Map<string, LinkRow>,
+  deadline: number,
 ): Promise<boolean> {
   const pending: Array<{ kind: string; localId: string; note: NoteDraft }> = []
 
-  if (prospect.analyse_lead_id && !links.has(`analyse:${prospect.analyse_lead_id}`)) {
-    const facts = await loadAnalyseFacts(admin, prospect.analyse_lead_id)
-    if (facts) pending.push({ kind: "analyse", localId: facts.id, note: analyseNote(facts) })
+  // Analysen er ett notat per deal — ikke per lead. To kort kan peke på samme
+  // analyse; da skal hver deal få den én gang, og ingen skal ta den fra den andre.
+  if (prospect.analyse_lead_id) {
+    const localId = `${dealId}:${prospect.analyse_lead_id}`
+    const { data: existing } = await admin
+      .from("attio_links")
+      .select("local_id")
+      .eq("kind", "analyse")
+      .eq("local_id", localId)
+      .maybeSingle()
+    if (!existing) {
+      const facts = await loadAnalyseFacts(admin, prospect.analyse_lead_id)
+      if (facts) pending.push({ kind: "analyse", localId, note: analyseNote(facts) })
+    }
   }
 
   const [emails, replies, activities] = await Promise.all([
@@ -297,6 +332,9 @@ async function syncNotes(
       .order("created_at", { ascending: true })
       .limit(100),
   ])
+  for (const result of [emails, replies, activities]) {
+    if (result.error) throw new Error(`Kunne ikke lese tidslinjen: ${result.error.message}`)
+  }
 
   for (const row of (emails.data ?? []) as Array<Parameters<typeof emailNote>[0] & { id: string }>) {
     if (!links.has(`epost:${row.id}`)) pending.push({ kind: "epost", localId: row.id, note: emailNote(row) })
@@ -310,9 +348,7 @@ async function syncNotes(
     // Ingen notat (f.eks. en endring som kom fra Attio) — husk den likevel,
     // så den ikke vurderes på nytt hver gang.
     if (!note) {
-      await admin
-        .from("attio_links")
-        .upsert({ kind: "aktivitet", local_id: row.id, prospect_id: prospect.id, attio_id: "-" })
+      await saveLink(admin, { kind: "aktivitet", local_id: row.id, prospect_id: prospect.id, attio_id: "-" })
       continue
     }
     pending.push({ kind: "aktivitet", localId: row.id, note })
@@ -320,22 +356,41 @@ async function syncNotes(
 
   pending.sort((a, b) => (a.note.createdAt ?? "").localeCompare(b.note.createdAt ?? ""))
 
+  let done = 0
   for (const item of pending.slice(0, NOTES_PER_RUN)) {
-    const noteId = await createNote(dealId, item.note)
-    await admin.from("attio_links").upsert({
-      kind: item.kind,
-      local_id: item.localId,
-      prospect_id: prospect.id,
-      attio_id: noteId ?? "-",
-    })
+    if (Date.now() > deadline) return true
+    try {
+      const noteId = await createNote(dealId, item.note)
+      await saveLink(admin, { kind: item.kind, local_id: item.localId, prospect_id: prospect.id, attio_id: noteId ?? "-" })
+    } catch (error) {
+      if (!isItemError(error)) throw error
+      await saveLink(admin, {
+        kind: item.kind,
+        local_id: item.localId,
+        prospect_id: prospect.id,
+        attio_id: "-",
+        state: "feilet",
+      })
+    }
+    done += 1
   }
 
-  return pending.length > NOTES_PER_RUN
+  return pending.length > done
+}
+
+type TaskRow = {
+  id: string
+  task_type: string
+  title: string | null
+  note: string | null
+  due_at: string
+  done_at: string | null
 }
 
 /**
  * Oppgaver: åpne oppgaver lages i Attio, og en oppgave som er fullført her,
  * fullføres der. Oppgaver som var ferdige før de ble synket, lages ikke.
+ * Returnerer true hvis tiden gikk ut før alle var gjennomgått.
  */
 async function syncTasks(
   admin: AdminClient,
@@ -343,71 +398,69 @@ async function syncTasks(
   ids: { dealId: string; companyId: string | null },
   links: Map<string, LinkRow>,
   ctx: AttioContext,
-): Promise<void> {
+  deadline: number,
+): Promise<boolean> {
   const { dealId, companyId } = ids
-  const { data } = await admin
+  const { data, error } = await admin
     .from("prospect_tasks")
     .select("id, task_type, title, note, due_at, done_at")
     .eq("prospect_id", prospect.id)
     .order("created_at", { ascending: true })
     .limit(50)
+  if (error) throw new Error(`Kunne ikke lese oppgavene: ${error.message}`)
 
-  for (const task of (data ?? []) as Array<{
-    id: string
-    task_type: string
-    title: string | null
-    note: string | null
-    due_at: string
-    done_at: string | null
-  }>) {
+  for (const task of (data ?? []) as TaskRow[]) {
     const link = links.get(`oppgave:${task.id}`)
+    const needsCreate = !link && !task.done_at
+    const needsComplete = Boolean(link && task.done_at && link.state === "aapen" && link.attio_id !== "-")
+    if (!needsCreate && !needsComplete) continue
+    if (Date.now() > deadline) return true
 
-    if (!link) {
-      if (task.done_at) continue
-      const createTask = (linked: RecordRef[]) =>
-        attioRequest<{ data?: { id?: { task_id?: string } } }>(`/v2/tasks`, {
-          method: "POST",
-          body: {
-            data: {
-              // Attio tar maks 2000 tegn, ren tekst.
-              content: taskContent(task, prospect.name).slice(0, 2000),
-              format: "plaintext",
-              deadline_at: task.due_at,
-              is_completed: false,
-              linked_records: linked,
-              assignees: ctx.ownerMemberId
-                ? [{ referenced_actor_type: "workspace-member", referenced_actor_id: ctx.ownerMemberId }]
-                : [],
+    try {
+      if (needsCreate) {
+        const createTask = (linked: RecordRef[]) =>
+          attioRequest<{ data?: { id?: { task_id?: string } } }>(`/v2/tasks`, {
+            method: "POST",
+            body: {
+              data: {
+                // Attio tar maks 2000 tegn, ren tekst.
+                content: taskContent(task, prospect.name).slice(0, 2000),
+                format: "plaintext",
+                deadline_at: task.due_at,
+                is_completed: false,
+                linked_records: linked,
+                assignees: ctx.ownerMemberId
+                  ? [{ referenced_actor_type: "workspace-member", referenced_actor_id: ctx.ownerMemberId }]
+                  : [],
+              },
             },
-          },
-        })
+          })
 
-      // Dealen og firmaet. Attios dokumentasjon er uklar på om oppgaver kan
-      // kobles til deals — avviser den det, kobles oppgaven til firmaet.
-      const linked = [recordRef("deals", dealId), ...(companyId ? [recordRef("companies", companyId)] : [])]
-      let response: { data?: { id?: { task_id?: string } } }
-      try {
-        response = await createTask(linked)
-      } catch (error) {
-        if (!(error instanceof AttioError) || error.status !== 400 || !companyId) throw error
-        response = await createTask([recordRef("companies", companyId)])
+        // Dealen og firmaet. Avviser Attio koblingen til dealen, kobles
+        // oppgaven bare til firmaet.
+        const linked = [recordRef("deals", dealId), ...(companyId ? [recordRef("companies", companyId)] : [])]
+        let response: { data?: { id?: { task_id?: string } } }
+        try {
+          response = await createTask(linked)
+        } catch (error) {
+          if (!(error instanceof AttioError) || error.status !== 400 || !companyId) throw error
+          response = await createTask([recordRef("companies", companyId)])
+        }
+        const taskId = response?.data?.id?.task_id
+        if (taskId) {
+          await saveLink(admin, {
+            kind: "oppgave",
+            local_id: task.id,
+            prospect_id: prospect.id,
+            attio_id: taskId,
+            state: "aapen",
+          })
+        }
+        continue
       }
-      const taskId = response?.data?.id?.task_id
-      if (taskId) {
-        await admin.from("attio_links").upsert({
-          kind: "oppgave",
-          local_id: task.id,
-          prospect_id: prospect.id,
-          attio_id: taskId,
-          state: "aapen",
-        })
-      }
-      continue
-    }
 
-    if (task.done_at && link.state !== "ferdig" && link.attio_id !== "-") {
       try {
-        await attioRequest(`/v2/tasks/${link.attio_id}`, {
+        await attioRequest(`/v2/tasks/${link!.attio_id}`, {
           method: "PATCH",
           body: { data: { is_completed: true } },
         })
@@ -415,24 +468,38 @@ async function syncTasks(
         // Slettet i Attio: da er den like ferdig.
         if (!(error instanceof AttioError && error.isNotFound)) throw error
       }
-      await admin
-        .from("attio_links")
-        .update({ state: "ferdig" })
-        .eq("kind", "oppgave")
-        .eq("local_id", task.id)
+      await saveLink(admin, {
+        kind: "oppgave",
+        local_id: task.id,
+        prospect_id: prospect.id,
+        attio_id: link!.attio_id,
+        state: "ferdig",
+      })
+    } catch (error) {
+      if (!isItemError(error)) throw error
+      await saveLink(admin, {
+        kind: "oppgave",
+        local_id: task.id,
+        prospect_id: prospect.id,
+        attio_id: link?.attio_id ?? "-",
+        state: "feilet",
+      })
     }
   }
+
+  return false
 }
 
 // ── Ett lead ────────────────────────────────────────────────────────────────
 
 export type ProspectSyncOutcome = "synket" | "hoppet_over" | "borte"
 
-/** Synker ett lead. Kaster AttioError ved feil — kalleren logger og går videre. */
+/** Synker ett lead. Kaster ved feil — kalleren logger og går videre. */
 export async function syncProspect(
   admin: AdminClient,
   prospectId: string,
   ctx: AttioContext,
+  deadline: number = Date.now() + 60_000,
 ): Promise<{ outcome: ProspectSyncOutcome; more: boolean }> {
   const { data: prospect } = await admin
     .from("prospects")
@@ -454,34 +521,48 @@ export async function syncProspect(
     }) === prospect.attio_hash
 
   let companyId = prospect.attio_company_id ?? null
-  let personId = prospect.attio_person_id ?? null
   let dealId = prospect.attio_deal_id ?? null
+
   if (!unchanged || !dealId) {
     companyId = await upsertCompany(prospect)
-    personId = await upsertPerson(prospect, companyId)
-    dealId = await upsertDeal(prospect, { companyId, personId, ctx })
+    const personId = await upsertPerson(prospect, companyId)
+    const deal = await upsertDeal(prospect, { companyId, personId, ctx })
+
+    if ("deleted" in deal) {
+      await admin
+        .from("prospects")
+        .update({ attio_ignored: true, attio_deal_id: null, attio_stage: null, attio_hash: null, attio_error: null })
+        .eq("id", prospect.id)
+      return { outcome: "hoppet_over", more: false }
+    }
+    dealId = deal.dealId
+
+    // Id-ene lagres med én gang, før notatene. Feiler noe etterpå, vet vi
+    // likevel hvilken deal det er: webhooken finner den, og neste forsøk
+    // oppdaterer den i stedet for å skrive over det Casper har endret.
+    const { error } = await admin
+      .from("prospects")
+      .update({
+        attio_company_id: companyId,
+        attio_person_id: personId,
+        attio_deal_id: dealId,
+        attio_stage: prospect.status,
+        attio_hash: prospectHash(prospect, { companyId, personId }),
+      })
+      .eq("id", prospect.id)
+    if (error) throw new Error(`Kunne ikke lagre Attio-koblingen: ${error.message}`)
   }
-  const hash = prospectHash(prospect, { companyId, personId })
-  if (!dealId) throw new AttioError("Fant ingen deal i Attio", 500, null)
 
   const links = await loadLinks(admin, prospect.id)
-  const more = await syncNotes(admin, prospect, dealId, links)
-  await syncTasks(admin, prospect, { dealId, companyId }, links, ctx)
+  const moreNotes = await syncNotes(admin, prospect, dealId, links, deadline)
+  const moreTasks = await syncTasks(admin, prospect, { dealId, companyId }, links, ctx, deadline)
 
   await admin
     .from("prospects")
-    .update({
-      attio_company_id: companyId,
-      attio_person_id: personId,
-      attio_deal_id: dealId,
-      attio_stage: prospect.status,
-      attio_hash: hash,
-      attio_synced_at: new Date().toISOString(),
-      attio_error: null,
-    })
+    .update({ attio_synced_at: new Date().toISOString(), attio_error: null })
     .eq("id", prospect.id)
 
-  return { outcome: "synket", more }
+  return { outcome: "synket", more: moreNotes || moreTasks }
 }
 
 // ── Køen ────────────────────────────────────────────────────────────────────
@@ -517,12 +598,18 @@ async function fail(admin: AdminClient, row: Claimed, message: string): Promise<
   await admin.from("prospects").update({ attio_error: message }).eq("id", row.prospect_id)
 }
 
+/**
+ * Gi rader tilbake uten å gjøre noe med dem. Forsøket de fikk da de ble tatt,
+ * trekkes fra igjen — ellers ville en periode med ugyldig nøkkel brent opp
+ * alle åtte forsøkene, og køen ville stått fast etter at nøkkelen var fikset.
+ */
 async function release(admin: AdminClient, rows: Claimed[]): Promise<void> {
-  if (rows.length === 0) return
-  await admin
-    .from("attio_outbox")
-    .update({ locked_at: null })
-    .in("prospect_id", rows.map((row) => row.prospect_id))
+  for (const row of rows) {
+    await admin
+      .from("attio_outbox")
+      .update({ locked_at: null, attempts: Math.max(0, (row.attempts ?? 1) - 1) })
+      .eq("prospect_id", row.prospect_id)
+  }
 }
 
 /**
@@ -531,7 +618,8 @@ async function release(admin: AdminClient, rows: Claimed[]): Promise<void> {
  */
 export async function runAttioSync(options: { budgetMs?: number; limit?: number } = {}): Promise<AttioSyncSummary> {
   const started = Date.now()
-  const deadline = started + (options.budgetMs ?? 100_000)
+  const budgetMs = options.budgetMs ?? 80_000
+  const deadline = started + budgetMs
   const summary: AttioSyncSummary = {
     ok: false,
     claimed: 0,
@@ -543,6 +631,14 @@ export async function runAttioSync(options: { budgetMs?: number; limit?: number 
   }
 
   try {
+    // Ett enkelt kall mot Attio kan ta flere sekunder. Er vinduet for lite til
+    // å gjøre noe fornuftig, lar vi være — neste kjøring tar det.
+    if (budgetMs < 5_000) {
+      summary.notes.push("For lite tid igjen i denne kjøringen")
+      summary.ok = true
+      return summary
+    }
+
     if (!isAttioEnabled()) {
       summary.notes.push("Attio-synk er ikke skrudd på (ATTIO_SYNC=on og ATTIO_API_KEY)")
       summary.ok = true
@@ -578,7 +674,7 @@ export async function runAttioSync(options: { budgetMs?: number; limit?: number 
       }
 
       try {
-        const result = await syncProspect(admin, row.prospect_id, ctx)
+        const result = await syncProspect(admin, row.prospect_id, ctx, deadline)
         if (result.outcome === "synket") summary.synced += 1
         else summary.skipped += 1
         await complete(admin, row)
@@ -588,9 +684,14 @@ export async function runAttioSync(options: { budgetMs?: number; limit?: number 
         const message = error instanceof Error ? error.message : "Ukjent feil"
         if (error instanceof AttioError && error.isAuth) {
           // Nøkkelen er ugyldig eller mangler tilgang. Da feiler alle —
-          // stopp, og la radene ligge til nøkkelen er i orden.
+          // stopp, gi radene tilbake uten å telle forsøket, og vis feilen på
+          // leadet så den synes i innstillingene.
           summary.notes.push(`Attio avviste nøkkelen: ${message}`)
           await release(admin, claimed.slice(index))
+          await admin
+            .from("prospects")
+            .update({ attio_error: `Attio avviste nøkkelen: ${message}` })
+            .eq("id", row.prospect_id)
           summary.failed += 1
           break
         }

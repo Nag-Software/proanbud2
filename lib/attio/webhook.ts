@@ -62,17 +62,24 @@ async function handleDealUpdated(admin: AdminClient, recordId: string): Promise<
   const status = statusForStageTitle(stageTitleOf(record))
   if (!status) return "ukjent steg"
 
+  // Attio sender en hendelse for HVER endring på dealen — også når Casper bare
+  // retter navnet. Bare når steget er et annet enn det vi sist var enige om,
+  // har han flyttet den. Ellers kunne en status Proanbud ennå ikke har rukket å
+  // sende (et svar kom inn, noen meldte seg av), blitt satt tilbake.
+  if (!prospect.attio_stage) return "venter på første synk"
+  if (status === prospect.attio_stage) return "steget er uendret"
+
   const now = new Date().toISOString()
 
   if (status === prospect.status) {
-    if (prospect.attio_stage !== status) {
-      await admin.from("prospects").update({ attio_stage: status }).eq("id", prospect.id)
-    }
+    await admin.from("prospects").update({ attio_stage: status }).eq("id", prospect.id)
     return "uendret"
   }
 
-  // attio_stage settes sammen med statusen, så synken ikke sender steget tilbake.
-  await admin
+  // attio_stage settes sammen med statusen, så synken ikke sender steget
+  // tilbake. Bare hvis statusen fortsatt er den vi leste — ellers har noe annet
+  // endret den i mellomtiden, og da er det den som gjelder.
+  const { data: updated } = await admin
     .from("prospects")
     .update({
       status,
@@ -82,6 +89,9 @@ async function handleDealUpdated(admin: AdminClient, recordId: string): Promise<
       updated_at: now,
     })
     .eq("id", prospect.id)
+    .eq("status", prospect.status)
+    .select("id")
+  if (!updated || updated.length === 0) return "statusen endret seg samtidig — hoppet over"
 
   // Har han tatt over — svar, demo, prøve, kunde, tapt — skal maskinen ikke
   // sende mer. Utsendingen sjekker dette også, men da blir planlagte meldinger

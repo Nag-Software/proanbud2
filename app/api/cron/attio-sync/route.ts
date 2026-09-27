@@ -28,7 +28,8 @@ async function run(request: Request) {
   }
 
   try {
-    const summary = await runAttioSync({ budgetMs: 100_000 })
+    // Godt under maxDuration (120 s): ett enkelt kall mot Attio kan bruke opptil 15 s.
+    const summary = await runAttioSync({ budgetMs: 80_000 })
     return NextResponse.json(summary)
   } catch (error) {
     await logServerError({
