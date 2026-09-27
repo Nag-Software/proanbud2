@@ -1,6 +1,6 @@
 # Personvern og markedsføringsloven i salgsmaskinen
 
-Gjelder `/selger` og alt i `lib/outreach/`. Sist oppdatert 2026-09-11 (fase 0).
+Gjelder `/selger`, `lib/outreach/` og `lib/attio/`. Sist oppdatert 2026-09-27 (varm oppfølging og Attio).
 Dette er et arbeidsdokument, ikke juridisk rådgivning. Er noe uklart, går vi for
 den strengeste tolkningen.
 
@@ -82,3 +82,28 @@ Alt maskinen påstår om Proanbud, står i `lib/outreach/facts.ts` med
 unngås ved at uverifiserte påstander aldri når prompten, og kjente feil («5200+
 tilbud», «norske servere», DocuSign, udokumenterte prosenttall) stoppes av
 forbudslisten.
+
+## 6. Analyse-leads (proanbud.no/analyse)
+
+- Skjemaet lover at e-posten bare brukes til eksempeltilbudet — med mindre de
+  krysser av for oppfølging. Avkrysningen er aldri forhåndsvalgt, og tilbudet
+  kommer uansett (samtykket er ikke prisen for tilbudet).
+- Samtykket lagres med tidspunkt og ordlyden de så (`analyse_leads.follow_up_consent_*`
+  og `prospects.consent_*`), så det kan dokumenteres (art. 7 nr. 1).
+- Med samtykke: maks to e-poster, bare til adressen som krysset av. Stopper ved
+  svar, avmelding, registrering, når Casper flytter leadet videre, og når samme
+  person kjører analysen på nytt uten å krysse av (da trekkes samtykket).
+- Uten samtykke: ingen e-post til den adressen. Det blir en oppgave om å ringe.
+- Analyse-leads settes aldri i den kalde sekvensen, og en kald sekvens mot samme
+  firma stoppes når de kjører analysen.
+
+## 7. Attio (CRM)
+
+- Varme og aktive leads speiles til Attio: firmanavn, domene, org.nr., telefon,
+  samtykkeadressen som person, e-post vi har sendt, svar vi har fått, samtaler,
+  notater og oppgaver. Kalde firmaer maskinen aldri har skrevet til, sendes ikke.
+- Attio er databehandler. ⚠️ Databehandleravtalen må være inngått før
+  `ATTIO_SYNC=on`, og Attio må stå på listen over underleverandører.
+- En avmelding flytter dealen til Tapt i Attio, men sletter den ikke. Ber noen om
+  sletting, slettes personen og dealen i Attio for hånd — Proanbud gjør det ikke
+  automatisk.

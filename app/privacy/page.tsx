@@ -65,8 +65,8 @@ export default function PrivacyPage() {
       <h2>4. Deling av opplysninger</h2>
       <p>
         Vi deler opplysninger med databehandlere som hjelper oss å levere tjenesten, for eksempel hosting,
-        e-post, betaling, analyse og integrasjoner du selv aktiverer (som regnskapssystem eller
-        signeringstjenester). Disse behandler data på våre instrukser og i tråd med databehandleravtaler.
+        e-post, betaling, analyse, kundeoppfølging (CRM) og integrasjoner du selv aktiverer (som
+        regnskapssystem eller signeringstjenester). Disse behandler data på våre instrukser og i tråd med databehandleravtaler.
       </p>
       <p>
         Opplysninger kan også deles dersom det er nødvendig for å overholde lov, håndheve vilkår eller

@@ -114,6 +114,16 @@ export type ProspectRow = {
   consent_at?: string | null
   consent_text?: string | null
   analyse_lead_id?: string | null
+  // Attio (db/104). Valgfrie av samme grunn.
+  attio_company_id?: string | null
+  attio_person_id?: string | null
+  attio_deal_id?: string | null
+  /** Statusen vi sist var enige med Attio om — steget skrives bare når den endrer seg her. */
+  attio_stage?: string | null
+  attio_hash?: string | null
+  attio_synced_at?: string | null
+  attio_error?: string | null
+  attio_ignored?: boolean | null
 }
 
 /** Maskinens steg. `status` er fortsatt Caspers handelssteg (kanban). */

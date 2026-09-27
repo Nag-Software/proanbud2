@@ -237,7 +237,11 @@ async function insertAnalyseProspect(
  * sitt eget kort. Er det helt urørt — ingen oppgaver, e-post, svar, research
  * eller aktivitet — slettes det. Har noen jobbet med det, blir det stående.
  */
-async function foldEmptyAnalyseShell(admin: AdminClient, shell: ProspectRow): Promise<boolean> {
+async function foldEmptyAnalyseShell(
+  admin: AdminClient,
+  shell: ProspectRow,
+  target: ProspectRow,
+): Promise<boolean> {
   if (shell.source !== "analyse" || shell.matched_company_id || shell.last_contacted_at) return false
   if (shell.status !== "ny" && shell.status !== "kvalifisert") return false
 
@@ -250,6 +254,25 @@ async function foldEmptyAnalyseShell(admin: AdminClient, shell: ProspectRow): Pr
     admin.from("seller_activity_log").select("id", { count: "exact", head: true }).eq("target_id", shell.id),
   ])
   if (checks.some((check) => check.error || (check.count ?? 0) > 0)) return false
+
+  // Har kortet allerede en deal i Attio, overtar kundekortet den — ellers ville
+  // firmaet fått to deals der. Notatene som er sendt, følger med, så de ikke
+  // sendes en gang til. (Kolonnene og tabellen finnes fra db/104.)
+  if (shell.attio_deal_id && !target.attio_deal_id) {
+    await admin.from("prospects").update({ attio_deal_id: null }).eq("id", shell.id)
+    await admin
+      .from("prospects")
+      .update({
+        attio_deal_id: shell.attio_deal_id,
+        attio_company_id: target.attio_company_id ?? shell.attio_company_id ?? null,
+        attio_person_id: target.attio_person_id ?? shell.attio_person_id ?? null,
+        // Tvinger steget ut: kundekortet står i Trial eller Vunnet, dealen i Lead.
+        attio_stage: null,
+        attio_hash: null,
+      })
+      .eq("id", target.id)
+    await admin.from("attio_links").update({ prospect_id: target.id }).eq("prospect_id", shell.id)
+  }
 
   const { error } = await admin.from("prospects").delete().eq("id", shell.id)
   if (error) return false
@@ -308,7 +331,7 @@ async function bridgeOne(
     let target: ProspectRow | null = companyProspect ?? null
     if (companyProspect) {
       if (prospect && prospect.id !== companyProspect.id) {
-        if (await foldEmptyAnalyseShell(admin, prospect)) {
+        if (await foldEmptyAnalyseShell(admin, prospect, companyProspect)) {
           summary.folded += 1
         } else if (prospect.source === "analyse" && !prospect.matched_company_id) {
           // Noen har jobbet med kortet, så det blir stående — men firmaet er

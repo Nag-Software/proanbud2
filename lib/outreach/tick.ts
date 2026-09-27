@@ -29,6 +29,7 @@ import { expireStaleDrafts, runFollowupBatch, type FollowupSummary } from "@/lib
 import { isWithinSendWindow } from "@/lib/outreach/sendetid"
 import { loadSettings } from "@/lib/outreach/settings"
 import { runWarmBatch, type WarmSummary } from "@/lib/outreach/varm"
+import { runAttioSync, type AttioSyncSummary } from "@/lib/attio/sync"
 
 export type SendSummary = {
   claimed: number
@@ -50,6 +51,7 @@ export type TickSummary = {
   send: SendSummary
   followups: FollowupSummary | null
   warm: WarmSummary | null
+  attio: AttioSyncSummary | null
   research: StepResult | null
   drafts: StepResult | null
   queued: number
@@ -160,6 +162,7 @@ export async function runTick(options: { budgetMs?: number } = {}): Promise<Tick
     send: { claimed: 0, sent: 0, simulated: 0, failed: 0, notes: [] },
     followups: null,
     warm: null,
+    attio: null,
     research: null,
     drafts: null,
     queued: 0,
@@ -200,6 +203,11 @@ export async function runTick(options: { budgetMs?: number } = {}): Promise<Tick
       budgetUsd: Math.max(0, settings.llm_daily_budget_usd - summary.cost_usd),
     })
     summary.cost_usd += summary.warm.cost_usd
+
+    // ── Attio. Reserve for pg_cron-jobben (db/104), som tømmer køen hvert
+    //    minutt. Sender ingen e-post, så pausen gjelder ikke. No-op uten
+    //    ATTIO_SYNC=on.
+    summary.attio = await runAttioSync({ budgetMs: 25_000 })
 
     // ── 3) Helse
     summary.health = await checkHealth()

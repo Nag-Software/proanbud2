@@ -17,8 +17,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
+import type { AttioStatus } from "@/lib/attio/status"
 import type { HealthReport } from "@/lib/outreach/health"
 import type { SelgerSettings } from "@/lib/outreach/settings"
+import { AttioPanel } from "./attio-panel"
 
 type Fact = { id: string; text: string; verified: boolean; source: string }
 
@@ -55,6 +57,7 @@ export function InnstillingerClient({
   unsubscribes,
   facts,
   verifiedCount,
+  attio,
 }: {
   settings: SelgerSettings
   health: HealthReport
@@ -64,6 +67,7 @@ export function InnstillingerClient({
   unsubscribes: Unsubscribe[]
   facts: Fact[]
   verifiedCount: number
+  attio: AttioStatus
 }) {
   const router = useRouter()
   const [draft, setDraft] = React.useState(settings)
@@ -139,6 +143,9 @@ export function InnstillingerClient({
             Avsender: <span className="font-mono">{fromEmail}</span>
           </p>
         </section>
+
+        {/* ── Attio ────────────────────────────────────────────────────── */}
+        <AttioPanel initialStatus={attio} />
 
         {/* ── Helse ────────────────────────────────────────────────────── */}
         <section className="space-y-2 border p-4">

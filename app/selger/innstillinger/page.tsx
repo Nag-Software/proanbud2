@@ -3,6 +3,7 @@ import { loadSettings } from "@/lib/outreach/settings"
 import { getSendMode, getOutreachFromEmail, getOutreachDailyLimit } from "@/lib/outreach/send"
 import { checkHealth } from "@/lib/outreach/health"
 import { verifiedFacts, FACTS } from "@/lib/outreach/facts"
+import { fetchAttioStatus } from "@/lib/attio/status"
 import { InnstillingerClient } from "./innstillinger-client"
 
 export const dynamic = "force-dynamic"
@@ -28,10 +29,11 @@ async function fetchUnsubscribes() {
 }
 
 export default async function SelgerInnstillingerPage() {
-  const [settings, health, unsubscribes] = await Promise.all([
+  const [settings, health, unsubscribes, attio] = await Promise.all([
     loadSettings(),
     checkHealth({ dryRun: true }),
     fetchUnsubscribes(),
+    fetchAttioStatus(),
   ])
 
   return (
@@ -49,6 +51,7 @@ export default async function SelgerInnstillingerPage() {
         source: fact.source,
       }))}
       verifiedCount={verifiedFacts().length}
+      attio={attio}
     />
   )
 }
