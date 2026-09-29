@@ -15,14 +15,8 @@
 
 import * as React from "react"
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber"
-import {
-  ContactShadows,
-  Edges,
-  GizmoHelper,
-  GizmoViewport,
-  Grid,
-  OrbitControls,
-} from "@react-three/drei"
+import { ContactShadows, Edges, Grid, OrbitControls } from "@react-three/drei"
+import { Maximize } from "lucide-react"
 import * as THREE from "three"
 
 import { buildStoreySolids, modelBounds, pointOnWall, worldFromPlan } from "@/lib/cad/geometry"
@@ -60,8 +54,20 @@ export function Scene3D({ store, className }: { store: CadStore; className?: str
 
   const fitViewRef = React.useRef<(() => void) | null>(null)
 
+  // Hjelpeteksten er skrevet for det brukeren faktisk har i hånda (mus eller
+  // finger), og forsvinner så snart hen har tatt tak i modellen.
+  const [coarsePointer, setCoarsePointer] = React.useState(false)
+  const [interacted, setInteracted] = React.useState(false)
+  React.useEffect(() => {
+    setCoarsePointer(window.matchMedia("(pointer: coarse)").matches)
+  }, [])
+
   return (
-    <div className={cn("relative h-full w-full bg-gradient-to-b from-sky-50 to-slate-100 dark:from-slate-900 dark:to-slate-950", className)}>
+    <div
+      className={cn("relative h-full w-full bg-gradient-to-b from-sky-50 to-slate-100 dark:from-slate-900 dark:to-slate-950", className)}
+      onPointerDownCapture={() => setInteracted(true)}
+      onWheelCapture={() => setInteracted(true)}
+    >
       <Canvas
         // VSM er den eneste skyggetypen i three 0.185 som gir ekte myk kant
         // (shadow-radius). drei sin SoftShadows kan IKKE brukes her: den
@@ -93,16 +99,24 @@ export function Scene3D({ store, className }: { store: CadStore; className?: str
         />
       </Canvas>
 
-      <div className="pointer-events-none absolute left-3 top-3 rounded-md border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">
-        Dra i en vegg for å flytte den · rull for å zoome · høyreklikk for å panorere
+      <div
+        className={cn(
+          "pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full border bg-background/90 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur transition-opacity duration-500",
+          interacted && "opacity-0"
+        )}
+      >
+        {coarsePointer
+          ? "Dra med én finger for å snu · to fingre for å zoome og flytte"
+          : "Dra for å snu · rull for å zoome · høyreklikk og dra for å flytte"}
       </div>
 
       <button
         type="button"
         onClick={() => fitViewRef.current?.()}
-        className="absolute bottom-3 left-3 rounded-md border bg-background/90 px-2.5 py-1.5 text-xs font-medium backdrop-blur hover:bg-accent"
+        className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full border bg-background/95 px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur hover:bg-accent"
       >
-        Sentrer
+        <Maximize className="size-3.5" />
+        Vis hele bygget
       </button>
     </div>
   )
@@ -135,35 +149,58 @@ function SceneContents({
     return Math.max(bounds.width, bounds.height, 30)
   })
 
+  const size = useThree((three) => three.size)
+  const buildingRef = React.useRef<THREE.Group>(null)
+  // Har brukeren selv flyttet kameraet, står det stille — da skal verken en ny
+  // vegg eller et fullskjermbytte rive bildet ut av hendene på hen.
+  const userMovedRef = React.useRef(false)
+
   /**
-   * Rammer inn bygget på kommando. Effekten bytter bare ut en closure når
-   * modellen endrer seg — den rører aldri kameraet av seg selv. Det er
-   * forskjellen fra før, da kameraet ble flyttet ved hver endring.
+   * Rammer inn HELE bygget: målt fra det som faktisk tegnes (vegger, dekker
+   * og takets møne — planens omriss alene gir ikke høyden), og tilpasset
+   * bildeformatet, så bygget også får plass i en smal, høy visning. Effekten
+   * bytter bare ut en closure når modellen endrer seg — den rører aldri
+   * kameraet av seg selv.
    */
   React.useEffect(() => {
     fitViewRef.current = () => {
-      const current = modelBounds(state.model)
-      const span = Math.max(current.width, current.height, 8)
-      camera.position.set(
-        current.center.x + span * 0.9,
-        span * 0.8,
-        -current.center.y + span * 1.1
-      )
+      const box = new THREE.Box3()
+      if (buildingRef.current) box.setFromObject(buildingRef.current)
+      if (box.isEmpty()) {
+        const current = modelBounds(state.model)
+        const span = Math.max(current.width, current.height, 8)
+        box.set(
+          new THREE.Vector3(current.center.x - span / 2, 0, -current.center.y - span / 2),
+          new THREE.Vector3(current.center.x + span / 2, 3, -current.center.y + span / 2)
+        )
+      }
+      const sphere = box.getBoundingSphere(new THREE.Sphere())
+      const radius = Math.max(sphere.radius, 3)
+      const perspective = camera as THREE.PerspectiveCamera
+      const aspect = size.width > 0 && size.height > 0 ? size.width / size.height : perspective.aspect
+      const verticalFov = THREE.MathUtils.degToRad(perspective.fov)
+      const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect)
+      const distance = (radius / Math.sin(Math.min(verticalFov, horizontalFov) / 2)) * 1.05
+      // Et trekvart-blikk litt ovenfra: viser to fasader og taket samtidig.
+      const direction = new THREE.Vector3(0.9, 0.6, 1.1).normalize()
+      camera.position.copy(sphere.center).addScaledVector(direction, distance)
       const controls = controlsRef.current
       if (controls) {
-        controls.target.set(current.center.x, 1.2, -current.center.y)
+        controls.target.copy(sphere.center)
         controls.update()
       }
       camera.updateProjectionMatrix()
+      userMovedRef.current = false
     }
     return () => {
       fitViewRef.current = null
     }
-  }, [camera, fitViewRef, state.model])
+  }, [camera, fitViewRef, size.height, size.width, state.model])
 
   /**
-   * Ett unntak fra «kameraet står stille»: første gang etasjen får geometri.
-   * Startkameraet ble satt mens modellen var tom, og da peker det ingen steder.
+   * Ramm inn automatisk så lenge brukeren ikke har tatt kameraet selv: når
+   * visningen får sin størrelse (første gang, bytte mellom 3D og delt
+   * visning, fullskjerm), og første gang en tom etasje får geometri.
    */
   const hasGeometry = React.useMemo(
     () =>
@@ -174,6 +211,10 @@ function SceneContents({
     [state.model]
   )
   const wasEmpty = React.useRef(!hasGeometry)
+  React.useEffect(() => {
+    if (size.width === 0 || size.height === 0) return
+    if (!userMovedRef.current) fitViewRef.current?.()
+  }, [fitViewRef, size.height, size.width])
   React.useEffect(() => {
     if (wasEmpty.current && hasGeometry) fitViewRef.current?.()
     wasEmpty.current = !hasGeometry
@@ -264,6 +305,7 @@ function SceneContents({
         far={radius}
       />
 
+      <group ref={buildingRef}>
       {entries.map(({ storey, solid }) => (
         <SolidMeshView
           key={`${storey.id}:${solid.id}`}
@@ -275,12 +317,16 @@ function SceneContents({
           onDragChange={setDraggingWall}
         />
       ))}
+      </group>
 
       <OrbitControls
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ref={controlsRef as any}
         makeDefault
         enabled={!draggingWall}
+        onStart={() => {
+          userMovedRef.current = true
+        }}
         enableDamping
         dampingFactor={0.08}
         maxPolarAngle={Math.PI / 2.05}
@@ -294,9 +340,6 @@ function SceneContents({
         }}
       />
 
-      <GizmoHelper alignment="bottom-right" margin={[70, 70]}>
-        <GizmoViewport axisColors={["#ef4444", "#22c55e", "#3b82f6"]} labelColor="#1f2937" />
-      </GizmoHelper>
     </>
   )
 }

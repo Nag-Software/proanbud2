@@ -129,6 +129,11 @@ export function PlanCanvas({
    * Hvert hjørne og hver kant blir et gripepunkt — det er dette som gjør at
    * f.eks. et tak kan strekkes i én retning uten å røre resten.
    */
+  // Velg-verktøyet har ingen synlig «neste steg». Et hint til førstegangs-
+  // brukeren står til hen har valgt noe én gang — deretter vet hen det.
+  const [hasSelectedOnce, setHasSelectedOnce] = React.useState(false)
+  if (state.selection && !hasSelectedOnce) setHasSelectedOnce(true)
+
   const selectedOutline = React.useMemo((): {
     kind: OutlineKind
     id: string
@@ -1067,7 +1072,9 @@ export function PlanCanvas({
                     ? "Dra mellom to punkter for å måle"
                     : selectedOutline
                       ? "Dra hjørner og kanter · Alt-klikk legger til eller fjerner hjørne"
-                      : null
+                      : state.tool === "select" && !state.selection && !hasSelectedOnce && !isEmpty
+                        ? "Klikk på en vegg, en dør eller et vindu for å endre det"
+                        : null
         }
         draftPointCount={
           draft.kind === "wall" || draft.kind === "polygon" ? draft.points.length : null

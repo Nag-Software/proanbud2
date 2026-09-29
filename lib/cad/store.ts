@@ -125,6 +125,11 @@ export class CadStore {
 
   getSnapshot = () => this.state
 
+  /** Pågår et drag (endringer som ennå ikke er en egen angre-post)? Da venter autolagringen. */
+  isInteracting() {
+    return this.transientBaseline !== null
+  }
+
   private emit() {
     for (const listener of this.listeners) listener()
   }

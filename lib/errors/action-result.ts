@@ -8,7 +8,9 @@
  *
  * `code: "plan_upgrade"` settes når feilen er en plan-/modulvegg, slik at
  * klienten kan vise en «Se abonnement»-knapp i stedet for en blindvei.
+ * `code: "conflict"` betyr at noen andre har lagret imens (optimistisk lås) —
+ * klienten skal stoppe og be brukeren laste inn på nytt, ikke prøve igjen.
  */
 export type ActionResult<T = void> =
   | { ok: true; data: T }
-  | { ok: false; error: string; code?: "plan_upgrade" }
+  | { ok: false; error: string; code?: "plan_upgrade" | "conflict" }

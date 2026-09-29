@@ -254,6 +254,9 @@ export async function getOrCreateProjectModelAction(
   }
 }
 
+/** Hvor ofte autolagring fra samme person gir en ny versjon i historikken. */
+const VERSION_INTERVAL_MS = 2 * 60_000
+
 export async function saveProjectModelAction(input: {
   projectId: string
   modelId: string
@@ -275,12 +278,21 @@ export async function saveProjectModelAction(input: {
     }
     const clean = sanitizeModel(parsed.data as BuildingModel)
 
-    const { data: current } = await supabase
-      .from("project_models")
-      .select("id, revision, data, company_id")
-      .eq("id", input.modelId)
-      .eq("project_id", input.projectId)
-      .maybeSingle()
+    const [{ data: current }, { data: latestVersion }] = await Promise.all([
+      supabase
+        .from("project_models")
+        .select("id, revision, data, company_id")
+        .eq("id", input.modelId)
+        .eq("project_id", input.projectId)
+        .maybeSingle(),
+      supabase
+        .from("project_model_versions")
+        .select("created_at, created_by")
+        .eq("model_id", input.modelId)
+        .order("revision", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
 
     if (!current || current.company_id !== companyId) {
       return { ok: false, error: "Fant ikke modellen." }
@@ -289,20 +301,31 @@ export async function saveProjectModelAction(input: {
     if (current.revision !== input.revision) {
       return {
         ok: false,
+        code: "conflict",
         error:
-          "Noen andre har lagret modellen imens. Last siden på nytt før du lagrer, så du ikke overskriver arbeidet deres.",
+          "Noen andre har lagret modellen imens. Last inn på nytt før du fortsetter, så du ikke overskriver arbeidet deres.",
       }
     }
 
+    // Editoren lagrer automatisk noen sekunder etter hver endring. Skulle hver
+    // av dem blitt en egen versjon, ville historikken vært hundrevis av nesten
+    // like kopier. Samme person innenfor VERSION_INTERVAL_MS regnes som samme
+    // arbeidsøkt: da hoppes versjonen over (angre dekker det underveis).
+    const sameSession =
+      latestVersion?.created_by === user.id &&
+      Date.now() - new Date(latestVersion.created_at).getTime() < VERSION_INTERVAL_MS
+
     // Historikk FØRST: hvis versjonslagringen feiler, vil vi ikke ha
     // overskrevet noe ennå.
-    const { error: versionError } = await supabase.from("project_model_versions").insert({
-      model_id: current.id,
-      company_id: companyId,
-      revision: current.revision,
-      data: current.data,
-      created_by: user.id,
-    })
+    const { error: versionError } = sameSession
+      ? { error: null }
+      : await supabase.from("project_model_versions").insert({
+          model_id: current.id,
+          company_id: companyId,
+          revision: current.revision,
+          data: current.data,
+          created_by: user.id,
+        })
 
     if (versionError && versionError.code !== "23505") {
       await logServerError({

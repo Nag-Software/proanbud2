@@ -1,37 +1,47 @@
 "use client"
 
 /**
- * CAD-editoren: verktøylinje, plantegning, 3D-visning og sidepaneler.
+ * CAD-editoren: verktøylinje, plantegning, 3D-visning og egenskapspanel.
  *
- * Layoutvalget er hentet fra hvordan folk faktisk jobber i CAD: plan til
- * venstre (der man tegner presist), 3D til høyre (der man ser om det stemmer),
- * og egenskapene i en fast kolonne. Begge visningene skriver til samme lager,
- * så en vegg du drar i 3D flytter seg i planen i samme bilde.
+ * Laget for folk som ikke tegner hver dag. Prinsippene:
+ *  - Én rolig verktøylinje: de fire verktøyene man faktisk bruker (Velg,
+ *    Vegg, Dør, Vindu) med tekst, resten under «Mer», og alt som gjelder
+ *    etasjer, visning og nedlasting samlet i én «⋯»-meny.
+ *  - Tegneflaten får plassen. Egenskapspanelet kommer bare fram når noe er
+ *    valgt (eller når man ber om det), og kan lukkes.
+ *  - Ingen «Lagre»-knapp å glemme: endringer lagres automatisk et øyeblikk
+ *    etter at man stopper opp, med tydelig status.
+ *  - Fullskjerm med ett klikk — på PC, nettbrett, telefon og i appen.
+ *
+ * Plan og 3D skriver til samme lager, så en vegg du drar i 3D flytter seg i
+ * planen i samme bilde.
  */
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import dynamic from "next/dynamic"
 import {
+  AlertTriangle,
   Box,
-  Columns2,
+  Check,
+  ChevronDown,
   DoorOpen,
   Download,
-  Grid3x3,
   Layers,
   Loader2,
   Map,
+  Maximize2,
+  Minimize2,
+  MoreHorizontal,
   MousePointer2,
-  Move3d,
   PanelsTopLeft,
-  Plus,
   Redo2,
   Ruler,
-  Save,
   Sparkles,
   Square,
-  Trash2,
   Triangle,
   Undo2,
+  X,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -39,10 +49,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -92,25 +106,43 @@ export type CadEditorProps = {
     modelId: string
     data: BuildingModel
     revision: number
-  }) => Promise<{ ok: true; data: { revision: number } } | { ok: false; error: string }>
+  }) => Promise<
+    { ok: true; data: { revision: number } } | { ok: false; error: string; code?: string }
+  >
 }
 
-const TOOLS: Array<{
+type ToolDef = {
   id: CadTool
   label: string
   short: string
   shortcut: string
   icon: React.ComponentType<{ className?: string }>
-}> = [
+}
+
+/** Det man bruker hele tiden — alltid synlig, med tekst. */
+const PRIMARY_TOOLS: ToolDef[] = [
   { id: "select", label: "Velg og flytt", short: "Velg", shortcut: "V", icon: MousePointer2 },
   { id: "wall", label: "Tegn vegg", short: "Vegg", shortcut: "W", icon: PanelsTopLeft },
   { id: "door", label: "Sett inn dør", short: "Dør", shortcut: "D", icon: DoorOpen },
   { id: "window", label: "Sett inn vindu", short: "Vindu", shortcut: "F", icon: Square },
-  { id: "slab", label: "Tegn dekke (gulv)", short: "Dekke", shortcut: "G", icon: Map },
+]
+
+/** Det man trenger av og til — under «Mer». */
+const MORE_TOOLS: ToolDef[] = [
   { id: "roof", label: "Tegn tak", short: "Tak", shortcut: "T", icon: Triangle },
+  { id: "slab", label: "Tegn gulv / dekke", short: "Gulv", shortcut: "G", icon: Map },
   { id: "column", label: "Sett inn søyle", short: "Søyle", shortcut: "S", icon: Box },
   { id: "measure", label: "Mål avstand", short: "Mål", shortcut: "M", icon: Ruler },
 ]
+
+const ALL_TOOLS = [...PRIMARY_TOOLS, ...MORE_TOOLS]
+
+type PanelTab = "egenskaper" | "materialer" | "mengder"
+
+/** Så lenge etter siste endring lagres modellen automatisk. */
+const AUTOSAVE_DELAY_MS = 1_500
+/** Ventetid før et nytt forsøk når lagringen feilet (nettbrudd e.l.). */
+const AUTOSAVE_RETRY_MS = 10_000
 
 export function CadEditor({
   modelId,
@@ -124,36 +156,147 @@ export function CadEditor({
 }: CadEditorProps) {
   const [store] = React.useState(() => new CadStore(initialModel))
   const state = useCadState(store)
-  const [revision, setRevision] = React.useState(initialRevision)
-  const [saving, setSaving] = React.useState(false)
   const [generateOpen, setGenerateOpen] = React.useState(false)
-  const [sidePanel, setSidePanel] = React.useState("egenskaper")
   const confirm = useConfirm()
 
   const activeStorey =
     state.model.storeys.find((storey) => storey.id === state.activeStoreyId) ??
     state.model.storeys[0]
 
+  // --- Autolagring ------------------------------------------------------------
+  const revisionRef = React.useRef(initialRevision)
+  const savingRef = React.useRef(false)
+  const [saving, setSaving] = React.useState(false)
+  const [saveFailed, setSaveFailed] = React.useState(false)
+  const [conflict, setConflict] = React.useState(false)
+
   const save = React.useCallback(async () => {
-    if (!canEdit || saving) return
+    if (!canEdit || savingRef.current || conflict) return
+    const snapshot = store.getSnapshot()
+    if (!snapshot.dirty) return
+    savingRef.current = true
     setSaving(true)
     try {
-      const result = await onSave({ modelId, data: state.model, revision })
+      const result = await onSave({ modelId, data: snapshot.model, revision: revisionRef.current })
       if (!result.ok) {
-        toast.error(result.error)
+        if (result.code === "conflict") setConflict(true)
+        else setSaveFailed(true)
         return
       }
-      setRevision(result.data.revision)
-      store.markSaved()
-      toast.success("Modellen er lagret")
+      revisionRef.current = result.data.revision
+      setSaveFailed(false)
+      // Ble det endret noe mens lagringen pågikk, er modellen fortsatt ulagret —
+      // autolagringen tar den neste runden.
+      if (store.getSnapshot().model === snapshot.model) store.markSaved()
     } catch {
-      toast.error("Kunne ikke lagre modellen. Prøv igjen om litt.")
+      setSaveFailed(true)
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
-  }, [canEdit, modelId, onSave, revision, saving, state.model, store])
+  }, [canEdit, conflict, modelId, onSave, store])
 
-  // --- Hurtigtaster ---------------------------------------------------------
+  // Lagre et øyeblikk etter at brukeren har stoppet opp. Hver endring starter
+  // nedtellingen på nytt, og et pågående drag venter til det er sluppet.
+  React.useEffect(() => {
+    if (!canEdit || !state.dirty || saving || conflict) return
+    const timer = window.setTimeout(
+      () => {
+        if (!store.isInteracting()) void save()
+      },
+      saveFailed ? AUTOSAVE_RETRY_MS : AUTOSAVE_DELAY_MS
+    )
+    return () => window.clearTimeout(timer)
+  }, [canEdit, conflict, save, saveFailed, saving, state.dirty, state.model, store])
+
+  // Går man fra fanen eller ut av modellen, lagres det som står igjen med én gang.
+  const saveRef = React.useRef(save)
+  React.useEffect(() => {
+    saveRef.current = save
+  }, [save])
+  React.useEffect(() => {
+    const flush = () => {
+      if (document.visibilityState === "hidden") void saveRef.current()
+    }
+    document.addEventListener("visibilitychange", flush)
+    return () => {
+      document.removeEventListener("visibilitychange", flush)
+      void saveRef.current()
+    }
+  }, [])
+
+  // Advar før fanen lukkes mens noe ikke er lagret ennå.
+  React.useEffect(() => {
+    if (!state.dirty && !saving) return
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
+    }
+    window.addEventListener("beforeunload", handler)
+    return () => window.removeEventListener("beforeunload", handler)
+  }, [saving, state.dirty])
+
+  // --- Fullskjerm -------------------------------------------------------------
+  // Editoren legges over hele vinduet (fungerer overalt, også i appen og på
+  // iPhone), og der nettleseren kan, skjules også nettleserens egen ramme. Vi
+  // ber om fullskjerm for HELE dokumentet, ikke editor-elementet: menyer og
+  // dialoger tegnes utenfor editoren og ville ellers blitt usynlige.
+  const [fullscreen, setFullscreen] = React.useState(false)
+
+  const enterFullscreen = React.useCallback(() => {
+    setFullscreen(true)
+    const root = document.documentElement
+    if (!document.fullscreenElement && typeof root.requestFullscreen === "function") {
+      root.requestFullscreen().catch(() => {
+        // Ikke tillatt/støttet (f.eks. iPhone) — overlegget alene gjør jobben.
+      })
+    }
+  }, [])
+
+  const exitFullscreen = React.useCallback(() => {
+    setFullscreen(false)
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+  }, [])
+
+  React.useEffect(() => {
+    if (!fullscreen) return
+    // Esc i nettleserens fullskjerm lukker den — da lukker vi overlegget også.
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) setFullscreen(false)
+    }
+    document.addEventListener("fullscreenchange", onFullscreenChange)
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [fullscreen])
+
+  // --- Panelet ----------------------------------------------------------------
+  // Åpnes av seg selv når noe velges, og lukkes igjen når valget oppheves —
+  // med mindre brukeren åpnet det selv (mengder, etasjeinnstillinger).
+  const [panel, setPanel] = React.useState<PanelTab | null>(null)
+  const [panelFromSelection, setPanelFromSelection] = React.useState(false)
+  const selectionKey = state.selection ? `${state.selection.kind}:${state.selection.id}` : null
+  const [previousSelectionKey, setPreviousSelectionKey] = React.useState<string | null>(null)
+  if (selectionKey !== previousSelectionKey) {
+    setPreviousSelectionKey(selectionKey)
+    if (selectionKey) {
+      setPanel("egenskaper")
+      setPanelFromSelection(true)
+    } else if (panelFromSelection) {
+      if (panel === "egenskaper") setPanel(null)
+      setPanelFromSelection(false)
+    }
+  }
+
+  const openPanel = (tab: PanelTab) => {
+    setPanelFromSelection(false)
+    setPanel(tab)
+  }
+
+  // --- Hurtigtaster -----------------------------------------------------------
   React.useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
@@ -185,15 +328,28 @@ export function CadEditor({
       }
       if (modifier) return
 
+      // Esc lukker fullskjerm når det ikke er noe annet å avbryte: en åpen
+      // meny/dialog, et verktøy i bruk eller et valgt element går først. (Menyen
+      // lukker seg selv på samme tastetrykk, men står fortsatt i DOM-en her.)
+      if (event.key === "Escape") {
+        const layerOpen = document.querySelector(
+          '[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]'
+        )
+        if (fullscreen && !layerOpen && state.tool === "select" && !state.selection) {
+          exitFullscreen()
+        }
+        return
+      }
+
       if (event.key === "Delete" || event.key === "Backspace") {
-        if (state.selection) {
+        if (state.selection && canEdit) {
           event.preventDefault()
           store.deleteSelection()
         }
         return
       }
 
-      const tool = TOOLS.find((item) => item.shortcut.toLowerCase() === event.key.toLowerCase())
+      const tool = ALL_TOOLS.find((item) => item.shortcut.toLowerCase() === event.key.toLowerCase())
       if (tool && canEdit) {
         event.preventDefault()
         store.setTool(tool.id)
@@ -202,33 +358,20 @@ export function CadEditor({
 
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [canEdit, save, state.selection, store])
+  }, [canEdit, exitFullscreen, fullscreen, save, state.selection, state.tool, store])
 
-  // Advar før brukeren navigerer bort med ulagrede endringer.
-  React.useEffect(() => {
-    if (!state.dirty) return
-    const handler = (event: BeforeUnloadEvent) => {
-      event.preventDefault()
-      event.returnValue = ""
-    }
-    window.addEventListener("beforeunload", handler)
-    return () => window.removeEventListener("beforeunload", handler)
-  }, [state.dirty])
-
-  const download = React.useCallback(
-    (content: BlobPart, filename: string, type: string) => {
-      const blob = content instanceof Blob ? content : new Blob([content], { type })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement("a")
-      anchor.href = url
-      anchor.download = filename
-      document.body.appendChild(anchor)
-      anchor.click()
-      anchor.remove()
-      URL.revokeObjectURL(url)
-    },
-    []
-  )
+  // --- Eksport ----------------------------------------------------------------
+  const download = React.useCallback((content: BlobPart, filename: string, type: string) => {
+    const blob = content instanceof Blob ? content : new Blob([content], { type })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = filename
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  }, [])
 
   const baseFilename = React.useMemo(
     () =>
@@ -264,10 +407,11 @@ export function CadEditor({
       download(await exportModelToGlb(state.model), `${baseFilename}.glb`, "model/gltf-binary")
       toast.success("GLB-fil lastet ned")
     } catch {
-      toast.error("Eksporten feilet. Prøv igjen, eller velg et annet format.")
+      toast.error("Nedlastingen feilet. Prøv igjen, eller velg et annet format.")
     }
   }
 
+  // --- Ett-klikks-handlinger --------------------------------------------------
   const applyGeneratedModel = (model: BuildingModel) => {
     store.replaceModel(model)
     toast.success("Modellen er generert. Se over målene før du bruker den.")
@@ -290,236 +434,266 @@ export function CadEditor({
       return
     }
     store.addRoof(outline, "gable")
-    toast.success("Saltak lagt inn etter ytterveggene")
+    toast.success("Saltak lagt inn over bygget")
   }
 
-  return (
-    <div className="flex h-[min(78vh,900px)] min-h-[620px] flex-col overflow-hidden rounded-xl border bg-card">
-      {/* Verktøylinje. På smal skjerm ruller den sidelengs i stedet for å bryte
-          over fire linjer og spise hele tegneflaten. */}
-      <div className="flex items-center gap-1.5 overflow-x-auto border-b px-2 py-2 lg:flex-wrap lg:overflow-x-visible">
-        <div className="flex items-center gap-0.5 rounded-lg border bg-background p-0.5">
-          {TOOLS.map((tool) => (
-            <Tooltip key={tool.id}>
-              <TooltipTrigger asChild>
+  const deleteStorey = async () => {
+    const ok = await confirm({
+      title: "Slette etasjen?",
+      description: `${activeStorey?.name} og alt innholdet blir borte. Du kan angre etterpå.`,
+      confirmText: "Slett etasje",
+      variant: "destructive",
+    })
+    if (ok && activeStorey) store.deleteStorey(activeStorey.id)
+  }
+
+  const activeMoreTool = MORE_TOOLS.find((tool) => tool.id === state.tool) ?? null
+
+  const editor = (
+    <div
+      className={cn(
+        "flex flex-col overflow-hidden bg-card",
+        fullscreen
+          ? // Appen går under notch og hjemstripe (viewport-fit=cover) — hold
+            // verktøylinjen og knappene nederst unna dem.
+            "fixed inset-0 z-50 h-dvh w-screen pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+          : "h-[min(80vh,900px)] min-h-[560px] rounded-xl border"
+      )}
+    >
+      {/* Verktøylinje. Én linje på PC; på smal skjerm brytes den pent i to
+          i stedet for å rulle sidelengs forbi det man leter etter. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b px-2 py-2">
+        {canEdit && (
+          <div className="flex items-center gap-0.5 rounded-lg border bg-background p-0.5">
+            {PRIMARY_TOOLS.map((tool) => (
+              <ToolButton
+                key={tool.id}
+                tool={tool}
+                active={state.tool === tool.id}
+                onClick={() => store.setTool(tool.id)}
+              />
+            ))}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
-                  variant={state.tool === tool.id ? "default" : "ghost"}
+                  variant={activeMoreTool ? "default" : "ghost"}
                   size="sm"
-                  className="h-8 gap-1.5 px-2"
-                  disabled={!canEdit}
-                  onClick={() => store.setTool(tool.id)}
-                  aria-label={tool.label}
-                  aria-pressed={state.tool === tool.id}
+                  className="h-8 gap-1 px-2"
+                  aria-label="Flere verktøy"
                 >
-                  <tool.icon className="size-4" />
-                  {/* Ikoner alene er ikke selvforklarende for et verktøy folk
-                      bruker sjelden. Teksten vises så snart det er plass. */}
-                  <span className="hidden text-xs xl:inline">{tool.short}</span>
+                  {activeMoreTool ? <activeMoreTool.icon className="size-4" /> : null}
+                  <span className="text-xs">{activeMoreTool ? activeMoreTool.short : "Mer"}</span>
+                  <ChevronDown className="size-3.5 opacity-70" />
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {tool.label} <span className="opacity-60">({tool.shortcut})</span>
-              </TooltipContent>
-            </Tooltip>
-          ))}
-        </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-60">
+                <DropdownMenuLabel>Ett klikk</DropdownMenuLabel>
+                <DropdownMenuItem onSelect={addRoofFromWalls}>
+                  <Triangle className="size-4" />
+                  Saltak over hele bygget
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={addFloorFromWalls}>
+                  <Map className="size-4" />
+                  Gulv etter ytterveggene
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Tegn selv</DropdownMenuLabel>
+                {MORE_TOOLS.map((tool) => (
+                  <DropdownMenuItem key={tool.id} onSelect={() => store.setTool(tool.id)}>
+                    <tool.icon className="size-4" />
+                    {tool.label}
+                    <span className="ml-auto text-xs text-muted-foreground">{tool.shortcut}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
 
-        <div className="flex items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            disabled={!state.canUndo}
-            onClick={() => store.undo()}
-            aria-label="Angre"
-          >
-            <Undo2 className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            disabled={!state.canRedo}
-            onClick={() => store.redo()}
-            aria-label="Gjør om"
-          >
-            <Redo2 className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            disabled={!state.selection || !canEdit}
-            onClick={() => store.deleteSelection()}
-            aria-label="Slett valgt"
-          >
-            <Trash2 className="size-4" />
-          </Button>
-        </div>
+        {canEdit && (
+          <div className="flex items-center gap-0.5">
+            <IconButton label="Angre (⌘Z)" disabled={!state.canUndo} onClick={() => store.undo()}>
+              <Undo2 className="size-4" />
+            </IconButton>
+            <IconButton label="Gjør om (⌘⇧Z)" disabled={!state.canRedo} onClick={() => store.redo()}>
+              <Redo2 className="size-4" />
+            </IconButton>
+          </div>
+        )}
 
-        <span className="mx-1 h-6 w-px bg-border" />
+        <ViewSwitch view={state.view} onChange={(view) => store.setView(view)} />
 
-        {/* Etasjer */}
-        <Select value={activeStorey?.id ?? ""} onValueChange={(value) => store.setActiveStorey(value)}>
-          <SelectTrigger className="h-8 w-[150px]">
-            <Layers className="size-3.5 text-muted-foreground" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {state.model.storeys.map((storey) => (
-              <SelectItem key={storey.id} value={storey.id}>
-                {storey.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled={!canEdit}>
-              <Plus className="size-4" />
-              Legg til
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuLabel>Ett klikk</DropdownMenuLabel>
-            <DropdownMenuItem onSelect={addFloorFromWalls}>
-              Gulv etter ytterveggene
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={addRoofFromWalls}>
-              Saltak etter ytterveggene
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Roter etasjen</DropdownMenuLabel>
-            <DropdownMenuItem onSelect={() => store.rotateStorey(-90)}>
-              90° mot venstre
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => store.rotateStorey(90)}>
-              90° mot høyre
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Etasjer</DropdownMenuLabel>
-            <DropdownMenuItem onSelect={() => store.addStorey(true)}>
-              Ny etasje (kopi av denne)
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => store.addStorey(false)}>Ny, tom etasje</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              disabled={state.model.storeys.length <= 1}
-              onSelect={async () => {
-                const ok = await confirm({
-                  title: "Slette etasjen?",
-                  description: `${activeStorey?.name} og alt innholdet blir borte. Du kan angre etterpå.`,
-                  confirmText: "Slett etasje",
-                  variant: "destructive",
-                })
-                if (ok && activeStorey) store.deleteStorey(activeStorey.id)
-              }}
-            >
-              Slett etasjen
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <span className="mx-1 h-6 w-px bg-border" />
-
-        {/* Visning */}
-        <div className="flex items-center gap-0.5 rounded-lg border bg-background p-0.5">
-          {(
-            [
-              { id: "2d" as CadViewMode, label: "Plan", icon: Grid3x3 },
-              { id: "split" as CadViewMode, label: "Delt", icon: Columns2 },
-              { id: "3d" as CadViewMode, label: "3D", icon: Move3d },
-            ]
-          ).map((view) => (
-            <Button
-              key={view.id}
-              variant={state.view === view.id ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={() => store.setView(view.id)}
-            >
-              <view.icon className="size-3.5" />
-              {view.label}
-            </Button>
-          ))}
-        </div>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8">
-              Visning
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onSelect={() => store.toggle("showGrid")}>
-              {state.showGrid ? "✓ " : ""}Rutenett
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => store.toggle("showRooms")}>
-              {state.showRooms ? "✓ " : ""}Rom og arealer
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => store.toggle("showDimensions")}>
-              {state.showDimensions ? "✓ " : ""}Mål på vegger
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => store.toggle("showAllStoreys")}>
-              {state.showAllStoreys ? "✓ " : ""}Alle etasjer i 3D
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {state.model.storeys.length > 1 && (
+          <Select value={activeStorey?.id ?? ""} onValueChange={(value) => store.setActiveStorey(value)}>
+            <SelectTrigger className="h-8 w-[140px]" aria-label="Etasje">
+              <Layers className="size-3.5 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {state.model.storeys.map((storey) => (
+                <SelectItem key={storey.id} value={storey.id}>
+                  {storey.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         <div className="ml-auto flex items-center gap-1.5">
-          {state.dirty && (
-            <span className="hidden text-xs text-amber-600 sm:inline dark:text-amber-500">
-              Ulagrede endringer
-            </span>
+          {canEdit && (
+            <SaveStatus saving={saving} dirty={state.dirty} failed={saveFailed} conflict={conflict} />
           )}
 
-          {canEdit && (
-            <Button variant="outline" size="sm" className="h-8" onClick={() => setGenerateOpen(true)}>
-              <Sparkles className="size-4" />
-              <span className="hidden sm:inline">Generer på nytt</span>
-            </Button>
-          )}
+          <Button
+            variant={fullscreen ? "default" : "outline"}
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={fullscreen ? exitFullscreen : enterFullscreen}
+            aria-label={fullscreen ? "Lukk fullskjerm" : "Fullskjerm"}
+          >
+            {fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+            <span className="hidden sm:inline">{fullscreen ? "Lukk fullskjerm" : "Fullskjerm"}</span>
+          </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8">
-                <Download className="size-4" />
-                <span className="hidden sm:inline">Eksporter</span>
+              <Button variant="ghost" size="icon" className="size-8" aria-label="Flere valg">
+                <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Byggebransjens formater</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => void handleExport("ifc")}>
-                IFC 4 (BIM — Solibri, Revit, ArchiCAD)
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem onSelect={() => openPanel("mengder")}>
+                Mengder (til tilbud)
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void handleExport("dxf")}>
-                DXF (2D-plantegning til AutoCAD/DDS)
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>3D-visning</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => void handleExport("glb")}>
-                GLB (glTF — nettleser og mobil)
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void handleExport("obj")}>
-                OBJ (Blender, SketchUp)
-              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openPanel("materialer")}>Materialer</DropdownMenuItem>
+
+              {canEdit && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>Etasjer</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-56">
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          store.setSelection(null)
+                          openPanel("egenskaper")
+                        }}
+                      >
+                        Innstillinger for {activeStorey?.name ?? "etasjen"}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => store.addStorey(true)}>
+                        Ny etasje (kopi av denne)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => store.addStorey(false)}>
+                        Ny, tom etasje
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => store.rotateStorey(-90)}>
+                        Roter 90° mot venstre
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => store.rotateStorey(90)}>
+                        Roter 90° mot høyre
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        disabled={state.model.storeys.length <= 1}
+                        onSelect={() => void deleteStorey()}
+                      >
+                        Slett etasjen
+                      </DropdownMenuItem>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                </>
+              )}
+
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Vis</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-56">
+                  <DropdownMenuCheckboxItem
+                    checked={state.showDimensions}
+                    onCheckedChange={() => store.toggle("showDimensions")}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    Mål på vegger
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={state.showRooms}
+                    onCheckedChange={() => store.toggle("showRooms")}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    Rom og arealer
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={state.showGrid}
+                    onCheckedChange={() => store.toggle("showGrid")}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    Rutenett
+                  </DropdownMenuCheckboxItem>
+                  {state.model.storeys.length > 1 && (
+                    <DropdownMenuCheckboxItem
+                      checked={state.showAllStoreys}
+                      onCheckedChange={() => store.toggle("showAllStoreys")}
+                      onSelect={(event) => event.preventDefault()}
+                    >
+                      Alle etasjer i 3D
+                    </DropdownMenuCheckboxItem>
+                  )}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Download className="size-4" />
+                  Last ned
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-72">
+                  <DropdownMenuItem onSelect={() => void handleExport("ifc")}>
+                    IFC (BIM — Solibri, Revit, ArchiCAD)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void handleExport("dxf")}>
+                    DXF (plantegning til AutoCAD)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void handleExport("glb")}>
+                    GLB (3D i nettleser og mobil)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void handleExport("obj")}>
+                    OBJ (Blender, SketchUp)
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+
+              {canEdit && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setGenerateOpen(true)}>
+                    <Sparkles className="size-4" />
+                    Lag modellen på nytt fra bilder
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {canEdit && (
-            <Button size="sm" className="h-8" disabled={saving || !state.dirty} onClick={() => void save()}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-              Lagre
-            </Button>
-          )}
         </div>
       </div>
 
+      {conflict && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+          <AlertTriangle className="size-4 shrink-0 text-amber-600" />
+          <span className="min-w-0 flex-1">
+            Noen andre har endret modellen mens du jobbet. De siste endringene dine er ikke lagret.
+          </span>
+          <Button size="sm" variant="outline" className="h-8" onClick={() => window.location.reload()}>
+            Last inn på nytt
+          </Button>
+        </div>
+      )}
+
       {/* Arbeidsflate */}
-      <div className="flex min-h-[320px] flex-1">
+      <div className="relative flex min-h-0 flex-1">
         {/* Delt visning gir to ubrukelige halvdeler på en telefon. Den løses i
             CSS, ikke ved å måle vinduet: `window.innerWidth` er 0 i det
             komponenten monteres i enkelte nettlesere og innebygde visninger,
@@ -534,7 +708,7 @@ export function CadEditor({
             >
               <PlanCanvas
                 store={store}
-                onShowProperties={() => setSidePanel("egenskaper")}
+                onShowProperties={() => openPanel("egenskaper")}
                 onAddFloorFromWalls={addFloorFromWalls}
                 onAddRoofFromWalls={addRoofFromWalls}
                 emptyState={
@@ -559,44 +733,36 @@ export function CadEditor({
           )}
         </div>
 
-        <div className="hidden w-[320px] shrink-0 border-l lg:block">
-          <Tabs value={sidePanel} onValueChange={setSidePanel} className="flex h-full flex-col gap-0">
-            <TabsList className="m-2 grid grid-cols-3">
-              <TabsTrigger value="egenskaper">Egenskaper</TabsTrigger>
-              <TabsTrigger value="materialer">Materialer</TabsTrigger>
-              <TabsTrigger value="mengder">Mengder</TabsTrigger>
-            </TabsList>
-            <TabsContent value="egenskaper" className="m-0 min-h-0 flex-1">
-              <InspectorPanel store={store} />
-            </TabsContent>
-            <TabsContent value="materialer" className="m-0 min-h-0 flex-1">
-              <MaterialsPanel store={store} />
-            </TabsContent>
-            <TabsContent value="mengder" className="m-0 min-h-0 flex-1">
-              <TakeoffPanel store={store} projectId={projectId} />
-            </TabsContent>
-          </Tabs>
-        </div>
-      </div>
-
-      {/* Sidepanelene på mobil/nettbrett */}
-      <div className="border-t lg:hidden">
-        <Tabs value={sidePanel} onValueChange={setSidePanel}>
-          <TabsList className="m-2 grid grid-cols-3">
-            <TabsTrigger value="egenskaper">Egenskaper</TabsTrigger>
-            <TabsTrigger value="materialer">Materialer</TabsTrigger>
-            <TabsTrigger value="mengder">Mengder</TabsTrigger>
-          </TabsList>
-          <TabsContent value="egenskaper" className="m-0 max-h-[320px] overflow-y-auto">
-            <InspectorPanel store={store} />
-          </TabsContent>
-          <TabsContent value="materialer" className="m-0 max-h-[320px] overflow-y-auto">
-            <MaterialsPanel store={store} />
-          </TabsContent>
-          <TabsContent value="mengder" className="m-0 max-h-[320px] overflow-y-auto">
-            <TakeoffPanel store={store} projectId={projectId} />
-          </TabsContent>
-        </Tabs>
+        {/* Panelet: egen kolonne på PC, et ark nederst på mindre skjermer. */}
+        {panel && (
+          <div className="absolute inset-x-0 bottom-0 z-10 flex max-h-[55%] flex-col rounded-t-xl border-t bg-card shadow-lg lg:static lg:max-h-none lg:w-[320px] lg:shrink-0 lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none">
+            <Tabs
+              value={panel}
+              onValueChange={(value) => openPanel(value as PanelTab)}
+              className="flex min-h-0 flex-1 flex-col gap-0"
+            >
+              <div className="flex items-center gap-1 p-2">
+                <TabsList className="grid flex-1 grid-cols-3">
+                  <TabsTrigger value="egenskaper">Egenskaper</TabsTrigger>
+                  <TabsTrigger value="mengder">Mengder</TabsTrigger>
+                  <TabsTrigger value="materialer">Materialer</TabsTrigger>
+                </TabsList>
+                <IconButton label="Lukk panelet" onClick={() => setPanel(null)}>
+                  <X className="size-4" />
+                </IconButton>
+              </div>
+              <TabsContent value="egenskaper" className="m-0 min-h-0 flex-1 overflow-y-auto">
+                <InspectorPanel store={store} />
+              </TabsContent>
+              <TabsContent value="mengder" className="m-0 min-h-0 flex-1 overflow-y-auto">
+                <TakeoffPanel store={store} projectId={projectId} />
+              </TabsContent>
+              <TabsContent value="materialer" className="m-0 min-h-0 flex-1 overflow-y-auto">
+                <MaterialsPanel store={store} />
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
       </div>
 
       <GenerateModelDialog
@@ -608,6 +774,154 @@ export function CadEditor({
         onGenerated={(raw) => applyGeneratedModel(parseBuildingModel(raw, projectName))}
       />
     </div>
+  )
+
+  if (!fullscreen) return editor
+
+  return (
+    <>
+      {/* Plassholder på siden, så resten av innholdet ikke hopper opp. */}
+      <div className="flex h-[min(80vh,900px)] min-h-[560px] items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
+        Modellen er åpen i fullskjerm.
+      </div>
+      {/* Lagt rett i <body>: fixed-posisjonering inne i app-skallet kan
+          fanges av sidebarens transformasjoner. */}
+      {createPortal(editor, document.body)}
+    </>
+  )
+}
+
+function ToolButton({ tool, active, onClick }: { tool: ToolDef; active: boolean; onClick: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant={active ? "default" : "ghost"}
+          size="sm"
+          className="h-8 gap-1.5 px-2"
+          onClick={onClick}
+          aria-label={tool.label}
+          aria-pressed={active}
+        >
+          <tool.icon className="size-4" />
+          <span className="text-xs">{tool.short}</span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        {tool.label} <span className="opacity-60">({tool.shortcut})</span>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function IconButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  disabled?: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          disabled={disabled}
+          onClick={onClick}
+          aria-label={label}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+/** 2D | 3D | Begge. «Begge» finnes bare der det er plass til to visninger. */
+function ViewSwitch({ view, onChange }: { view: CadViewMode; onChange: (view: CadViewMode) => void }) {
+  const options: Array<{ id: CadViewMode; label: string; className?: string }> = [
+    // På smal skjerm viser «Begge» bare plantegningen — da er det 2D som er aktiv.
+    { id: "2d", label: "2D" },
+    { id: "3d", label: "3D" },
+    { id: "split", label: "Begge", className: "hidden lg:inline-flex" },
+  ]
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg border bg-background p-0.5" role="group" aria-label="Visning">
+      {options.map((option) => {
+        const active = view === option.id
+        const activeOnSmall = option.id === "2d" && view === "split"
+        return (
+          <Button
+            key={option.id}
+            type="button"
+            variant={active ? "secondary" : "ghost"}
+            size="sm"
+            className={cn(
+              "h-7 px-2.5 text-xs",
+              activeOnSmall && "max-lg:bg-secondary max-lg:text-secondary-foreground",
+              option.className
+            )}
+            aria-pressed={active}
+            onClick={() => onChange(option.id)}
+          >
+            {option.label}
+          </Button>
+        )
+      })}
+    </div>
+  )
+}
+
+function SaveStatus({
+  saving,
+  dirty,
+  failed,
+  conflict,
+}: {
+  saving: boolean
+  dirty: boolean
+  failed: boolean
+  conflict: boolean
+}) {
+  if (conflict) {
+    return (
+      <span className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-500">
+        <AlertTriangle className="size-3.5" />
+        Ikke lagret
+      </span>
+    )
+  }
+  if (failed && dirty && !saving) {
+    return (
+      <span className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-500">
+        <AlertTriangle className="size-3.5" />
+        <span className="hidden sm:inline">Ikke lagret — prøver igjen</span>
+        <span className="sm:hidden">Ikke lagret</span>
+      </span>
+    )
+  }
+  if (saving || dirty) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite">
+        <Loader2 className="size-3.5 animate-spin" />
+        Lagrer …
+      </span>
+    )
+  }
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite">
+      <Check className="size-3.5 text-emerald-600" />
+      Lagret
+    </span>
   )
 }
 
