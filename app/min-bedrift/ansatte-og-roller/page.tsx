@@ -12,35 +12,36 @@ export default async function Page() {
   const user = context?.user ?? null
   const companyId = context?.companyId || ''
   
-  // Hent ansatte (brukere) og hvilke roller de har via user_roles og roles
-  const { data: usersData } = await supabase
-    .from('users')
-    .select(`
-      id,
-      email,
-      full_name,
-      is_active,
-      role,
-      user_roles (
-        role_id,
-        roles:role_id (name)
-      )
-    `)
-    .eq('company_id', companyId);
-
-  // Hent pending invitasjoner (og deres roller)
-  const { data: invData } = await supabase
-    .from('invitations')
-    .select(`
-      id,
-      email,
-      status,
-      invitation_roles (
-         roles:role_id (name)
-      )
-    `)
-    .eq('company_id', companyId)
-    .eq('status', 'pending');
+  // Ansatte (med roller via user_roles) og ventende invitasjoner er
+  // uavhengige oppslag — hentes i samme runde, ikke etter hverandre.
+  const [{ data: usersData }, { data: invData }] = await Promise.all([
+    supabase
+      .from('users')
+      .select(`
+        id,
+        email,
+        full_name,
+        is_active,
+        role,
+        user_roles (
+          role_id,
+          roles:role_id (name)
+        )
+      `)
+      .eq('company_id', companyId),
+    supabase
+      .from('invitations')
+      .select(`
+        id,
+        email,
+        status,
+        invitation_roles (
+           roles:role_id (name)
+        )
+      `)
+      .eq('company_id', companyId)
+      .eq('status', 'pending'),
+  ]);
 
   const employees: any[] | undefined = [];
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { format } from "date-fns"
 import { nb } from "date-fns/locale"
 import { Check, MapPin, X } from "lucide-react"
@@ -24,6 +24,12 @@ const SOURCE_LABEL: Record<string, string> = {
 
 export function ApprovalsPanel({ initialPending }: { initialPending: PendingApproval[] }) {
   const [pending, setPending] = useState(initialPending)
+
+  // Ny rendering fra serveren (oppfrisking av en side vist fra cache): ta imot
+  // de ferske timene, så en leder aldri godkjenner fra en utdatert liste.
+  useEffect(() => {
+    setPending(initialPending)
+  }, [initialPending])
   const [busyId, setBusyId] = useState<string | null>(null)
 
   if (pending.length === 0) return null

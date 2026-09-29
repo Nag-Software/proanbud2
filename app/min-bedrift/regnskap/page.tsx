@@ -5,7 +5,6 @@ import { checkRoleAccess } from "@/lib/auth-utils"
 import { CAPABILITIES, SCOPE_ITEMS } from "@/lib/regnskap/capabilities"
 import { getActiveAccountingProvider } from "@/lib/regnskap/registry"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
 
 import { RegnskapClient } from "./regnskap-client"
 import { getServerAuthContext } from "@/lib/auth/server-context"
@@ -20,23 +19,23 @@ import { getServerAuthContext } from "@/lib/auth/server-context"
  */
 export default async function RegnskapPage() {
   await checkRoleAccess(["Administrator", "Prosjektleder", "admin", "manager"])
-  const supabase = await createClient()
 
-  const user = (await getServerAuthContext())?.user ?? null
+  // Firma og RÅ users.role ligger allerede i den delte konteksten (samme rad,
+  // samme RLS-klient som oppslaget som sto her før) — ingen ekstra runde.
+  const context = await getServerAuthContext()
+  const companyId = context?.companyId ?? null
+  const canManage = context?.profileRole === "admin" || context?.profileRole === "manager"
 
-  let companyId: string | null = null
-  let canManage = false
-  if (user) {
-    const { data: userRow } = await supabase
-      .from("users")
-      .select("company_id, role")
-      .eq("id", user.id)
-      .maybeSingle()
-    companyId = userRow?.company_id || null
-    canManage = userRow?.role === "admin" || userRow?.role === "manager"
-  }
+  // Planveggen og tilkoblingsoppslaget er uavhengige — én runde, ikke to.
+  // Tilkoblingen brukes bare hvis veggen slipper gjennom.
+  const [hasIntegrations, active] = companyId
+    ? await Promise.all([
+        companyHasFeature(companyId, "integrasjoner"),
+        getActiveAccountingProvider(companyId),
+      ])
+    : [false, null]
 
-  if (!companyId || !(await companyHasFeature(companyId, "integrasjoner"))) {
+  if (!companyId || !hasIntegrations) {
     return (
       <AppPageShell segments={["Min bedrift", "Regnskap"]}>
         <PlanGate
@@ -47,8 +46,6 @@ export default async function RegnskapPage() {
       </AppPageShell>
     )
   }
-
-  const active = await getActiveAccountingProvider(companyId)
 
   let jobs: Array<Record<string, unknown>> = []
   if (active) {

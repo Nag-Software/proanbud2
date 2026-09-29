@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { createClient } from "@/lib/supabase/server"
-import { getServerAuthContext } from "@/lib/auth/server-context"
+import { getServerAuthContext, getSessionUser } from "@/lib/auth/server-context"
 import { logServerError } from "@/lib/errors/log"
 import { GENERIC_ERROR_MESSAGE } from "@/lib/errors/user-message"
 import { companyHasFeature, companyHasModule } from "@/lib/billing/server-modules"
@@ -89,10 +89,7 @@ export async function getActiveWorkSessionAction(
   projectId: string
 ): Promise<ActionResult<WorkSession | null>> {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { supabase, user } = await getSessionUser()
 
     if (!user) return { ok: true, data: null }
 
@@ -140,10 +137,7 @@ export async function startWorkSessionAction(
   description?: string
 ): Promise<ActionResult<WorkSession>> {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { supabase, user } = await getSessionUser()
 
     if (!user) {
       return { ok: false, error: "Du må være logget inn. Logg inn på nytt og prøv igjen." }
@@ -236,10 +230,7 @@ export async function geofenceCheckInAction(
   description?: string
 ): Promise<ActionResult<WorkSession>> {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { supabase, user } = await getSessionUser()
     if (!user) {
       return { ok: false, error: "Du må være logget inn. Logg inn på nytt og prøv igjen." }
     }
@@ -351,10 +342,7 @@ export async function stopWorkSessionAction(
   projectId: string
 ): Promise<ActionResult<CompletedWorkSession>> {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { supabase, user } = await getSessionUser()
 
     if (!user) {
       return { ok: false, error: "Du må være logget inn. Logg inn på nytt og prøv igjen." }
@@ -424,10 +412,7 @@ export async function addManualTimeEntryAction(
   input: { entryDate: string; startedAt: string; endedAt: string; description?: string }
 ): Promise<ActionResult<CompletedWorkSession>> {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { supabase, user } = await getSessionUser()
 
     if (!user) {
       return { ok: false, error: "Du må være logget inn. Logg inn på nytt og prøv igjen." }
@@ -524,10 +509,7 @@ export type PendingApproval = {
 
 /** Completed entries awaiting manager approval (geofence/auto check-ins). */
 export async function getPendingApprovalsAction(): Promise<PendingApproval[]> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) return []
 
   const { role, companyId } = await getEffectiveRole(supabase, user.id)
@@ -587,10 +569,7 @@ export async function getCompanyTrackingSettingsAction(): Promise<CompanyTrackin
     defaultShiftEnd: null,
     maxSessionHours: 10,
   }
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) return fallback
 
   const { role, companyId } = await getEffectiveRole(supabase, user.id)
@@ -614,10 +593,7 @@ export async function saveCompanyTrackingSettingsAction(
   input: CompanyTrackingSettings
 ): Promise<ActionResult<null>> {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { supabase, user } = await getSessionUser()
     if (!user) {
       return { ok: false, error: "Du må være logget inn. Logg inn på nytt og prøv igjen." }
     }
@@ -673,10 +649,7 @@ async function setTimeEntryStatus(
   status: "approved" | "rejected"
 ): Promise<ActionResult<null>> {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { supabase, user } = await getSessionUser()
     if (!user) {
       return { ok: false, error: "Du må være logget inn. Logg inn på nytt og prøv igjen." }
     }
@@ -730,10 +703,7 @@ export async function getProjectTimeEntriesAction(
   viewAll = false
 ): Promise<ActionResult<TimeEntryRow[]>> {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { supabase, user } = await getSessionUser()
 
     if (!user) return { ok: true, data: [] }
 
@@ -927,10 +897,7 @@ export async function getMyTimeTrackingOverviewAction(): Promise<
 }
 
 export async function getProjectParticipantHoursAction(projectId: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
 
   if (!user) return []
 
@@ -944,10 +911,7 @@ export async function getProjectParticipantHoursAction(projectId: string) {
 }
 
 export async function getCompanyTimeOverviewAction() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
 
   if (!user) {
     return {

@@ -2,7 +2,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 
 export default function Loading() {
   return (
-    <AppPageShell segments={["Kalender"]} noPadding>
+    <AppPageShell skeleton segments={["Kalender"]} noPadding>
       <div className="flex h-full min-h-0 flex-1 flex-col">
         {/* Verktøylinje */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5">

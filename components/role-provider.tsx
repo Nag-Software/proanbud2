@@ -29,6 +29,12 @@ type RoleContextValue = {
    * still enforces real access on every gated route.
    */
   planKnown: boolean
+  /**
+   * Brukerens firma (users.company_id), hentet i samme spørring som rollen.
+   * Nav-hookene (uleste meldinger, varsler) leser den herfra i stedet for å
+   * slå opp `users` hver for seg. Kun for UI/datahenting — RLS er grensen.
+   */
+  companyId: string | null
 }
 
 const RoleContext = createContext<RoleContextValue>({
@@ -39,6 +45,7 @@ const RoleContext = createContext<RoleContextValue>({
   enabledModules: [],
   status: null,
   planKnown: false,
+  companyId: null,
 })
 
 type PlanContextRow = {
@@ -67,6 +74,7 @@ function readRoleCache(userId: string): RoleContextValue | null {
       enabledModules: Array.isArray(parsed.enabledModules) ? parsed.enabledModules : [],
       status: parsed.status ?? null,
       planKnown: parsed.planKnown === true,
+      companyId: typeof parsed.companyId === "string" ? parsed.companyId : null,
     }
   } catch {
     return null
@@ -75,10 +83,10 @@ function readRoleCache(userId: string): RoleContextValue | null {
 
 function writeRoleCache(userId: string, value: RoleContextValue): void {
   try {
-    const { role, planKey, enabledModules, status, planKnown } = value
+    const { role, planKey, enabledModules, status, planKnown, companyId } = value
     window.localStorage.setItem(
       ROLE_CACHE_PREFIX + userId,
-      JSON.stringify({ role, planKey, enabledModules, status, planKnown })
+      JSON.stringify({ role, planKey, enabledModules, status, planKnown, companyId })
     )
   } catch {
     // Storage full/blocked — cache is best-effort only.
@@ -118,6 +126,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     enabledModules: [],
     status: null,
     planKnown: false,
+    companyId: null,
   })
 
   useEffect(() => {
@@ -135,12 +144,14 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
             enabledModules: [],
             status: null,
             planKnown: true,
+            companyId: null,
           })
         return
       }
 
       const supabase = createClient()
       const planPromise = supabase.rpc("get_company_plan_context")
+      const userRowPromise = supabase.from("users").select("role, company_id").eq("id", user.id).maybeSingle()
 
       // Dev role mock (?mock=worker|pm|admin) — UI-only role override. Plan is
       // still read from the real company so plan-gated UI reflects reality.
@@ -154,7 +165,10 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         if (cached && active) setState(cached)
       }
       if (mockedRole) {
-        const { data: planData, error: planError } = await planPromise
+        const [{ data: planData, error: planError }, { data: mockUserRow }] = await Promise.all([
+          planPromise,
+          userRowPromise,
+        ])
         if (planError) {
           console.error("get_company_plan_context failed", planError)
           reportClientError(planError, {
@@ -168,6 +182,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
             canonicalRole: mockedRole,
             loadingRole: false,
             planKnown: !planError,
+            companyId: mockUserRow?.company_id ?? null,
             ...readPlan(planData as PlanContextRow),
           })
         return
@@ -176,7 +191,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       const [{ data: userRoleData }, { data: userTableData }, { data: planData, error: planError }] =
         await Promise.all([
           supabase.from("user_roles").select("roles(name)").eq("user_id", user.id).maybeSingle(),
-          supabase.from("users").select("role").eq("id", user.id).maybeSingle(),
+          userRowPromise,
           planPromise,
         ])
 
@@ -195,6 +210,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         canonicalRole: normalizeRole(effectiveRole),
         loadingRole: false,
         planKnown: !planError,
+        companyId: userTableData?.company_id ?? null,
         ...readPlan(planData as PlanContextRow),
       }
       // Only cache trustworthy results: a transient RPC failure must not

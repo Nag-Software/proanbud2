@@ -5,18 +5,22 @@ import { Button } from "@/components/ui/button"
 import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from "react"
 import dynamic from "next/dynamic"
 import { useSearchParams } from "next/navigation"
-import {
-  addMonths,
-  endOfDay,
-  endOfMonth,
-  format,
-  startOfDay,
-  startOfMonth,
-  subMonths,
-} from "date-fns"
+import { endOfDay, format, startOfDay } from "date-fns"
 import { nb } from "date-fns/locale"
 import { Plus } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/components/auth-provider"
+import {
+  CALENDAR_KEYS,
+  CALENDAR_MOUNT_MAX_AGE_MS,
+  calendarRangeFor,
+  CalendarFetchError,
+  fetchCalendarEvents,
+  fetchCalendarIntegrations,
+  fetchCalendarProjects,
+  type CalendarRange,
+  type RawCalendarEvent,
+} from "@/lib/calendar/client-data"
+import { fetchPrefetched, readPrefetched } from "@/lib/perf/prefetch-cache"
 import { LOGIN_PATH } from '@/lib/constants'
 import { toast } from "sonner"
 import { reportClientError } from "@/lib/errors/client"
@@ -54,6 +58,18 @@ const DnDCalendar = dynamic(() => import("./dnd-calendar"), {
   ),
 })
 
+function toCalendarEvents(raw: RawCalendarEvent[]): CalendarEvent[] {
+  return raw.map((e) => ({
+    ...(e as unknown as CalendarEvent),
+    start: new Date(e.start),
+    end: new Date(e.end),
+    extendedProps: {
+      description: e.description,
+      projectId: e.projectId,
+    },
+  }))
+}
+
 function defaultSlotTimes(day: Date) {
   const start = new Date(day)
   start.setHours(9, 0, 0, 0)
@@ -66,15 +82,29 @@ function KalenderPage() {
   const isMobile = useIsMobile()
   const confirm = useConfirm()
   const { loadingRole, hasFeature } = useUserRole()
-  const [integrations, setIntegrations] = useState<{ provider: string }[]>([])
-  const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
-  const [loggedIn, setLoggedIn] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  // Innloggingen leses fra den lokale sesjonen (ingen rundtur til Supabase
+  // Auth) — middleware har allerede sluppet brukeren inn på siden.
+  const { user: authUser, loading: authLoading } = useAuth()
+  const userId: string | null = authUser?.id ?? null
+  // Forvarmet av app-skallet (lib/perf/page-data-warmers): det som ligger i
+  // cachen vises med en gang, og friskes opp i bakgrunnen.
+  const [integrations, setIntegrations] = useState<{ provider: string }[]>(
+    () => (userId ? readPrefetched<{ provider: string }[]>(CALENDAR_KEYS.integrations(userId)) : undefined) ?? []
+  )
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>(
+    () => readPrefetched<{ id: string; name: string }[]>(CALENDAR_KEYS.projects) ?? []
+  )
+  const [loggedIn, setLoggedIn] = useState(() => userId !== null)
+  const [isLoading, setIsLoading] = useState(
+    () => !userId || readPrefetched(CALENDAR_KEYS.integrations(userId)) === undefined
+  )
 
   const [view, setView] = useState<CalendarView>("month")
   const [date, setDate] = useState(new Date())
-  const [events, setEvents] = useState<CalendarEvent[]>([])
-  const [fetchRange, setFetchRange] = useState<{start: string, end: string} | null>(null)
+  const [events, setEvents] = useState<CalendarEvent[]>(() =>
+    toCalendarEvents(readPrefetched<RawCalendarEvent[]>(CALENDAR_KEYS.events(calendarRangeFor(new Date()))) ?? [])
+  )
+  const [fetchRange, setFetchRange] = useState<CalendarRange | null>(null)
 
   const [timeRange, setTimeRange] = useState<"work" | "full">("work")
   const [visibleProvider, setVisibleProvider] = useState<CalendarSource>("all")
@@ -119,73 +149,70 @@ function KalenderPage() {
     return d
   }, [timeRange])
 
-  const fetchEvents = useCallback(async (startIso: string, endIso: string) => {
+  // Uten `force` gjenbrukes et svar som er yngre enn CALENDAR_MOUNT_MAX_AGE_MS
+  // og et kall som allerede er i gang — det er det som hindrer at samme vindu
+  // hentes to ganger når innlogging og tilkoblinger lander hver for seg.
+  // Etter en endring (ny/flyttet/slettet avtale) hentes alltid ferskt.
+  const fetchEvents = useCallback(async (range: CalendarRange, force = false) => {
     try {
-      const res = await fetch(`/api/calendar/events?start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`)
-      if (res.ok) {
-        const data = await res.json()
-        const formattedEvents = data.map((e: any) => ({
-          ...e,
-          start: new Date(e.start),
-          end: new Date(e.end),
-          extendedProps: {
-             description: e.description,
-             projectId: e.projectId
-          }
-        }))
-        setEvents(formattedEvents)
-      } else {
-        // Tidligere skjedde ingenting – en tom kalender så ut som «ingen avtaler».
-        reportClientError(`Kalenderhenting feilet (${res.status})`, { level: "warning", context: { action: "Hente kalenderhendelser" } })
-        toast.error("Kunne ikke hente avtalene. Last siden på nytt.")
-      }
+      const raw = await fetchPrefetched(CALENDAR_KEYS.events(range), () => fetchCalendarEvents(range), {
+        maxAgeMs: force ? 0 : CALENDAR_MOUNT_MAX_AGE_MS,
+        force,
+      })
+      setEvents(toCalendarEvents(raw))
     } catch (e) {
+      if (e instanceof CalendarFetchError) {
+        // Tidligere skjedde ingenting – en tom kalender så ut som «ingen avtaler».
+        reportClientError(e.message, { level: "warning", context: { action: "Hente kalenderhendelser" } })
+        toast.error("Kunne ikke hente avtalene. Last siden på nytt.")
+        return
+      }
       console.error("Failed to fetch events", e)
       reportClientError(e, { level: "warning", context: { action: "Hente kalenderhendelser" } })
       toast.error("Kunne ikke hente avtalene. Sjekk nettforbindelsen.")
     }
   }, [])
 
-  const loadIntegrations = useCallback(async () => {
-    const supabase = createClient()
-    try {
-      const { data: userData } = await supabase.auth.getUser()
-      if (userData?.user) {
-        setLoggedIn(true)
-        const { data } = await supabase
-          .from('calendar_integrations')
-          .select('provider')
-          .eq('user_id', userData.user.id)
-
-        setIntegrations(data ?? [])
-      } else {
+  // Uten argument (etter til-/frakobling): alltid ferskt.
+  const loadIntegrations = useCallback(
+    async (maxAgeMs = 0) => {
+      if (!userId) {
         setLoggedIn(false)
         setIntegrations([])
+        setIsLoading(false)
+        return
       }
-    } catch (e) {
-      reportClientError(e, { level: "warning", context: { action: "Laste kalenderintegrasjoner" } })
-      setLoggedIn(false)
-      setIntegrations([])
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
+      setLoggedIn(true)
+      try {
+        setIntegrations(
+          await fetchPrefetched(CALENDAR_KEYS.integrations(userId), () => fetchCalendarIntegrations(userId), {
+            maxAgeMs,
+            force: maxAgeMs === 0,
+          })
+        )
+      } catch (e) {
+        reportClientError(e, { level: "warning", context: { action: "Laste kalenderintegrasjoner" } })
+        setIntegrations([])
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [userId]
+  )
 
   useEffect(() => {
-    loadIntegrations()
-  }, [loadIntegrations])
+    if (authLoading) return
+    loadIntegrations(CALENDAR_MOUNT_MAX_AGE_MS)
+  }, [authLoading, loadIntegrations])
 
   // Prosjektliste til «Koble til prosjekt» — RLS begrenser til brukerens egne prosjekter.
   useEffect(() => {
     if (!loggedIn) return
-    const supabase = createClient()
-    supabase
-      .from("projects")
-      .select("id, name")
-      .eq("status", "active")
-      .order("name")
-      .limit(100)
-      .then(({ data }) => setProjects(data ?? []))
+    fetchPrefetched(CALENDAR_KEYS.projects, fetchCalendarProjects, { maxAgeMs: 60_000 })
+      .then(setProjects)
+      .catch(() => {
+        // Som før: uten prosjektliste kan man fortsatt lage avtaler, bare ikke koble dem.
+      })
   }, [loggedIn])
 
   useEffect(() => {
@@ -209,25 +236,18 @@ function KalenderPage() {
   // finnes alltid; eksterne avtaler kommer i tillegg når noe er koblet til.
   useEffect(() => {
     if (!loggedIn) return
-
-    const startD = subMonths(startOfMonth(date), 1)
-    const endD = addMonths(endOfMonth(date), 1)
-
-    setFetchRange({
-       start: startD.toISOString(),
-       end: endD.toISOString()
-    })
+    setFetchRange(calendarRangeFor(date))
   }, [date, view, loggedIn, integrations])
 
   useEffect(() => {
     if (fetchRange) {
-      fetchEvents(fetchRange.start, fetchRange.end)
+      fetchEvents(fetchRange)
     }
   }, [fetchRange, fetchEvents])
 
   const triggerRefetch = () => {
      if (fetchRange) {
-        fetchEvents(fetchRange.start, fetchRange.end)
+        fetchEvents(fetchRange, true)
      }
   }
 
@@ -541,7 +561,7 @@ function KalenderPage() {
 
   if (loadingRole) {
     return (
-      <AppPageShell segments={["Kalender"]} noPadding>
+      <AppPageShell clientData segments={["Kalender"]} noPadding>
         <div className="flex h-full min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
           Laster inn...
         </div>
@@ -551,7 +571,7 @@ function KalenderPage() {
 
   if (!hasFeature("kalender")) {
     return (
-      <AppPageShell segments={["Kalender"]}>
+      <AppPageShell clientData segments={["Kalender"]}>
         <PlanGate
           featureName="Kalender"
           description="Bedriftens delte kalender med prosjektkobling — følger med alle Proanbud-planer med aktivt abonnement."
@@ -561,7 +581,7 @@ function KalenderPage() {
   }
 
   return (
-    <AppPageShell segments={["Kalender"]} noPadding>
+    <AppPageShell clientData segments={["Kalender"]} noPadding>
       <div className="flex h-full min-h-0 flex-1 flex-col">
         {statusMessage && (
           <div className="border-b border-border bg-muted/40 px-4 py-2 text-sm text-muted-foreground">
@@ -896,7 +916,7 @@ function KalenderPage() {
 
 function KalenderFallback() {
   return (
-    <AppPageShell segments={["Kalender"]} noPadding>
+    <AppPageShell clientData segments={["Kalender"]} noPadding>
       <div className="flex h-full min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
         Laster kalender…
       </div>

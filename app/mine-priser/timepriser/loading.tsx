@@ -2,7 +2,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 
 export default function Loading() {
   return (
-    <AppPageShell segments={["Mine Priser", "Timepriser"]}>
+    <AppPageShell skeleton segments={["Mine Priser", "Timepriser"]}>
       <div className="space-y-6">
         <div className="space-y-2">
           <div className="h-7 w-40 animate-pulse rounded bg-muted" />

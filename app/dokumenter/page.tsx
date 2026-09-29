@@ -7,7 +7,7 @@ export default async function Page() {
     await checkRoleAccess(["admin", "manager"])
 
     return (
-        <AppPageShell segments={["Dokumenter"]} noPadding>
+        <AppPageShell clientData segments={["Dokumenter"]} noPadding>
             <DocumentsManager />
         </AppPageShell>
     )

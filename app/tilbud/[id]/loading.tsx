@@ -2,7 +2,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 
 export default function Loading() {
   return (
-    <AppPageShell segments={["Tilbud", "Laster …"]}>
+    <AppPageShell skeleton segments={["Tilbud", "Laster …"]}>
       <div className="space-y-5">
         <div className="grid divide-y border border-border lg:grid-cols-2 lg:divide-x lg:divide-y-0">
           <div className="space-y-4 p-5">

@@ -2,7 +2,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 
 export default function Loading() {
   return (
-    <AppPageShell segments={["Min bedrift", "Kjørebok", "Ny tur"]} noPadding>
+    <AppPageShell skeleton segments={["Min bedrift", "Kjørebok", "Ny tur"]} noPadding>
       <div className="flex h-full min-h-0 flex-col gap-3 p-3 sm:p-4">
         <div className="flex shrink-0 items-center gap-3">
           <div className="size-9 animate-pulse rounded-md bg-muted" />

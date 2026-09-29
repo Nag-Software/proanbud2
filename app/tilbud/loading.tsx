@@ -2,7 +2,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 
 export default function Loading() {
   return (
-    <AppPageShell segments={["Tilbud"]}>
+    <AppPageShell skeleton segments={["Tilbud"]}>
       <div className="flex flex-col gap-3">
         {/* Søk + statuschips */}
         <div className="h-9 w-full animate-pulse rounded-md bg-muted/70 md:h-9" />

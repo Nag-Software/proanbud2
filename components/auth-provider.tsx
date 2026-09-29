@@ -1,9 +1,10 @@
 "use client"
 
-import React, { useEffect, useState, createContext, useContext } from "react"
+import React, { useEffect, useRef, useState, createContext, useContext } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { reportClientError } from "@/lib/errors/client"
+import { setPrefetchCacheScope } from "@/lib/perf/prefetch-cache"
 
 type AuthContextType = {
   user: any | null
@@ -18,6 +19,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   // Initialize client inside the component
   const [supabase] = useState(() => createClient())
+  // Id-en til brukeren vi sist ga videre; undefined = ikke kjent ennå.
+  const currentUserIdRef = useRef<string | null | undefined>(undefined)
 
   useEffect(() => {
     let mounted = true
@@ -32,7 +35,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data } = await supabase.auth.getSession()
         if (mounted) {
-          setUser(data?.session?.user ?? null)
+          const seeded = data?.session?.user ?? null
+          // onAuthStateChange kan ha svart først (INITIAL_SESSION); da vinner den.
+          if (currentUserIdRef.current === undefined) {
+            currentUserIdRef.current = seeded?.id ?? null
+            setPrefetchCacheScope(currentUserIdRef.current)
+            setUser(seeded)
+          }
         }
       } catch (e) {
         reportClientError(e, { level: "warning", context: { action: "seed-auth-session" } })
@@ -45,8 +54,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     seedUser()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      if (_event === 'SIGNED_IN' || _event === 'SIGNED_OUT') {
+      const nextUser = session?.user ?? null
+      // supabase-js sender SIGNED_IN hver gang fanen blir synlig igjen
+      // (_recoverAndRefresh), ikke bare ved faktisk innlogging. Å behandle det
+      // som innlogging kostet en full router.refresh() per fanebytte — siden
+      // ble rendret på nytt og HELE ruter-cachen (alle forvarmede sider) kastet
+      // — og ga alle som lytter på `user` et nytt objekt å reagere på. Samme
+      // hendelse kommer også ved hver full sidelasting, så hver innlasting ble
+      // rendret to ganger på serveren.
+      // Nå teller bare et faktisk bytte fra en KJENT tilstand (inn, ut, eller
+      // annen konto); første svar etter lasting er bare en bekreftelse.
+      const previousId = currentUserIdRef.current
+      const nextId: string | null = nextUser?.id ?? null
+      currentUserIdRef.current = nextId
+      if (previousId === nextId && _event !== "USER_UPDATED") return
+      // Forvarmede data tilhører én bruker — tømmes før noe nytt kan leses.
+      setPrefetchCacheScope(nextId)
+      setUser(nextUser)
+      const userChanged = previousId !== undefined && previousId !== nextId
+      if (userChanged && (_event === 'SIGNED_IN' || _event === 'SIGNED_OUT')) {
         router.refresh()
       }
     })

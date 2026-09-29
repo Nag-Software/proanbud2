@@ -130,6 +130,12 @@ export function KartClient({
   const [customers, setCustomers] = useState(initialCustomers)
   const [geofences, setGeofences] = useState(initialGeofences)
   const [ops, setOps] = useState(initialOps)
+
+  // Ny rendering fra serveren (oppfrisking av en side vist fra cache): det
+  // levende laget skal aldri stå igjen på forvarmede data.
+  useEffect(() => {
+    setOps(initialOps)
+  }, [initialOps])
   const [liveAt, setLiveAt] = useState<Date | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showCustomers, setShowCustomers] = useState(false)

@@ -209,11 +209,16 @@ export async function updateSession(request: NextRequest) {
     let isCompanyAdmin = false
     let userRole: string | null = null
 
-    // These two RPCs are independent — run them in parallel to save a round trip
-    // on every navigation.
-    const [companyIdResult, isAdminResult] = await Promise.all([
+    // These RPCs are independent — run them in parallel to save round trips
+    // on every navigation. The subscription status is fetched speculatively in
+    // the same wave (it resolves the company itself, server-side); its result is
+    // only read further down when the user turns out to HAVE a company, so the
+    // decision logic is unchanged — it just no longer costs a second wave.
+    const needsSubscriptionCheck = !isSubscriptionExemptRoute(pathname)
+    const [companyIdResult, isAdminResult, subscriptionStatusResult] = await Promise.all([
       supabase.rpc('get_current_company_id'),
       supabase.rpc('is_company_admin'),
+      needsSubscriptionCheck ? supabase.rpc('get_current_subscription_status') : null,
     ])
     const { data: rpcCompanyId, error: rpcError } = companyIdResult
     if (rpcError) {
@@ -311,12 +316,10 @@ export async function updateSession(request: NextRequest) {
     // paying. Admins go to the billing/onboarding flow they can act on; non-admins
     // get a read-only "contact your admin" page.
     let subscriptionVerifiedActive = false
-    if (companyId && !isSubscriptionExemptRoute(pathname)) {
+    if (companyId && needsSubscriptionCheck && subscriptionStatusResult) {
       let subscriptionStatus: string
 
-      const { data: rpcStatus, error: statusError } = await supabase.rpc(
-        'get_current_subscription_status'
-      )
+      const { data: rpcStatus, error: statusError } = subscriptionStatusResult
 
       if (statusError) {
         console.error('Middleware get_current_subscription_status RPC failed', {

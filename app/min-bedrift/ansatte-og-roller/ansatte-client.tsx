@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -49,6 +49,11 @@ function StatusBadge({ status }: { status: string }) {
 export function AnsatteClient({ initialEmployees }: { initialEmployees?: Employee[] }) {
   const confirm = useConfirm();
   const [employees, setEmployees] = useState(initialEmployees ?? fallbackEmployees);
+
+  // Ny rendering fra serveren (oppfrisking av en side vist fra cache).
+  useEffect(() => {
+    if (initialEmployees) setEmployees(initialEmployees);
+  }, [initialEmployees]);
   const [search, setSearch] = useState("");
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");

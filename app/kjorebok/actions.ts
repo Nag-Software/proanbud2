@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { createClient } from "@/lib/supabase/server"
+import { getServerAuthContext, getSessionUser } from "@/lib/auth/server-context"
 import { logServerError } from "@/lib/errors/log"
 import { assertCompanyHasModule, companyHasModule } from "@/lib/billing/server-modules"
 import { canManageProjects, normalizeRole } from "@/lib/roles"
@@ -21,17 +22,18 @@ import type {
 const KJOREBOK_MODULE = "kjorebok" as const
 
 async function getEffectiveRole(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
-  const { data: userRoleData } = await supabase
-    .from("user_roles")
-    .select("roles(name)")
-    .eq("user_id", userId)
-    .maybeSingle()
+  // Hurtigvei: konteksten har allerede slått opp denne brukeren i samme render,
+  // med identisk prioritet (user_roles foran users.role) — null spørringer.
+  const context = await getServerAuthContext()
+  if (context && context.user.id === userId) {
+    return { role: context.role, companyId: context.companyId }
+  }
 
-  const { data: userTableData } = await supabase
-    .from("users")
-    .select("role, company_id")
-    .eq("id", userId)
-    .maybeSingle()
+  // Reserve for en annen userId enn den innloggede: én bølge, ikke to.
+  const [{ data: userRoleData }, { data: userTableData }] = await Promise.all([
+    supabase.from("user_roles").select("roles(name)").eq("user_id", userId).maybeSingle(),
+    supabase.from("users").select("role, company_id").eq("id", userId).maybeSingle(),
+  ])
 
   // @ts-expect-error Supabase nested relation typing
   const role = userRoleData?.roles?.name || userTableData?.role || null
@@ -82,10 +84,7 @@ async function getVehicleFuel(
 // ---------------------------------------------------------------------------
 
 export async function getVehiclesAction(): Promise<VehicleRow[]> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) return []
 
   const { companyId } = await getEffectiveRole(supabase, user.id)
@@ -112,10 +111,7 @@ export async function getVehiclesAction(): Promise<VehicleRow[]> {
 }
 
 export async function createVehicleAction(input: VehicleInput): Promise<VehicleRow> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) throw new Error("Du må være logget inn")
 
   const { companyId } = await getEffectiveRole(supabase, user.id)
@@ -157,10 +153,7 @@ export async function createVehicleAction(input: VehicleInput): Promise<VehicleR
 }
 
 export async function updateVehicleAction(id: string, patch: Partial<VehicleInput>): Promise<VehicleRow> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) throw new Error("Du må være logget inn")
 
   const { companyId } = await getEffectiveRole(supabase, user.id)
@@ -206,10 +199,7 @@ export async function updateVehicleAction(id: string, patch: Partial<VehicleInpu
 }
 
 export async function deleteVehicleAction(id: string): Promise<void> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) throw new Error("Du må være logget inn")
 
   const { companyId } = await getEffectiveRole(supabase, user.id)
@@ -283,10 +273,7 @@ export async function getCompanyTripsOverviewAction(filter?: TripFilter): Promis
     vehicles: [],
   }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) return empty
 
   const { role, companyId } = await getEffectiveRole(supabase, user.id)
@@ -412,10 +399,7 @@ export type TripFormContext = {
 export async function getTripFormContextAction(): Promise<TripFormContext> {
   const empty: TripFormContext = { canViewAll: false, drivers: [], projects: [], vehicles: [] }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) return empty
 
   const { role, companyId } = await getEffectiveRole(supabase, user.id)
@@ -446,10 +430,7 @@ export async function getTripFormContextAction(): Promise<TripFormContext> {
 }
 
 export async function getProjectTripsAction(projectId: string, viewAll = false): Promise<TripWithRefs[]> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) return []
 
   const { role, companyId } = await getEffectiveRole(supabase, user.id)
@@ -551,10 +532,7 @@ async function buildTripRow(
 }
 
 export async function createTripAction(input: TripInput): Promise<TripWithRefs> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) throw new Error("Du må være logget inn")
 
   const { role, companyId } = await getEffectiveRole(supabase, user.id)
@@ -592,10 +570,7 @@ export async function createTripAction(input: TripInput): Promise<TripWithRefs> 
 }
 
 export async function updateTripAction(id: string, input: TripInput): Promise<TripWithRefs> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) throw new Error("Du må være logget inn")
 
   const { role, companyId } = await getEffectiveRole(supabase, user.id)
@@ -661,10 +636,7 @@ export async function updateTripAction(id: string, input: TripInput): Promise<Tr
 }
 
 export async function deleteTripAction(id: string): Promise<void> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) throw new Error("Du må være logget inn")
 
   const { role, companyId } = await getEffectiveRole(supabase, user.id)
@@ -705,10 +677,7 @@ export async function deleteTripAction(id: string): Promise<void> {
 
 /** Re-apply the current statens-sats to a trip (e.g. after a yearly rate change). */
 export async function recalcTripAmountAction(id: string): Promise<TripWithRefs> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { supabase, user } = await getSessionUser()
   if (!user) throw new Error("Du må være logget inn")
 
   const { role, companyId } = await getEffectiveRole(supabase, user.id)

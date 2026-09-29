@@ -139,13 +139,30 @@ export async function GET(request: Request) {
 
     const events: CalendarEvent[] = []
 
-    // Innebygd kalender — RLS begrenser til brukerens bedrift.
-    const { data: localEvents, error: localError } = await supabase
-      .from("calendar_events")
-      .select("id, title, description, starts_at, ends_at, color, project_id")
-      .lt("starts_at", end)
-      .gt("ends_at", start)
-      .order("starts_at")
+    // De tre oppslagene er uavhengige av hverandre — én runde, ikke tre.
+    const [
+      { data: localEvents, error: localError },
+      { data: integrations, error },
+      { data: links },
+    ] = await Promise.all([
+      // Innebygd kalender — RLS begrenser til brukerens bedrift.
+      supabase
+        .from("calendar_events")
+        .select("id, title, description, starts_at, ends_at, color, project_id")
+        .lt("starts_at", end)
+        .gt("ends_at", start)
+        .order("starts_at"),
+      supabase
+        .from("calendar_integrations")
+        .select("id, provider, access_token, expires_at")
+        .eq("user_id", user.id),
+      // Avtaler som er kopiert fra Proanbud til brukerens eksterne kalender skal
+      // ikke vises dobbelt — filtrer bort de eksterne kopiene via linktabellen.
+      supabase
+        .from("calendar_event_links")
+        .select("provider, external_id")
+        .eq("user_id", user.id),
+    ])
 
     if (localError) {
       await logServerError({
@@ -172,11 +189,6 @@ export async function GET(request: Request) {
       })
     }
 
-    const { data: integrations, error } = await supabase
-      .from("calendar_integrations")
-      .select("id, provider, access_token, expires_at")
-      .eq("user_id", user.id)
-
     if (error) {
       await logServerError({
         message: "Henting av kalenderkoblinger feilet",
@@ -188,68 +200,69 @@ export async function GET(request: Request) {
       return NextResponse.json(events)
     }
 
-    // Avtaler som er kopiert fra Proanbud til brukerens eksterne kalender skal
-    // ikke vises dobbelt — filtrer bort de eksterne kopiene via linktabellen.
-    const { data: links } = await supabase
-      .from("calendar_event_links")
-      .select("provider, external_id")
-      .eq("user_id", user.id)
     const mirroredExternalIds = new Set(
       (links ?? []).map((l) => `${l.provider}:${l.external_id}`)
     )
 
-    for (const integration of integrations ?? []) {
-      const validIntegration = await ensureValidToken(user.id, integration.provider)
-      if (!validIntegration || !validIntegration.access_token) continue
+    // Google og Outlook hentes samtidig (hver med egen tokenfornyelse), og
+    // legges inn i samme rekkefølge som før.
+    const externalBatches = await Promise.all(
+      (integrations ?? []).map(async (integration) => {
+        const batch: CalendarEvent[] = []
+        const validIntegration = await ensureValidToken(user.id, integration.provider)
+        if (!validIntegration || !validIntegration.access_token) return batch
 
-      if (validIntegration.provider === "google") {
-        try {
-          const googleEvents = await fetchGoogleCalendarEvents(
-            validIntegration.access_token,
-            start,
-            end
-          )
-          events.push(
-            ...googleEvents.filter(
-              (e) => !mirroredExternalIds.has(`google:${e.id.slice("google-".length)}`)
+        if (validIntegration.provider === "google") {
+          try {
+            const googleEvents = await fetchGoogleCalendarEvents(
+              validIntegration.access_token,
+              start,
+              end
             )
-          )
-        } catch (err) {
-          console.error("Error fetching Google Calendar events:", err)
-          await logServerError({
-            message: "Failed to fetch Google Calendar events",
-            error: err,
-            source: "api",
-            route: "GET /api/calendar/events",
-            level: "warning",
-            context: { userId: user.id, provider: "google" },
-          })
-        }
-      } else if (validIntegration.provider === "microsoft") {
-        try {
-          const microsoftEvents = await fetchMicrosoftCalendarEvents(
-            validIntegration.access_token,
-            start,
-            end
-          )
-          events.push(
-            ...microsoftEvents.filter(
-              (e) => !mirroredExternalIds.has(`microsoft:${e.id.slice("ms-".length)}`)
+            batch.push(
+              ...googleEvents.filter(
+                (e) => !mirroredExternalIds.has(`google:${e.id.slice("google-".length)}`)
+              )
             )
-          )
-        } catch (err) {
-          console.error("Error fetching Microsoft Calendar events:", err)
-          await logServerError({
-            message: "Failed to fetch Microsoft Calendar events",
-            error: err,
-            source: "api",
-            route: "GET /api/calendar/events",
-            level: "warning",
-            context: { userId: user.id, provider: "microsoft" },
-          })
+          } catch (err) {
+            console.error("Error fetching Google Calendar events:", err)
+            await logServerError({
+              message: "Failed to fetch Google Calendar events",
+              error: err,
+              source: "api",
+              route: "GET /api/calendar/events",
+              level: "warning",
+              context: { userId: user.id, provider: "google" },
+            })
+          }
+        } else if (validIntegration.provider === "microsoft") {
+          try {
+            const microsoftEvents = await fetchMicrosoftCalendarEvents(
+              validIntegration.access_token,
+              start,
+              end
+            )
+            batch.push(
+              ...microsoftEvents.filter(
+                (e) => !mirroredExternalIds.has(`microsoft:${e.id.slice("ms-".length)}`)
+              )
+            )
+          } catch (err) {
+            console.error("Error fetching Microsoft Calendar events:", err)
+            await logServerError({
+              message: "Failed to fetch Microsoft Calendar events",
+              error: err,
+              source: "api",
+              route: "GET /api/calendar/events",
+              level: "warning",
+              context: { userId: user.id, provider: "microsoft" },
+            })
+          }
         }
-      }
-    }
+        return batch
+      })
+    )
+    for (const batch of externalBatches) events.push(...batch)
 
     // Return an array of events which works for BigCalendar and similar calendar components
     return NextResponse.json(events)

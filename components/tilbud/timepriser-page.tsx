@@ -5,6 +5,12 @@ import { Loader2, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-re
 import { toast } from "sonner"
 
 import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
+import {
+  fetchHourlyRates,
+  MINE_PRISER_KEYS,
+  MINE_PRISER_MOUNT_MAX_AGE_MS,
+} from "@/lib/mine-priser/client-api"
+import { fetchPrefetched, readPrefetched, replacePrefetched } from "@/lib/perf/prefetch-cache"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -71,9 +77,11 @@ function parseRateInput(value: string) {
 }
 
 export function TimepriserPage() {
-  const [rates, setRates] = useState<HourlyRate[]>([])
+  // Forvarmet av app-skallet (lib/perf/page-data-warmers) — vis det som ligger
+  // i cachen med en gang, og frisk opp i bakgrunnen.
+  const [rates, setRates] = useState<HourlyRate[]>(() => readPrefetched<HourlyRate[]>(MINE_PRISER_KEYS.timepriser) ?? [])
   const [search, setSearch] = useState("")
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(() => readPrefetched(MINE_PRISER_KEYS.timepriser) === undefined)
   const [isSaving, setIsSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -84,14 +92,14 @@ export function TimepriserPage() {
   const [costInput, setCostInput] = useState("")
 
   const loadRates = useCallback(async () => {
-    setIsLoading(true)
+    // Spinner bare når det ikke finnes noe å vise ennå.
+    if (readPrefetched(MINE_PRISER_KEYS.timepriser) === undefined) setIsLoading(true)
     try {
-      const res = await fetch("/api/mine-priser/timepriser")
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(data.error || "Kunne ikke hente timepriser")
-      }
-      setRates(data.rates ?? [])
+      setRates(
+        await fetchPrefetched(MINE_PRISER_KEYS.timepriser, fetchHourlyRates<HourlyRate>, {
+          maxAgeMs: MINE_PRISER_MOUNT_MAX_AGE_MS,
+        })
+      )
     } catch (error) {
       console.error(error)
       reportClientError(error, { context: { action: "load hourly rates" } })
@@ -104,6 +112,12 @@ export function TimepriserPage() {
   useEffect(() => {
     void loadRates()
   }, [loadRates])
+
+  // Lokale endringer (lagret/slettet) speiles inn i cachen, så en rask
+  // tilbake-navigasjon ikke viser lista fra før endringen.
+  useEffect(() => {
+    replacePrefetched(MINE_PRISER_KEYS.timepriser, rates)
+  }, [rates])
 
   const filteredRates = rates.filter((rate) =>
     rate.job_type.toLowerCase().includes(search.toLowerCase())

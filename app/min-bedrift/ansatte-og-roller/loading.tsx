@@ -2,7 +2,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 
 export default function Loading() {
   return (
-    <AppPageShell segments={["Min bedrift", "Ansatte og roller"]}>
+    <AppPageShell skeleton segments={["Min bedrift", "Ansatte og roller"]}>
       <div className="mx-auto w-full">
         <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div className="h-8 w-56 animate-pulse rounded bg-muted" />

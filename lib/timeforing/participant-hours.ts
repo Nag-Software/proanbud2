@@ -1,3 +1,5 @@
+import { cache } from "react"
+
 import type { createClient } from "@/lib/supabase/server"
 import { logServerError } from "@/lib/errors/log"
 import { buildEmployeeSummaries, type TimeEntryRow } from "@/lib/time-tracking"
@@ -20,7 +22,13 @@ export function completedEntriesQuery(supabase: ServerClient) {
 /** Per-participant hour summaries for a single project. The caller is
  *  responsible for verifying the timeføring module + project-admin access
  *  (the exported server action does this; the project page already has it). */
-export async function fetchParticipantHours(supabase: ServerClient, projectId: string) {
+// `cache()`: prosjektsiden henter dette både selv og via lønnsomhetsberegningen
+// i samme render (samme klient, samme prosjekt) — nå én spørring, ikke to.
+// Utenfor en render (server actions) er cache() en ren gjennomgang.
+export const fetchParticipantHours = cache(async function fetchParticipantHours(
+  supabase: ServerClient,
+  projectId: string
+) {
   const { data, error } = await completedEntriesQuery(supabase)
     .eq("project_id", projectId)
     .order("ended_at", { ascending: false })
@@ -44,4 +52,4 @@ export async function fetchParticipantHours(supabase: ServerClient, projectId: s
     totalHours: summary.totalHours,
     entryCount: summary.entryCount,
   }))
-}
+})

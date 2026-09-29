@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 
 export default function Page() {
   return (
-    <AppPageShell segments={["Mine Priser", "Timepriser"]}>
+    <AppPageShell clientData segments={["Mine Priser", "Timepriser"]}>
       <TimepriserPage />
     </AppPageShell>
   )

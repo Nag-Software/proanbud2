@@ -5,6 +5,12 @@ import { Loader2, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-re
 import { toast } from "sonner"
 
 import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
+import {
+  fetchSavedJobs,
+  MINE_PRISER_KEYS,
+  MINE_PRISER_MOUNT_MAX_AGE_MS,
+} from "@/lib/mine-priser/client-api"
+import { fetchPrefetched, readPrefetched, replacePrefetched } from "@/lib/perf/prefetch-cache"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -58,9 +64,11 @@ function parsePriceInput(value: string) {
 }
 
 export function LagredeJobberPage() {
-  const [jobs, setJobs] = useState<SavedJob[]>([])
+  // Forvarmet av app-skallet (lib/perf/page-data-warmers) — vis det som ligger
+  // i cachen med en gang, og frisk opp i bakgrunnen.
+  const [jobs, setJobs] = useState<SavedJob[]>(() => readPrefetched<SavedJob[]>(MINE_PRISER_KEYS.lagredeJobber) ?? [])
   const [search, setSearch] = useState("")
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(() => readPrefetched(MINE_PRISER_KEYS.lagredeJobber) === undefined)
   const [isSaving, setIsSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -71,14 +79,14 @@ export function LagredeJobberPage() {
   const [hoursInput, setHoursInput] = useState("")
 
   const loadJobs = useCallback(async () => {
-    setIsLoading(true)
+    // Spinner bare når det ikke finnes noe å vise ennå.
+    if (readPrefetched(MINE_PRISER_KEYS.lagredeJobber) === undefined) setIsLoading(true)
     try {
-      const res = await fetch("/api/mine-priser/lagrede-jobber")
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(data.error || "Kunne ikke hente lagrede jobber")
-      }
-      setJobs(data.jobs ?? [])
+      setJobs(
+        await fetchPrefetched(MINE_PRISER_KEYS.lagredeJobber, fetchSavedJobs<SavedJob>, {
+          maxAgeMs: MINE_PRISER_MOUNT_MAX_AGE_MS,
+        })
+      )
     } catch (error) {
       console.error(error)
       reportClientError(error, { context: { action: "load saved jobs" } })
@@ -91,6 +99,12 @@ export function LagredeJobberPage() {
   useEffect(() => {
     void loadJobs()
   }, [loadJobs])
+
+  // Lokale endringer (lagret/slettet) speiles inn i cachen, så en rask
+  // tilbake-navigasjon ikke viser lista fra før endringen.
+  useEffect(() => {
+    replacePrefetched(MINE_PRISER_KEYS.lagredeJobber, jobs)
+  }, [jobs])
 
   const filteredJobs = jobs.filter((job) => job.name.toLowerCase().includes(search.toLowerCase()))
 

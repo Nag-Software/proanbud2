@@ -202,11 +202,6 @@ export async function getDeviationStatsAction(): Promise<DeviationStats> {
   }
 }
 
-export async function getOpenDeviationCountAction() {
-  const stats = await getDeviationStatsAction()
-  return stats.openCount
-}
-
 export async function getAccessibleProjectsAction() {
   const { supabase, user, companyId, role } = await getAuthContext()
 

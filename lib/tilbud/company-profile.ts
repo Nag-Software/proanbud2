@@ -115,21 +115,30 @@ export function normalizeRelatedCompanyRow<T>(value: T | T[] | null | undefined)
   return value || null
 }
 
+/**
+ * `knownCompanyId`: firma-id-en når kalleren allerede har den (serversider har
+ * den i den delte auth-konteksten) — sparer en hel runde mot `users`. Denne
+ * modulen importeres også av klientkode, så den kan ikke slå opp konteksten
+ * selv.
+ */
 export async function fetchCompanyProfileRow(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  knownCompanyId?: string | null
 ): Promise<{ companyId: string; row: CompanyProfileRow; profileFieldsAvailable: boolean } | null> {
-  const { data: userRow, error: userError } = await supabase
-    .from("users")
-    .select("company_id")
-    .eq("id", userId)
-    .maybeSingle()
+  let companyId = knownCompanyId ?? null
+  if (!companyId) {
+    const { data: userRow, error: userError } = await supabase
+      .from("users")
+      .select("company_id")
+      .eq("id", userId)
+      .maybeSingle()
 
-  if (userError || !userRow?.company_id) {
-    return null
+    if (userError || !userRow?.company_id) {
+      return null
+    }
+    companyId = userRow.company_id as string
   }
-
-  const companyId = userRow.company_id
 
   const { data: fullRow, error: fullError } = await supabase
     .from("companies")
@@ -157,9 +166,10 @@ export async function fetchCompanyProfileRow(
 
 export async function fetchOfferCompanyContext(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  knownCompanyId?: string | null
 ): Promise<OfferCompanyContext | null> {
-  const result = await fetchCompanyProfileRow(supabase, userId)
+  const result = await fetchCompanyProfileRow(supabase, userId, knownCompanyId)
   if (!result) {
     return null
   }

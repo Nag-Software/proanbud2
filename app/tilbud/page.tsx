@@ -1,5 +1,6 @@
 import { AppPageShell } from "@/components/app-page-shell"
 import { checkRoleAccess } from "@/lib/auth-utils"
+import { getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
 
@@ -42,16 +43,11 @@ export default async function TilbudPage() {
   // Workers jobber ikke med tilbud — checkRoleAccess redirecter dem automatisk.
   const { user } = await checkRoleAccess(["admin", "manager"])
 
-  const supabase = await createClient()
-
   // Eksplisitt company-scoping i tillegg til RLS
   // (view_offers_for_accessible_projects) — samme belte-og-bukser som
-  // dashbordets tilbudsspørringer.
-  const { data: userRow } = await supabase
-    .from("users")
-    .select("company_id")
-    .eq("id", user.id)
-    .maybeSingle()
+  // dashbordets tilbudsspørringer. Firma-id-en er allerede slått opp av
+  // rollesjekken over (delt kontekst), så dette koster ingen ekstra runde.
+  const [supabase, companyId] = await Promise.all([createClient(), getCurrentCompanyIdForUser(user.id)])
 
   let offersQuery = supabase
     .from("offers")
@@ -61,8 +57,8 @@ export default async function TilbudPage() {
     .order("created_at", { ascending: false })
     .limit(OFFER_LIMIT)
 
-  if (userRow?.company_id) {
-    offersQuery = offersQuery.eq("company_id", userRow.company_id)
+  if (companyId) {
+    offersQuery = offersQuery.eq("company_id", companyId)
   }
 
   const { data, error } = await offersQuery

@@ -98,3 +98,20 @@ export async function requireServerAuthContext(): Promise<
   if (!context.companyId) throw new Error("Fant ikke bedrift")
   return context as ServerAuthContext & { companyId: string }
 }
+
+/**
+ * Innlogget bruker + Supabase-klient for server actions som tidligere gjorde
+ * `supabase.auth.getUser()` — en rundtur til auth-serveren i HVER action.
+ * Leser i stedet den delte konteksten over (lokal JWT-verifisering, og samme
+ * oppslag som siden og de andre actionene i samme render). `user` er null når
+ * ingen er innlogget, akkurat som før. RLS er fortsatt grensen for hva
+ * spørringene får se: PostgREST verifiserer det samme JWT-et på samme måte.
+ */
+export async function getSessionUser(): Promise<{
+  supabase: ServerAuthContext["supabase"]
+  user: ServerAuthContext["user"] | null
+}> {
+  const context = await getServerAuthContext()
+  if (context) return { supabase: context.supabase, user: context.user }
+  return { supabase: await createClient(), user: null }
+}

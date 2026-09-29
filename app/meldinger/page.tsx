@@ -1,5 +1,5 @@
 
-import { createClient } from "@/lib/supabase/server";
+import { getServerAuthContext } from "@/lib/auth/server-context";
 import { redirect } from "next/navigation";
 import InboxClient from "./inbox-client";
 import { AppPageShell } from "@/components/app-page-shell";
@@ -25,19 +25,15 @@ export default async function Page({
   // reuse it instead of issuing a second auth.getUser() round-trip.
   const { user } = await checkRoleAccess(["admin", "manager"]);
 
-  const supabase = await createClient();
+  // Firma-id-en ligger allerede i den delte konteksten rollesjekken over slo
+  // opp (samme rad, samme RLS-klient) — ingen ekstra runde mot databasen.
+  const companyId = (await getServerAuthContext())?.companyId ?? null;
 
-  const { data: userData } = await supabase
-    .from("users")
-    .select("company_id")
-    .eq("id", user.id)
-    .single();
-
-  if (!userData?.company_id) {
+  if (!companyId) {
     redirect("/login");
   }
 
-  if (!(await companyHasFeature(userData.company_id, "meldinger"))) {
+  if (!(await companyHasFeature(companyId, "meldinger"))) {
     return (
       <AppPageShell segments={["Meldinger"]}>
         <PlanGate
@@ -50,9 +46,9 @@ export default async function Page({
 
   return (
 
-    <AppPageShell segments={["Meldinger"]} noPadding>
+    <AppPageShell clientData segments={["Meldinger"]} noPadding>
       <InboxClient
-        companyId={userData.company_id}
+        companyId={companyId}
         currentUserId={user.id}
         initialCustomerId={initialCustomerId}
       />

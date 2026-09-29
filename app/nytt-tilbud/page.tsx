@@ -138,15 +138,20 @@ export default async function NyttTilbudPage({ searchParams }: Props) {
     )
   }
 
-  const user = (await getServerAuthContext())?.user ?? null
+  const context = await getServerAuthContext()
+  const user = context?.user ?? null
+  const knownCompanyId = context?.companyId ?? null
 
-  const [projectResult, company] = await Promise.all([
+  // Prosjektet, bedriftsprofilen og tilbudsstandardene er uavhengige når
+  // firma-id-en er kjent fra konteksten — én runde i stedet for tre.
+  const [projectResult, company, knownOfferDefaults] = await Promise.all([
     supabase
       .from("projects")
       .select("id, name, customer_id, description, status, project_type, budget_nok, customers(id, name, email, phone)")
       .eq("id", projectIdParam)
       .maybeSingle(),
-    user ? fetchOfferCompanyContext(supabase, user.id) : Promise.resolve(null),
+    user ? fetchOfferCompanyContext(supabase, user.id, knownCompanyId) : Promise.resolve(null),
+    knownCompanyId ? fetchCompanyOfferDefaults(supabase, knownCompanyId) : Promise.resolve(null),
   ])
 
   const projectRow = projectResult.data as ProjectRow | null
@@ -157,7 +162,12 @@ export default async function NyttTilbudPage({ searchParams }: Props) {
   // Egen spørring: standard prismodell/kontraktsgrunnlag (db/96) skal ikke kunne
   // velte resten av bedriftsprofilen om migrasjonen mangler.
   const companyWithDefaults = company
-    ? { ...company, ...(await fetchCompanyOfferDefaults(supabase, company.id)) }
+    ? {
+        ...company,
+        ...(knownOfferDefaults && company.id === knownCompanyId
+          ? knownOfferDefaults
+          : await fetchCompanyOfferDefaults(supabase, company.id)),
+      }
     : null
 
   const joinedCustomer = normalizeCustomer(projectRow)

@@ -51,6 +51,11 @@ export function RegnskapClient({
 }) {
   const [scopes, setScopes] = React.useState(state?.scopes ?? {})
   const [jobs, setJobs] = React.useState(initialJobs)
+
+  // Ny rendering fra serveren (oppfrisking av en side vist fra cache).
+  React.useEffect(() => {
+    setJobs(initialJobs)
+  }, [initialJobs])
   const [busy, setBusy] = React.useState<string | null>(null)
 
   async function call(action: string, extra?: Record<string, unknown>) {

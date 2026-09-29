@@ -21,6 +21,12 @@ import { toast } from "sonner"
 import { dedupeHeaders, MAX_ROWS, parseExcel, type ParsedData } from "@/lib/prisfiler/parse-excel"
 import { track } from "@/lib/analytics/track"
 import { reportClientError } from "@/lib/errors/client"
+import {
+  fetchPriceFiles,
+  MINE_PRISER_KEYS,
+  MINE_PRISER_MOUNT_MAX_AGE_MS,
+} from "@/lib/mine-priser/client-api"
+import { fetchPrefetched, readPrefetched, replacePrefetched } from "@/lib/perf/prefetch-cache"
 import { Button } from "@/components/ui/button"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -452,8 +458,8 @@ function WizardStepper({ step }: { step: number }) {
 
 export function PrisfilerPage() {
   const confirm = useConfirm()
-  const [files, setFiles] = useState<PriceFile[]>([])
-  const [loadingFiles, setLoadingFiles] = useState(true)
+  const [files, setFiles] = useState<PriceFile[]>(() => readPrefetched<PriceFile[]>(MINE_PRISER_KEYS.prisfiler) ?? [])
+  const [loadingFiles, setLoadingFiles] = useState(() => readPrefetched(MINE_PRISER_KEYS.prisfiler) === undefined)
   const [parsing, setParsing] = useState(false)
 
   const [open, setOpen] = useState(false)
@@ -491,17 +497,28 @@ export function PrisfilerPage() {
   const [deletingRowId, setDeletingRowId] = useState<string | null>(null)
 
   useEffect(() => {
-    loadFiles()
+    loadFiles(MINE_PRISER_MOUNT_MAX_AGE_MS)
   }, [])
 
-  async function loadFiles() {
-    setLoadingFiles(true)
+  // Lokale endringer (sletting) speiles inn i cachen, så en rask
+  // tilbake-navigasjon ikke viser lista fra før endringen.
+  useEffect(() => {
+    replacePrefetched(MINE_PRISER_KEYS.prisfiler, files)
+  }, [files])
+
+  // Uten argument (etter opplasting/endring): alltid ferskt fra serveren.
+  async function loadFiles(maxAgeMs = 0) {
+    // Spinner bare når det ikke finnes noe å vise ennå (forvarmet av app-skallet).
+    if (readPrefetched(MINE_PRISER_KEYS.prisfiler) === undefined) setLoadingFiles(true)
     try {
-      const res = await fetch("/api/mine-priser/prisfiler")
-      if (res.ok) {
-        const data = await res.json()
-        setFiles(data.files ?? [])
-      }
+      setFiles(
+        await fetchPrefetched(MINE_PRISER_KEYS.prisfiler, fetchPriceFiles<PriceFile>, {
+          maxAgeMs,
+          force: maxAgeMs === 0,
+        })
+      )
+    } catch {
+      // Som før: en feilet henting lar lista stå som den er.
     } finally {
       setLoadingFiles(false)
     }

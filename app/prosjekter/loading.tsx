@@ -4,7 +4,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 
 export default function Loading() {
   return (
-    <AppPageShell segments={["Prosjekter"]}>
+    <AppPageShell skeleton segments={["Prosjekter"]}>
       <section className="space-y-8">
         <div className="flex items-center justify-between gap-3">
           <div className="space-y-1">

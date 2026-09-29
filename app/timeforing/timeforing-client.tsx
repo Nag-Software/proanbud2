@@ -128,6 +128,14 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
     initial.ok ? initial.data : null
   )
   const [loadError, setLoadError] = useState<string | null>(initial.ok ? null : initial.error)
+
+  // Ny rendering fra serveren (siden ble vist fra cache og friskes opp, se
+  // components/perf/page-freshness) — ta imot de ferske dataene.
+  useEffect(() => {
+    if (!initial.ok) return
+    setOverview(initial.data)
+    setLoadError(null)
+  }, [initial])
   const [retrying, setRetrying] = useState(false)
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)

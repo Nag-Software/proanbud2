@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState, useTransition } from "react"
+import { useCallback, useEffect, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { format } from "date-fns"
 import { nb } from "date-fns/locale"
@@ -81,6 +81,14 @@ export function KjorebokWorkerClient({ initialOverview, currentUserId }: Props) 
   const router = useRouter()
   const [overview, setOverview] = useState<TripsOverview>(initialOverview)
   const [filter, setFilter] = useState<TripFilter>({})
+
+  // Ny rendering fra serveren (oppfrisking av en side vist fra cache). Den
+  // gjelder standardvisningen, så et aktivt filter overskrives ikke.
+  const filterRef = useRef(filter)
+  filterRef.current = filter
+  useEffect(() => {
+    if (Object.keys(filterRef.current).length === 0) setOverview(initialOverview)
+  }, [initialOverview])
   const [, startTransition] = useTransition()
   const [loading, setLoading] = useState(false)
 

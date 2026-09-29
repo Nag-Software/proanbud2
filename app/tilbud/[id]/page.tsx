@@ -227,20 +227,25 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
   const { id } = await params
   const supabase = await createClient()
 
-  const user = (await getServerAuthContext())?.user ?? null
+  const context = await getServerAuthContext()
+  const user = context?.user ?? null
 
   if (!user) {
     notFound()
   }
 
-  const company = await fetchOfferCompanyContext(supabase, user.id)
-  if (!company) {
+  // Firma-id-en ligger i den delte konteksten (samme users-rad som
+  // bedriftsprofil-oppslaget ville lest), så bedriftsprofilen, tilbudet og
+  // aktiviteten hentes i ÉN runde — ikke users → companies → tilbud i serie.
+  // Uten kjent firma faller vi tilbake til den gamle rekkefølgen.
+  const companyId =
+    context?.companyId ?? (await fetchOfferCompanyContext(supabase, user.id))?.id ?? null
+  if (!companyId) {
     notFound()
   }
 
-  const companyId = company.id
-
-  const [offerResult, activityRows] = await Promise.all([
+  const [company, offerResult, activityRows] = await Promise.all([
+    fetchOfferCompanyContext(supabase, user.id, companyId),
     supabase
       .from("offers")
       .select(
@@ -252,7 +257,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
     fetchOfferActivity(id, companyId),
   ])
 
-  if (!offerResult.data) {
+  if (!company || !offerResult.data) {
     notFound()
   }
 

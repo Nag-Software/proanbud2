@@ -2,7 +2,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 
 export default function Loading() {
   return (
-    <AppPageShell segments={["Min bedrift", "Godkjenn timer"]}>
+    <AppPageShell skeleton segments={["Min bedrift", "Godkjenn timer"]}>
       <div className="space-y-4">
         <div className="space-y-1">
           <div className="h-7 w-44 animate-pulse rounded bg-muted" />

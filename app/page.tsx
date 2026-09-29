@@ -604,7 +604,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <AppPageShell segments={["Dashbord"]}>
+    <AppPageShell clientData segments={["Dashbord"]}>
       <div className="mx-auto flex w-full max-w-[2000px] flex-col gap-4 pb-10">
 
         {/* Det som står stille kommer først — før tallene, som bare beskriver

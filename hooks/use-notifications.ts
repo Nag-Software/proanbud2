@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/components/auth-provider"
+import { useRoleContext } from "@/components/role-provider"
 
 export interface NotificationItem {
   id: string
@@ -68,6 +69,9 @@ export function useNotifications(
   { enabled = true }: UseNotificationsOptions = {}
 ): UseNotificationsResult {
   const { user } = useAuth()
+  // Firmaet fra rolle-konteksten (samme spørring som rollen, og cachet) — ikke
+  // et eget users-oppslag før varslene kan hentes.
+  const { companyId: contextCompanyId, loadingRole } = useRoleContext()
   const [supabase] = useState(() => createClient())
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -112,28 +116,16 @@ export function useNotifications(
   }, [supabase])
 
   useEffect(() => {
-    if (!active || !userId) {
+    if (!active || !userId || !contextCompanyId) {
       companyIdRef.current = null
       return
     }
 
     let channel: ReturnType<typeof supabase.channel> | null = null
     let cancelled = false
+    const companyId = contextCompanyId
 
     async function init() {
-      const { data } = await supabase
-        .from("users")
-        .select("company_id")
-        .eq("id", userId!)
-        .single()
-
-      if (cancelled) return
-
-      const companyId = data?.company_id
-      if (!companyId) {
-        setLoading(false)
-        return
-      }
       companyIdRef.current = companyId
 
       await refresh()
@@ -163,7 +155,7 @@ export function useNotifications(
       cancelled = true
       if (channel) supabase.removeChannel(channel)
     }
-  }, [active, userId, refresh, supabase])
+  }, [active, userId, contextCompanyId, refresh, supabase])
 
   const markThreadRead = useCallback(
     async (customerId: string) => {
@@ -224,10 +216,11 @@ export function useNotifications(
     () => ({
       notifications: active ? notifications : EMPTY,
       unreadCount: active ? unreadCount : 0,
-      loading: active ? loading : false,
+      // Uten firma (når rollen er ferdig lastet) finnes det ingenting å vente på.
+      loading: active && (loadingRole || contextCompanyId !== null) ? loading : false,
       markAllRead,
       markThreadRead,
     }),
-    [active, notifications, unreadCount, loading, markAllRead, markThreadRead]
+    [active, notifications, unreadCount, loading, loadingRole, contextCompanyId, markAllRead, markThreadRead]
   )
 }

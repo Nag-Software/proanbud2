@@ -5,7 +5,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 // mounted; this only fills the content slot so navigation feels instant.
 export default function Loading() {
   return (
-    <AppPageShell segments={["Prosjekter", "Laster …"]}>
+    <AppPageShell skeleton segments={["Prosjekter", "Laster …"]}>
       <section className="space-y-3">
         {/* Title row */}
         <div className="flex flex-wrap items-start justify-between gap-2">
