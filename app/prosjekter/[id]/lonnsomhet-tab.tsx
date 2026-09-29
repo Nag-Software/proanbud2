@@ -382,10 +382,22 @@ export function LonnsomhetTab({
   projectId,
   canManage,
   initialData,
+  middle,
+  detailsHeading,
 }: {
   projectId: string
   canManage: boolean
   initialData: ProjectProfitability | null
+  /**
+   * Innhold mellom nøkkeltallene og kostnadsdetaljene. Økonomi-fanen legger
+   * tilbud, tilleggsarbeid og fakturering her, så siden leses i samme
+   * rekkefølge som pengene går: sammendrag → tilbud → tillegg → faktura →
+   * kostnader. Lønnsomheten eier fortsatt tallene (og «Oppdater»), så
+   * sammendraget og kostnadene aldri kommer i utakt.
+   */
+  middle?: React.ReactNode
+  /** Overskrift over kostnadsdetaljene (brukes som anker på Økonomi). */
+  detailsHeading?: React.ReactNode
 }) {
   const confirm = useConfirm()
   const [data, setData] = useState<ProjectProfitability | null>(initialData)
@@ -537,9 +549,12 @@ export function LonnsomhetTab({
 
   if (!data) {
     return (
-      <p className="p-4 text-sm text-muted-foreground">
-        {loading ? "Laster lønnsomhet …" : "Fant ingen tall for dette prosjektet."}
-      </p>
+      <div className="space-y-5">
+        <p className="p-4 text-sm text-muted-foreground">
+          {loading ? "Laster lønnsomhet …" : "Fant ingen tall for dette prosjektet."}
+        </p>
+        {middle}
+      </div>
     )
   }
 
@@ -657,6 +672,10 @@ export function LonnsomhetTab({
           for å få et ekte dekningsbidrag.
         </p>
       ) : null}
+
+      {middle}
+
+      {detailsHeading}
 
       {/* Under KPI-ene går alt i to kolonner fra desktop.
           CSS-kolonner og ikke grid: kortene er svært ulike i høyde (tabellen mot

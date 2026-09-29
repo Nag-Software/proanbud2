@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   AlertTriangleIcon,
   CalendarPlusIcon,
@@ -45,20 +46,26 @@ export function QuickActionSheet({
   hasActiveSession: boolean
 }) {
   const { isWorker, hasFeature, hasModule, loadingRole } = useUserRole()
+  // Står man inne i et prosjekt, gjelder handlingene det prosjektet: avviket
+  // og kjøreturen får prosjektet forhåndsvalgt, og stemplingen skjer der.
+  const pathname = usePathname()
+  const projectMatch = pathname?.match(/^\/prosjekter\/([0-9a-f-]{36})(?:\/|$)/i)
+  const projectId = projectMatch?.[1] ?? null
+  const scoped = (global: string, inProject: string) => (projectId ? inProject : global)
   // Mens planen lastes vises valgene heller enn å blinke dem inn etterpå.
   const can = (check: () => boolean) => loadingRole || check()
 
   const stamp: QuickAction | null = can(() => hasFeature("timeforing"))
     ? hasActiveSession
       ? {
-          href: "/timeforing",
+          href: scoped("/timeforing", `/prosjekter/${projectId}?tab=timer&del=timer`),
           label: "Stemple ut",
           description: "Du er stemplet inn – avslutt arbeidsøkten",
           icon: SquareIcon,
           primary: true,
         }
       : {
-          href: "/timeforing",
+          href: scoped("/timeforing", `/prosjekter/${projectId}?tab=timer&del=timer`),
           label: "Stemple inn",
           description: "Start arbeidsdagen på prosjektet",
           icon: ClockIcon,
@@ -70,16 +77,16 @@ export function QuickActionSheet({
     ? [
         stamp,
         can(() => hasFeature("avvik"))
-          ? { href: "/avvik/ny", label: "Meld avvik", description: "Ta bilde og beskriv hva som skjedde", icon: AlertTriangleIcon }
+          ? { href: scoped("/avvik/ny", `/avvik/ny?projectId=${projectId}`), label: "Meld avvik", description: "Ta bilde og beskriv hva som skjedde", icon: AlertTriangleIcon }
           : null,
         can(() => hasModule("kjorebok"))
-          ? { href: "/min-bedrift/kjorebok/ny", label: "Ny kjøretur", description: "Før turen i kjøreboken", icon: CarIcon }
+          ? { href: scoped("/min-bedrift/kjorebok/ny", `/min-bedrift/kjorebok/ny?project=${projectId}`), label: "Ny kjøretur", description: "Før turen i kjøreboken", icon: CarIcon }
           : null,
       ]
     : [
         ...(hasActiveSession ? [stamp] : []),
         {
-          href: "/nytt-tilbud",
+          href: scoped("/nytt-tilbud", `/nytt-tilbud?projectId=${projectId}`),
           label: "Nytt tilbud",
           description: "Beskriv jobben – vi setter opp postene",
           icon: FilePlus2Icon,
@@ -88,10 +95,10 @@ export function QuickActionSheet({
         { href: "/prosjekter/ny", label: "Nytt prosjekt", description: "Kunde, adresse og oppstart", icon: FolderPlusIcon },
         ...(hasActiveSession ? [] : [stamp]),
         can(() => hasFeature("avvik"))
-          ? { href: "/avvik/ny", label: "Meld avvik", description: "Ta bilde og beskriv hva som skjedde", icon: AlertTriangleIcon }
+          ? { href: scoped("/avvik/ny", `/avvik/ny?projectId=${projectId}`), label: "Meld avvik", description: "Ta bilde og beskriv hva som skjedde", icon: AlertTriangleIcon }
           : null,
         can(() => hasModule("kjorebok"))
-          ? { href: "/min-bedrift/kjorebok/ny", label: "Ny kjøretur", description: "Før turen i kjøreboken", icon: CarIcon }
+          ? { href: scoped("/min-bedrift/kjorebok/ny", `/min-bedrift/kjorebok/ny?project=${projectId}`), label: "Ny kjøretur", description: "Før turen i kjøreboken", icon: CarIcon }
           : null,
         can(() => hasFeature("kalender"))
           ? { href: "/kalender?ny=1", label: "Ny avtale", description: "Befaring, oppstart eller møte", icon: CalendarPlusIcon }
@@ -104,7 +111,7 @@ export function QuickActionSheet({
     <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
       <ResponsiveDialogContent className="sm:max-w-sm">
         <ResponsiveDialogHeader className="md:text-left">
-          <ResponsiveDialogTitle>Hva vil du gjøre?</ResponsiveDialogTitle>
+          <ResponsiveDialogTitle>{projectId ? "Registrer på prosjektet" : "Hva vil du gjøre?"}</ResponsiveDialogTitle>
           <ResponsiveDialogDescription className="sr-only">Snarveier til de vanligste handlingene.</ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
         <nav aria-label="Hurtighandlinger" className="grid gap-2 px-4 pb-4 md:px-0 md:pb-0">

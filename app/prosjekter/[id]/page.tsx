@@ -1,40 +1,37 @@
-import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Suspense } from "react"
 
-import { PlusCircle } from "lucide-react"
-
 import { AppPageShell } from "@/components/app-page-shell"
-import { ModuleGate } from "@/components/billing/module-gate"
 import { PlanGate } from "@/components/billing/plan-gate"
-import { Button } from "@/components/ui/button"
 import { ProjectTabPanel } from "./project-tab-panel"
 import { createClient } from "@/lib/supabase/server"
 import { checkRoleAccess } from "@/lib/auth-utils"
 import { getCompanyPlanAndModules, getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
-import { MODULE_PRICING, hasFeature } from "@/lib/billing/plans"
+import { hasFeature } from "@/lib/billing/plans"
 import { canManageProjects, getRoleDisplayName } from "@/lib/roles"
 import { fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import { getDeviationsAction } from "@/app/avvik/actions"
 import { getProjectChecklistsAction } from "@/app/ks/actions"
-import { getProjectCustomer } from "@/app/prosjekter/project-utils"
+import {
+  PROJECT_TYPE_OPTIONS,
+  getProjectCustomer,
+  getProjectPeriod,
+  getProjectSiteAddress,
+} from "@/app/prosjekter/project-utils"
 import { fetchProjectProfitability, readProjectBudget } from "@/lib/job-costing/project-profitability"
 import type { ProjectProfitability } from "@/lib/job-costing/types"
 
-import ModellTab from "./modell-tab"
-import OppgaverTab from "./oppgaver-tab"
-import DeltakereTab from "./deltakere-tab"
+import FilerTab from "./filer-tab"
+import IDagTab from "./i-dag-tab"
 import KvalitetTab from "./kvalitet-tab"
-import { EditProjectDialog } from "./edit-project-dialog"
-import ProjectDocumentsTab from "./project-documents-tab"
-import TilbudTab from "./tilbud-tab"
-import { FaktureringSeksjon } from "./fakturering-seksjon"
-import TimeforingTab from "./timeforing-tab"
-import KjorebokTab from "./kjorebok-tab"
+import { OkonomiTab } from "./okonomi-tab"
+import OppgaverTab from "./oppgaver-tab"
+import { ProjectHeader } from "./project-header"
 import { ProjectOverviewTab, type OverviewTask } from "./project-overview-tab"
-import { ProjectPhaseStripe } from "./project-phase-stripe"
+import type { ProjectPerson } from "./project-people-sheet"
 import { ProjectTabsShell } from "./project-tabs-shell"
-import { LonnsomhetTab } from "./lonnsomhet-tab"
+import { ProjectWorkSessionProvider } from "./project-work-session"
+import TimerTab from "./timer-tab"
 
 type MemberUser = {
   id: string
@@ -105,7 +102,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   ] = await Promise.all([
     supabase
       .from("projects")
-      .select("*, customers(id, name, email, phone)")
+      .select("*, customers(id, name, email, phone, address, postal_code, city)")
       .eq("id", resolvedParams.id)
       .maybeSingle(),
     supabase
@@ -164,11 +161,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const hasKs = hasFeature(plan, modules, "ks")
   const hasAvvik = hasFeature(plan, modules, "avvik")
   const hasTasks = hasFeature(plan, modules, "project_tasks")
-  // KS og Avvik deler «KS & Avvik»-fanen. Håndverkere fyller ut sjekklistene på
-  // plassen; å legge til sjekklister fra maler er forbeholdt ledere (KsTab).
-  const showKsSub = hasKs
-  const showAvvikSub = hasAvvik
-  const showKvalitet = showKsSub || showAvvikSub
+  // KS og avvik deler én fane. Håndverkere fyller ut sjekklistene på plassen;
+  // å legge til sjekklister fra maler er forbeholdt ledere (KvalitetTab).
+  const showKvalitet = hasKs || hasAvvik
 
   // The three gated datasets are independent — fetch them concurrently. Each
   // keeps its own gate: timeføring (admin/manager only, matching the action's
@@ -184,9 +179,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     hasKs
       ? getProjectChecklistsAction(resolvedParams.id)
       : Promise.resolve([] as Awaited<ReturnType<typeof getProjectChecklistsAction>>),
-    // Lønnsomheten hentes server-side slik at både utdraget på Oversikt og
-    // Lønnsomhet-fanen viser de samme tallene med én gang. Håndverkere ser
-    // hverken fanen eller utdraget, og skal da heller ikke koste en spørring.
+    // Lønnsomheten hentes server-side slik at både pengeflyten på Oversikt og
+    // sammendraget på Økonomi viser de samme tallene med én gang. Håndverkere
+    // ser ingen av delene, og skal da heller ikke koste en spørring.
     !isWorker && companyId
       ? fetchProjectProfitability(supabase, {
           companyId,
@@ -196,7 +191,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       : Promise.resolve(null as ProjectProfitability | null),
   ])
 
-  const projectDeltakere = normalizedMembers.map((member) => {
+  const projectPeople: ProjectPerson[] = normalizedMembers.map((member) => {
     const memberUser = member.users
 
     return {
@@ -232,95 +227,105 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const totalOfferValue = offers.reduce((sum, offer) => sum + Number(offer.amount_nok || 0), 0)
   const acceptedOffers = offers.filter((offer) => offer.status === "accepted").length
   const sentOffers = offers.filter((offer) => offer.status === "sent").length
-  const offerAcceptancePercent =
-    offers.length === 0 ? 0 : Math.round((acceptedOffers / offers.length) * 100)
   const totalHours = participantHours.reduce((sum, entry) => sum + entry.totalHours, 0)
 
+  const acceptedChangeOrders = changeOrders.filter((order) => order.status === "accepted")
+  const changeOrderSummary = {
+    acceptedNok: acceptedChangeOrders.reduce((sum, order) => sum + Number(order.amount_nok || 0), 0),
+    acceptedCount: acceptedChangeOrders.length,
+    pending: changeOrders
+      .filter((order) => order.status === "sent")
+      .map((order) => ({
+        id: order.id,
+        title: order.title,
+        amountNok: Number(order.amount_nok || 0),
+        sentAt: order.sent_at,
+      })),
+  }
+
+  const openDeviationCount = projectDeviations.filter((deviation) => deviation.status === "open").length
+  const unfinishedChecklistCount = projectChecklists.filter((checklist) => checklist.status !== "completed").length
+  const kvalitetWaiting = (hasAvvik ? openDeviationCount : 0) + (hasKs ? unfinishedChecklistCount : 0)
+
   const customer = getProjectCustomer(project)
+  const siteAddress = getProjectSiteAddress(project)
 
-  return (
-    <AppPageShell segments={["Prosjekter", project.name]}>
-      <section className="space-y-3">
-        {/* Tittel, fase og handlinger deler én rad. Fasen hadde sin egen rad
-            før, men tittelraden sto halvtom — og prosjektsiden hadde tre
-            navigasjonsrader på toppen. */}
-        {/* Toppen sto i fire stablede rader på mobil (stikktittel, navn,
-            fasestripe, knapper) og spiste 43 % av skjermen før noe innhold.
-            På mobil er den nå to: navn + fasechip, så handlingene. Fra sm og
-            opp er raden uendret — der var det aldri noe problem. */}
-        <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 sm:gap-y-3">
-          {/* sm:contents løser opp denne innpakningen fra og med sm, slik at
-              tittelen og fasestripa igjen blir direkte flex-barn av raden —
-              desktoplayouten er altså bokstavelig talt uendret, mens de på
-              mobil deler én linje. */}
-          <div className="flex min-w-0 flex-1 items-center gap-3 sm:contents">
-            <div className="min-w-0 space-y-0.5">
-              {/* Prosjekttypen er nyttig kontekst på desktop, men på mobil er
-                  den en hel linje for ett ord man sjelden trenger. */}
-              <p className="hidden text-xs uppercase tracking-[0.2em] text-muted-foreground sm:block">
-                {project.project_type || "Ditt prosjekt"}
-              </p>
-              <h1 className="truncate text-xl font-semibold text-foreground">{project.name}</h1>
-            </div>
+  const eyebrow = [
+    project.project_type
+      ? (PROJECT_TYPE_OPTIONS.find((option) => option.value === project.project_type)?.label ??
+        project.project_type)
+      : null,
+    customer.name !== "Ukjent kunde" ? customer.name : null,
+    project.start_date || project.end_date ? getProjectPeriod(project) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
 
-            <ProjectPhaseStripe
+  const personHours = participantHours.map((entry) => ({
+    userId: entry.userId,
+    totalHours: entry.totalHours,
+    entryCount: entry.entryCount,
+  }))
+
+  const page = (
+    <Suspense fallback={<div className="h-24 animate-pulse rounded-md bg-muted" />}>
+      <ProjectTabsShell
+        // Én rad faner. Håndverkeren starter på «I dag» og ser ikke Økonomi;
+        // lederen starter på Oversikt. Alt annet er likt for begge.
+        defaultTab={isWorker ? "idag" : "oversikt"}
+        tabs={[
+          { value: "idag", label: "I dag", hidden: !isWorker },
+          { value: "oversikt", label: "Oversikt", hidden: isWorker },
+          { value: "okonomi", label: "Økonomi", hidden: isWorker },
+          { value: "oppgaver", label: "Oppgaver", count: hasTasks ? openTasks : 0 },
+          {
+            value: "timer",
+            label: hasTimeforing || !hasKjorebok ? (hasKjorebok ? "Timer og kjøring" : "Timer") : "Kjøring",
+            shortLabel: "Timer",
+          },
+          {
+            value: "kvalitet",
+            label: hasKs && hasAvvik ? "KS og avvik" : hasKs ? "Sjekklister" : "Avvik",
+            shortLabel: hasKs && hasAvvik ? "KS" : undefined,
+            hidden: !showKvalitet,
+            count: kvalitetWaiting,
+            countTone: "warning",
+          },
+          { value: "filer", label: "Filer" },
+        ]}
+        header={
+          <ProjectHeader
+            project={project}
+            eyebrow={eyebrow}
+            people={projectPeople}
+            hours={canManageProjects(canonicalRole) ? personHours : []}
+            flags={{
+              isWorker,
+              isProjectAdmin,
+              hasTimeforing,
+              hasKjorebok,
+              hasTasks,
+              hasKs,
+              hasAvvik,
+            }}
+          />
+        }
+      >
+        {isWorker ? (
+          <ProjectTabPanel value="idag" className="m-0 focus-visible:outline-none focus-visible:ring-0">
+            <IDagTab
               projectId={project.id}
-              status={project.status}
-              canEdit={isProjectAdmin}
-              className="ml-auto shrink-0 sm:w-auto"
+              currentUserId={user.id}
+              tasks={overviewTasks}
+              checklists={hasKs ? projectChecklists : []}
+              openDeviationCount={openDeviationCount}
+              siteAddress={siteAddress}
+              customer={{ name: customer.name, phone: customer.phone }}
+              flags={{ hasTasks, hasKs, hasAvvik, hasKjorebok }}
             />
-          </div>
-
-          <div className="flex w-full items-center gap-2 sm:w-auto">
-            {!isWorker && (
-              <Button asChild className="flex flex-1 flex-row px-4 sm:flex-none">
-                <Link href={`/nytt-tilbud?projectId=${project.id}`}>
-                  <PlusCircle className="h-4 w-4" />
-                  Nytt tilbud
-                </Link>
-              </Button>
-            )}
-            <EditProjectDialog project={project} isAdminOrLeader={isProjectAdmin} />
-          </div>
-        </div>
-
-        <Suspense fallback={<div className="h-10 animate-pulse rounded-md bg-muted" />}>
-          <ProjectTabsShell
-            // Tre grupper i stedet for elleve faner på rad. Hvem som ser hva
-            // er UENDRET — reglene er bare flyttet ned på hver underfane, så
-            // en håndverker fortsatt når Tilbud og Kjørebok, men ikke
-            // Lønnsomhet, Etterfakturering eller Deltakere.
-            groups={[
-              { value: "oversikt", label: "Oversikt" },
-              {
-                value: "arbeid",
-                label: "Arbeid",
-                subs: [
-                  { value: "oppgaver", label: "Oppgaver", hidden: !hasTasks },
-                  { value: "timeforing", label: "Timeføring", shortLabel: "Timer" },
-                  { value: "filer", label: "Dokumenter & filer", shortLabel: "Dokumenter" },
-                  { value: "kvalitet", label: "KS & Avvik", hidden: !showKvalitet },
-                  { value: "modell", label: "3D-modell", shortLabel: "3D" },
-                  { value: "deltakere", label: "Deltakere", hidden: isWorker },
-                ],
-              },
-              {
-                value: "okonomi",
-                label: "Økonomi",
-                subs: [
-                  { value: "tilbud", label: "Tilbud" },
-                  {
-                    value: "etterfakturering",
-                    label: "Fakturering",
-                    shortLabel: "Faktura",
-                    hidden: isWorker,
-                  },
-                  { value: "lonnsomhet", label: "Lønnsomhet", hidden: isWorker },
-                  { value: "kjorebok", label: "Kjørebok" },
-                ],
-              },
-            ]}
-          >
+          </ProjectTabPanel>
+        ) : (
+          <>
             <ProjectTabPanel value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
               <ProjectOverviewTab
                 project={{
@@ -332,16 +337,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 }}
                 customer={customer}
                 tasks={overviewTasks}
-                deviations={projectDeviations}
+                deviations={hasAvvik ? projectDeviations : []}
                 checklists={projectChecklists}
-                participants={projectDeltakere}
+                participants={projectPeople}
                 participantHours={participantHours}
                 offersSummary={{
                   total: totalOfferValue,
                   accepted: acceptedOffers,
                   sent: sentOffers,
-                  acceptancePercent: offerAcceptancePercent,
                 }}
+                changeOrders={changeOrderSummary}
                 profitability={profitability}
                 metrics={{
                   progressPercent,
@@ -352,126 +357,89 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   totalHours,
                 }}
                 flags={{
-                  isWorker,
                   isProjectAdmin,
                   hasTimeforing,
                   hasKs,
+                  hasTasks,
                 }}
               />
             </ProjectTabPanel>
 
-            <ProjectTabPanel value="modell">
-              <ModellTab projectId={project.id} projectName={project.name} />
-            </ProjectTabPanel>
-
-            <ProjectTabPanel value="tilbud">
-              <TilbudTab
+            <ProjectTabPanel value="okonomi">
+              <OkonomiTab
                 projectId={project.id}
                 projectName={project.name}
                 customerName={customer.name}
                 offers={offers}
-                readOnly={isWorker}
+                changeOrders={changeOrders}
+                customerEmail={projectCustomer?.email ?? null}
+                canManage={isProjectAdmin}
+                profitability={profitability}
+                counts={{ offers: offers.length, changeOrders: changeOrders.length }}
               />
             </ProjectTabPanel>
+          </>
+        )}
 
-            {!isWorker && (
-              <ProjectTabPanel value="etterfakturering">
-                <FaktureringSeksjon
-                  projectId={project.id}
-                  canManage={isProjectAdmin}
-                  initialChangeOrders={changeOrders}
-                  customerEmail={projectCustomer?.email ?? null}
-                />
-              </ProjectTabPanel>
-            )}
+        <ProjectTabPanel value="oppgaver">
+          {hasTasks ? (
+            <OppgaverTab
+              projectId={project.id}
+              canManageTasks={isProjectAdmin || isWorker}
+              members={normalizedMembers
+                .filter((member) => member.users?.id)
+                .map((member) => ({
+                  id: member.users!.id,
+                  name: member.users!.full_name || member.users!.email || "Ukjent",
+                }))}
+            />
+          ) : (
+            <PlanGate
+              featureName="Oppgaver"
+              description="Planlegg og følg opp oppgaver direkte på prosjektet."
+            />
+          )}
+        </ProjectTabPanel>
 
-            <ProjectTabPanel value="oppgaver">
-              {hasTasks ? (
-                <OppgaverTab
-                  projectId={project.id}
-                  canManageTasks={isProjectAdmin || isWorker}
-                  members={normalizedMembers
-                    .filter((member) => member.users?.id)
-                    .map((member) => ({
-                      id: member.users!.id,
-                      name: member.users!.full_name || member.users!.email || "Ukjent",
-                    }))}
-                />
-              ) : (
-                <PlanGate
-                  featureName="Oppgaver"
-                  description="Planlegg og følg opp oppgaver direkte på prosjektet."
-                />
-              )}
-            </ProjectTabPanel>
+        <ProjectTabPanel value="timer">
+          <TimerTab
+            projectId={project.id}
+            currentUserId={user.id}
+            canViewAllEntries={isProjectAdmin}
+            hasTimeforing={hasTimeforing}
+            hasKjorebok={hasKjorebok}
+            participantHours={participantHours}
+          />
+        </ProjectTabPanel>
 
-            <ProjectTabPanel value="filer">
-              <ProjectDocumentsTab projectId={project.id} />
-            </ProjectTabPanel>
+        {showKvalitet && (
+          <ProjectTabPanel value="kvalitet">
+            <KvalitetTab
+              projectId={project.id}
+              checklists={projectChecklists}
+              deviations={projectDeviations}
+              showChecklists={hasKs}
+              showDeviations={hasAvvik}
+              canManageChecklists={!isWorker}
+            />
+          </ProjectTabPanel>
+        )}
 
-            <ProjectTabPanel value="timeforing">
-              {hasTimeforing ? (
-                <TimeforingTab projectId={project.id} canViewAllEntries={isProjectAdmin} />
-              ) : (
-                <ModuleGate
-                  moduleName="Timeføring"
-                  monthlyPriceNok={MODULE_PRICING.timeforing}
-                  description="Registrer og følg arbeidstimer direkte på prosjektet."
-                />
-              )}
-            </ProjectTabPanel>
+        <ProjectTabPanel value="filer">
+          <FilerTab projectId={project.id} projectName={project.name} showChecklistPhotos={hasKs} />
+        </ProjectTabPanel>
+      </ProjectTabsShell>
+    </Suspense>
+  )
 
-            <ProjectTabPanel value="kjorebok">
-              {hasKjorebok ? (
-                <KjorebokTab
-                  projectId={project.id}
-                  canViewAllEntries={isProjectAdmin}
-                  currentUserId={user.id}
-                />
-              ) : (
-                <ModuleGate
-                  moduleName="Kjørebok"
-                  monthlyPriceNok={MODULE_PRICING.kjorebok}
-                  description="Før kjørebok med GPS eller manuelt — statens satser og Tripletex-eksport, direkte på prosjektet."
-                />
-              )}
-            </ProjectTabPanel>
-
-            {!isWorker && (
-              <ProjectTabPanel value="lonnsomhet">
-                <LonnsomhetTab
-                  projectId={project.id}
-                  canManage={isProjectAdmin}
-                  initialData={profitability}
-                />
-              </ProjectTabPanel>
-            )}
-
-            {showKvalitet && (
-              <ProjectTabPanel value="kvalitet">
-                <KvalitetTab
-                  projectId={project.id}
-                  checklists={projectChecklists}
-                  deviations={projectDeviations}
-                  showChecklists={showKsSub}
-                  showDeviations={showAvvikSub}
-                  canManageChecklists={!isWorker}
-                />
-              </ProjectTabPanel>
-            )}
-
-            {!isWorker && (
-              <ProjectTabPanel value="deltakere">
-                <DeltakereTab
-                  projectId={project.id}
-                  initialParticipants={projectDeltakere}
-                  isProjectAdmin={isProjectAdmin}
-                  participantHours={participantHours}
-                />
-              </ProjectTabPanel>
-            )}
-          </ProjectTabsShell>
-        </Suspense>
+  return (
+    <AppPageShell segments={["Prosjekter", project.name]}>
+      <section>
+        {hasTimeforing ? (
+          <ProjectWorkSessionProvider projectId={project.id}>{page}</ProjectWorkSessionProvider>
+        ) : (
+          page
+        )}
       </section>
     </AppPageShell>
   )

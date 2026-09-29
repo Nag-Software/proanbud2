@@ -1,0 +1,911 @@
+<title>Ny prosjektside</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: ett lesespor (maks 1120px) der hver seksjon er diagnose → forslag → beslutning; skissene er appskjermbilder i appens egne farger, skalert til sporet. */
+@font-face{font-family:"Satoshi";src:url("Satoshi-Variable.woff2") format("woff2"),url("../../lib/fonts/Satoshi_Complete/Fonts/WEB/fonts/Satoshi-Variable.woff2") format("woff2");font-weight:300 900;font-display:swap}
+:root{
+  /* Dokumentet */
+  --bg:#f4f5f1; --surface:#ffffff; --ink:#151515; --ink-2:#5c5f57; --ink-3:#8a8d84;
+  --line:#e2e4dd; --lime:#c7ef63; --lime-ink:#4b6610; --mark:rgba(199,239,99,.55);
+  --warn:#95681f; --warn-bg:rgba(185,133,43,.12); --danger:#9f4336; --danger-bg:rgba(194,90,75,.10); --ok:#5d8720; --ok-bg:rgba(124,169,44,.12);
+  --bar-money:#151515; --bar-work:#9aa08f; --bar-over:#c7ef63;
+  --display:"Satoshi",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --body:"Satoshi",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  /* Skissene: appens lyse tema, uendret i mørkt modus fordi de er skjermbilder */
+  --m-bg:#ffffff; --m-fg:#151515; --m-mut:#727272; --m-mut2:#9a9a9a; --m-line:#e8e8e8; --m-soft:#f7f7f7; --m-side:#fbfbfb;
+  --m-acc:#c7ef63; --m-warn:#b9852b; --m-warn-s:#95681f; --m-warn-bg:rgba(185,133,43,.1); --m-dan:#c25a4b; --m-dan-bg:rgba(194,90,75,.09);
+  --m-ok:#7ca92c; --m-ok-s:#5d8720; --m-ok-bg:rgba(124,169,44,.1); --m-info:#4c6fd3; --m-info-bg:rgba(72,122,228,.09); --m-shade:rgba(21,21,21,.28);
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121311; --surface:#1b1c19; --ink:#ececE8; --ink-2:#a9ada2; --ink-3:#7f8378; --line:#2c2e29; --lime:#c7ef63; --lime-ink:#c7ef63; --mark:rgba(199,239,99,.22);
+  --warn:#dcb06a; --warn-bg:rgba(220,176,106,.14); --danger:#e08b7d; --danger-bg:rgba(224,139,125,.14); --ok:#a9d360; --ok-bg:rgba(169,211,96,.14);
+  --bar-money:#ececE8; --bar-work:#6b7065; --bar-over:#c7ef63; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121311; --surface:#1b1c19; --ink:#ececE8; --ink-2:#a9ada2; --ink-3:#7f8378; --line:#2c2e29; --lime:#c7ef63; --lime-ink:#c7ef63; --mark:rgba(199,239,99,.22);
+  --warn:#dcb06a; --warn-bg:rgba(220,176,106,.14); --danger:#e08b7d; --danger-bg:rgba(224,139,125,.14); --ok:#a9d360; --ok-bg:rgba(169,211,96,.14);
+  --bar-money:#ececE8; --bar-work:#6b7065; --bar-over:#c7ef63; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55;letter-spacing:-.008em;-webkit-font-smoothing:antialiased;margin:0}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:clamp(16px,4vw,40px);padding-block:48px 96px;display:flex;flex-direction:column;gap:72px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;letter-spacing:-.025em}
+h1{font-size:clamp(34px,5.2vw,56px);line-height:1.02;font-weight:700}
+h2{font-size:clamp(24px,3vw,32px);line-height:1.12;font-weight:700}
+h3{font-size:19px;line-height:1.25;font-weight:650}
+p{margin:0}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.lead{font-size:clamp(17px,1.8vw,20px);line-height:1.5;color:var(--ink-2);max-width:62ch}
+.prose{max-width:66ch;color:var(--ink-2);display:flex;flex-direction:column;gap:12px}
+.prose strong{color:var(--ink);font-weight:650}
+mark{background:linear-gradient(transparent 55%,var(--mark) 55%);color:inherit;padding:0 1px}
+section{display:flex;flex-direction:column;gap:24px}
+.sec-head{display:flex;flex-direction:column;gap:10px}
+code{font-family:var(--mono);font-size:.86em;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+
+/* Hero */
+.hero{display:flex;flex-direction:column;gap:20px}
+.verdict{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:8px}
+.verdict div{background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.verdict b{font-size:28px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1.1}
+.verdict span{font-size:13.5px;color:var(--ink-2);line-height:1.4}
+.verdict .from{font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.04em}
+@media (max-width:760px){.verdict{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Diagnose */
+.two{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:28px;align-items:start}
+@media (max-width:860px){.two{grid-template-columns:minmax(0,1fr)}}
+.layers{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:6px}
+.layer{display:grid;grid-template-columns:26px minmax(0,1fr);gap:10px;align-items:start}
+.layer .n{font-family:var(--mono);font-size:12px;font-weight:600;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--bg);border:1px solid var(--line);color:var(--ink-2)}
+.layer .bx{border:1px dashed var(--line);border-radius:6px;padding:7px 10px;font-size:13.5px;line-height:1.35;min-width:0}
+.layer .bx small{display:block;font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.02em;margin-top:2px}
+.layer.nav .bx{border-style:solid;border-color:var(--ink-3)}
+.layer.nav .n{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.layers .foot{font-size:13px;color:var(--ink-2);padding-top:8px;border-top:1px solid var(--line);margin-top:6px}
+.problems{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--line)}
+.problems li{list-style:none;padding:14px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.problems{padding:0;margin:0}
+.problems b{font-weight:650;font-size:16px}
+.problems span{color:var(--ink-2);font-size:15px}
+
+/* Bruksdata */
+.usage{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:14px}
+.usage-head{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:baseline}
+.usage-head p{font-size:14px;color:var(--ink-2)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-2)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.bars{display:grid;grid-template-columns:max-content minmax(0,1fr) 3ch max-content;gap:7px 12px;align-items:center;font-size:13.5px}
+.bars .t{color:var(--ink)}
+.bars .track{height:14px;position:relative;background:linear-gradient(90deg,var(--line) 1px,transparent 1px) 0 0/16.666% 100%;border-left:1px solid var(--line)}
+.bars .fill{height:100%;border-radius:0 3px 3px 0}
+.bars .v{font-family:var(--mono);font-size:12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.bars .home{font-family:var(--mono);font-size:11px;color:var(--ink-3);white-space:nowrap}
+.bars .ticks{position:relative;height:14px;font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+.bars .ticks span{position:absolute;top:0;transform:translateX(-50%)}
+.usage .note{font-size:12.5px;color:var(--ink-3)}
+@media (max-width:560px){.bars{grid-template-columns:max-content minmax(0,1fr) 3ch}.bars .home{display:none}}
+
+/* Prinsipper */
+.principles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.principles div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:6px}
+.principles b{font-size:16px;font-weight:650;letter-spacing:-.015em}
+.principles span{font-size:14px;color:var(--ink-2);line-height:1.45}
+@media (max-width:900px){.principles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.principles{grid-template-columns:minmax(0,1fr)}}
+
+/* Forslag */
+.opt-head{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.opt-tag{font-family:var(--mono);font-size:12px;font-weight:600;padding:4px 9px;border-radius:5px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);white-space:nowrap}
+.opt-tag.rec{background:var(--lime);border-color:var(--lime);color:#151515}
+.fig{display:flex;flex-direction:column;gap:10px}
+.fig figcaption{font-size:14px;color:var(--ink-2);max-width:70ch}
+.fig figcaption b{color:var(--ink);font-weight:650}
+figure{margin:0}
+.shot{position:relative;overflow:hidden;border-radius:10px;box-shadow:0 0 0 1px var(--line),0 18px 40px -24px rgba(0,0,0,.25)}
+.shot.fit>*{position:absolute;left:0;top:0;transform-origin:0 0}
+.shot.bare{box-shadow:none;border-radius:0}
+.pc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.pc div{border-top:2px solid var(--ink);padding-top:10px;display:flex;flex-direction:column;gap:6px}
+.pc div.con{border-top-color:var(--ink-3)}
+.pc b{font-size:13px;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+.pc ul{margin:0;padding-left:18px;color:var(--ink-2);font-size:15px;display:flex;flex-direction:column;gap:4px}
+@media (max-width:640px){.pc{grid-template-columns:minmax(0,1fr)}}
+
+/* Tabeller */
+.tbl-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:640px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.num{font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:13px}
+td .muted{color:var(--ink-3);font-size:13px;display:block}
+td.win{background:var(--mark)}
+.pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:4px;white-space:nowrap}
+.pill.good{background:var(--ok-bg);color:var(--ok)}
+.pill.mid{background:var(--warn-bg);color:var(--warn)}
+.pill.bad{background:var(--danger-bg);color:var(--danger)}
+
+/* Plan */
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.steps li{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:14px;padding:16px 0;border-bottom:1px solid var(--line);align-items:start}
+.steps .k{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink-3);padding-top:2px}
+.steps b{font-size:16.5px;font-weight:650;display:block;margin-bottom:3px}
+.steps span{color:var(--ink-2);font-size:15px}
+.steps .size{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);border:1px solid var(--line);border-radius:4px;padding:2px 7px;white-space:nowrap;background:var(--surface)}
+@media (max-width:560px){.steps li{grid-template-columns:32px minmax(0,1fr)}.steps .size{grid-column:2;justify-self:start}}
+.closing{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.closing ul{margin:0;padding-left:18px;color:var(--ink-2);display:flex;flex-direction:column;gap:6px}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--lime-ink);outline-offset:2px}
+
+/* ================= SKISSER (appens stil) ================= */
+.app{width:1200px;background:var(--m-bg);color:var(--m-fg);font-family:"Satoshi",ui-sans-serif,system-ui,sans-serif;font-size:13px;line-height:1.4;letter-spacing:-.01em;display:flex;align-items:stretch;overflow:hidden;position:relative}
+.app *{box-sizing:border-box}
+.i{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.sb{width:188px;flex:none;background:var(--m-side);border-right:1px solid #ececec;padding:14px 10px;display:flex;flex-direction:column;gap:1px}
+.logo{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:700;letter-spacing:-.03em;padding:2px 6px 12px}
+.logo i{width:24px;height:24px;border-radius:7px;background:linear-gradient(150deg,#39d39a,#23b27e);display:flex;align-items:center;justify-content:center}
+.logo i::after{content:"";width:8px;height:8px;background:#fff;border-radius:2px;transform:rotate(45deg)}
+.sb .nb{height:32px;border:1px solid #e4e4e4;background:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:500;margin:0 2px 10px}
+.sb a{display:block;padding:6px 10px;border-radius:6px;color:#1c1c1c;text-decoration:none;border:1px solid transparent;font-size:13px}
+.sb a.on{background:#fff;border-color:#e6e6e6;font-weight:600}
+.sb .sl{font-size:11px;color:var(--m-mut2);padding:12px 10px 4px}
+.mn{flex:1;min-width:0;display:flex;flex-direction:column}
+.crumbs{height:42px;display:flex;align-items:center;gap:8px;padding:0 24px;color:var(--m-mut);font-size:12.5px;flex:none}
+.crumbs .sep{width:1px;height:14px;background:#e1e1e1;margin-right:4px}
+.pg{padding:4px 24px 22px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.ph{display:flex;align-items:center;gap:14px}
+.ph .ttl{min-width:0;display:flex;flex-direction:column;gap:1px}
+.ph .ey{font-size:11.5px;color:var(--m-mut)}
+.ph h4{margin:0;font-size:20px;font-weight:650;letter-spacing:-.025em;line-height:1.15;white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 10px;border:1px solid #e3e3e3;border-radius:8px;font-size:12px;font-weight:700;background:linear-gradient(#fff,#fafafa);box-shadow:0 1px 2px rgba(0,0,0,.05);white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--m-acc);flex:none}
+.sp{flex:1}
+.avs{display:flex;align-items:center}
+.av{width:26px;height:26px;border-radius:50%;border:2px solid #fff;margin-left:-7px;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:#151515;flex:none}
+.av:first-child{margin-left:0}
+.a1{background:#dfe9c8}.a2{background:#e8dccb}.a3{background:#d6e0ee}.a4{background:#ece1ea}
+.avs .more{font-size:11.5px;color:var(--m-mut);margin-left:6px;font-weight:500}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border:1px solid #e2e2e2;border-radius:8px;background:#fff;font-size:12.5px;font-weight:600;color:var(--m-fg);white-space:nowrap}
+.btn.sm{height:27px;padding:0 9px;font-size:12px;font-weight:600}
+.btn.dark{background:#151515;color:#fff;border-color:#151515}
+.btn.ico{width:32px;padding:0}
+.btn .dv{width:1px;height:16px;background:rgba(255,255,255,.25);margin:0 2px}
+.live{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 6px 0 11px;border-radius:8px;background:var(--m-ok-bg);color:var(--m-ok-s);font-weight:700;font-size:12.5px;border:1px solid rgba(124,169,44,.25);white-space:nowrap}
+.live .pulse{width:8px;height:8px;border-radius:50%;background:var(--m-ok);box-shadow:0 0 0 3px rgba(124,169,44,.22)}
+.live .btn{height:24px;font-size:11.5px;padding:0 8px;border-color:rgba(124,169,44,.3)}
+.tabs{display:flex;gap:22px;border-bottom:1px solid var(--m-line);margin-top:-2px}
+.tab{padding:0 1px 9px;font-weight:500;color:var(--m-mut);border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;gap:6px;align-items:center;white-space:nowrap;font-size:13px}
+.tab.on{color:var(--m-fg);font-weight:700;border-color:var(--m-fg)}
+.cnt{font-size:10.5px;font-weight:600;color:var(--m-mut);background:var(--m-soft);border:1px solid var(--m-line);border-radius:9px;padding:0 6px;line-height:16px}
+.cnt.w{background:var(--m-warn-bg);color:var(--m-warn-s);border-color:rgba(185,133,43,.25)}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 318px;gap:14px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:14px;min-width:0}
+.card{border:1px solid var(--m-line);border-radius:8px;background:#fff;min-width:0}
+.ch{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;font-weight:700;font-size:13px;gap:10px}
+.ch .lk{font-size:12px;font-weight:600;color:var(--m-mut);display:flex;align-items:center;gap:4px}
+.cb{padding:0 14px 14px;display:flex;flex-direction:column;gap:12px}
+.lb{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--m-mut);font-weight:600}
+.att{list-style:none;margin:0;padding:0;border-top:1px solid var(--m-line)}
+.att li{display:flex;align-items:center;gap:11px;padding:9px 14px;border-bottom:1px solid var(--m-line)}
+.att li:last-child{border-bottom:0}
+.att .ic{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
+.att .ic.w{background:var(--m-warn-bg);color:var(--m-warn)}
+.att .ic.d{background:var(--m-dan-bg);color:var(--m-dan)}
+.att .ic.i{background:var(--m-info-bg);color:var(--m-info)}
+.att .tx{flex:1;min-width:0}
+.att .tx b{display:block;font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.att .tx span{display:block;font-size:11.5px;color:var(--m-mut)}
+.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--m-line);border-radius:8px;overflow:hidden}
+.flow>div{padding:10px 12px;border-right:1px solid var(--m-line);display:flex;flex-direction:column;gap:3px;min-width:0}
+.flow>div:last-child{border-right:0}
+.flow .v{font-size:17px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.flow .s{font-size:11px;color:var(--m-mut)}
+.flow .hl{background:var(--m-ok-bg)}
+.flow .hl .v{color:var(--m-ok-s)}
+.bar{height:6px;border-radius:4px;background:var(--m-soft);border:1px solid var(--m-line);overflow:hidden}
+.bar span{display:block;height:100%;background:#151515;border-radius:4px}
+.bar.acc span{background:var(--m-acc)}
+.meta{display:flex;justify-content:space-between;font-size:11.5px;color:var(--m-mut)}
+.lst{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.lst li{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--m-line);min-width:0}
+.lst li:first-child{border-top:0;padding-top:0}
+.lst .tx{flex:1;min-width:0}
+.lst .tx b{display:block;font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lst .tx span{display:block;font-size:11.5px;color:var(--m-mut)}
+.lst .r{font-size:12px;color:var(--m-mut);font-variant-numeric:tabular-nums;white-space:nowrap}
+.lst .r.bad{color:var(--m-dan);font-weight:700}
+.lst .r.num{color:var(--m-fg);font-weight:650}
+.box{width:16px;height:16px;border:1.5px solid #cfcfcf;border-radius:4px;flex:none}
+.st{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;white-space:nowrap;letter-spacing:.01em}
+.st.ok{background:var(--m-ok-bg);color:var(--m-ok-s)}
+.st.w{background:var(--m-warn-bg);color:var(--m-warn-s)}
+.st.n{background:var(--m-soft);color:var(--m-mut);border:1px solid var(--m-line)}
+.st.d{background:var(--m-dan-bg);color:var(--m-dan)}
+.st.i{background:var(--m-info-bg);color:var(--m-info)}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:12.5px}
+.kv span:first-child{color:var(--m-mut)}
+.kv span:last-child{font-weight:600;font-variant-numeric:tabular-nums}
+.hr{height:1px;background:var(--m-line)}
+.people{display:flex;flex-direction:column;gap:7px}
+.people div{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.people .av{margin:0;border:0;width:22px;height:22px;font-size:8.5px}
+.people .h{margin-left:auto;color:var(--m-mut);font-variant-numeric:tabular-nums}
+.model{height:112px;border-radius:6px;background:linear-gradient(180deg,#f6f7f4,#eef0ea);border:1px solid var(--m-line);display:flex;align-items:center;justify-content:center;position:relative}
+.model svg{width:130px;height:78px;margin-top:-14px}
+.model .tagm{position:absolute;left:8px;bottom:7px;font-size:10.5px;color:var(--m-mut)}
+.mbtn{display:flex;gap:6px}
+/* Økonomi */
+.eco{display:grid;grid-template-columns:150px minmax(0,1fr);gap:22px;align-items:start}
+.idx{display:flex;flex-direction:column;gap:1px;position:sticky;top:0;padding-top:2px}
+.idx a{font-size:12.5px;color:var(--m-mut);text-decoration:none;padding:5px 9px;border-left:2px solid var(--m-line)}
+.idx a.on{color:var(--m-fg);font-weight:700;border-left-color:var(--m-fg)}
+.idx .c{float:right;color:var(--m-mut2);font-weight:500}
+.sect{display:flex;flex-direction:column;gap:10px}
+.sect-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sect-h h5{margin:0;font-size:14.5px;font-weight:700;letter-spacing:-.015em}
+.sect-h .s{font-size:12px;color:var(--m-mut);font-weight:500;margin-left:6px}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px;min-width:0}
+.tbl th{font-family:inherit;text-transform:uppercase;font-size:9.5px;letter-spacing:.08em;color:var(--m-mut);font-weight:600;text-align:left;padding:7px 12px;border-bottom:1px solid var(--m-line);background:var(--m-soft)}
+.tbl td{padding:8px 12px;border-bottom:1px solid var(--m-line);font-family:inherit;vertical-align:middle}
+.tbl tr:last-child td{border-bottom:0}
+.tbl .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl th.n{text-align:right}
+.tbl .neg{color:var(--m-dan);font-weight:650}
+.tbl .pos{color:var(--m-ok-s);font-weight:650}
+.tbl td b{font-weight:650}
+.invoice{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--m-soft);border-bottom:1px solid var(--m-line)}
+.invoice .v{font-size:18px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+/* Meny */
+.menu{position:absolute;width:280px;background:#fff;border:1px solid #e3e3e3;border-radius:10px;box-shadow:0 16px 40px -12px rgba(0,0,0,.22),0 2px 6px rgba(0,0,0,.06);padding:6px;display:flex;flex-direction:column;z-index:3}
+.menu .g{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--m-mut2);font-weight:600;padding:8px 9px 4px}
+.menu .it{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:6px;font-size:13px;font-weight:500}
+.menu .it.hov{background:var(--m-soft)}
+.menu .it .k{margin-left:auto;font-size:11px;color:var(--m-mut2)}
+.menu .it .ib{width:26px;height:26px;border-radius:6px;background:var(--m-soft);border:1px solid var(--m-line);display:flex;align-items:center;justify-content:center;color:#454545}
+.menu .it .ib.ok{background:var(--m-ok-bg);border-color:rgba(124,169,44,.25);color:var(--m-ok-s)}
+.menu .hr{margin:4px 2px}
+/* Telefon */
+.phones{width:820px;display:flex;gap:40px;justify-content:center;align-items:flex-start;padding:22px 20px;background:transparent}
+.phone{width:360px;height:760px;border-radius:40px;border:9px solid #151515;background:#fff;overflow:hidden;position:relative;display:flex;flex-direction:column;color:var(--m-fg);font-family:"Satoshi",ui-sans-serif,system-ui,sans-serif;font-size:13px;line-height:1.4;letter-spacing:-.01em}
+.phone *{box-sizing:border-box}
+.pstat{height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;font-size:12px;font-weight:700;flex:none}
+.ptop{padding:4px 16px 10px;display:flex;flex-direction:column;gap:8px;flex:none}
+.ptop .back{font-size:12.5px;color:var(--m-mut);display:flex;align-items:center;gap:4px}
+.ptop .row{display:flex;align-items:center;gap:8px}
+.ptop h4{margin:0;font-size:19px;font-weight:700;letter-spacing:-.025em;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ptabs{display:flex;gap:18px;padding:0 16px;border-bottom:1px solid var(--m-line);flex:none;overflow:hidden}
+.ptabs .tab{font-size:13px}
+.pbody{flex:1;padding:14px 16px;display:flex;flex-direction:column;gap:12px;overflow:hidden;background:#fcfcfc}
+.pnav{height:64px;border-top:1px solid var(--m-line);display:flex;align-items:center;justify-content:space-around;flex:none;background:#fff;font-size:10.5px;color:var(--m-mut)}
+.pnav div{display:flex;flex-direction:column;align-items:center;gap:3px}
+.pnav .on{color:var(--m-fg);font-weight:700}
+.pnav .plus{width:42px;height:42px;border-radius:50%;background:#151515;color:#fff;display:flex;align-items:center;justify-content:center}
+.stamp{border-radius:12px;background:#151515;color:#fff;padding:16px;display:flex;flex-direction:column;gap:12px}
+.stamp .big{font-size:26px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.stamp .btn{height:44px;font-size:14px;background:var(--m-acc);color:#151515;border-color:var(--m-acc);width:100%}
+.stamp .sub{font-size:12px;color:rgba(255,255,255,.65)}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:18px 18px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.18);padding:8px 14px 20px;display:flex;flex-direction:column;gap:4px;z-index:3}
+.sheet .grab{width:40px;height:4px;border-radius:3px;background:#dcdcdc;margin:0 auto 8px}
+.sheet .g{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--m-mut2);font-weight:600;padding:8px 4px 2px}
+.sheet .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.sheet .grid div{border:1px solid var(--m-line);border-radius:10px;padding:10px 8px;display:flex;flex-direction:column;gap:6px;align-items:flex-start;font-size:12px;font-weight:600;line-height:1.2;min-height:68px}
+.sheet .grid div.ok{background:var(--m-ok-bg);border-color:rgba(124,169,44,.3)}
+.shade{position:absolute;inset:0;background:var(--m-shade);z-index:2}
+/* B */
+.sbi{width:52px;flex:none;background:var(--m-side);border-right:1px solid #ececec;display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0}
+.sbi span{width:26px;height:26px;border-radius:7px;background:#ececec}
+.sbi span.on{background:#151515}
+.sbi .lg{background:linear-gradient(150deg,#39d39a,#23b27e)}
+.pm{width:212px;flex:none;border-right:1px solid var(--m-line);padding:14px 10px;display:flex;flex-direction:column;gap:1px;background:#fff}
+.pm .nm{padding:2px 8px 4px;font-size:14.5px;font-weight:700;letter-spacing:-.02em;line-height:1.2}
+.pm .cu{padding:0 8px 10px;font-size:11.5px;color:var(--m-mut)}
+.pm .chip{margin:0 8px 12px;align-self:flex-start}
+.pm .g{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--m-mut2);font-weight:600;padding:12px 8px 4px}
+.pm a{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:13px;color:#1c1c1c;text-decoration:none}
+.pm a .cnt{margin-left:auto}
+.pm a.on{background:var(--m-soft);font-weight:700}
+/* C */
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.tile{border:1px solid var(--m-line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;background:#fff;min-height:112px}
+.tile .top{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13px}
+.tile .big{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.tile .s{font-size:11.5px;color:var(--m-mut)}
+.tile.sel{border-color:#151515;box-shadow:0 0 0 1px #151515}
+.drawer{position:absolute;top:0;right:0;bottom:0;width:470px;background:#fff;border-left:1px solid var(--m-line);box-shadow:-20px 0 50px -20px rgba(0,0,0,.25);z-index:3;display:flex;flex-direction:column}
+.drawer .dh{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--m-line)}
+.drawer .dh h5{margin:0;font-size:16px;font-weight:700;flex:1}
+.drawer .db{padding:14px 18px;display:flex;flex-direction:column;gap:12px}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="i-car" viewBox="0 0 24 24"><path d="M5 17H3v-5l2-5h14l2 5v5h-2M7 17h10"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"/></symbol>
+  <symbol id="i-fileplus" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 12v6M9 15h6"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M9 14l2 2 4-4"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></symbol>
+  <symbol id="i-kr" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4zM22 2 11 13"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+</svg>
+
+<main class="wrap">
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <p class="eyebrow">Proanbud · /prosjekter/[id] · designforslag</p>
+  <h1>Ny prosjektside</h1>
+  <p class="lead">Prosjektsiden har i dag tre lag med faner, en egen bryter inni KS & Avvik, og handlinger som krever at du først finner riktig fane. Forslaget under gjør den til <mark>seks flate faner og én Registrer-knapp</mark>, samler alt om penger på én side, og gir håndverkeren en egen startside.</p>
+  <div class="verdict" role="list">
+    <div role="listitem"><span class="from">Navigasjonsnivåer</span><b>3 → 1</b><span>Gruppe, underfane og bryter blir én rad faner.</span></div>
+    <div role="listitem"><span class="from">Klikk til Avvik</span><b>3 → 1</b><span>Arbeid, KS & Avvik, Avvik blir fanen KS og avvik.</span></div>
+    <div role="listitem"><span class="from">Klikk til Lønnsomhet</span><b>2 → 1</b><span>Tallene står øverst på Økonomi.</span></div>
+    <div role="listitem"><span class="from">Stemple inn</span><b>3 → 1</b><span>For håndverkeren er knappen det første på siden.</span></div>
+  </div>
+</header>
+
+<!-- ============ DIAGNOSE ============ -->
+<section id="diagnose">
+  <div class="sec-head">
+    <p class="eyebrow">Hva er rotete i dag</p>
+    <h2>Sju lag før du ser innholdet</h2>
+  </div>
+  <div class="two">
+    <div class="layers" aria-label="Lagene på toppen av prosjektsiden i dag">
+      <div class="layer"><span class="n">1</span><div class="bx">Appens sidemeny<small>Prosjekter · 5 pågående prosjekter</small></div></div>
+      <div class="layer"><span class="n">2</span><div class="bx">Brødsmuler<small>Prosjekter / Tilbygg Lindevegen 8</small></div></div>
+      <div class="layer"><span class="n">3</span><div class="bx">Tittelrad<small>Fasechip · Nytt tilbud · Innstillinger</small></div></div>
+      <div class="layer nav"><span class="n">4</span><div class="bx"><b>Gruppe</b><small>Oversikt · Arbeid · Økonomi</small></div></div>
+      <div class="layer nav"><span class="n">5</span><div class="bx"><b>Underfane</b><small>Oppgaver · Timeføring · Dokumenter & filer · KS & Avvik · 3D-modell · Deltakere</small></div></div>
+      <div class="layer nav"><span class="n">6</span><div class="bx"><b>Bryter inne i fanen</b><small>Sjekklister · Avvik</small></div></div>
+      <div class="layer"><span class="n">7</span><div class="bx">Visning og filtre<small>Liste · Tavle · Tidslinje · søk · sortering</small></div></div>
+      <p class="foot">Lag 4 til 6 er tre nivåer navigasjon inne i ett prosjekt. Lag 5 skifter innhold når du bytter gruppe, så du må huske hvor ting bor.</p>
+    </div>
+    <ul class="problems">
+      <li><b>Grupperingen følger ikke arbeidet</b><span>Kjørebok ligger under Økonomi, Timeføring under Arbeid. Deltakere og 3D-modell ligger under Arbeid. Brukeren må gjette hvilken gruppe en ting havnet i.</span></li>
+      <li><b>Handlinger er gjemt bak faner</b><span>Timeføring og Kjørebok åpnes for å trykke én knapp: «Stemple inn på plassen» eller «Start kjøring». Ny ekstrajobb ligger nederst under Fakturering.</span></li>
+      <li><b>Pengene er én historie på fire sider</b><span>Tilbud, tilleggsarbeid, faktura og dekningsbidrag henger sammen, men leses i fire underfaner. Tilbud vises i tillegg på Oversikt og som knapp i toppen.</span></li>
+      <li><b>Samme tall tre steder</b><span>Timer per person står på Oversikt, i Deltakere og i Lønnsomhet, med ulik overskrift hvert sted.</span></li>
+      <li><b>Leder og håndverker får samme side</b><span>Håndverkeren skjuler bare noen faner, men må fortsatt gjennom Arbeid → Timeføring for å stemple inn.</span></li>
+    </ul>
+  </div>
+
+  <div class="usage">
+    <div class="usage-head">
+      <h3>Hva folk faktisk åpner</h3>
+      <div class="legend"><span><i style="background:var(--bar-money)"></i>Handler om penger</span><span><i style="background:var(--bar-work)"></i>Arbeid på plassen</span><span><i style="background:var(--bar-over)"></i>Oversikt</span></div>
+    </div>
+    <p style="font-size:14px;color:var(--ink-2);max-width:70ch">Besøk per fane på /prosjekter/:id, PostHog siste 90 dager (fra kommentaren i <code>project-overview-tab.tsx</code>). Tre av de fire mest brukte fanene etter Oversikt handler om penger. Kolonnen til høyre viser hvor fanen havner i forslag A.</p>
+    <div class="bars" id="bars"></div>
+    <p class="note">235 besøk fra fire personer, noen av dem interne. Tallene viser hva som blir brukt, ikke hva som er viktigst. Samlet på ny struktur: Oversikt 57 · Økonomi 93 · Timer og kjøring 30 · Filer 25 · Oppgaver 15 · KS og avvik 15.</p>
+  </div>
+</section>
+
+<!-- ============ PRINSIPPER ============ -->
+<section id="prinsipper">
+  <div class="sec-head">
+    <p class="eyebrow">Fire regler for forslagene</p>
+    <h2>Det forslagene bygger på</h2>
+  </div>
+  <div class="principles">
+    <div><b>Ett nivå faner</b><span>Alt som er et sted, er en fane på samme rad. Ingen grupper, ingen underfaner, ingen bryter inni fanen.</span></div>
+    <div><b>Handlinger er knapper</b><span>Stemple inn, ny kjøretur, meld avvik og ny ekstrajobb ligger i én Registrer-meny som finnes på alle faner.</span></div>
+    <div><b>Pengene er én side</b><span>Tilbud → tillegg → faktura → dekningsbidrag leses ovenfra og ned, med sammendraget først.</span></div>
+    <div><b>Rollen velger startsiden</b><span>Lederen starter på Oversikt. Håndverkeren starter på I dag, med stempling og egne oppgaver.</span></div>
+  </div>
+</section>
+
+<!-- ============ FORSLAG A ============ -->
+<section id="forslag-a">
+  <div class="opt-head">
+    <span class="opt-tag rec">Forslag A · anbefalt</span>
+    <span class="opt-tag">Minst ombygging per gevinst</span>
+  </div>
+  <div class="sec-head">
+    <h2>Seks flate faner og en Registrer-knapp</h2>
+    <p class="lead" style="font-size:17px">Oversikt · Økonomi · Oppgaver · Timer og kjøring · KS og avvik · Filer. Personer og innstillinger flytter opp i prosjekttoppen. 3D-modellen blir et festet element i Filer og en miniatyr på Oversikt.</p>
+  </div>
+
+  <figure class="fig">
+    <div class="shot" data-w="1200">
+      <div class="app" style="height:800px">
+        <nav class="sb">
+          <div class="logo"><i></i>Proanbud</div>
+          <div class="nb">Nytt prosjekt</div>
+          <a>Dashbord</a><a class="on">Prosjekter</a><a>Tilbud</a><a>Timeføring</a><a>Kunder</a><a>Kalender</a><a>Meldinger</a><a>Dokumenter</a><a>HMS</a><a>Mine priser</a><a>Min bedrift</a>
+          <div class="sl">Pågående prosjekter</div>
+          <a class="on">Tilbygg Lindevegen 8</a><a>Bad Storgata 14</a><a>Garasje Bjørkåsen 5</a>
+        </nav>
+        <div class="mn">
+          <div class="crumbs"><span class="sep"></span>Prosjekter / Tilbygg Lindevegen 8</div>
+          <div class="pg">
+            <div class="ph">
+              <div class="ttl"><span class="ey">Tilbygg · Familien Haugen · 18. aug – 13. nov</span><h4>Tilbygg Lindevegen 8</h4></div>
+              <span class="chip"><span class="dot"></span>Under utførelse<svg class="i" style="width:13px;height:13px;color:#999"><use href="#i-down"/></svg></span>
+              <span class="sp"></span>
+              <div class="avs"><span class="av a1">JH</span><span class="av a2">MA</span><span class="av a3">SK</span><span class="av a4">OB</span></div>
+              <span class="btn ico"><svg class="i"><use href="#i-dots"/></svg></span>
+              <span class="btn dark"><svg class="i"><use href="#i-plus"/></svg>Registrer<span class="dv"></span><svg class="i" style="width:13px;height:13px"><use href="#i-down"/></svg></span>
+            </div>
+            <div class="tabs">
+              <span class="tab on">Oversikt</span><span class="tab">Økonomi</span><span class="tab">Oppgaver <span class="cnt">4</span></span><span class="tab">Timer og kjøring</span><span class="tab">KS og avvik <span class="cnt w">2</span></span><span class="tab">Filer <span class="cnt">12</span></span>
+            </div>
+
+            <div class="cols">
+              <div class="stack">
+                <div class="card">
+                  <div class="ch">Venter på deg <span class="lk">3 saker</span></div>
+                  <ul class="att">
+                    <li><span class="ic w"><svg class="i"><use href="#i-send"/></svg></span><span class="tx"><b>Ekstrajobb «Bytte takrenner» venter på kundens svar</b><span>Sendt 23. sep · 18 900 kr · 6 dager uten svar</span></span><span class="btn sm">Send påminnelse</span></li>
+                    <li><span class="ic d"><svg class="i"><use href="#i-alert"/></svg></span><span class="tx"><b>Avvik: fuktmåling i baderomsgulv over grenseverdi</b><span>Meldt av Mari Aas i går · Tiltak mangler</span></span><span class="btn sm">Åpne avvik</span></li>
+                    <li><span class="ic d"><svg class="i"><use href="#i-list"/></svg></span><span class="tx"><b>«Bestille vinduer» er over fristen</b><span>Frist 24. sep · Jonas Haugland</span></span><span class="btn sm">Åpne</span></li>
+                  </ul>
+                </div>
+
+                <div class="card">
+                  <div class="ch">Økonomi <span class="lk">Åpne økonomi<svg class="i" style="width:13px;height:13px"><use href="#i-right"/></svg></span></div>
+                  <div class="cb">
+                    <div class="flow">
+                      <div><span class="lb">Tilbud</span><span class="v">482 000</span><span class="s">Godkjent 3. aug</span></div>
+                      <div><span class="lb">Tillegg</span><span class="v">+ 36 500</span><span class="s">2 godkjent · 1 venter</span></div>
+                      <div><span class="lb">Fakturert</span><span class="v">210 000</span><span class="s">Gjenstår 308 500</span></div>
+                      <div class="hl"><span class="lb">Forventet DB</span><span class="v">146 500</span><span class="s">28,3 % dekningsgrad</span></div>
+                    </div>
+                    <div>
+                      <div class="bar"><span style="width:62%"></span></div>
+                      <div class="meta" style="margin-top:6px"><span>Kostnad hittil 231 400 av kalkyle 372 000</span><span>62 %</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="ch">Fremdrift <span class="lk">5 av 9 oppgaver ferdige</span></div>
+                  <div class="cb">
+                    <ul class="lst">
+                      <li><span class="box"></span><span class="tx"><b>Bestille vinduer</b><span>Jonas Haugland</span></span><span class="r bad">Forfalt 24. sep</span></li>
+                      <li><span class="box"></span><span class="tx"><b>Legge membran på bad</b><span>Mari Aas</span></span><span class="r">1. okt</span></li>
+                      <li><span class="box"></span><span class="tx"><b>Montere vindu stue</b><span>Sindre Kvam</span></span><span class="r">6. okt</span></li>
+                    </ul>
+                    <div>
+                      <div class="bar acc"><span style="width:48%"></span></div>
+                      <div class="meta" style="margin-top:6px"><span>18. aug</span><span>48 % av perioden brukt</span><span>13. nov</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="stack">
+                <div class="card">
+                  <div class="ch">Kunde</div>
+                  <div class="cb">
+                    <div><b style="font-size:13.5px">Familien Haugen</b><div style="font-size:12px;color:var(--m-mut)">Lindevegen 8, 2020 Skedsmokorset · 912 34 567</div></div>
+                    <div class="mbtn"><span class="btn sm"><svg class="i" style="width:13px;height:13px"><use href="#i-phone"/></svg>Ring</span><span class="btn sm"><svg class="i" style="width:13px;height:13px"><use href="#i-mail"/></svg>E-post</span></div>
+                  </div>
+                </div>
+                <div class="card">
+                  <div class="ch">På jobben <span class="lk">186 t ført</span></div>
+                  <div class="cb">
+                    <div class="people">
+                      <div><span class="av a1">JH</span>Jonas Haugland <span class="st n" style="font-size:9.5px">Leder</span><span class="h">64 t</span></div>
+                      <div><span class="av a2">MA</span>Mari Aas<span class="h">71 t</span></div>
+                      <div><span class="av a3">SK</span>Sindre Kvam<span class="h">38 t</span></div>
+                      <div><span class="av a4">OB</span>Ola Berg<span class="h">13 t</span></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="card">
+                  <div class="ch">3D-modell <span class="lk">Åpne</span></div>
+                  <div class="cb">
+                    <div class="model">
+                      <svg viewBox="0 0 150 92"><g fill="none" stroke="#6b6b6b" stroke-width="1.2" stroke-linejoin="round"><path d="M20 58 62 38l58 16-42 22z" fill="#fff"/><path d="M20 58v14l58 18V76z" fill="#f0f0f0"/><path d="M78 76v14l42-22V54z" fill="#e6e6e6"/><path d="M36 50 62 22l44 12-26 30" fill="#dfe9c8"/><path d="M62 22 60 38"/></g></svg>
+                      <span class="tagm">Tilbygg 18 m² · generert 12. aug</span>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>A1 · Oversikt for leder.</b> Toppen er to rader: navn, fase, personer og Registrer. Faner uten grupper. «Venter på deg» viser bare ting som står stille, hver med én knapp. Økonomi-kortet forteller pengehistorien fra venstre mot høyre.</figcaption>
+  </figure>
+
+  <figure class="fig">
+    <div class="shot" data-w="1200">
+      <div class="app" style="height:930px">
+        <nav class="sb">
+          <div class="logo"><i></i>Proanbud</div>
+          <div class="nb">Nytt prosjekt</div>
+          <a>Dashbord</a><a class="on">Prosjekter</a><a>Tilbud</a><a>Timeføring</a><a>Kunder</a><a>Kalender</a><a>Meldinger</a><a>Dokumenter</a><a>HMS</a><a>Mine priser</a><a>Min bedrift</a>
+        </nav>
+        <div class="mn">
+          <div class="crumbs"><span class="sep"></span>Prosjekter / Tilbygg Lindevegen 8</div>
+          <div class="pg">
+            <div class="ph">
+              <div class="ttl"><span class="ey">Tilbygg · Familien Haugen · 18. aug – 13. nov</span><h4>Tilbygg Lindevegen 8</h4></div>
+              <span class="chip"><span class="dot"></span>Under utførelse<svg class="i" style="width:13px;height:13px;color:#999"><use href="#i-down"/></svg></span>
+              <span class="sp"></span>
+              <div class="avs"><span class="av a1">JH</span><span class="av a2">MA</span><span class="av a3">SK</span><span class="av a4">OB</span></div>
+              <span class="btn ico"><svg class="i"><use href="#i-dots"/></svg></span>
+              <span class="btn dark"><svg class="i"><use href="#i-plus"/></svg>Registrer<span class="dv"></span><svg class="i" style="width:13px;height:13px"><use href="#i-down"/></svg></span>
+            </div>
+            <div class="tabs">
+              <span class="tab">Oversikt</span><span class="tab on">Økonomi</span><span class="tab">Oppgaver <span class="cnt">4</span></span><span class="tab">Timer og kjøring</span><span class="tab">KS og avvik <span class="cnt w">2</span></span><span class="tab">Filer <span class="cnt">12</span></span>
+            </div>
+
+            <div class="eco">
+              <div class="idx">
+                <a class="on">Sammendrag</a><a>Tilbud <span class="c">1</span></a><a>Tilleggsarbeid <span class="c">3</span></a><a>Fakturering <span class="c">1</span></a><a>Kostnader</a><a>Budsjett</a>
+              </div>
+              <div class="stack" style="gap:18px">
+                <div class="flow">
+                  <div><span class="lb">Kontraktsverdi</span><span class="v">518 500</span><span class="s">Tilbud 482 000 + tillegg 36 500</span></div>
+                  <div><span class="lb">Fakturert</span><span class="v">210 000</span><span class="s">Klar til fakturering 308 500</span></div>
+                  <div><span class="lb">Kostnad hittil</span><span class="v">231 400</span><span class="s">62 % av kalkyle 372 000</span></div>
+                  <div class="hl"><span class="lb">Forventet DB</span><span class="v">146 500</span><span class="s">28,3 % dekningsgrad</span></div>
+                </div>
+
+                <div class="sect">
+                  <div class="sect-h"><h5>Tilbud<span class="s">1 godkjent</span></h5><span class="btn sm"><svg class="i" style="width:13px;height:13px"><use href="#i-plus"/></svg>Nytt tilbud</span></div>
+                  <div class="card"><table class="tbl"><tbody>
+                    <tr><td><b>Tilbygg 18 m² med bad</b><div style="font-size:11.5px;color:var(--m-mut)">Sendt 28. jul · godkjent av Kari Haugen 3. aug</div></td><td><span class="st ok">Godkjent</span></td><td class="n"><b>482 000</b></td></tr>
+                  </tbody></table></div>
+                </div>
+
+                <div class="sect">
+                  <div class="sect-h"><h5>Tilleggsarbeid<span class="s">36 500 godkjent · 18 900 venter</span></h5><span class="btn sm"><svg class="i" style="width:13px;height:13px"><use href="#i-plus"/></svg>Ny ekstrajobb</span></div>
+                  <div class="card"><table class="tbl"><tbody>
+                    <tr><td><b>Bytte takrenner</b><div style="font-size:11.5px;color:var(--m-mut)">Fastpris · sendt 23. sep</div></td><td><span class="st w">Venter på kunden · 6 d</span></td><td class="n">18 900</td><td class="n"><span class="btn sm">Send påminnelse</span></td></tr>
+                    <tr><td><b>Flytte vindu 20 cm</b><div style="font-size:11.5px;color:var(--m-mut)">Fastpris · godkjent 2. sep</div></td><td><span class="st ok">Godkjent</span></td><td class="n">24 000</td><td></td></tr>
+                    <tr><td><b>Ekstra stikkontakter kjøkken</b><div style="font-size:11.5px;color:var(--m-mut)">Per time · avtalt muntlig 19. aug</div></td><td><span class="st ok">Avtalt</span></td><td class="n">12 500</td><td></td></tr>
+                  </tbody></table></div>
+                </div>
+
+                <div class="sect">
+                  <div class="sect-h"><h5>Fakturering<span class="s">Tripletex</span></h5></div>
+                  <div class="card" style="overflow:hidden">
+                    <div class="invoice"><div style="flex:1"><div class="lb">Klar til fakturering</div><div class="v">308 500 kr</div></div><span class="btn sm">Velg deler</span><span class="btn sm dark">Fakturer alt</span></div>
+                    <table class="tbl"><tbody>
+                      <tr><td><b>A-konto 1</b><div style="font-size:11.5px;color:var(--m-mut)">Faktura 10412 · forfall 15. sep</div></td><td><span class="st ok">Betalt</span></td><td class="n">210 000</td></tr>
+                    </tbody></table>
+                  </div>
+                </div>
+
+                <div class="sect">
+                  <div class="sect-h"><h5>Kostnader<span class="s">kalkyle mot faktisk</span></h5><span class="btn sm"><svg class="i" style="width:13px;height:13px"><use href="#i-plus"/></svg>Legg til materialer</span></div>
+                  <div class="card"><table class="tbl">
+                    <thead><tr><th>Post</th><th class="n">Kalkyle</th><th class="n">Faktisk hittil</th><th class="n">Brukt</th></tr></thead>
+                    <tbody>
+                      <tr><td>Lønnskost · 186 t</td><td class="n">198 000</td><td class="n">120 900</td><td class="n">61 %</td></tr>
+                      <tr><td>Materialer</td><td class="n">164 000</td><td class="n">104 700</td><td class="n">64 %</td></tr>
+                      <tr><td>Kjøring · 412 km</td><td class="n">10 000</td><td class="n">5 800</td><td class="n">58 %</td></tr>
+                      <tr><td><b>Sum kostnad</b></td><td class="n"><b>372 000</b></td><td class="n"><b>231 400</b></td><td class="n"><b>62 %</b></td></tr>
+                    </tbody>
+                  </table></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>A2 · Økonomi som én side.</b> Erstatter underfanene Tilbud, Fakturering og Lønnsomhet. Sammendraget øverst svarer på «tjener vi penger?», og seksjonene under følger samme rekkefølge som pengene går. Indeksen til venstre hopper til seksjonen. Kjøring vises som en kostnadslinje her, mens selve turene ligger under Timer og kjøring.</figcaption>
+  </figure>
+
+  <figure class="fig">
+    <div class="shot" data-w="760">
+      <div class="app" style="width:760px;height:500px;display:block">
+        <div class="pg" style="padding-top:18px">
+          <div class="ph">
+            <div class="ttl"><span class="ey">Tilbygg · Familien Haugen</span><h4>Tilbygg Lindevegen 8</h4></div>
+            <span class="sp"></span>
+            <span class="live"><span class="pulse"></span>Stemplet inn 02:14<span class="btn">Stopp</span></span>
+            <span class="btn ico"><svg class="i"><use href="#i-dots"/></svg></span>
+            <span class="btn dark"><svg class="i"><use href="#i-plus"/></svg>Registrer<span class="dv"></span><svg class="i" style="width:13px;height:13px"><use href="#i-down"/></svg></span>
+          </div>
+          <div class="tabs"><span class="tab on">Oversikt</span><span class="tab">Økonomi</span><span class="tab">Oppgaver <span class="cnt">4</span></span><span class="tab">Timer og kjøring</span><span class="tab">KS og avvik <span class="cnt w">2</span></span></div>
+          <div class="card" style="height:300px;opacity:.45"></div>
+        </div>
+        <div class="menu" style="right:24px;top:62px">
+          <div class="g">Tid og kjøring</div>
+          <div class="it"><span class="ib ok"><svg class="i" style="width:14px;height:14px"><use href="#i-pin"/></svg></span>Stopp arbeidsøkt<span class="k">02:14</span></div>
+          <div class="it"><span class="ib"><svg class="i" style="width:14px;height:14px"><use href="#i-clock"/></svg></span>Før timer manuelt</div>
+          <div class="it hov"><span class="ib"><svg class="i" style="width:14px;height:14px"><use href="#i-car"/></svg></span>Start kjøring</div>
+          <div class="hr"></div>
+          <div class="g">På plassen</div>
+          <div class="it"><span class="ib"><svg class="i" style="width:14px;height:14px"><use href="#i-list"/></svg></span>Ny oppgave</div>
+          <div class="it"><span class="ib"><svg class="i" style="width:14px;height:14px"><use href="#i-alert"/></svg></span>Meld avvik</div>
+          <div class="it"><span class="ib"><svg class="i" style="width:14px;height:14px"><use href="#i-camera"/></svg></span>Last opp bilde eller fil</div>
+          <div class="hr"></div>
+          <div class="g">Penger · bare leder</div>
+          <div class="it"><span class="ib"><svg class="i" style="width:14px;height:14px"><use href="#i-fileplus"/></svg></span>Ny ekstrajobb</div>
+          <div class="it"><span class="ib"><svg class="i" style="width:14px;height:14px"><use href="#i-file"/></svg></span>Nytt tilbud</div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>A3 · Registrer-menyen og stempel-pillen.</b> Alt man <i>gjør</i> på et prosjekt ligger i én meny som er lik på alle faner, og erstatter «Nytt tilbud»-knappen. Når en arbeidsøkt går, står den grønne pillen i toppen uansett hvilken fane du er på, med Stopp rett ved.</figcaption>
+  </figure>
+
+  <figure class="fig">
+    <div class="shot bare" data-w="820">
+      <div class="phones">
+        <div class="phone">
+          <div class="pstat"><span>07:12</span><span>●●● 5G</span></div>
+          <div class="ptop">
+            <span class="back"><svg class="i" style="width:14px;height:14px"><use href="#i-left"/></svg>Prosjekter</span>
+            <div class="row"><h4>Tilbygg Lindevegen 8</h4><span class="chip" style="height:26px;font-size:11px"><span class="dot"></span>Utførelse</span></div>
+          </div>
+          <div class="ptabs"><span class="tab on">I dag</span><span class="tab">Oppgaver</span><span class="tab">Timer</span><span class="tab">KS og avvik</span><span class="tab">Filer</span></div>
+          <div class="pbody">
+            <div class="stamp">
+              <div><div class="sub">Tirsdag 29. september</div><div class="big">Ikke stemplet inn</div></div>
+              <span class="btn"><svg class="i" style="width:16px;height:16px"><use href="#i-pin"/></svg>Stemple inn på plassen</span>
+              <div class="sub">Denne uka: 14,5 t på prosjektet</div>
+            </div>
+            <div class="card" style="background:#fff">
+              <div class="ch">Mine oppgaver <span class="lk">2</span></div>
+              <div class="cb" style="gap:0">
+                <ul class="lst">
+                  <li><span class="box"></span><span class="tx"><b>Legge membran på bad</b><span>Frist i morgen</span></span></li>
+                  <li><span class="box"></span><span class="tx"><b>Rydde byggeplass fredag</b><span>Frist 2. okt</span></span></li>
+                </ul>
+              </div>
+            </div>
+            <div class="card" style="background:#fff">
+              <div class="ch">Å fylle ut <span class="lk">1</span></div>
+              <div class="cb" style="gap:0">
+                <ul class="lst"><li><svg class="i" style="color:var(--m-warn)"><use href="#i-check"/></svg><span class="tx"><b>Membran våtrom</b><span>Sjekkliste · 3 av 11 punkter</span></span><span class="btn sm">Fortsett</span></li></ul>
+              </div>
+            </div>
+            <div class="card" style="background:#fff">
+              <div class="ch">Tegninger <span class="lk">Alle filer</span></div>
+              <div class="cb" style="gap:0"><ul class="lst"><li><svg class="i" style="color:var(--m-mut)"><use href="#i-file"/></svg><span class="tx"><b>Plantegning rev C.pdf</b><span>Oppdatert 21. sep</span></span></li></ul></div>
+            </div>
+          </div>
+          <div class="pnav"><div><svg class="i"><use href="#i-clock"/></svg>Timer</div><div class="on"><svg class="i"><use href="#i-folder"/></svg>Prosjekter</div><div class="plus"><svg class="i" style="width:20px;height:20px"><use href="#i-plus"/></svg></div><div><svg class="i"><use href="#i-pin"/></svg>Kart</div><div><svg class="i"><use href="#i-more"/></svg>Mer</div></div>
+        </div>
+
+        <div class="phone">
+          <div class="pstat"><span>07:12</span><span>●●● 5G</span></div>
+          <div class="ptop">
+            <span class="back"><svg class="i" style="width:14px;height:14px"><use href="#i-left"/></svg>Prosjekter</span>
+            <div class="row"><h4>Tilbygg Lindevegen 8</h4><span class="chip" style="height:26px;font-size:11px"><span class="dot"></span>Utførelse</span></div>
+          </div>
+          <div class="ptabs"><span class="tab on">I dag</span><span class="tab">Oppgaver</span><span class="tab">Timer</span><span class="tab">KS og avvik</span></div>
+          <div class="pbody"><div class="stamp" style="opacity:.5"><div class="big">Ikke stemplet inn</div></div></div>
+          <div class="pnav"><div><svg class="i"><use href="#i-clock"/></svg>Timer</div><div class="on"><svg class="i"><use href="#i-folder"/></svg>Prosjekter</div><div class="plus"><svg class="i" style="width:20px;height:20px"><use href="#i-plus"/></svg></div><div><svg class="i"><use href="#i-pin"/></svg>Kart</div><div><svg class="i"><use href="#i-more"/></svg>Mer</div></div>
+          <div class="shade"></div>
+          <div class="sheet">
+            <div class="grab"></div>
+            <div style="font-size:15px;font-weight:700;padding:0 4px">Registrer på Tilbygg Lindevegen 8</div>
+            <div class="g">Tid og kjøring</div>
+            <div class="grid">
+              <div class="ok"><svg class="i" style="color:var(--m-ok-s)"><use href="#i-pin"/></svg>Stemple inn</div>
+              <div><svg class="i"><use href="#i-clock"/></svg>Før timer</div>
+              <div><svg class="i"><use href="#i-car"/></svg>Start kjøring</div>
+            </div>
+            <div class="g">På plassen</div>
+            <div class="grid">
+              <div><svg class="i"><use href="#i-camera"/></svg>Ta bilde</div>
+              <div><svg class="i"><use href="#i-alert"/></svg>Meld avvik</div>
+              <div><svg class="i"><use href="#i-list"/></svg>Ny oppgave</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>A4 · Håndverkeren på telefon.</b> Til venstre: startsiden I dag, med stempling øverst, egne oppgaver, sjekklister som venter og siste tegning. Økonomi finnes ikke for denne rollen. Til høyre: pluss-knappen i bunnmenyen åpner Registrer for prosjektet du står i, så du slipper å finne fanen først.</figcaption>
+  </figure>
+
+  <div class="pc">
+    <div><b>Fordeler</b><ul><li>Ett nivå faner som får plass på én rad på desktop og kan scrolles på telefon.</li><li>Gjenbruker komponentene som finnes: fanene flyttes, de skrives ikke om.</li><li>Gamle lenker virker fortsatt via <code>project-tab-aliases.ts</code>.</li></ul></div>
+    <div class="con"><b>Ulemper</b><ul><li>Økonomi blir en lang side. Seksjonsindeksen må fungere godt.</li><li>Timer og kjøring i én logg krever en felles radtype for arbeidsøkt og tur.</li></ul></div>
+  </div>
+</section>
+
+<!-- ============ FORSLAG B ============ -->
+<section id="forslag-b">
+  <div class="opt-head"><span class="opt-tag">Forslag B</span><span class="opt-tag">Mer plass, større ombygging</span></div>
+  <div class="sec-head">
+    <h2>Prosjektmeny til venstre</h2>
+    <p class="lead" style="font-size:17px">Inne i et prosjekt krymper appens sidemeny til ikoner, og prosjektet får sin egen meny. En loddrett liste tåler flere punkter enn en fanerad, og tellere og varsler får plass ved hvert punkt.</p>
+  </div>
+  <figure class="fig">
+    <div class="shot" data-w="1200">
+      <div class="app" style="height:640px">
+        <div class="sbi"><span class="lg"></span><span></span><span class="on"></span><span></span><span></span><span></span><span></span></div>
+        <nav class="pm">
+          <div class="nm">Tilbygg Lindevegen 8</div>
+          <div class="cu">Familien Haugen</div>
+          <span class="chip"><span class="dot"></span>Under utførelse<svg class="i" style="width:13px;height:13px;color:#999"><use href="#i-down"/></svg></span>
+          <a><svg class="i"><use href="#i-home"/></svg>Oversikt</a>
+          <div class="g">Arbeid</div>
+          <a><svg class="i"><use href="#i-list"/></svg>Oppgaver<span class="cnt">4</span></a>
+          <a><svg class="i"><use href="#i-clock"/></svg>Timer og kjøring</a>
+          <a><svg class="i"><use href="#i-check"/></svg>KS og avvik<span class="cnt w">2</span></a>
+          <a><svg class="i"><use href="#i-folder"/></svg>Filer og 3D<span class="cnt">12</span></a>
+          <div class="g">Penger</div>
+          <a><svg class="i"><use href="#i-file"/></svg>Tilbud<span class="cnt">1</span></a>
+          <a class="on"><svg class="i"><use href="#i-fileplus"/></svg>Tilleggsarbeid<span class="cnt w">1</span></a>
+          <a><svg class="i"><use href="#i-kr"/></svg>Fakturering</a>
+          <a><svg class="i"><use href="#i-right"/></svg>Lønnsomhet</a>
+          <div class="g">Prosjekt</div>
+          <a>Personer<span class="cnt">4</span></a>
+          <a>Innstillinger</a>
+        </nav>
+        <div class="mn">
+          <div class="crumbs"><span class="sep"></span>Prosjekter / Tilbygg Lindevegen 8 / Tilleggsarbeid</div>
+          <div class="pg">
+            <div class="ph"><div class="ttl"><h4>Tilleggsarbeid</h4><span class="ey">36 500 godkjent · 18 900 venter på kunden</span></div><span class="sp"></span><span class="btn">Ny ekstrajobb</span><span class="btn dark"><svg class="i"><use href="#i-plus"/></svg>Registrer<span class="dv"></span><svg class="i" style="width:13px;height:13px"><use href="#i-down"/></svg></span></div>
+            <div class="card"><table class="tbl">
+              <thead><tr><th>Ekstrajobb</th><th>Status</th><th class="n">Beløp</th><th></th></tr></thead>
+              <tbody>
+                <tr><td><b>Bytte takrenner</b><div style="font-size:11.5px;color:var(--m-mut)">Fastpris · sendt 23. sep</div></td><td><span class="st w">Venter på kunden · 6 d</span></td><td class="n">18 900</td><td class="n"><span class="btn sm">Send påminnelse</span></td></tr>
+                <tr><td><b>Flytte vindu 20 cm</b><div style="font-size:11.5px;color:var(--m-mut)">Fastpris · godkjent 2. sep</div></td><td><span class="st ok">Godkjent</span></td><td class="n">24 000</td><td></td></tr>
+                <tr><td><b>Ekstra stikkontakter kjøkken</b><div style="font-size:11.5px;color:var(--m-mut)">Per time · avtalt 19. aug</div></td><td><span class="st ok">Avtalt</span></td><td class="n">12 500</td><td></td></tr>
+              </tbody></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>B · Prosjektmeny.</b> Gruppene Arbeid og Penger er bare overskrifter i lista, ikke et eget klikk. Hvert punkt er én side. På telefon blir menyen en nedtrekksliste under prosjektnavnet.</figcaption>
+  </figure>
+  <div class="pc">
+    <div><b>Fordeler</b><ul><li>Plass til alle sider uten å slå dem sammen.</li><li>Tellere og varsler synes hele tiden.</li><li>Kjent mønster fra verktøy som Linear og GitLab.</li></ul></div>
+    <div class="con"><b>Ulemper</b><ul><li>Krever en ny layout der appens sidemeny kollapser inne i prosjekter.</li><li>Løser navigasjonen, men ikke at pengene er spredt på fire sider.</li><li>På telefon blir det en nedtrekksliste, som er tregere enn faner.</li></ul></div>
+  </div>
+</section>
+
+<!-- ============ FORSLAG C ============ -->
+<section id="forslag-c">
+  <div class="opt-head"><span class="opt-tag">Forslag C</span><span class="opt-tag">Ingen faner</span></div>
+  <div class="sec-head">
+    <h2>Én side med skuffer</h2>
+    <p class="lead" style="font-size:17px">Prosjektet er én oversikt med en flis per område. En flis viser tallet som betyr noe, og åpner en skuff fra høyre med hele innholdet. Du forlater aldri oversikten.</p>
+  </div>
+  <figure class="fig">
+    <div class="shot" data-w="1200">
+      <div class="app" style="height:600px">
+        <nav class="sb">
+          <div class="logo"><i></i>Proanbud</div>
+          <div class="nb">Nytt prosjekt</div>
+          <a>Dashbord</a><a class="on">Prosjekter</a><a>Tilbud</a><a>Timeføring</a><a>Kunder</a><a>Kalender</a><a>Meldinger</a><a>Dokumenter</a><a>HMS</a>
+        </nav>
+        <div class="mn">
+          <div class="crumbs"><span class="sep"></span>Prosjekter / Tilbygg Lindevegen 8</div>
+          <div class="pg">
+            <div class="ph"><div class="ttl"><span class="ey">Tilbygg · Familien Haugen</span><h4>Tilbygg Lindevegen 8</h4></div><span class="chip"><span class="dot"></span>Under utførelse</span><span class="sp"></span><span class="btn dark"><svg class="i"><use href="#i-plus"/></svg>Registrer</span></div>
+            <div class="tiles">
+              <div class="tile"><div class="top">Lønnsomhet</div><div class="big" style="color:var(--m-ok-s)">146 500</div><div class="s">Forventet DB · 28,3 %</div></div>
+              <div class="tile sel"><div class="top">Tilleggsarbeid <span class="st w">1 venter</span></div><div class="big">36 500</div><div class="s">2 godkjent · 18 900 venter</div></div>
+              <div class="tile"><div class="top">Fakturering</div><div class="big">308 500</div><div class="s">Klar til fakturering</div></div>
+              <div class="tile"><div class="top">Oppgaver <span class="st d">1 forfalt</span></div><div class="big">5 av 9</div><div class="s">Neste: Legge membran på bad</div></div>
+              <div class="tile"><div class="top">Timer og kjøring</div><div class="big">186 t</div><div class="s">412 km · 4 personer</div></div>
+              <div class="tile"><div class="top">KS og avvik <span class="st d">1 åpent</span></div><div class="big">1 + 1</div><div class="s">Avvik · sjekkliste ikke ferdig</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="shade" style="background:rgba(21,21,21,.18)"></div>
+        <div class="drawer">
+          <div class="dh"><h5>Tilleggsarbeid</h5><span class="btn sm">Ny ekstrajobb</span><span class="btn sm ico" style="width:27px"><svg class="i"><use href="#i-x"/></svg></span></div>
+          <div class="db">
+            <ul class="lst">
+              <li><span class="tx"><b>Bytte takrenner</b><span>Venter på kunden i 6 dager</span></span><span class="r num">18 900</span></li>
+              <li><span class="tx"><b>Flytte vindu 20 cm</b><span>Godkjent 2. sep</span></span><span class="r num">24 000</span></li>
+              <li><span class="tx"><b>Ekstra stikkontakter kjøkken</b><span>Avtalt 19. aug</span></span><span class="r num">12 500</span></li>
+            </ul>
+            <span class="btn">Send påminnelse om takrenner</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>C · Fliser og skuffer.</b> Ingen faner å lære. Fungerer godt for lister, men dårlig for 3D-modellen, lønnsomhetstabellen og oppgavetavla, som trenger hele skjermen.</figcaption>
+  </figure>
+  <div class="pc">
+    <div><b>Fordeler</b><ul><li>Alt synes på én skjerm, med status på hver flis.</li><li>Naturlig på telefon, der en skuff er et helskjermsark.</li></ul></div>
+    <div class="con"><b>Ulemper</b><ul><li>Hver fane må skrives om til å passe i en smal skuff.</li><li>Store verktøy (3D, tavle, kalkyle) må likevel åpnes som egne sider.</li><li>Vanskeligere å dele en lenke til en bestemt liste.</li></ul></div>
+  </div>
+</section>
+
+<!-- ============ SAMMENLIGNING ============ -->
+<section id="sammenligning">
+  <div class="sec-head"><p class="eyebrow">Sammenligning</p><h2>Hvorfor A</h2></div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th></th><th>I dag</th><th>A · Flate faner</th><th>B · Prosjektmeny</th><th>C · Skuffer</th></tr></thead>
+      <tbody>
+        <tr><td>Navigasjonsnivåer i prosjektet</td><td class="num">3</td><td class="num win">1</td><td class="num">1</td><td class="num">0 + skuff</td></tr>
+        <tr><td>Klikk fra Oversikt til Lønnsomhet</td><td class="num">2</td><td class="num win">1</td><td class="num">1</td><td class="num">1</td></tr>
+        <tr><td>Klikk til Avvik</td><td class="num">3</td><td class="num win">1</td><td class="num">1</td><td class="num">1</td></tr>
+        <tr><td>Klikk til Stemple inn</td><td class="num">3</td><td class="num win">2<span class="muted">1 for håndverker</span></td><td class="num">2</td><td class="num">2</td></tr>
+        <tr><td>Klikk til Ny ekstrajobb</td><td class="num">3 + scroll</td><td class="num win">2</td><td class="num">2</td><td class="num">2</td></tr>
+        <tr><td>Pengene samlet</td><td><span class="pill bad">4 steder</span></td><td class="win"><span class="pill good">1 side</span></td><td><span class="pill mid">4 punkter</span></td><td><span class="pill mid">3 fliser</span></td></tr>
+        <tr><td>Telefon</td><td><span class="pill mid">To rader som scrolles</span></td><td><span class="pill good">Én rad + pluss-knapp</span></td><td><span class="pill mid">Nedtrekksliste</span></td><td><span class="pill good">Ark</span></td></tr>
+        <tr><td>Ombygging</td><td>–</td><td class="win"><span class="pill good">Middels</span><span class="muted">Flytter faner, ny Økonomi-side</span></td><td><span class="pill mid">Middels til stor</span><span class="muted">Ny layout i appskallet</span></td><td><span class="pill bad">Stor</span><span class="muted">Alle faner må inn i skuffer</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="prose">B er et godt steg to hvis antallet sider vokser igjen. Menyen i B har samme punkter som fanene i A, så A stenger ikke den veien.</p>
+</section>
+
+<!-- ============ KART ============ -->
+<section id="kart">
+  <div class="sec-head"><p class="eyebrow">Hvor alt havner</p><h2>Alle 13 steder i dag, og hvor de flytter i A</h2></div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>I dag</th><th>Ligger nå</th><th>I forslag A</th><th>Merknad</th></tr></thead>
+      <tbody>
+        <tr><td>Oversikt</td><td>Oversikt</td><td><b>Oversikt</b></td><td>«Venter på deg» først. Tilbudskortet erstattes av pengeflyten.</td></tr>
+        <tr><td>Tilbud</td><td>Økonomi → Tilbud</td><td><b>Økonomi</b> · Tilbud</td><td>«Nytt tilbud» flytter fra toppen til Registrer og seksjonen.</td></tr>
+        <tr><td>Fakturering + tilleggsarbeid</td><td>Økonomi → Fakturering</td><td><b>Økonomi</b> · Tilleggsarbeid, Fakturering</td><td>To seksjoner. «Ny ekstrajobb» også i Registrer.</td></tr>
+        <tr><td>Lønnsomhet</td><td>Økonomi → Lønnsomhet</td><td><b>Økonomi</b> · Sammendrag, Kostnader, Budsjett</td><td>KPI-ene blir sammendraget øverst på siden.</td></tr>
+        <tr><td>Kjørebok</td><td>Økonomi → Kjørebok</td><td><b>Timer og kjøring</b></td><td>Felles logg med filter Alle · Timer · Kjøring. Kostnaden vises i Økonomi.</td></tr>
+        <tr><td>Timeføring</td><td>Arbeid → Timeføring</td><td><b>Timer og kjøring</b></td><td>Stempling i Registrer og som pille i toppen.</td></tr>
+        <tr><td>Oppgaver</td><td>Arbeid → Oppgaver</td><td><b>Oppgaver</b></td><td>Skjul «Tidslinje» til den finnes.</td></tr>
+        <tr><td>Sjekklister</td><td>Arbeid → KS & Avvik → Sjekklister</td><td><b>KS og avvik</b></td><td>Én liste med filter i stedet for bryter. Det som venter står først.</td></tr>
+        <tr><td>Avvik</td><td>Arbeid → KS & Avvik → Avvik</td><td><b>KS og avvik</b></td><td>«Meld avvik» også i Registrer.</td></tr>
+        <tr><td>Dokumenter & filer</td><td>Arbeid → Dokumenter & filer</td><td><b>Filer</b></td><td>Bilder fra sjekklister vises her også.</td></tr>
+        <tr><td>3D-modell</td><td>Arbeid → 3D-modell</td><td><b>Filer</b>, festet øverst</td><td>Pluss miniatyr på Oversikt. Editoren åpnes i fullskjerm.</td></tr>
+        <tr><td>Deltakere</td><td>Arbeid → Deltakere</td><td>Personer i prosjekttoppen</td><td>Avatarene åpner et panel. Timer per person står bare på Timer og kjøring.</td></tr>
+        <tr><td>Innstillinger</td><td>Knapp i toppen</td><td>⋯-menyen</td><td>Samme dialog som i dag.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="prose">Nye verdier i <code>?tab=</code>: <code>oversikt</code>, <code>okonomi</code>, <code>oppgaver</code>, <code>timer</code>, <code>kvalitet</code>, <code>filer</code>. Alle gamle verdier (<code>tilbud</code>, <code>lonnsomhet</code>, <code>kjorebok</code>, <code>ks</code>, <code>avvik</code>, <code>arbeid</code>, <code>okonomi&amp;sub=…</code>) blir aliaser i <code>project-tab-aliases.ts</code>, slik den fila allerede er laget for. Aliasene for Økonomi lander på riktig seksjon med et anker.</p>
+</section>
+
+<!-- ============ PLAN ============ -->
+<section id="plan">
+  <div class="sec-head"><p class="eyebrow">Gjennomføring</p><h2>Seks steg, hvert sitt eget PR</h2><p class="prose">Rekkefølgen gir mest effekt tidlig. Hvert steg kan sendes ut alene, og siden er brukbar mellom stegene.</p></div>
+  <ol class="steps">
+    <li><span class="k">1</span><div><b>Registrer-meny og stempel-pille</b><span>Ny knapp i prosjekttoppen med handlingene fra Timeføring, Kjørebok, Avvik, Filer, Oppgaver og Fakturering. Ingen faner flyttes ennå.</span></div><span class="size">Lite</span></li>
+    <li><span class="k">2</span><div><b>Flate faner</b><span>Fjern gruppenivået i <code>project-tabs-shell.tsx</code>. Personer til avatarstabelen, Innstillinger til ⋯-menyen, 3D inn under Filer. Oppdater aliasene.</span></div><span class="size">Middels</span></li>
+    <li><span class="k">3</span><div><b>Økonomi som én side</b><span>Sett sammen Tilbud, <code>FaktureringSeksjon</code> og <code>LonnsomhetTab</code> under ett sammendrag med seksjonsindeks. Fjern timer per person som står dobbelt.</span></div><span class="size">Middels</span></li>
+    <li><span class="k">4</span><div><b>KS og avvik i én liste</b><span>Bytt bryteren i <code>kvalitet-tab.tsx</code> mot én liste med filter. Det som krever handling sorteres først.</span></div><span class="size">Lite</span></li>
+    <li><span class="k">5</span><div><b>Timer og kjøring i én logg</b><span>Felles tabell for arbeidsøkter og turer med filter. Stempleknappen flytter til Registrer, og loggen blir bare lesing og retting.</span></div><span class="size">Middels</span></li>
+    <li><span class="k">6</span><div><b>I dag for håndverkeren</b><span>Egen startfane for rollen <code>worker</code>: stempling, mine oppgaver, sjekklister som venter og siste tegninger. Bruker data siden allerede henter.</span></div><span class="size">Middels</span></li>
+  </ol>
+  <div class="closing">
+    <h3>Spørsmål før vi bygger</h3>
+    <ul>
+      <li>Skal Kjørebok ligge sammen med timer (forslaget), eller er den for dere mest et regnskapsbilag som hører til Økonomi?</li>
+      <li>Bruker lederne 3D-modellen ofte nok til at den fortjener egen fane? 15 besøk er like mye som Oppgaver.</li>
+      <li>Trenger prosjektlederne «I dag»-fanen også, eller bare håndverkerne?</li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<script>
+(function(){
+  var rows=[["Oversikt",57,"over","Oversikt"],["Tilbud",45,"money","Økonomi"],["Lønnsomhet",32,"money","Økonomi"],["Kjørebok",16,"work","Timer og kjøring"],["Etterfakturering",16,"money","Økonomi"],["Oppgaver",15,"work","Oppgaver"],["3D-modell",15,"work","Filer"],["Timeføring",14,"work","Timer og kjøring"],["KS",10,"work","KS og avvik"],["Filer",10,"work","Filer"],["Avvik",5,"work","KS og avvik"]];
+  var col={money:"var(--bar-money)",work:"var(--bar-work)",over:"var(--bar-over)"};
+  var el=document.getElementById("bars"),html="";
+  rows.forEach(function(r){html+='<span class="t">'+r[0]+'</span><span class="track"><span class="fill" style="display:block;width:'+(r[1]/60*100)+'%;background:'+col[r[2]]+'"></span></span><span class="v">'+r[1]+'</span><span class="home">→ '+r[3]+'</span>';});
+  html+='<span></span><span class="ticks">'+[0,10,20,30,40,50,60].map(function(v){return '<span style="left:'+(v/60*100)+'%">'+v+'</span>'}).join("")+'</span><span></span><span class="home"></span>';
+  el.innerHTML=html;
+  var shots=document.querySelectorAll(".shot");
+  function fit(){shots.forEach(function(s){var a=s.firstElementChild,w=+s.dataset.w,k=Math.min(1,s.clientWidth/w);s.classList.add("fit");a.style.transform="scale("+k+")";s.style.height=Math.ceil(a.offsetHeight*k)+"px";if(k===1){a.style.left=((s.clientWidth-w)/2)+"px"}else{a.style.left="0"}});}
+  fit();window.addEventListener("resize",fit);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);
+})();
+</script>

@@ -14,18 +14,18 @@ export default async function Page({
   searchParams: Promise<{ project?: string }>
 }) {
   // Workers may log their own trips (createTripAction enforces own-trips-only);
-  // they reach this page from the project Kjørebok tab or their samlede
+  // they reach this page from the project's Timer og kjøring tab or their samlede
   // kjørebok på /kjorebok — so allow them here even though the company-wide
   // overview stays admin/manager only.
   const { canonicalRole } = await checkRoleAccess(["admin", "manager", "worker"])
   const isWorker = canonicalRole === "worker"
 
   const { project: projectId } = await searchParams
-  // When launched from a project, return there (its Kjørebok tab) on save/cancel.
+  // When launched from a project, return there (Timer og kjøring, filtered to trips) on save/cancel.
   // Otherwise workers go back to their own overview (/kjorebok) — the company
   // overview under Min bedrift would just bounce them to /prosjekter.
   const returnTo = projectId
-    ? `/prosjekter/${projectId}?tab=okonomi&sub=kjorebok`
+    ? `/prosjekter/${projectId}?tab=timer&del=kjoring`
     : isWorker
       ? "/kjorebok"
       : undefined

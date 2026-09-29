@@ -47,6 +47,8 @@ type ProjectPhaseStripeProps = {
   projectId: string
   status: string | null
   canEdit: boolean
+  /** Bare chippen, uten skinnen og telleren (prosjekttoppen). */
+  compact?: boolean
   className?: string
 }
 
@@ -54,6 +56,7 @@ export function ProjectPhaseStripe({
   projectId,
   status,
   canEdit,
+  compact = false,
   className,
 }: ProjectPhaseStripeProps) {
   const router = useRouter()
@@ -149,13 +152,13 @@ export function ProjectPhaseStripe({
           de tittelraden med prosjektnavnet og fasechippen, og da er det
           navnet som må få plassen — chippen sier allerede hvilken fase
           prosjektet står i. */}
-      <span className="hidden min-w-24 flex-1 gap-1 sm:flex" aria-hidden>
+      <span className={cn("hidden min-w-24 flex-1 gap-1", !compact && "sm:flex")} aria-hidden>
         {PHASE_RAIL.map((phase, index) => (
           <span key={phase.value} className={cn("h-1 flex-1 rounded-full", barClass(index))} />
         ))}
       </span>
 
-      <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+      <span className={cn("hidden shrink-0 text-xs text-muted-foreground", !compact && "sm:inline")}>
         {isOffRail ? "—" : `${railIndex + 1} av ${PHASE_RAIL.length}`}
       </span>
 
