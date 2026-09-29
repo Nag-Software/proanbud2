@@ -1,20 +1,22 @@
 "use client"
 
 import * as React from "react"
-import { useSearchParams } from "next/navigation"
-import { ClipboardCheck, TriangleAlert } from "lucide-react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { Download, Plus, Search } from "lucide-react"
 
-import { cn } from "@/lib/utils"
-import type { ChecklistSummary } from "@/lib/ks/types"
+import { ChecklistCard } from "@/components/ks/checklist-card"
+import { TemplateLibraryDialog } from "@/components/ks/template-library-dialog"
+import { DeviationListItem } from "@/components/hms/deviation-badges"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import type { DeviationWithRelations } from "@/lib/hms/types"
+import type { ChecklistSummary } from "@/lib/ks/types"
+import { cn } from "@/lib/utils"
 
-import AvvikTab from "./avvik-tab"
-import KsTab from "./ks-tab"
-import { aliasSubTab } from "./project-tab-aliases"
-import { useProjectSubTabNavigation } from "./project-tabs-shell"
+import { useProjectFocus, useProjectIntent, useProjectShell } from "./project-tabs-shell"
 
-export const KVALITET_SUB_TABS = ["sjekklister", "avvik"] as const
-export type KvalitetSubTab = (typeof KVALITET_SUB_TABS)[number]
+type Filter = "alle" | "venter" | "sjekklister" | "avvik"
 
 type Props = {
   projectId: string
@@ -28,15 +30,21 @@ type Props = {
   canManageChecklists?: boolean
 }
 
+type Row =
+  | { kind: "sjekkliste"; id: string; needsAction: boolean; date: number; checklist: ChecklistSummary }
+  | { kind: "avvik"; id: string; needsAction: boolean; date: number; deviation: DeviationWithRelations }
+
+const FILTERS: Filter[] = ["alle", "venter", "sjekklister", "avvik"]
+const isFilter = (value: string | null): value is Filter => !!value && (FILTERS as string[]).includes(value)
+
 /**
- * «KS & Avvik» — kvalitetssikring og avvik i én fane. Begge deler er samme
- * arbeid (en sjekkliste som slår feil ender som et avvik), og som separate
- * faner tvang de frem to klikk for å se hele bildet.
+ * «KS og avvik»: sjekklister og avvik i ÉN liste. En sjekkliste som slår feil
+ * ender som et avvik, så det er samme arbeid. Før lå de bak hver sin bryter
+ * inne i en underfane (Arbeid → KS & Avvik → Avvik).
  *
- * Underfanen ligger i ?ks= — ?sub= er tatt i bruk av gruppenivået (Arbeid /
- * Økonomi) etter at fanene ble slått sammen til tre. Gamle lenker (?tab=ks,
- * ?tab=avvik og ?tab=kvalitet&sub=avvik) oversettes hit av
- * project-tab-aliases, så de lander fortsatt på riktig underfane.
+ * Det som venter på noen (åpne avvik, sjekklister som ikke er ferdige) står
+ * først. Filteret ligger i `?del=`, så gamle lenker (?tab=avvik, ?tab=ks)
+ * lander på riktig filter.
  */
 export default function KvalitetTab({
   projectId,
@@ -46,134 +54,212 @@ export default function KvalitetTab({
   showDeviations,
   canManageChecklists = true,
 }: Props) {
-  const searchParams = useSearchParams()
-  const setSubTab = useProjectSubTabNavigation()
+  const router = useRouter()
+  const focus = useProjectFocus("kvalitet")
+  const { setDel } = useProjectShell()
+  const [search, setSearch] = React.useState("")
+  const [libraryOpen, setLibraryOpen] = React.useState(false)
 
-  const options = React.useMemo(
-    () =>
-      [
-        showChecklists
-          ? {
-              value: "sjekklister" as const,
-              label: "Sjekklister",
-              icon: ClipboardCheck,
-              count: checklists.length,
-            }
-          : null,
-        showDeviations
-          ? {
-              value: "avvik" as const,
-              label: "Avvik",
-              icon: TriangleAlert,
-              count: deviations.length,
-            }
-          : null,
-      ].filter((option) => option !== null),
-    [showChecklists, showDeviations, checklists.length, deviations.length]
-  )
-
-  const fallback: KvalitetSubTab = options[0]?.value ?? "sjekklister"
-  const availableValues = options.map((option) => option.value)
-  const ksParam = searchParams.get("ks")
-  const tabParam = searchParams.get("tab")
-  // Mellomformen ?tab=kvalitet&sub=avvik finnes fortsatt i delte lenker.
-  const legacySub = searchParams.get("sub")
-  const leafParam =
-    ksParam ?? (availableValues.some((value) => value === legacySub) ? legacySub : null)
-
-  const [active, setActive] = React.useState<KvalitetSubTab>(() => {
-    const candidate = leafParam ?? aliasSubTab(tabParam)
-    return availableValues.find((value) => value === candidate) ?? fallback
+  const canAddChecklist = showChecklists && canManageChecklists
+  useProjectIntent("ny-sjekkliste", () => {
+    if (canAddChecklist) setLibraryOpen(true)
   })
 
-  // Dyplenker og navigateToTab("avvik") fra Oversikt skriver ?ks= — plukk det
-  // opp også etter at fanen er montert (den holdes i live av ProjectTabPanel).
-  React.useEffect(() => {
-    if (!leafParam) return
-    const next = availableValues.find((value) => value === leafParam)
-    if (next) setActive(next)
-    // availableValues er utledet av props som sjelden endrer seg; ?ks= er
-    // signalet vi faktisk reagerer på.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leafParam])
+  const filter: Filter = isFilter(focus.del) ? focus.del : "alle"
 
-  // Mister vi tilgangen til den valgte underfanen (rolle-/planbytte), fall
-  // tilbake til den som fortsatt finnes.
-  React.useEffect(() => {
-    if (options.length > 0 && !availableValues.includes(active)) {
-      setActive(fallback)
+  const rows = React.useMemo<Row[]>(() => {
+    const list: Row[] = []
+    if (showChecklists) {
+      for (const checklist of checklists) {
+        list.push({
+          kind: "sjekkliste",
+          id: checklist.id,
+          needsAction: checklist.status !== "completed",
+          date: new Date(checklist.updated_at || checklist.created_at).getTime(),
+          checklist,
+        })
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options.length, active, fallback])
-
-  const [visited, setVisited] = React.useState<ReadonlySet<KvalitetSubTab>>(
-    () => new Set([active])
-  )
-
-  React.useEffect(() => {
-    setVisited((prev) => {
-      if (prev.has(active)) return prev
-      const next = new Set(prev)
-      next.add(active)
-      return next
+    if (showDeviations) {
+      for (const deviation of deviations) {
+        list.push({
+          kind: "avvik",
+          id: deviation.id,
+          needsAction: deviation.status === "open",
+          date: new Date(deviation.created_at).getTime(),
+          deviation,
+        })
+      }
+    }
+    return list.sort((a, b) => {
+      if (a.needsAction !== b.needsAction) return a.needsAction ? -1 : 1
+      // Blant det som venter står åpne avvik over uferdige sjekklister.
+      if (a.needsAction && a.kind !== b.kind) return a.kind === "avvik" ? -1 : 1
+      return b.date - a.date
     })
-  }, [active])
+  }, [checklists, deviations, showChecklists, showDeviations])
 
-  function handleSelect(value: KvalitetSubTab) {
-    setActive(value)
-    setSubTab(value)
+  const counts = {
+    alle: rows.length,
+    venter: rows.filter((row) => row.needsAction).length,
+    sjekklister: rows.filter((row) => row.kind === "sjekkliste").length,
+    avvik: rows.filter((row) => row.kind === "avvik").length,
   }
 
-  if (options.length === 0) return null
+  const needle = search.trim().toLowerCase()
+  const visibleRows = rows.filter((row) => {
+    if (filter === "venter" && !row.needsAction) return false
+    if (filter === "sjekklister" && row.kind !== "sjekkliste") return false
+    if (filter === "avvik" && row.kind !== "avvik") return false
+    if (!needle) return true
+    const haystack =
+      row.kind === "sjekkliste"
+        ? row.checklist.name
+        : `${row.deviation.title} ${row.deviation.description} ${row.deviation.reference_number}`
+    return haystack.toLowerCase().includes(needle)
+  })
 
-  const showSwitcher = options.length > 1
+  const filterOptions: Array<{ value: Filter; label: string }> = [
+    { value: "alle", label: "Alle" },
+    { value: "venter", label: "Venter" },
+    ...(showChecklists && showDeviations
+      ? ([
+          { value: "sjekklister", label: "Sjekklister" },
+          { value: "avvik", label: "Avvik" },
+        ] as const)
+      : []),
+  ]
+
+  const title =
+    showChecklists && showDeviations ? "KS og avvik" : showChecklists ? "Sjekklister" : "Avvik"
+
+  const summary = [
+    counts.venter > 0 ? `${counts.venter} venter` : null,
+    showChecklists ? `${counts.sjekklister} ${counts.sjekklister === 1 ? "sjekkliste" : "sjekklister"}` : null,
+    showDeviations ? `${counts.avvik} avvik` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+
+  function handleAdded(checklistId: string) {
+    router.refresh()
+    router.push(`/prosjekter/${projectId}/ks/${checklistId}`)
+  }
 
   return (
     <div className="space-y-4">
-      {showSwitcher && (
-        <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-card p-0.5">
-          {options.map(({ value, label, icon: Icon, count }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => handleSelect(value)}
-              aria-pressed={active === value}
-              className={cn(
-                "inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
-                active === value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-              )}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-              {count > 0 && (
-                <span
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold">{title}</h2>
+          <p className="text-sm text-muted-foreground">{summary}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {showDeviations && deviations.length > 0 && (
+            <Button variant="outline" size="sm" asChild>
+              <a href={`/api/avvik/export?format=csv&projectId=${projectId}`} download>
+                <Download className="size-4" />
+                Eksporter avvik
+              </a>
+            </Button>
+          )}
+          {canAddChecklist && (
+            <Button variant="outline" size="sm" onClick={() => setLibraryOpen(true)}>
+              <Plus className="size-4" />
+              Legg til sjekkliste
+            </Button>
+          )}
+          {showDeviations && (
+            <Button size="sm" asChild>
+              <Link href={`/avvik/ny?projectId=${projectId}`}>
+                <Plus className="size-4" />
+                Meld avvik
+              </Link>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {rows.length > 0 && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter">
+            {filterOptions.map((option) => {
+              const active = filter === option.value
+              const count = counts[option.value]
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setDel(option.value === "alle" ? null : option.value)}
                   className={cn(
-                    "tabular-nums",
-                    active === value ? "text-primary-foreground/80" : "text-muted-foreground/80"
+                    "inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] border px-3 text-[13px] font-medium transition-colors",
+                    active
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  {count}
-                </span>
-              )}
-            </button>
-          ))}
+                  {option.label}
+                  <span className={cn("tabular-nums", active ? "text-background/70" : "text-muted-foreground/80")}>
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="relative sm:w-64">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Søk i sjekklister og avvik"
+              aria-label="Søk i sjekklister og avvik"
+              className="pl-9"
+            />
+          </div>
         </div>
       )}
 
-      {/* Samme lat keep-alive som ProjectTabPanel: monteres først når underfanen
-          åpnes (sjekklistegalleriet henter bilder klientsiden), og blir så
-          liggende skjult slik at bytte frem og tilbake er umiddelbart. */}
-      {showChecklists && visited.has("sjekklister") && (
-        <div className={cn(active !== "sjekklister" && "hidden")}>
-          <KsTab projectId={projectId} checklists={checklists} canManage={canManageChecklists} />
+      {rows.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            {canAddChecklist
+              ? "Ingen sjekklister eller avvik ennå. Legg til en sjekkliste fra malbiblioteket, så blir ingenting glemt."
+              : showChecklists
+                ? "Ingen sjekklister eller avvik på prosjektet ennå. Lederen legger til sjekklistene."
+                : "Ingen avvik registrert på dette prosjektet."}
+          </p>
+          {canAddChecklist && (
+            <Button className="mt-4" onClick={() => setLibraryOpen(true)}>
+              <Plus className="size-4" />
+              Velg mal
+            </Button>
+          )}
+        </div>
+      ) : visibleRows.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          {filter === "venter" && !needle
+            ? "Ingenting venter. Alle sjekklister er fullført og alle avvik er lukket."
+            : "Ingen treff."}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {visibleRows.map((row) =>
+            row.kind === "sjekkliste" ? (
+              <ChecklistCard key={`s-${row.id}`} checklist={row.checklist} projectId={projectId} />
+            ) : (
+              <DeviationListItem key={`a-${row.id}`} deviation={row.deviation} showProject={false} />
+            )
+          )}
         </div>
       )}
-      {showDeviations && visited.has("avvik") && (
-        <div className={cn(active !== "avvik" && "hidden")}>
-          <AvvikTab projectId={projectId} deviations={deviations} />
-        </div>
+
+      {canAddChecklist && (
+        <TemplateLibraryDialog
+          open={libraryOpen}
+          onOpenChange={setLibraryOpen}
+          projectId={projectId}
+          onAdded={handleAdded}
+        />
       )}
     </div>
   )

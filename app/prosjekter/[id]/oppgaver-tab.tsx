@@ -9,10 +9,8 @@ import {
   Plus, 
   List, 
   LayoutGrid, 
-  CalendarDays, 
   Filter, 
-  Search, 
-  ArrowUpDown
+  Search
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -37,6 +35,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useProjectIntent } from "./project-tabs-shell";
 
 // @hello-pangea/dnd lives only in the Kanban view — load it on demand so the
 // default "liste" view doesn't ship the dnd engine in the route bundle.
@@ -79,12 +78,16 @@ export default function OppgaverTab({
   const memberNameById = new Map(members.map((member) => [member.id, member.name]))
   const assigneeLabel = (userId: string | null | undefined) =>
     userId ? memberNameById.get(userId) ?? "Tidligere deltaker" : null
-  const [view, setView] = useState<"liste" | "kanban" | "gantt">("liste");
+  const [view, setView] = useState<"liste" | "kanban">("liste");
   const [search, setSearch] = useState("");
   const [tasks, setTasks] = useState<any[]>([]);
 
   // New Task State
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  // «Ny oppgave» fra Registrer-menyen i prosjekttoppen.
+  useProjectIntent("ny-oppgave", () => {
+    if (canManageTasks) setIsDialogOpen(true)
+  });
   
   // Edit Task State
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -300,11 +303,12 @@ export default function OppgaverTab({
 
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-1">
-        <Tabs defaultValue="liste" onValueChange={(v) => setView(v as any)} className="w-full max-w-md">
-          <TabsList className="grid w-full grid-cols-3">
+        {/* «Tidslinje» er tatt bort til den finnes — en fane som bare sier
+            «kommer snart» er rot i navigasjonen. */}
+        <Tabs defaultValue="liste" onValueChange={(v) => setView(v as any)} className="w-full max-w-xs">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="liste" className="gap-2"><List className="h-4 w-4"/> Liste</TabsTrigger>
             <TabsTrigger value="kanban" className="gap-2"><LayoutGrid className="h-4 w-4"/> Tavle</TabsTrigger>
-            <TabsTrigger value="gantt" className="gap-2"><CalendarDays className="h-4 w-4"/> Tidslinje</TabsTrigger>
           </TabsList>
         </Tabs>
         
@@ -320,9 +324,6 @@ export default function OppgaverTab({
               onChange={(e) => setSearch(e.target.value)}              
             />
           </div>
-          <Button variant="outline" size="icon">
-            <ArrowUpDown className="h-4 w-4" />
-          </Button>
           {canManageTasks && (
             <Button className="shrink-0 gap-2" onClick={() => setIsDialogOpen(true)}>
               <Plus className="h-4 w-4" /> Ny oppgave
@@ -418,11 +419,6 @@ export default function OppgaverTab({
           />
         )}
 
-        {view === "gantt" && (
-          <div className="flex h-full items-center justify-center text-muted-foreground p-12 border border-dashed rounded-lg">
-            Tidslinjen kommer snart. Bruk Liste eller Tavle så lenge.
-          </div>
-        )}
       </div>
 
       {/* Ny Oppgave Dialog */}

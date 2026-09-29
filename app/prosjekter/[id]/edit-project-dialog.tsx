@@ -44,15 +44,32 @@ type EditProjectDialogProps = {
     customer_id?: string | null
   }
   isAdminOrLeader: boolean
+  /** Styrt utenfra (⋯-menyen i prosjekttoppen). Uten disse har dialogen sin egen knapp. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 type CustomerOption = { id: string; name: string }
 
 const NO_CUSTOMER = "__none__"
 
-export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialogProps) {
+export function EditProjectDialog({
+  project,
+  isAdminOrLeader,
+  open: controlledOpen,
+  onOpenChange,
+}: EditProjectDialogProps) {
   const router = useRouter()
-  const [open, setOpen] = React.useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false)
+  const isControlled = controlledOpen !== undefined
+  const open = isControlled ? controlledOpen : uncontrolledOpen
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      if (!isControlled) setUncontrolledOpen(next)
+      onOpenChange?.(next)
+    },
+    [isControlled, onOpenChange]
+  )
   const [isSaving, setIsSaving] = React.useState(false)
   const [isArchiving, setIsArchiving] = React.useState(false)
   const [confirmArchive, setConfirmArchive] = React.useState(false)
@@ -142,6 +159,7 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
 
   return (
     <ResponsiveDialog open={open} onOpenChange={setOpen}>
+      {!isControlled && (
       <ResponsiveDialogTrigger asChild>
         {/* Ikonknapp på mobil: ordet «Innstillinger» er 110 px som tittelraden
             trenger bedre, og tannhjulet er entydig nok alene. */}
@@ -154,6 +172,7 @@ export function EditProjectDialog({ project, isAdminOrLeader }: EditProjectDialo
           <span className="sr-only sm:not-sr-only">Innstillinger</span>
         </Button>
       </ResponsiveDialogTrigger>
+      )}
       <ResponsiveDialogContent className="max-h-[90vh] px-2 md:p-4 overflow-y-scroll sm:max-w-lg">
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>Prosjektinnstillinger</ResponsiveDialogTitle>

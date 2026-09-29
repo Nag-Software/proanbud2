@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useProjectIntent } from "./project-tabs-shell"
 
 type DocumentItem = {
   id: string
@@ -70,6 +71,8 @@ type Props = {
 export default function ProjectDocumentsTab({ projectId }: Props) {
   const confirm = useConfirm()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // «Last opp bilde eller fil» fra Registrer-menyen.
+  useProjectIntent("last-opp-fil", () => fileInputRef.current?.click())
   const folderPath = `prosjekter/${projectId}`
 
   const [items, setItems] = useState<DocumentItem[]>([])

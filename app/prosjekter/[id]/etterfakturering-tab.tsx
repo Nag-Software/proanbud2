@@ -33,6 +33,7 @@ import {
   markChangeOrderAgreedAction,
   sendProjectChangeOrderAction,
 } from "./etterfakturering-actions"
+import { useProjectIntent } from "./project-tabs-shell"
 
 type ManualBasis = Exclude<ChangeOrderApprovalBasis, "customer_otp">
 
@@ -88,6 +89,10 @@ export function EtterfaktureringTab({
   const [items, setItems] = useState<ChangeOrder[]>(initialItems ?? [])
   const [loading, setLoading] = useState(!initialItems)
   const [open, setOpen] = useState(false)
+  // «Ny ekstrajobb» fra Registrer-menyen i prosjekttoppen.
+  useProjectIntent("ny-ekstrajobb", () => {
+    if (canManage) setOpen(true)
+  })
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [billingType, setBillingType] = useState<ChangeOrderBillingType>("fixed")

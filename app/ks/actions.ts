@@ -82,7 +82,6 @@ function deriveChecklistStatus(items: Array<{ response: string | null }>) {
 
 function revalidateProjectKs(projectId: string) {
   revalidatePath(`/prosjekter/${projectId}`)
-  revalidatePath(`/prosjekter/${projectId}?tab=ks`)
 }
 
 // ==========================================

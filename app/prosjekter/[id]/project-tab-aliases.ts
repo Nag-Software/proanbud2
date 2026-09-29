@@ -1,82 +1,129 @@
 /**
- * Fanene på prosjektsiden er gruppert i tre: Oversikt, Arbeid og Økonomi.
- * Sidene ligger som underfaner i `?sub=`, gruppa i `?tab=`.
+ * Prosjektsiden har én rad faner (se docs/prosjektside-mockups, forslag A):
  *
- * Denne fila er det ENESTE stedet gamle adresser oversettes. Alle gamle
- * `?tab=`-verdier lever videre i lenker inne i appen (HMS-oversikten,
- * utfylling av sjekkliste, revalidatePath i app/ks/actions.ts), i
- * navigateToTab()-kall fra Oversikt, og i URL-er brukerne har delt eller
- * bokmerket. De må fortsatt lande på riktig sted, så INGEN oppføring under
- * fjernes — heller ikke når en fane bytter gruppe.
+ *   Oversikt · Økonomi · Oppgaver · Timer og kjøring · KS og avvik · Filer
+ *
+ * Håndverkeren starter på «I dag» i stedet for Oversikt og ser ikke Økonomi.
+ * Fanen ligger i `?tab=`, og et eventuelt sted inne i fanen i `?del=`
+ * (en seksjon på Økonomi, et filter på KS og avvik eller Timer og kjøring,
+ * 3D-modellen under Filer).
+ *
+ * Denne fila er det ENESTE stedet gamle adresser oversettes. Siden har hatt
+ * tre oppsett: elleve faner på rad, så tre grupper med underfaner
+ * (`?tab=arbeid&sub=oppgaver`, `?tab=kvalitet&sub=avvik`, `&ks=avvik`), og nå
+ * flate faner. Alle tre formene finnes i delte lenker, bokmerker og e-poster,
+ * og må fortsatt lande på riktig sted. INGEN oppføring under fjernes.
  */
 export type ResolvedProjectTab = {
-  /** Gruppa i `?tab=`. */
+  /** Fanen i `?tab=`. */
   tab: string
-  /** Siden inne i gruppa, i `?sub=`. */
-  sub?: string
-  /** Bladnivået inne i KS & Avvik, i `?ks=`. */
-  ks?: string
+  /** Stedet inne i fanen, i `?del=`. */
+  del?: string
 }
 
-/** Underfanene inne i KS & Avvik-panelet. De ligger ett nivå under `?sub=`. */
+/** Fanene som finnes i dag. */
+export const PROJECT_TABS = [
+  "oversikt",
+  "idag",
+  "okonomi",
+  "oppgaver",
+  "timer",
+  "kvalitet",
+  "filer",
+] as const
+export type ProjectTab = (typeof PROJECT_TABS)[number]
+
+/** Filtrene inne i KS og avvik. Også gamle `?sub=`/`?ks=`-verdier. */
 export const KVALITET_LEAVES = ["sjekklister", "avvik"] as const
 
+/** `?del=personer` åpner personpanelet i prosjekttoppen, uansett fane. */
+export const PEOPLE_DEL = "personer"
+
 export const PROJECT_TAB_ALIASES: Record<string, ResolvedProjectTab> = {
-  // Oversikt er sin egen gruppe uten underfaner.
+  // Dagens faner
   oversikt: { tab: "oversikt" },
+  idag: { tab: "idag" },
+  okonomi: { tab: "okonomi" },
+  oppgaver: { tab: "oppgaver" },
+  timer: { tab: "timer" },
+  kvalitet: { tab: "kvalitet" },
+  filer: { tab: "filer" },
 
-  // Arbeid
-  oppgaver: { tab: "arbeid", sub: "oppgaver" },
-  timeforing: { tab: "arbeid", sub: "timeforing" },
-  filer: { tab: "arbeid", sub: "filer" },
-  modell: { tab: "arbeid", sub: "modell" },
-  deltakere: { tab: "arbeid", sub: "deltakere" },
-  kvalitet: { tab: "arbeid", sub: "kvalitet" },
-  // Fra da KS og Avvik var to separate faner (se project-prosjekt-fane-
-  // sammenslaing): begge lander i KS & Avvik, på hver sin underfane.
-  ks: { tab: "arbeid", sub: "kvalitet", ks: "sjekklister" },
-  avvik: { tab: "arbeid", sub: "kvalitet", ks: "avvik" },
+  // Gruppene fra oppsett nummer to. Arbeid åpnet den første underfanen.
+  arbeid: { tab: "oppgaver" },
 
-  // Økonomi
-  tilbud: { tab: "okonomi", sub: "tilbud" },
-  etterfakturering: { tab: "okonomi", sub: "etterfakturering" },
-  lonnsomhet: { tab: "okonomi", sub: "lonnsomhet" },
-  kjorebok: { tab: "okonomi", sub: "kjorebok" },
+  // Underfaner som nå er seksjoner på Økonomi
+  tilbud: { tab: "okonomi", del: "tilbud" },
+  etterfakturering: { tab: "okonomi", del: "tilleggsarbeid" },
+  tilleggsarbeid: { tab: "okonomi", del: "tilleggsarbeid" },
+  fakturering: { tab: "okonomi", del: "fakturering" },
+  lonnsomhet: { tab: "okonomi", del: "kostnader" },
+
+  // Timeføring og Kjørebok er én logg
+  timeforing: { tab: "timer", del: "timer" },
+  kjorebok: { tab: "timer", del: "kjoring" },
+
+  // 3D-modellen ligger festet øverst i Filer
+  modell: { tab: "filer", del: "modell" },
+
+  // Deltakere er et panel i prosjekttoppen
+  deltakere: { tab: "oversikt", del: PEOPLE_DEL },
+
+  // KS og Avvik var egne faner før de ble slått sammen
+  ks: { tab: "kvalitet", del: "sjekklister" },
+  avvik: { tab: "kvalitet", del: "avvik" },
 }
 
+/** Gruppene som hadde underfaner i `?sub=`. */
+const LEGACY_GROUPS = new Set(["arbeid", "okonomi"])
+
+const isKvalitetLeaf = (value: string | null | undefined): value is string =>
+  !!value && (KVALITET_LEAVES as readonly string[]).includes(value)
+
 /**
- * Oversetter en `?tab=`-verdi (ny eller gammel) til gruppa, underfanen og
- * eventuelt bladnivået den hører til i dag.
+ * Oversetter en `?tab=`-verdi (ny eller gammel) til fanen og stedet inne i
+ * den. De tre andre parameterne dekker eldre former:
  *
- * `subParam` tas med fordi lenker fra mellomperioden ser slik ut:
- * `?tab=kvalitet&sub=avvik`. Da betydde `sub` bladnivået inne i Kvalitet; nå
- * betyr `sub` siden inne i gruppa. Er den innkommende `sub`-verdien et
- * KS-blad, tolkes den som `ks` slik den var ment.
+ * - `sub`: `?tab=arbeid&sub=timeforing` (gruppe + underfane) og
+ *   `?tab=kvalitet&sub=avvik` (der `sub` var filteret i KS og avvik).
+ * - `ks`: `?tab=arbeid&sub=kvalitet&ks=avvik`.
+ * - `del`: dagens form. Den vinner over alt annet.
  */
 export function resolveProjectTabParam(
   tabParam: string | null | undefined,
-  subParam?: string | null
+  subParam?: string | null,
+  ksParam?: string | null,
+  delParam?: string | null
 ): ResolvedProjectTab | null {
   if (!tabParam) return null
 
-  const alias = PROJECT_TAB_ALIASES[tabParam]
-  const base: ResolvedProjectTab = alias ? { ...alias } : { tab: tabParam }
+  let base: ResolvedProjectTab = PROJECT_TAB_ALIASES[tabParam]
+    ? { ...PROJECT_TAB_ALIASES[tabParam] }
+    : { tab: tabParam }
 
   if (subParam) {
-    if ((KVALITET_LEAVES as readonly string[]).includes(subParam) && base.sub === "kvalitet") {
-      // Gammel form: ?tab=kvalitet&sub=avvik
-      base.ks = base.ks ?? subParam
-    } else if (!alias) {
-      // Ny form: ?tab=<gruppe>&sub=<side>
-      base.sub = subParam
+    const subAlias = PROJECT_TAB_ALIASES[subParam]
+    if (LEGACY_GROUPS.has(tabParam) && subAlias) {
+      base = { ...subAlias }
+    } else if (base.tab === "kvalitet" && isKvalitetLeaf(subParam)) {
+      base.del = subParam
     }
   }
+
+  if (base.tab === "kvalitet" && isKvalitetLeaf(ksParam)) {
+    base.del = ksParam
+  }
+
+  if (delParam) base.del = delParam
 
   return base
 }
 
-/** Bladfanen en `?tab=`-alias peker på, hvis verdien er en alias. */
-export function aliasSubTab(tabParam: string | null | undefined): string | null {
-  if (!tabParam) return null
-  return PROJECT_TAB_ALIASES[tabParam]?.ks ?? null
+/** Lenke til et sted på prosjektsiden i dagens form. */
+export function projectTabHref(projectId: string, tab: ProjectTab, del?: string) {
+  const params = new URLSearchParams()
+  if (tab !== "oversikt") params.set("tab", tab)
+  if (del) params.set("del", del)
+  const query = params.toString()
+  return query ? `/prosjekter/${projectId}?${query}` : `/prosjekter/${projectId}`
 }

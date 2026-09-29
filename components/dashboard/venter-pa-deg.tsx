@@ -399,7 +399,7 @@ export function VenterPaDeg({ companyId }: { companyId: string | null }) {
               ? `«${first.title ?? "Oppgave"}» er over fristen`
               : `${overdue.length} oppgaver er over fristen`,
           meta: `Eldste forfalt ${dayText(daysSince(first.due_date))}`,
-          href: `/prosjekter/${first.project_id}?tab=arbeid&sub=oppgaver`,
+          href: `/prosjekter/${first.project_id}?tab=oppgaver`,
           action: "Åpne oppgavene",
         })
       }
@@ -461,7 +461,7 @@ export function VenterPaDeg({ companyId }: { companyId: string | null }) {
                 .join(" · "),
               href:
                 uninvoiced.length === 1
-                  ? `/prosjekter/${first.projectId}?tab=okonomi&sub=etterfakturering`
+                  ? `/prosjekter/${first.projectId}?tab=okonomi&del=tilleggsarbeid`
                   : "/prosjekter",
               action: uninvoiced.length === 1 ? "Fakturer" : "Se prosjektene",
             })
@@ -545,7 +545,7 @@ export function VenterPaDeg({ companyId }: { companyId: string | null }) {
               nokFormatter.format(overdue.length === 1 ? Number(first.amountNok ?? 0) : total),
               `${first.daysOverdue} dager over forfall`,
             ].join(" · "),
-            href: `/prosjekter/${first.projectId}?tab=okonomi&sub=etterfakturering`,
+            href: `/prosjekter/${first.projectId}?tab=okonomi&del=tilleggsarbeid`,
             action: "Følg opp",
           })
         }
@@ -569,7 +569,7 @@ export function VenterPaDeg({ companyId }: { companyId: string | null }) {
               ),
               "registrert, men ikke sendt til kunden",
             ].join(" · "),
-            href: `/prosjekter/${first.projectId}?tab=okonomi&sub=etterfakturering`,
+            href: `/prosjekter/${first.projectId}?tab=okonomi&del=tilleggsarbeid`,
             action: "Send",
           })
         }
@@ -617,7 +617,7 @@ export function VenterPaDeg({ companyId }: { companyId: string | null }) {
                 : `${unanswered.length} tilleggsarbeid venter på kundens svar`,
             meta: `Sendt ${dayText(daysSince(first.sentAt))} · ikke start arbeidet før det er godkjent`,
             href: first.projectId
-              ? `/prosjekter/${first.projectId}?tab=okonomi&sub=etterfakturering`
+              ? `/prosjekter/${first.projectId}?tab=okonomi&del=tilleggsarbeid`
               : "/prosjekter",
             action: "Purr kunden",
           })

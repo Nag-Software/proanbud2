@@ -667,7 +667,7 @@ export default function DashboardPage() {
                       <Link
                         href={
                           data.projectHealth.firstMissingProjectId
-                            ? `/prosjekter/${data.projectHealth.firstMissingProjectId}?tab=tilbud`
+                            ? `/prosjekter/${data.projectHealth.firstMissingProjectId}?tab=okonomi&del=tilbud`
                             : "/prosjekter"
                         }
                         className="font-medium text-foreground underline underline-offset-2"
@@ -685,7 +685,7 @@ export default function DashboardPage() {
                 <DashboardEmpty
                   href={
                     data?.projectHealth.firstMissingProjectId
-                      ? `/prosjekter/${data.projectHealth.firstMissingProjectId}?tab=tilbud`
+                      ? `/prosjekter/${data.projectHealth.firstMissingProjectId}?tab=okonomi&del=tilbud`
                       : "/prosjekter"
                   }
                   action="Se tilbud"

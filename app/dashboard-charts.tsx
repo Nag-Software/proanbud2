@@ -92,7 +92,7 @@ export function ProjectHealthChart({ rows }: { rows: DashboardProjectHealth[] })
           return (
             <Link
               key={row.id}
-              href={`/prosjekter/${row.id}?tab=lonnsomhet`}
+              href={`/prosjekter/${row.id}?tab=okonomi`}
               role="listitem"
               className="group grid gap-2 py-3 first:pt-1 last:pb-1 md:grid-cols-[minmax(130px,0.8fr)_minmax(220px,1.6fr)_minmax(180px,1fr)] md:items-center md:gap-5"
               title={`${row.name}: ${formatHours(row.loggedHours)} ført av ${formatHours(row.plannedHours)} kalkulert i aksepterte tilbud.`}
