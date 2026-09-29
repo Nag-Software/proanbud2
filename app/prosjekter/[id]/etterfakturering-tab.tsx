@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { Check, Copy, Loader2, Plus, RefreshCw, Send, Trash2 } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Check, Copy, Loader2, Plus, Send, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,7 @@ import {
   ResponsiveDialogTitle,
 } from "@/components/ui/responsive-dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { reportClientError } from "@/lib/errors/client"
 import { formatNok } from "@/lib/tilbud/types"
 import { cn } from "@/lib/utils"
@@ -105,20 +106,61 @@ export function EtterfaktureringTab({
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const confirm = useConfirm()
 
-  const load = useCallback(() => {
-    setLoading(true)
-    listProjectChangeOrdersAction(projectId)
-      .then(setItems)
-      .catch((error) => {
-        reportClientError(error, { context: { action: "list project change orders", projectId } })
-        toast.error("Kunne ikke laste ekstrajobbene. Prøv igjen.")
-      })
-      .finally(() => setLoading(false))
-  }, [projectId])
+  // Lista oppdaterer seg selv — det finnes ingen «Oppdater»-knapp. Særlig
+  // viktig her: kunden godkjenner på sin egen side, og statusen skal dukke opp
+  // uten at noen må klikke.
+  const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null)
+  const fetchedAtRef = useRef(0)
+  const statusKeyRef = useRef<string | null>(null)
+  const onChangedRef = useRef(onChanged)
+  useEffect(() => {
+    onChangedRef.current = onChanged
+  }, [onChanged])
+
+  // `silent`: bakgrunnsoppdatering — ingen spinner og ingen feilmelding.
+  const load = useCallback(
+    ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!silent) setLoading(true)
+      listProjectChangeOrdersAction(projectId)
+        .then((next) => {
+          fetchedAtRef.current = Date.now()
+          setItems(next)
+          // Endret en status seg i bakgrunnen (f.eks. kunden godkjente), må
+          // fakturagrunnlaget over også hentes på nytt.
+          const statusKey = next.map((item) => `${item.id}:${item.status}`).join("|")
+          if (silent && statusKeyRef.current !== null && statusKeyRef.current !== statusKey) {
+            onChangedRef.current?.()
+          }
+          statusKeyRef.current = statusKey
+        })
+        .catch((error) => {
+          reportClientError(error, {
+            level: silent ? "warning" : undefined,
+            context: { action: "list project change orders", projectId, silent },
+          })
+          if (!silent) toast.error("Kunne ikke laste ekstrajobbene. Prøv igjen.")
+        })
+        .finally(() => {
+          if (!silent) setLoading(false)
+        })
+    },
+    [projectId]
+  )
 
   useEffect(() => {
-    if (!initialItems) load()
+    // Serverens liste vises med én gang, og tas imot på nytt når siden rendres
+    // på nytt (en endring på prosjektet revaliderer siden).
+    if (initialItems) {
+      fetchedAtRef.current = Date.now()
+      statusKeyRef.current = initialItems.map((item) => `${item.id}:${item.status}`).join("|")
+      setItems(initialItems)
+    } else {
+      load()
+    }
   }, [initialItems, load])
+
+  const refreshSilently = useCallback(() => load({ silent: true }), [load])
+  useAutoRefresh(refreshSilently, rootElement, fetchedAtRef)
 
   const previewAmount = useMemo(() => {
     if (billingType === "hourly") {
@@ -139,7 +181,7 @@ export function EtterfaktureringTab({
   }
 
   function afterChange() {
-    load()
+    load({ silent: true })
     onChanged?.()
   }
 
@@ -269,7 +311,7 @@ export function EtterfaktureringTab({
   }
 
   return (
-    <div className="py-2">
+    <div ref={setRootElement} className="py-2">
       <div className="rounded-lg border bg-card">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
           <div className="min-w-0">
@@ -277,9 +319,6 @@ export function EtterfaktureringTab({
             <p className="text-xs text-muted-foreground">Kunden godkjenner før arbeidet gjøres – med navn og engangskode.</p>
           </div>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" className="h-9" onClick={load} disabled={loading} aria-label="Oppdater">
-              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-            </Button>
             {canManage ? (
               <Button size="sm" className="h-9 gap-1.5" onClick={() => setOpen(true)}>
                 <Plus className="h-3.5 w-3.5" />

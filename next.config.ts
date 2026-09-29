@@ -50,9 +50,15 @@ const nextConfig: NextConfig = {
     // Back/repeat navigation within the window paints instantly with no server
     // round-trip. Mutations are unaffected: server actions with revalidatePath
     // and router.refresh() still bust the cache immediately.
+    //
+    // `static` is ALSO how long a background-warmed page lives (full
+    // `router.prefetch`, see components/perf/route-warmer.tsx): it caps how old
+    // the data can be when a warmed page is shown instantly. 60 s instead of
+    // the default 300 s — instant AND at most a minute old. Keep
+    // WARM_TTL_MS in lib/perf/warm-engine.ts in sync.
     staleTimes: {
       dynamic: 30,
-      static: 300,
+      static: 60,
     },
   },
   images: {

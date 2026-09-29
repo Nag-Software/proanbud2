@@ -113,7 +113,7 @@ export function KjorebokClient({ initialOverview, currentUserId }: Props) {
   const [overview, setOverview] = useState<TripsOverview>(initialOverview)
   const [filter, setFilter] = useState<TripFilter>({})
 
-  // Ny rendering fra serveren (oppfrisking av en side vist fra cache). Den
+  // Ny rendering fra serveren (router.refresh(), f.eks. tilbake til fanen). Den
   // gjelder standardvisningen, så et aktivt filter overskrives ikke.
   const filterRef = useRef(filter)
   filterRef.current = filter

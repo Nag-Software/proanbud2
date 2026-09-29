@@ -10,9 +10,9 @@
  */
 
 import * as React from "react"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
+import { ArrowLeft, Loader2, Plus, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -32,6 +32,7 @@ import { InfoHint } from "@/components/ui/info-hint"
 import { formatNok } from "@/lib/tilbud/types"
 import { formatHours } from "@/lib/time-tracking"
 import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import type { ProjectProfitability } from "@/lib/job-costing/types"
 import type { SearchMaterial } from "@/lib/tilbud/company-price-utils"
@@ -378,6 +379,11 @@ function BudgetForm({
   )
 }
 
+/** Hent på nytt når tallene kommer til syne igjen og er eldre enn dette. */
+const AUTO_REFRESH_ON_RETURN_MS = 20_000
+/** …og jevnlig så lenge man ser på dem. */
+const AUTO_REFRESH_INTERVAL_MS = 60_000
+
 export function LonnsomhetTab({
   projectId,
   canManage,
@@ -392,8 +398,8 @@ export function LonnsomhetTab({
    * Innhold mellom nøkkeltallene og kostnadsdetaljene. Økonomi-fanen legger
    * tilbud, tilleggsarbeid og fakturering her, så siden leses i samme
    * rekkefølge som pengene går: sammendrag → tilbud → tillegg → faktura →
-   * kostnader. Lønnsomheten eier fortsatt tallene (og «Oppdater»), så
-   * sammendraget og kostnadene aldri kommer i utakt.
+   * kostnader. Lønnsomheten eier fortsatt tallene (og oppdateringen av
+   * dem), så sammendraget og kostnadene aldri kommer i utakt.
    */
   middle?: React.ReactNode
   /** Overskrift over kostnadsdetaljene (brukes som anker på Økonomi). */
@@ -485,22 +491,57 @@ export function LonnsomhetTab({
       ? "Ingen treff i prislisten"
       : "Skriv for å søke blant materialer"
 
-  const load = useCallback(() => {
-    setLoading(true)
-    getProjectProfitabilityAction(projectId)
-      .then(setData)
-      .catch((e) => {
-        reportClientError(e, { context: { action: "laste lønnsomhet", projectId } })
-        toast.error(actionErrorMessage(e, "Kunne ikke laste lønnsomheten"))
-      })
-      .finally(() => setLoading(false))
-  }, [projectId])
+  // Tallene oppdaterer seg selv — det finnes ingen «Oppdater»-knapp. Når de
+  // sist ble hentet styrer bakgrunnsoppdateringen under.
+  // Rot-elementet byttes når tallene kommer (fra «laster …» til selve
+  // visningen), så det holdes i state — observatøren må følge med.
+  const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null)
+  const fetchedAtRef = useRef(0)
+
+  // `silent`: bakgrunnsoppdatering — ingen spinner og ingen feilmelding (tallene
+  // som står der er fortsatt riktige nok; neste runde prøver igjen).
+  const load = useCallback(
+    ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!silent) setLoading(true)
+      getProjectProfitabilityAction(projectId)
+        .then((next) => {
+          fetchedAtRef.current = Date.now()
+          setData(next)
+        })
+        .catch((e) => {
+          reportClientError(e, {
+            level: silent ? "warning" : undefined,
+            context: { action: "laste lønnsomhet", projectId, silent },
+          })
+          if (!silent) toast.error(actionErrorMessage(e, "Kunne ikke laste lønnsomheten"))
+        })
+        .finally(() => {
+          if (!silent) setLoading(false)
+        })
+    },
+    [projectId]
+  )
 
   useEffect(() => {
     // Serveren har allerede levert tallene med prosjektsiden. Da skal fanen vise
-    // dem med én gang i stedet for å hente det samme på nytt ved åpning.
-    if (!initialData) load()
+    // dem med én gang i stedet for å hente det samme på nytt ved åpning — og ta
+    // imot nye tall når siden rendres på nytt (en endring på prosjektet
+    // revaliderer siden, og den friskes opp når man kommer tilbake til fanen).
+    if (initialData) {
+      fetchedAtRef.current = Date.now()
+      setData(initialData)
+    } else {
+      load()
+    }
   }, [initialData, load])
+
+  // Automatisk oppdatering av det andre registrerer (timer, kjøring, aksept
+  // av tilbud): stille i bakgrunnen mens tallene vises.
+  const refreshSilently = useCallback(() => load({ silent: true }), [load])
+  useAutoRefresh(refreshSilently, rootElement, fetchedAtRef, {
+    onReturnMs: AUTO_REFRESH_ON_RETURN_MS,
+    intervalMs: AUTO_REFRESH_INTERVAL_MS,
+  })
 
   async function handleAdd() {
     const amount = Number(form.amountNok.replace(/\s/g, "").replace(",", "."))
@@ -520,7 +561,7 @@ export function LonnsomhetTab({
       })
       resetDialog()
       setOpen(false)
-      load()
+      load({ silent: true })
       toast.success("Materialkost lagt til")
     } catch (e) {
       reportClientError(e, { context: { action: "legge til materialkost", projectId } })
@@ -540,7 +581,7 @@ export function LonnsomhetTab({
     if (!ok) return
     try {
       await deleteMaterialCostAction({ projectId, id })
-      load()
+      load({ silent: true })
     } catch (e) {
       reportClientError(e, { context: { action: "slette materialkost", projectId, id } })
       toast.error(actionErrorMessage(e, "Kunne ikke slette"))
@@ -549,7 +590,7 @@ export function LonnsomhetTab({
 
   if (!data) {
     return (
-      <div className="space-y-5">
+      <div ref={setRootElement} className="space-y-5">
         <p className="p-4 text-sm text-muted-foreground">
           {loading ? "Laster lønnsomhet …" : "Fant ingen tall for dette prosjektet."}
         </p>
@@ -571,13 +612,7 @@ export function LonnsomhetTab({
   const hoursDiff = data.hours.planned === null ? null : data.hours.logged - data.hours.planned
 
   return (
-    <div className="space-y-5 py-2">
-      <div className="flex w-full flex-wrap justify-end space-x-2">
-        <Button size="sm" variant="ghost" className="h-8" onClick={load} disabled={loading}>
-          <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", loading && "animate-spin")} />
-          Oppdater
-        </Button>
-      </div>
+    <div ref={setRootElement} className="space-y-5 py-2">
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi

@@ -20,6 +20,9 @@ let scope: string | null = null
 // Økes ved hvert scope-bytte, så svar fra forrige bruker som lander sent
 // aldri skrives inn i den nye brukerens cache.
 let generation = 0
+// Rekkefølgen kallene startet i, per nøkkel — se fetchPrefetched.
+let lastSequence = 0
+const latestSequence = new Map<string, number>()
 
 /** Sett hvilken bruker cachen tilhører. Et bytte tømmer alt. */
 export function setPrefetchCacheScope(userId: string | null) {
@@ -28,6 +31,7 @@ export function setPrefetchCacheScope(userId: string | null) {
   generation++
   entries.clear()
   inFlight.clear()
+  latestSequence.clear()
 }
 
 export function readPrefetched<T>(key: string): T | undefined {
@@ -59,6 +63,12 @@ export function replacePrefetched<T>(key: string, value: T) {
  * Hent via cachen. Returnerer den lagrede verdien uten nettverk hvis den er
  * yngre enn `maxAgeMs`; ellers deles et pågående kall, eller et nytt startes.
  * `force` hopper over både lagret verdi og pågående kall (etter en endring).
+ *
+ * Svarene kommer ikke nødvendigvis i den rekkefølgen kallene startet. Et kall
+ * som er gått forbi av et nyere (typisk: en tvunget henting etter en lagring
+ * mens åpnings-hentingen fortsatt pågikk) skriver ikke til cachen, og gir
+ * kalleren det nyeste svaret i stedet for sitt eget — ellers kunne en ny
+ * avtale eller jobb forsvinne igjen fordi et gammelt svar landet sist.
  */
 export async function fetchPrefetched<T>(
   key: string,
@@ -72,21 +82,22 @@ export async function fetchPrefetched<T>(
     if (pending) return pending as Promise<T>
   }
   const startedIn = generation
-  const promise = fetcher().then(
-    (value) => {
-      if (startedIn === generation) writePrefetched(key, value)
+  const sequence = ++lastSequence
+  latestSequence.set(key, sequence)
+  const promise: Promise<T> = fetcher().then((value) => {
+    if (startedIn !== generation) return value
+    if (latestSequence.get(key) === sequence) {
+      writePrefetched(key, value)
       return value
     }
-  )
+    const newer = inFlight.get(key)
+    if (newer && newer !== promise) return newer as Promise<T>
+    return (entries.get(key)?.value as T | undefined) ?? value
+  })
   inFlight.set(key, promise)
   const clear = () => {
     if (inFlight.get(key) === promise) inFlight.delete(key)
   }
   promise.then(clear, clear)
   return promise
-}
-
-/** Varm en nøkkel i bakgrunnen; feil svelges (siden prøver selv ved åpning). */
-export function warmPrefetched<T>(key: string, fetcher: () => Promise<T>, maxAgeMs: number) {
-  fetchPrefetched(key, fetcher, { maxAgeMs }).catch(() => {})
 }

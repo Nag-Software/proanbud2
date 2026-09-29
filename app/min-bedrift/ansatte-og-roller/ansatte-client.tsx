@@ -50,7 +50,7 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: Employe
   const confirm = useConfirm();
   const [employees, setEmployees] = useState(initialEmployees ?? fallbackEmployees);
 
-  // Ny rendering fra serveren (oppfrisking av en side vist fra cache).
+  // Ny rendering fra serveren (router.refresh(), f.eks. tilbake til fanen).
   useEffect(() => {
     if (initialEmployees) setEmployees(initialEmployees);
   }, [initialEmployees]);

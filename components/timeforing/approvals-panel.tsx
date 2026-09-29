@@ -25,7 +25,7 @@ const SOURCE_LABEL: Record<string, string> = {
 export function ApprovalsPanel({ initialPending }: { initialPending: PendingApproval[] }) {
   const [pending, setPending] = useState(initialPending)
 
-  // Ny rendering fra serveren (oppfrisking av en side vist fra cache): ta imot
+  // Ny rendering fra serveren (router.refresh(), f.eks. tilbake til fanen): ta imot
   // de ferske timene, så en leder aldri godkjenner fra en utdatert liste.
   useEffect(() => {
     setPending(initialPending)

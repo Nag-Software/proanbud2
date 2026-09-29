@@ -61,14 +61,11 @@ type EditableProject = React.ComponentProps<typeof EditProjectDialog>["project"]
  */
 export function ProjectHeader({
   project,
-  eyebrow,
   people,
   hours,
   flags,
 }: {
   project: EditableProject & { id: string; name: string; status: string | null }
-  /** «Tilbygg · Familien Haugen · 18. aug – 13. nov» */
-  eyebrow: string
   people: ProjectPerson[]
   hours: PersonHours[]
   flags: ProjectHeaderFlags
@@ -79,10 +76,7 @@ export function ProjectHeader({
   return (
     <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2.5">
       <div className="flex min-w-0 flex-1 basis-full items-center gap-3 sm:basis-auto">
-        <div className="min-w-0 space-y-0.5">
-          <p className="hidden truncate text-xs text-muted-foreground sm:block">{eyebrow}</p>
-          <h1 className="truncate text-xl font-semibold text-foreground">{project.name}</h1>
-        </div>
+        <h1 className="min-w-0 truncate text-xl font-semibold text-foreground">{project.name}</h1>
         <ProjectPhaseStripe
           projectId={project.id}
           status={project.status}

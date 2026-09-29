@@ -46,7 +46,7 @@ export default async function Page({
 
   return (
 
-    <AppPageShell clientData segments={["Meldinger"]} noPadding>
+    <AppPageShell segments={["Meldinger"]} noPadding>
       <InboxClient
         companyId={companyId}
         currentUserId={user.id}

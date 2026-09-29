@@ -10,7 +10,7 @@ import { GlobalSearch, GlobalSearchTrigger } from "@/components/search/global-se
 import { TutorialWizard } from "@/components/onboarding/tutorial-wizard"
 import { NativeNavBridge, NativeNavState } from "@/components/native-nav-bridge"
 import { PresenceHeartbeat } from "@/components/presence-heartbeat"
-import { PageFreshness } from "@/components/perf/page-freshness"
+import { RefreshOnReturn } from "@/components/perf/refresh-on-return"
 import { RouteWarmer } from "@/components/perf/route-warmer"
 import { useNativePlatform } from "@/hooks/use-is-native-app"
 import { TrialBanner } from "@/components/billing/trial-banner"
@@ -49,10 +49,10 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider>
       <PresenceHeartbeat />
-      {/* Bakgrunnsforvarming av sidene + stille oppfrisking av forvarmede
-          data ved ankomst. Rendrer ingenting. */}
+      {/* Bakgrunnsforvarming av sidene (viker alltid for brukeren), og
+          oppfrisking av siden når man kommer tilbake til fanen. Rendrer ingenting. */}
       <RouteWarmer />
-      <PageFreshness />
+      <RefreshOnReturn />
       <NativeNavBridge />
       <AppSidebar />
       <SidebarInset className="h-svh min-h-0 overflow-hidden">

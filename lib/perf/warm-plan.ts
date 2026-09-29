@@ -19,8 +19,8 @@ export const WORKER_PRIMARY_HREFS = ["/timeforing", "/prosjekter", "/kart", "/kj
 /** Så mange prosjektsider (nyligst oppdaterte aktive) forvarmes. */
 export const MAX_WARM_PROJECTS = 3
 
-/** Størrelsen på settet som holdes varmt kontinuerlig (resten varmes én gang per økt). */
-export const HOT_SET_SIZE = 6
+/** Størrelsen på settet som holdes varmt mens brukeren er aktiv (resten varmes én gang per økt, og ved hover). */
+export const HOT_SET_SIZE = 5
 
 const PROJECT_PATH = /^\/prosjekter\/[0-9a-f-]{36}$/i
 

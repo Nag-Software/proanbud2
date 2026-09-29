@@ -561,7 +561,7 @@ function KalenderPage() {
 
   if (loadingRole) {
     return (
-      <AppPageShell clientData segments={["Kalender"]} noPadding>
+      <AppPageShell segments={["Kalender"]} noPadding>
         <div className="flex h-full min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
           Laster inn...
         </div>
@@ -571,7 +571,7 @@ function KalenderPage() {
 
   if (!hasFeature("kalender")) {
     return (
-      <AppPageShell clientData segments={["Kalender"]}>
+      <AppPageShell segments={["Kalender"]}>
         <PlanGate
           featureName="Kalender"
           description="Bedriftens delte kalender med prosjektkobling — følger med alle Proanbud-planer med aktivt abonnement."
@@ -581,7 +581,7 @@ function KalenderPage() {
   }
 
   return (
-    <AppPageShell clientData segments={["Kalender"]} noPadding>
+    <AppPageShell segments={["Kalender"]} noPadding>
       <div className="flex h-full min-h-0 flex-1 flex-col">
         {statusMessage && (
           <div className="border-b border-border bg-muted/40 px-4 py-2 text-sm text-muted-foreground">
@@ -916,7 +916,7 @@ function KalenderPage() {
 
 function KalenderFallback() {
   return (
-    <AppPageShell clientData segments={["Kalender"]} noPadding>
+    <AppPageShell segments={["Kalender"]} noPadding>
       <div className="flex h-full min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
         Laster kalender…
       </div>

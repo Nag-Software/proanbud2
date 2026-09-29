@@ -131,7 +131,7 @@ export function KartClient({
   const [geofences, setGeofences] = useState(initialGeofences)
   const [ops, setOps] = useState(initialOps)
 
-  // Ny rendering fra serveren (oppfrisking av en side vist fra cache): det
+  // Ny rendering fra serveren (router.refresh(), f.eks. tilbake til fanen): det
   // levende laget skal aldri stå igjen på forvarmede data.
   useEffect(() => {
     setOps(initialOps)

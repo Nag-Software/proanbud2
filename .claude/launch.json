@@ -4,27 +4,55 @@
     {
       "name": "dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000,
       "autoPort": true
     },
     {
       "name": "prod-start",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["start"],
+      "runtimeArgs": [
+        "start"
+      ],
       "port": 3000
     },
     {
       "name": "attach-3000",
       "runtimeExecutable": "sh",
-      "runtimeArgs": ["-c", "sleep 86400"],
+      "runtimeArgs": [
+        "-c",
+        "sleep 86400"
+      ],
       "port": 3000
     },
     {
       "name": "marketing-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "/Users/casper/Desktop/Nag-Software/proanbud-new", "--", "-p", "3010"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "/Users/casper/Desktop/Nag-Software/proanbud-new",
+        "--",
+        "-p",
+        "3010"
+      ],
       "port": 3010
+    },
+    {
+      "name": "prod-3002",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "exec",
+        "next",
+        "start",
+        "-p",
+        "3002"
+      ],
+      "port": 3002
     }
   ]
 }

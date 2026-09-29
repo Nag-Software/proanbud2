@@ -59,6 +59,7 @@ type PlanContextRow = {
 // background. Display/nav gating only — the server enforces actual access —
 // so a briefly stale role is no worse than the pre-navigation UI was.
 const ROLE_CACHE_PREFIX = "pa_role_ctx_v1:"
+const ROLE_REFRESH_AFTER_HIDDEN_MS = 5 * 60_000
 
 function readRoleCache(userId: string): RoleContextValue | null {
   try {
@@ -128,6 +129,25 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     planKnown: false,
     companyId: null,
   })
+
+  // Hent rolle og plan på nytt når fanen blir synlig etter en stund borte, så
+  // en rolleendring eller et planbytte slår igjennom uten full innlasting.
+  // (Tidligere skjedde det ved en tilfeldighet ved hvert fanebytte, fordi
+  // AuthProvider ga ut et nytt user-objekt hver gang — se auth-provider.tsx.)
+  const [refreshTick, setRefreshTick] = useState(0)
+  useEffect(() => {
+    let hiddenAt: number | null = null
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now()
+      } else if (hiddenAt !== null && Date.now() - hiddenAt >= ROLE_REFRESH_AFTER_HIDDEN_MS) {
+        hiddenAt = null
+        setRefreshTick((tick) => tick + 1)
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => document.removeEventListener("visibilitychange", onVisibility)
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -215,7 +235,9 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       }
       // Only cache trustworthy results: a transient RPC failure must not
       // stick a plan-less context that every later visit hydrates from.
-      if (effectiveRole && !planError) writeRoleCache(user.id, fresh)
+      // …og uten firma er svaret ufullstendig (users-oppslaget feilet); da
+      // skal ikke nav-hookene hydrere fra det neste gang.
+      if (effectiveRole && !planError && fresh.companyId) writeRoleCache(user.id, fresh)
       if (active) setState(fresh)
     }
 
@@ -223,7 +245,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     return () => {
       active = false
     }
-  }, [user, authLoading])
+  }, [user, authLoading, refreshTick])
 
   return <RoleContext.Provider value={state}>{children}</RoleContext.Provider>
 }

@@ -2,7 +2,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 
 export default function Loading() {
   return (
-    <AppPageShell skeleton segments={["Meldinger"]} noPadding>
+    <AppPageShell segments={["Meldinger"]} noPadding>
       <div className="flex h-full min-h-0">
         {/* Conversation list */}
         <div className="hidden w-72 shrink-0 flex-col gap-2 border-r border-border/60 p-3 md:flex">

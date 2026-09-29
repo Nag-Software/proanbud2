@@ -2,7 +2,7 @@ import { AppPageShell } from "@/components/app-page-shell"
 
 export default function Loading() {
   return (
-    <AppPageShell skeleton segments={["Kunder"]}>
+    <AppPageShell segments={["Kunder"]}>
       <div className="flex w-full min-w-0 max-w-full flex-col gap-6 pb-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-2">

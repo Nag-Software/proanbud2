@@ -3,7 +3,7 @@ import { DocumentsSkeleton } from "@/components/dokumenter/components/folder-ske
 
 export default function Loading() {
   return (
-    <AppPageShell skeleton segments={["Dokumenter"]} noPadding>
+    <AppPageShell segments={["Dokumenter"]} noPadding>
       <DocumentsSkeleton />
     </AppPageShell>
   )

@@ -8,6 +8,8 @@ import { useAuth } from "@/components/auth-provider"
 import { useUserRole } from "@/hooks/use-user-role"
 import { useNavItems } from "@/hooks/use-nav-items"
 import { isNativeApp, isNativeAndroid } from "@/lib/native-bridge"
+import { hasPageDataWarmer, warmPageData } from "@/lib/perf/page-data-warmers"
+import { waitForRscRequest } from "@/lib/perf/prefetch-completion"
 import { createWarmEngine, type WarmEngine } from "@/lib/perf/warm-engine"
 import {
   buildWarmPlan,
@@ -17,41 +19,64 @@ import {
   usageScore,
   type NavUsage,
 } from "@/lib/perf/warm-plan"
-import { warmPageData } from "@/lib/perf/page-data-warmers"
 
 /**
- * Bakgrunnsforvarming av appens sider.
+ * Bakgrunnsforvarming av appens sider — som ALLTID viker for brukeren.
  *
- * Når skallet har lastet og nettleseren er ledig, henter vi de sidene
- * brukeren har tilgang til ferdig rendret (full RSC-prefetch) inn i Next sin
- * ruter-cache — så første klikk på hver side vises øyeblikkelig i stedet for
- * å vente på serveren. Rekkefølgen er dagens hovedpunkter, så det brukeren
- * faktisk pleier å åpne, så resten.
+ * Sidene brukeren har tilgang til hentes ferdig rendret (full RSC-prefetch)
+ * inn i Next sin ruter-cache, så første klikk vises øyeblikkelig. Reglene, i
+ * prioritert rekkefølge:
  *
- * Mens brukeren er aktiv holdes et lite «varmt sett» (hovedpunktene + de mest
- * brukte sidene) varmt før oppføringene utløper; resten varmes én gang per
- * økt. Forvarmede sider kan være opptil fem minutter gamle — AppPageShell
- * stempler dem, og PageFreshness frisker dem opp stille ved ankomst.
+ * 1. Brukeren først. Bakgrunnsarbeid starter først når brukeren har vært i ro
+ *    en stund, og pauser i det øyeblikket hen klikker, taster, scroller eller
+ *    navigerer. Det går aldri mer enn ÉN bakgrunnsforespørsel om gangen — neste
+ *    sendes først når forrige er ferdig — så et klikk konkurrerer i verste
+ *    fall med ett kall, aldri med en kø.
+ * 2. Det brukeren peker på, hentes straks. Hviler pekeren på en lenke (eller
+ *    brukeren trykker på den), forvarmes akkurat den siden utenfor køen, og
+ *    navigasjonen gjenbruker svaret som allerede er på vei.
+ * 3. Deretter: dagens hovedpunkter, så det brukeren pleier å åpne, så resten
+ *    av menyen, og til slutt dataene til sider som henter i nettleseren.
  *
- * Kostnad: hver forvarming er én serverless-kjøring. Det erstatter i praksis
- * den delvise prefetchen Next allerede gjør for synlige lenker, og er uansett
- * begrenset av WARM_BUDGET per fane. Slås av med
- * NEXT_PUBLIC_ROUTE_WARMING=off.
+ * Forvarmede sider lever `staleTimes.static` (60 s) i cachen, så de er aldri
+ * eldre enn ett minutt når de vises. Mens brukeren er aktiv fornyes et lite
+ * «varmt sett» (hovedpunktene + det mest brukte).
+ *
+ * Kostnad: hver forvarming er én serverless-kjøring, begrenset av
+ * WARM_BUDGET per fane. Slås av med NEXT_PUBLIC_ROUTE_WARMING=off, og kjører
+ * bare i produksjonsbygg.
  */
 
-const WARMING_DISABLED = process.env.NEXT_PUBLIC_ROUTE_WARMING === "off"
+// Aldri i utvikling: der er router.prefetch en no-op (Next slår det av for å
+// ikke kompilere ruter på forhånd), og datavarmerne ville tvunget dev-serveren
+// til å kompilere API-ruter midt i det brukeren faktisk klikker på.
+const WARMING_DISABLED =
+  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ROUTE_WARMING === "off"
 
-/** Vent så lenge etter at siden er lastet før første pass — sidens egne kall går først. */
-const START_DELAY_MS = 1_500
-/** Avstand mellom hver forvarming i et pass, så serveren ikke får alt i ett støt. */
-const PACE_MS = 300
-/** Hvor ofte vi sjekker om det varme settet trenger påfyll. */
-const KEEP_WARM_TICK_MS = 15_000
-/** Brukeren regnes som aktiv så lenge siste input er nyere enn dette. */
-const ACTIVE_WINDOW_MS = 3 * 60_000
-/** Etter at Next har kastet cachen (en endring): vent så lenge med å varme på nytt. */
-const QUIET_AFTER_INVALIDATION_MS = 30_000
+/** Første bakgrunnsjobb tidligst så lenge etter at dokumentet begynte å laste. */
+const MIN_AFTER_LOAD_MS = 2_500
+/** Brukeren må ha vært i ro så lenge før bakgrunnsarbeid starter eller fortsetter. */
+const IDLE_BEFORE_WORK_MS = 1_500
+/** …og så lenge etter en navigasjon (den nye sidens egne kall går først). */
+const AFTER_NAVIGATION_MS = 2_000
+/** Pause mellom to bakgrunnsjobber. */
+const GAP_MS = 150
+/** Så lenge pekeren må hvile på en lenke før det regnes som en intensjon. */
+const HOVER_INTENT_MS = 80
+/** Lengste vi venter på at én forvarming blir ferdig før køen går videre. */
+const COMPLETION_TIMEOUT_MS = 4_000
+/** Hvor ofte vi sjekker om det varme settet trenger fornyelse. */
+const KEEP_WARM_TICK_MS = 5_000
+/** Det varme settet fornyes bare så lenge brukeren har vært aktiv nylig. */
+const ACTIVE_WINDOW_MS = 90_000
+/**
+ * Data for klientsider (kalender, dokumenter, mine priser) varmes sjeldnere enn
+ * rutene: sidene revaliderer uansett selv ved åpning, og kalenderen koster
+ * kall til Google/Outlook.
+ */
+const DATA_REWARM_MS = 5 * 60_000
 
+const PROJECT_PATH = /^\/prosjekter\/[0-9a-f-]{36}$/i
 const USAGE_KEY_PREFIX = "pa_nav_usage_v1:"
 
 function readUsage(userId: string): NavUsage {
@@ -80,14 +105,20 @@ function networkAllowsWarming(): boolean {
   return !(connection.effectiveType && /2g$/.test(connection.effectiveType))
 }
 
-function onIdle(callback: () => void): () => void {
-  if (typeof window.requestIdleCallback === "function") {
-    const id = window.requestIdleCallback(callback, { timeout: 3_000 })
-    return () => window.cancelIdleCallback(id)
+/** Sti for en intern app-lenke under et DOM-element — ellers null. */
+function internalLinkPath(target: EventTarget | null): string | null {
+  if (!(target instanceof Element)) return null
+  const anchor = target.closest("a[href]")
+  if (!(anchor instanceof HTMLAnchorElement) || anchor.target === "_blank") return null
+  try {
+    const url = new URL(anchor.href)
+    return url.origin === window.location.origin ? url.pathname : null
+  } catch {
+    return null
   }
-  const id = window.setTimeout(callback, 200)
-  return () => window.clearTimeout(id)
 }
+
+type Task = { href: string; kind: "route" | "data" }
 
 export function RouteWarmer() {
   if (WARMING_DISABLED) return null
@@ -103,44 +134,24 @@ function RouteWarmerInner() {
   const { navItems } = useNavItems()
 
   const routerRef = useRef(router)
-  routerRef.current = router
   const pathnameRef = useRef(pathname)
-  pathnameRef.current = pathname
-  const lastActiveAtRef = useRef(0)
-
+  const lastNavigationAtRef = useRef(0)
   // Én motor per bruker — kontobytte på samme maskin starter på nytt.
   const engineRef = useRef<{ userId: string; engine: WarmEngine } | null>(null)
-  function getEngine(forUser: string): WarmEngine {
-    if (engineRef.current?.userId !== forUser) {
-      engineRef.current = {
-        userId: forUser,
-        engine: createWarmEngine({
-          prefetch: (href, onInvalidate) =>
-            routerRef.current.prefetch(href, { kind: PrefetchKind.FULL, onInvalidate }),
-        }),
-      }
-    }
-    return engineRef.current.engine
-  }
 
-  // Besøkshistorikk: styrer rekkefølgen og hvilke sider som holdes varme.
   useEffect(() => {
+    routerRef.current = router
+  }, [router])
+
+  // Navigasjon: gi den nye siden arbeidsro, regn den som fersk (Next har
+  // nettopp hentet den), og registrer besøket for prioriteringen.
+  useEffect(() => {
+    pathnameRef.current = pathname
+    lastNavigationAtRef.current = Date.now()
     if (!userId) return
+    if (engineRef.current?.userId === userId) engineRef.current.engine.markFresh(pathname)
     writeUsage(userId, recordVisit(readUsage(userId), pathname, Date.now()))
   }, [userId, pathname])
-
-  // Aktivitet: det varme settet fylles bare på mens noen faktisk bruker appen.
-  useEffect(() => {
-    const markActive = () => {
-      lastActiveAtRef.current = Date.now()
-    }
-    markActive()
-    const events = ["pointerdown", "keydown", "touchstart", "wheel"] as const
-    for (const event of events) window.addEventListener(event, markActive, { passive: true })
-    return () => {
-      for (const event of events) window.removeEventListener(event, markActive)
-    }
-  }, [])
 
   // Rolle- og planbildet som styrer hva som er lov å forvarme. Serialisert, så
   // effekten under bare starter på nytt når noe faktisk endrer seg.
@@ -158,6 +169,7 @@ function RouteWarmerInner() {
 
   useEffect(() => {
     if (!userId || navKey === null) return
+    const forUser: string = userId
     const nav = JSON.parse(navKey) as {
       role: string | null
       isWorker: boolean
@@ -170,27 +182,31 @@ function RouteWarmerInner() {
       loadingRole: nav.loadingRole,
       hasFeature: (feature: string) => nav.features.includes(feature),
     }
-    const engine = getEngine(userId)
+    if (engineRef.current?.userId !== forUser) {
+      engineRef.current = {
+        userId: forUser,
+        engine: createWarmEngine({
+          prefetch: (href, onInvalidate) =>
+            routerRef.current.prefetch(href, { kind: PrefetchKind.FULL, onInvalidate }),
+        }),
+      }
+      engineRef.current.engine.markFresh(pathnameRef.current)
+    }
+    const engine = engineRef.current.engine
     const nativeIos = isNativeApp() && !isNativeAndroid()
     const nativeTabs = new Set(nativeTabsKey.split("|"))
 
     let disposed = false
-    // Maks én ventende timer og ett ventende idle-kall om gangen (bare ett pass
-    // kjører av gangen), så ingenting hoper seg opp gjennom en lang økt.
-    let stepTimer: number | undefined
-    let startTimer: number | undefined
-    let cancelIdle: (() => void) | null = null
-    const scheduleIdle = (callback: () => void) => {
-      cancelIdle?.()
-      cancelIdle = onIdle(() => {
-        cancelIdle = null
-        callback()
-      })
-    }
+    let busy = false
+    let lastInteractionAt = 0
+    let pumpTimer: number | undefined
+    let hoverTimer: number | undefined
+    const queue: Task[] = []
+    const dataWarmedAt = new Map<string, number>()
 
     function currentPlan() {
       const now = Date.now()
-      const usage = readUsage(userId!)
+      const usage = readUsage(forUser)
       const projectHrefs = Object.keys(usage)
         .filter((href) => href.startsWith("/prosjekter/"))
         .sort((a, b) => usageScore(usage[b], now) - usageScore(usage[a], now))
@@ -203,82 +219,154 @@ function RouteWarmerInner() {
       return { plan, hot }
     }
 
-    function canWarm() {
-      return !disposed && document.visibilityState === "visible" && networkAllowsWarming()
+    // Menypunkter brukeren har tilgang til, pluss prosjektsider (lista viser
+    // bare prosjekter man har tilgang til).
+    const allowed = new Set(currentPlan().plan)
+    const isWarmable = (href: string) => allowed.has(href) || PROJECT_PATH.test(href)
+
+    /** Millisekunder til bakgrunnsarbeid er lov (0 = nå), eller null når det ikke skal skje nå. */
+    function backgroundWaitMs(now: number): number | null {
+      if (disposed || document.visibilityState !== "visible" || !networkAllowsWarming()) return null
+      if (!engine.hasBudget(now)) return null
+      if (document.readyState !== "complete") return 500
+      return Math.max(
+        0,
+        performance.timeOrigin + MIN_AFTER_LOAD_MS - now,
+        lastInteractionAt + IDLE_BEFORE_WORK_MS - now,
+        lastNavigationAtRef.current + AFTER_NAVIGATION_MS - now
+      )
     }
 
-    // Ett pass: varm sidene i rekkefølge, med litt luft mellom hver.
-    // `onComplete` kalles bare hvis passet kom helt gjennom lista.
-    let passRunning = false
-    function runPass(hrefs: string[], onComplete?: () => void) {
-      if (passRunning) return
-      passRunning = true
-      let index = 0
-      const step = () => {
-        if (!canWarm() || index >= hrefs.length) {
-          passRunning = false
-          if (index >= hrefs.length) onComplete?.()
-          return
-        }
-        const href = hrefs[index++]
-        if (href === pathnameRef.current) {
-          step()
-          return
-        }
-        const issued = engine.warm(href)
-        if (issued) warmPageData(href, { userId: userId! })
-        if (!engine.hasBudget()) {
-          passRunning = false
-          return
-        }
-        stepTimer = window.setTimeout(step, issued ? PACE_MS : 0)
+    async function warmRoute(href: string): Promise<boolean> {
+      if (!engine.warm(href)) return false
+      await waitForRscRequest(href, COMPLETION_TIMEOUT_MS)
+      engine.settle(href)
+      return true
+    }
+
+    function dataIsDue(href: string) {
+      if (!hasPageDataWarmer(href)) return false
+      const last = dataWarmedAt.get(href)
+      return last === undefined || Date.now() - last >= DATA_REWARM_MS
+    }
+
+    async function warmData(href: string) {
+      dataWarmedAt.set(href, Date.now())
+      await warmPageData(href, { userId: forUser })
+    }
+
+    async function runTask(task: Task) {
+      if (task.kind === "data") {
+        if (dataIsDue(task.href)) await warmData(task.href)
+        return
       }
-      step()
+      if (task.href === pathnameRef.current || !engine.needsWarm(task.href)) return
+      if ((await warmRoute(task.href)) && dataIsDue(task.href)) {
+        queue.push({ href: task.href, kind: "data" })
+      }
     }
 
-    // Første pass: hele planen, når siden er ferdig lastet og nettleseren ledig.
-    // iOS-appen nøyer seg med det varme settet (én WebView per fane). Blir
-    // fanen skjult underveis, fullføres passet når den er synlig igjen — sider
-    // som allerede er varme hoppes over av motoren.
-    let initialDone = false
-    const runInitialPass = () => {
-      if (initialDone) return
-      const { plan, hot } = currentPlan()
-      runPass(nativeIos ? hot : plan, () => {
-        initialDone = true
+    function schedulePump(delayMs: number) {
+      window.clearTimeout(pumpTimer)
+      pumpTimer = window.setTimeout(pump, delayMs)
+    }
+
+    // Én jobb om gangen, og bare når brukeren er i ro.
+    function pump() {
+      if (disposed || busy || queue.length === 0) return
+      const wait = backgroundWaitMs(Date.now())
+      // Skjult fane / spar data / brukt opp budsjett: visibility-lytteren og
+      // neste runde av det varme settet tar opp tråden igjen.
+      if (wait === null) return
+      if (wait > 0 || !engine.isQuiet()) {
+        schedulePump(Math.max(wait, 500))
+        return
+      }
+      const task = queue.shift()!
+      busy = true
+      runTask(task)
+        .catch(() => {})
+        .finally(() => {
+          busy = false
+          schedulePump(GAP_MS)
+        })
+    }
+
+    function enqueue(tasks: Task[], { front = false } = {}) {
+      const fresh = tasks.filter(
+        (task) => !queue.some((queued) => queued.href === task.href && queued.kind === task.kind)
+      )
+      if (front) queue.unshift(...fresh)
+      else queue.push(...fresh)
+      // Også uten nye jobber: køen kan ha stått stille (skjult fane, brukt opp budsjett).
+      if (queue.length > 0 && !busy) schedulePump(0)
+    }
+
+    // Intensjon: siden brukeren peker på eller trykker på, varmes straks —
+    // utenfor køen, så den aldri står bak bakgrunnsarbeid.
+    function warmIntent(href: string) {
+      if (disposed || href === pathnameRef.current || !isWarmable(href)) return
+      if (engine.isInFlight(href) || !engine.needsWarm(href)) return
+      void warmRoute(href).then((warmed) => {
+        if (warmed && dataIsDue(href)) void warmData(href)
       })
     }
-    const startInitialPass = () => {
-      startTimer = window.setTimeout(() => scheduleIdle(runInitialPass), START_DELAY_MS)
+
+    const onInteraction = () => {
+      lastInteractionAt = Date.now()
     }
-    const onVisible = () => {
-      if (document.visibilityState === "visible" && !initialDone) scheduleIdle(runInitialPass)
+    const onPress = (event: Event) => {
+      onInteraction()
+      const href = internalLinkPath(event.target)
+      if (href) warmIntent(href)
     }
-    document.addEventListener("visibilitychange", onVisible)
-    if (document.readyState === "complete") {
-      startInitialPass()
-    } else {
-      window.addEventListener("load", startInitialPass, { once: true })
+    const onPointerOver = (event: PointerEvent) => {
+      window.clearTimeout(hoverTimer)
+      if (event.pointerType !== "mouse") return
+      const href = internalLinkPath(event.target)
+      if (href) hoverTimer = window.setTimeout(() => warmIntent(href), HOVER_INTENT_MS)
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") schedulePump(0)
     }
 
-    // Deretter: hold det varme settet varmt mens brukeren er aktiv. Fanger både
-    // utløp (5 min) og at Next har kastet cachen etter en endring.
+    const capture = { passive: true, capture: true } as const
+    window.addEventListener("pointerdown", onPress, capture)
+    window.addEventListener("keydown", onInteraction, capture)
+    window.addEventListener("wheel", onInteraction, capture)
+    window.addEventListener("touchmove", onInteraction, capture)
+    // Scroll skjer i skallets egen container, ikke på window — fang den i capture.
+    document.addEventListener("scroll", onInteraction, capture)
+    document.addEventListener("pointerover", onPointerOver, { passive: true })
+    document.addEventListener("visibilitychange", onVisibility)
+
+    // Første pass: hele planen (iOS-appen bare det varme settet).
+    const initial = currentPlan()
+    enqueue((nativeIos ? initial.hot : initial.plan).map((href) => ({ href, kind: "route" as const })))
+
+    // Deretter: forny det varme settet mens brukeren er aktiv — foran i køen.
     const tick = window.setInterval(() => {
-      if (Date.now() - lastActiveAtRef.current > ACTIVE_WINDOW_MS) return
-      if (engine.msSinceInvalidation() < QUIET_AFTER_INVALIDATION_MS) return
-      const { hot } = currentPlan()
-      const due = hot.filter((href) => engine.needsWarm(href))
-      if (due.length > 0) runPass(due)
+      const now = Date.now()
+      if (now - Math.max(lastInteractionAt, lastNavigationAtRef.current) > ACTIVE_WINDOW_MS) return
+      const due = currentPlan().hot.filter((href) => engine.needsWarm(href) && !engine.isInFlight(href))
+      enqueue(
+        due.map((href) => ({ href, kind: "route" as const })),
+        { front: true }
+      )
     }, KEEP_WARM_TICK_MS)
 
     return () => {
       disposed = true
       window.clearInterval(tick)
-      window.clearTimeout(stepTimer)
-      window.clearTimeout(startTimer)
-      cancelIdle?.()
-      document.removeEventListener("visibilitychange", onVisible)
-      window.removeEventListener("load", startInitialPass)
+      window.clearTimeout(pumpTimer)
+      window.clearTimeout(hoverTimer)
+      window.removeEventListener("pointerdown", onPress, capture)
+      window.removeEventListener("keydown", onInteraction, capture)
+      window.removeEventListener("wheel", onInteraction, capture)
+      window.removeEventListener("touchmove", onInteraction, capture)
+      document.removeEventListener("scroll", onInteraction, capture)
+      document.removeEventListener("pointerover", onPointerOver)
+      document.removeEventListener("visibilitychange", onVisibility)
     }
   }, [userId, navKey, nativeTabsKey])
 

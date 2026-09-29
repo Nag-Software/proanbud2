@@ -69,6 +69,20 @@ describe("prefetch-cache", () => {
     expect(cache.prefetchedAt("k")).toBe(fetchedAt)
   })
 
+  it("et eldre svar som lander sist overskriver aldri et nyere", async () => {
+    const cache = await load()
+    cache.setPrefetchCacheScope("u1")
+    let resolveOld!: (value: string[]) => void
+    const old = cache.fetchPrefetched("k", () => new Promise<string[]>((r) => (resolveOld = r)))
+    // En lagring tvinger fram en ny henting mens den første fortsatt pågår.
+    const fresh = cache.fetchPrefetched("k", async () => ["a", "ny"], { force: true })
+    expect(await fresh).toEqual(["a", "ny"])
+    resolveOld(["a"])
+    // Den som ventet på det gamle kallet får det nyeste svaret, og cachen står urørt.
+    expect(await old).toEqual(["a", "ny"])
+    expect(cache.readPrefetched("k")).toEqual(["a", "ny"])
+  })
+
   it("en feilet henting etterlater ingen oppføring og slipper neste forsøk til", async () => {
     const cache = await load()
     cache.setPrefetchCacheScope("u1")

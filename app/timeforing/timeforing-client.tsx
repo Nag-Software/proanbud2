@@ -129,8 +129,8 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
   )
   const [loadError, setLoadError] = useState<string | null>(initial.ok ? null : initial.error)
 
-  // Ny rendering fra serveren (siden ble vist fra cache og friskes opp, se
-  // components/perf/page-freshness) — ta imot de ferske dataene.
+  // Ny rendering fra serveren (router.refresh() når du kommer tilbake til
+  // fanen, eller etter en endring) — ta imot de ferske dataene.
   useEffect(() => {
     if (!initial.ok) return
     setOverview(initial.data)

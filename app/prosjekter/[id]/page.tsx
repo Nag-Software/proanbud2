@@ -12,12 +12,7 @@ import { canManageProjects, getRoleDisplayName } from "@/lib/roles"
 import { fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import { getDeviationsAction } from "@/app/avvik/actions"
 import { getProjectChecklistsAction } from "@/app/ks/actions"
-import {
-  PROJECT_TYPE_OPTIONS,
-  getProjectCustomer,
-  getProjectPeriod,
-  getProjectSiteAddress,
-} from "@/app/prosjekter/project-utils"
+import { getProjectCustomer, getProjectSiteAddress } from "@/app/prosjekter/project-utils"
 import { fetchProjectProfitability, readProjectBudget } from "@/lib/job-costing/project-profitability"
 import type { ProjectProfitability } from "@/lib/job-costing/types"
 
@@ -250,17 +245,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const customer = getProjectCustomer(project)
   const siteAddress = getProjectSiteAddress(project)
 
-  const eyebrow = [
-    project.project_type
-      ? (PROJECT_TYPE_OPTIONS.find((option) => option.value === project.project_type)?.label ??
-        project.project_type)
-      : null,
-    customer.name !== "Ukjent kunde" ? customer.name : null,
-    project.start_date || project.end_date ? getProjectPeriod(project) : null,
-  ]
-    .filter(Boolean)
-    .join(" · ")
-
   const personHours = participantHours.map((entry) => ({
     userId: entry.userId,
     totalHours: entry.totalHours,
@@ -296,7 +280,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         header={
           <ProjectHeader
             project={project}
-            eyebrow={eyebrow}
             people={projectPeople}
             hours={canManageProjects(canonicalRole) ? personHours : []}
             flags={{

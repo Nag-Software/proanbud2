@@ -1,39 +1,89 @@
+"use client"
+
+import { AppSidebar } from "@/components/app-sidebar"
+import { useAppShell } from "@/components/app-shell-context"
+import { TrialBanner } from "@/components/billing/trial-banner"
+import { ShellBreadcrumb } from "@/components/shell-breadcrumb"
+import { Separator } from "@/components/ui/separator"
 import {
-  AppPageShellClient,
-  type AppPageShellProps,
-} from "@/components/app-page-shell-client"
-import { DEFAULT_FRESH_FOR_MS, renderTimestamp } from "@/lib/perf/freshness"
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
+import { useLayoutEffect, type ReactNode } from "react"
+import { cn } from "@/lib/utils"
 
-/**
- * Sidens ramme i det vedvarende app-skallet.
- *
- * Bevisst UTEN "use client": importert fra en serverside kjører denne på
- * serveren og stempler når sidens data ble rendret. Skallet bruker stempelet
- * til å friske opp en side stille hvis den ble vist fra ruter-cachen med
- * gamle data (se lib/perf/freshness.ts). Importert fra en klientkomponent
- * (dashbordet, kalenderen) blir den en vanlig klientkomponent — da er det
- * ingen serverdata å stemple, og de sidene sender `clientData`.
- */
-export function AppPageShell({
-  skeleton,
-  clientData,
-  freshForSeconds,
-  ...props
-}: AppPageShellProps & {
-  /** loading.tsx: skjelettet har ingen data, og skal aldri trigge oppfrisking. */
-  skeleton?: boolean
-  /** Siden henter dataene sine i nettleseren; serverrenderingen har ingenting å friske opp. */
-  clientData?: boolean
-  /** Hvor lenge sidens serverdata regnes som ferske når den vises fra cache. */
-  freshForSeconds?: number
-}) {
-  const stamp =
-    skeleton || clientData
-      ? undefined
-      : {
-          renderedAt: renderTimestamp(),
-          freshForMs: freshForSeconds !== undefined ? freshForSeconds * 1000 : DEFAULT_FRESH_FOR_MS,
-        }
+type AppPageShellProps = {
+  segments: string[]
+  children?: ReactNode
+  noPadding?: boolean
+  hideMobileTitle?: boolean
+}
 
-  return <AppPageShellClient {...props} stamp={stamp} />
+function DefaultCanvas() {
+  return (
+    <>
+      <div className="grid auto-rows-min gap-4 md:grid-cols-3">
+        <div className="aspect-video rounded-xl bg-muted/50" />
+        <div className="aspect-video rounded-xl bg-muted/50" />
+        <div className="aspect-video rounded-xl bg-muted/50" />
+      </div>
+      <div className="min-h-screen flex-1 rounded-xl bg-muted/50 md:min-h-min" />
+    </>
+  )
+}
+
+function LegacyAppPageShell({ segments, children, noPadding, hideMobileTitle }: AppPageShellProps) {
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset className="h-svh min-h-0 overflow-hidden">
+        <TrialBanner />
+        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+          <div className="flex items-center gap-2 px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator
+              orientation="vertical"
+              className="mr-2 data-vertical:h-4 data-vertical:self-auto"
+            />
+            <ShellBreadcrumb segments={segments} hideMobileTitle={hideMobileTitle} />
+          </div>
+        </header>
+        <div
+          className={cn(
+            "flex min-h-0 w-full max-w-[2000px] min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            noPadding ? "overflow-hidden" : "gap-4 p-4 pt-0"
+          )}
+        >
+          {children ?? <DefaultCanvas />}
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
+  )
+}
+
+export function AppPageShell({ segments, children, noPadding, hideMobileTitle }: AppPageShellProps) {
+  const shell = useAppShell()
+  const insideShell = shell?.insideShell ?? false
+  const setPageMeta = shell?.setPageMeta
+  const segmentsKey = segments.join("\u0000")
+
+  useLayoutEffect(() => {
+    if (!insideShell || !setPageMeta) return
+    setPageMeta({
+      segments,
+      noPadding: Boolean(noPadding),
+      hideMobileTitle: Boolean(hideMobileTitle),
+    })
+  }, [insideShell, setPageMeta, segmentsKey, noPadding, hideMobileTitle])
+
+  if (shell?.insideShell) {
+    return <>{children ?? <DefaultCanvas />}</>
+  }
+
+  return (
+    <LegacyAppPageShell segments={segments} noPadding={noPadding} hideMobileTitle={hideMobileTitle}>
+      {children}
+    </LegacyAppPageShell>
+  )
 }

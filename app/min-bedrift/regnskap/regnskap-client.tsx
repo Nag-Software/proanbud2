@@ -52,7 +52,7 @@ export function RegnskapClient({
   const [scopes, setScopes] = React.useState(state?.scopes ?? {})
   const [jobs, setJobs] = React.useState(initialJobs)
 
-  // Ny rendering fra serveren (oppfrisking av en side vist fra cache).
+  // Ny rendering fra serveren (router.refresh(), f.eks. tilbake til fanen).
   React.useEffect(() => {
     setJobs(initialJobs)
   }, [initialJobs])
