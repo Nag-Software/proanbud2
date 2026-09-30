@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/components/auth-provider"
+import { useRoleContext } from "@/components/role-provider"
 import { canManageSubscription, getRoleDisplayName, isManagerOrAdmin } from "@/lib/roles"
 import { reportClientError } from "@/lib/errors/client"
 import { START_TUTORIAL_EVENT } from "@/components/onboarding/tutorial-wizard"
@@ -44,6 +46,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -73,15 +76,67 @@ type UserProfileState = {
   bio: string
 }
 
+/** Det brukermenyen trenger utover sesjonen og rolle-konteksten. */
+type NavUserExtras = {
+  avatar_url: string
+  bio: string
+  company_name: string
+  company_org_number: string
+}
+
+const EMPTY_EXTRAS: NavUserExtras = { avatar_url: "", bio: "", company_name: "", company_org_number: "" }
+
+// Siste kjente avatar/firma per bruker, så menyen ser lik ut fra første
+// klientframe ved gjenbesøk. Kun visning — samme mønster som rollecachen.
+const EXTRAS_CACHE_PREFIX = "pa_navuser_v1:"
+// Avatar og firmanavn haster ikke: de hentes etter at siden har fått sendt
+// sine egne spørringer, så de ikke konkurrerer om de samme tilkoblingene.
+const EXTRAS_FETCH_DELAY_MS = 1500
+
+function readExtrasCache(userId: string): NavUserExtras | null {
+  try {
+    const raw = window.localStorage.getItem(EXTRAS_CACHE_PREFIX + userId)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<NavUserExtras>
+    if (typeof parsed !== "object" || parsed === null) return null
+    return {
+      avatar_url: typeof parsed.avatar_url === "string" ? parsed.avatar_url : "",
+      bio: typeof parsed.bio === "string" ? parsed.bio : "",
+      company_name: typeof parsed.company_name === "string" ? parsed.company_name : "",
+      company_org_number: typeof parsed.company_org_number === "string" ? parsed.company_org_number : "",
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeExtrasCache(userId: string, extras: NavUserExtras) {
+  try {
+    window.localStorage.setItem(EXTRAS_CACHE_PREFIX + userId, JSON.stringify(extras))
+  } catch {
+    // Full/blokkert storage — cachen er kun best-effort.
+  }
+}
+
 export function NavUser() {
   const { isMobile } = useSidebar()
   const router = useRouter()
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
   const confirm = useConfirm()
 
-  const [user, setUser] = useState<User | null>(null)
-  const [profile, setProfile] = useState<UserProfileState | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  // Navn, e-post, rolle og firma kommer fra sesjonen og rolle-konteksten, som
+  // uansett er hentet. Menyen ventet tidligere på tre spørringer etter
+  // hverandre (users → companies → user_profiles) bak en spinner.
+  const { user: authUser, loading: authLoading } = useAuth()
+  const user = authUser as User | null
+  const userId: string | null = user?.id ?? null
+  const { role: contextRole, companyId, fullName, email: contextEmail } = useRoleContext()
+
+  const [extras, setExtras] = useState<NavUserExtras>(EMPTY_EXTRAS)
+  const [extrasLoaded, setExtrasLoaded] = useState(false)
+  // Navnet slik det ble lagret i denne økten — rolle-konteksten hentes ikke på
+  // nytt ved lagring.
+  const [savedName, setSavedName] = useState<string | null>(null)
   const [isDeletingAccount, setIsDeletingAccount] = useState(false)
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -93,69 +148,91 @@ export function NavUser() {
   const [isSaving, setIsSaving] = useState(false)
   const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() ?? ""
 
-  useEffect(() => {
-    async function fetchUser() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) {
-        setIsLoading(false)
-        return
+  const metadata = user?.user_metadata
+  const profile: UserProfileState | null = user
+    ? {
+        full_name: savedName ?? fullName ?? metadata?.full_name ?? metadata?.name ?? "",
+        avatar_url: extras.avatar_url || metadata?.avatar_url || metadata?.picture || "",
+        email: contextEmail || user.email || "",
+        role: contextRole || "worker",
+        company_id: companyId,
+        company_name: extras.company_name,
+        company_org_number: extras.company_org_number,
+        bio: extras.bio,
       }
-      setUser(session.user)
+    : null
 
-      const { data: userRow } = await supabase
-        .from("users")
-        .select("full_name, email, role, company_id")
-        .eq("id", session.user.id)
-        .maybeSingle()
+  useEffect(() => {
+    if (!userId) return
+    setSavedName(null)
+    setExtrasLoaded(false)
+    setExtras(readExtrasCache(userId) ?? EMPTY_EXTRAS)
+  }, [userId])
 
-      const { data: companyRow } = userRow?.company_id
-        ? await supabase
-            .from("companies")
-            .select("name, org_number")
-            .eq("id", userRow.company_id)
-            .maybeSingle()
-        : { data: null }
+  // Åpnes «Min Konto» før hentingen har startet, hentes det med en gang.
+  const wantsExtrasNow = isSettingsOpen && !extrasLoaded
+  useEffect(() => {
+    if (!userId || extrasLoaded) return
+    let cancelled = false
 
-      const { data: profileData } = await supabase
-        .from("user_profiles")
-        .select("avatar_url, bio")
-        .eq("user_id", session.user.id)
-        .maybeSingle()
+    async function fetchExtras(id: string) {
+      const [{ data: profileData, error: profileError }, { data: companyRow }] = await Promise.all([
+        supabase.from("user_profiles").select("avatar_url, bio").eq("user_id", id).maybeSingle(),
+        companyId
+          ? supabase.from("companies").select("name, org_number").eq("id", companyId).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
+      if (cancelled) return
 
-      const nextProfile: UserProfileState = {
-        full_name: userRow?.full_name || session.user.user_metadata?.full_name || session.user.user_metadata?.name || "",
-        avatar_url:
-          profileData?.avatar_url ||
-          session.user.user_metadata?.avatar_url ||
-          session.user.user_metadata?.picture ||
-          "",
-        email: userRow?.email || session.user.email || "",
-        role: userRow?.role || "worker",
-        company_id: userRow?.company_id || null,
+      const next: NavUserExtras = {
+        avatar_url: profileData?.avatar_url || "",
+        bio: profileData?.bio || "",
         company_name: companyRow?.name || "",
         company_org_number: companyRow?.org_number || "",
-        bio: profileData?.bio || "",
       }
+      setExtras(next)
+      setExtrasLoaded(true)
+      writeExtrasCache(id, next)
 
-      if (profileData) {
-        setProfile(nextProfile)
-      } else {
-        const newProfile = { user_id: session.user.id, avatar_url: nextProfile.avatar_url, bio: "" }
-        await supabase.from("user_profiles").upsert(newProfile)
-        setProfile(nextProfile)
+      // Første besøk: opprett profilraden i bakgrunnen.
+      if (!profileData && !profileError) {
+        const fallbackAvatar = metadata?.avatar_url || metadata?.picture || ""
+        void supabase.from("user_profiles").upsert({ user_id: id, avatar_url: fallbackAvatar, bio: "" })
       }
-
-      setEditName(nextProfile.full_name)
-      setEditAvatar(nextProfile.avatar_url)
-      setEditBio(nextProfile.bio)
-      setEditCompanyName(nextProfile.company_name)
-      setEditCompanyOrgNumber(nextProfile.company_org_number)
-
-      setIsLoading(false)
     }
 
-    fetchUser()
-  }, [supabase])
+    const run = () => {
+      fetchExtras(userId).catch((error) => {
+        reportClientError(error, { level: "warning", context: { action: "load-nav-user", userId } })
+      })
+    }
+    if (wantsExtrasNow) {
+      run()
+      return () => {
+        cancelled = true
+      }
+    }
+    const timer = window.setTimeout(run, EXTRAS_FETCH_DELAY_MS)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+    // metadata leses bare for reserve-avataren; den skal ikke utløse ny henting.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, userId, companyId, extrasLoaded, wantsExtrasNow])
+
+  // Skjemaet fylles når skuffen åpnes, og på nytt når firma/avatar lander.
+  const profileName = profile?.full_name ?? ""
+  useEffect(() => {
+    if (!isSettingsOpen) return
+    setEditName(profileName)
+    setEditAvatar(extras.avatar_url)
+    setEditBio(extras.bio)
+    setEditCompanyName(extras.company_name)
+    setEditCompanyOrgNumber(extras.company_org_number)
+    // Bare ved åpning og når dataene lander — ikke for hvert tastetrykk.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSettingsOpen, extrasLoaded])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -247,16 +324,15 @@ export function NavUser() {
         throw profileError
       }
 
-      const nextProfile: UserProfileState = {
-        ...profile,
-        full_name: editName.trim(),
+      const nextExtras: NavUserExtras = {
         avatar_url: editAvatar.trim(),
         bio: editBio.trim(),
         company_name: editCompanyName.trim(),
         company_org_number: editCompanyOrgNumber.trim(),
       }
-
-      setProfile(nextProfile)
+      setSavedName(editName.trim())
+      setExtras(nextExtras)
+      writeExtrasCache(user.id, nextExtras)
       setIsSettingsOpen(false)
       toast.success("Kontoinnstillingene er lagret.")
       router.refresh()
@@ -269,13 +345,12 @@ export function NavUser() {
     }
   }
 
-  if (isLoading) {
+  // Sesjonen leses lokalt (ingen nettverk), så dette varer bare et øyeblikk.
+  if (authLoading) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton size="lg" className="justify-center">
-            <Loader2Icon className="h-4 w-4 animate-spin" />
-          </SidebarMenuButton>
+          <Skeleton className="h-12 w-full" />
         </SidebarMenuItem>
       </SidebarMenu>
     )
@@ -288,6 +363,9 @@ export function NavUser() {
   const displayName = profile?.full_name || user.email?.split("@")[0] || "Bruker"
   const displayEmail = profile?.email || user.email || ""
   const avatarUrl = profile?.avatar_url || ""
+  // Avatarfeltet og firmafeltene lagres samlet — uten hentede verdier ville en
+  // lagring overskrevet dem med tomme felt.
+  const canSave = extrasLoaded
   const initials = displayName
     .split(" ")
     .filter(Boolean)
@@ -494,7 +572,7 @@ export function NavUser() {
             <DrawerClose asChild>
               <Button variant="outline">Avbryt</Button>
             </DrawerClose>
-            <Button onClick={saveProfile} disabled={isSaving || !hasChanges}>
+            <Button onClick={saveProfile} disabled={isSaving || !hasChanges || !canSave}>
               {isSaving ? <Loader2Icon className="mr-2 h-4 w-4 animate-spin" /> : null}
               Lagre endringer
             </Button>

@@ -3,6 +3,7 @@
 import { useRoleContext } from "@/components/role-provider"
 import { createSharedSource } from "@/lib/client/shared-source"
 import { createClient } from "@/lib/supabase/client"
+import { REALTIME_CONNECT_DELAY_MS } from "@/lib/client/realtime-delay"
 
 // Én telling og én realtime-kanal per firma, delt av alle som viser tallet
 // (bunnmenyen og app-broen er montert samtidig).
@@ -22,25 +23,32 @@ const useUnreadForCompany = createSharedSource<number>(0, (companyId, publish) =
 
   void refreshCount()
 
-  const channel = supabase
-    .channel(`unread_messages_${companyId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "messages",
-        filter: `company_id=eq.${companyId}`,
-      },
-      () => {
-        void refreshCount()
-      }
-    )
-    .subscribe()
+  let channel: ReturnType<typeof supabase.channel> | null = null
+  const connectTimer = window.setTimeout(() => {
+    channel = supabase
+      .channel(`unread_messages_${companyId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "messages",
+          filter: `company_id=eq.${companyId}`,
+        },
+        () => {
+          void refreshCount()
+        }
+      )
+      .subscribe((status) => {
+        // Fang opp det som kom mens kanalen ventet med å koble til.
+        if (status === "SUBSCRIBED") void refreshCount()
+      })
+  }, REALTIME_CONNECT_DELAY_MS)
 
   return () => {
     stopped = true
-    void supabase.removeChannel(channel)
+    window.clearTimeout(connectTimer)
+    if (channel) void supabase.removeChannel(channel)
   }
 })
 

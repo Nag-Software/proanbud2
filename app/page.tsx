@@ -28,6 +28,7 @@ import { useRouter } from "next/navigation"
 import { useUserRole } from "@/hooks/use-user-role"
 import { VenterPaDeg } from "@/components/dashboard/venter-pa-deg"
 import { useAuth } from "@/components/auth-provider"
+import { useRoleContext } from "@/components/role-provider"
 import { DashboardKpiCard } from "./dashboard-kpi-card"
 import {
   getDashboardProjectHealthAction,
@@ -112,10 +113,6 @@ interface DashboardData {
   recentOffers: Array<{ id: string; title: string; kunde: string; prosjekt: string; tid: string }>
   tableOffers: Array<{ id: string; navn: string; shortId: string; kunde: string; verdi: number; status: string }>
   topProjects: Array<{ id: string; navn: string; offers: number; pst: number }>
-  userName: string
-  companyName: string
-  companyLogo: string | null
-  companyStatus: "aktiv" | "feil" | "vedlikehold"
 }
 
 // Siste ferdiglastede dashboard per bruker, så gjenbesøk (og appens kalde
@@ -174,8 +171,9 @@ export default function DashboardPage() {
   // after the KPIs are ready — tracked separately so the KPIs can paint first.
   const [feedsLoading, setFeedsLoading] = useState(true)
   const [projectHealthLoading, setProjectHealthLoading] = useState(true)
-  // Bedriften brukes av «Venter på deg», som kjører sine egne spørringer.
-  const [companyId, setCompanyId] = useState<string | null>(null)
+  // Firmaet kommer fra rolle-konteksten (cachet per bruker), så spørringene
+  // under — og «Venter på deg» — starter uten å vente på et eget users-oppslag.
+  const { companyId, loadingRole: companyLoading } = useRoleContext()
 
   // Workers do not have access to the company dashboard — send them to projects.
   useEffect(() => {
@@ -260,10 +258,6 @@ export default function DashboardPage() {
             recentOffers,
             tableOffers,
             topProjects,
-            userName: "Ola",
-            companyName: "Demo Bygg AS",
-            companyLogo: null,
-            companyStatus: "aktiv",
           }
           setData(mock)
           setLoading(false)
@@ -294,24 +288,14 @@ export default function DashboardPage() {
         setProjectHealthLoading(false)
       }
 
-      const supabase = createClient()
-      const { data: userData } = await supabase
-        .from("users")
-        .select("company_id, full_name")
-        .eq("id", authUser.id)
-        .single()
-      const companyId = userData?.company_id
-      if (!cancelled) setCompanyId(companyId ?? null)
-      const rawName = userData?.full_name
-        || (authUser.user_metadata?.full_name as string | undefined)
-        || (authUser.user_metadata?.name as string | undefined)
-        || (authUser.email?.split("@")[0] ?? "")
-      const firstName = rawName.split(" ")[0]
       if (!companyId) {
+        // Rolle-konteksten er ikke ferdig ennå (aller første besøk uten cache).
+        if (companyLoading) return
         setLoading(false)
         setProjectHealthLoading(false)
         return
       }
+      const supabase = createClient()
 
       const now = new Date()
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
@@ -338,7 +322,7 @@ export default function DashboardPage() {
         kundersRes, kundersPrevRes,
         todayRes, yesterdayRes,
         chartOffersRes, recentOffersRes, tableOffersRes,
-        topProjectsRes, companyRes,
+        topProjectsRes,
       ] = await Promise.all([
         supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").or(acceptedSince(startOfMonth)),
         supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").or(acceptedBetween(startOfPrevMonth, endOfPrevMonth)),
@@ -355,7 +339,6 @@ export default function DashboardPage() {
         supabase.from("offers").select("id, title, status, created_at, amount_nok, project_id").eq("company_id", companyId).eq("status", "sent").order("created_at", { ascending: false }).limit(5),
         supabase.from("offers").select("id, title, status, amount_nok, created_at, project_id").eq("company_id", companyId).order("created_at", { ascending: false }).limit(6),
         supabase.from("projects").select("id, name, customer_id").eq("company_id", companyId).eq("status", "active").limit(6),
-        supabase.from("companies").select("name, logo_url").eq("id", companyId).single(),
       ])
 
       // KPI values
@@ -398,11 +381,6 @@ export default function DashboardPage() {
       const projectCustomerById: Record<string, string> = {}
       const customerNameById: Record<string, string> = {}
 
-      const userName = firstName
-      const companyName = companyRes.data?.name || "Proanbud"
-      const companyLogo = companyRes.data?.logo_url?.trim() || null
-      const companyStatus = "aktiv" as const
-
       // PHASE 1 — paint KPIs / chart / gauge / company the moment the aggregates
       // resolve. The feed name-lookups below add 1-2 more serial round-trips;
       // gating the whole dashboard on them kept every number skeletoned far
@@ -425,7 +403,6 @@ export default function DashboardPage() {
         recentOffers: prev?.recentOffers ?? [],
         tableOffers: prev?.tableOffers ?? [],
         topProjects: prev?.topProjects ?? [],
-        userName, companyName, companyLogo, companyStatus,
       }))
       setLoading(false)
 
@@ -517,7 +494,6 @@ export default function DashboardPage() {
             firstMissingProjectId: null,
           },
         recentOffers, tableOffers, topProjects,
-        userName, companyName, companyLogo, companyStatus,
       }
       setData(fullData)
       setFeedsLoading(false)
@@ -532,7 +508,7 @@ export default function DashboardPage() {
     // hands us a new user object with the same id — does not reload the whole
     // dashboard.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.id, authLoading])
+  }, [authUser?.id, authLoading, companyId, companyLoading])
 
   const gaugeValue = !data ? 0
     : data.omsetningPrev > 0

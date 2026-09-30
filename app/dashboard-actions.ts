@@ -1,6 +1,7 @@
 "use server"
 
 import { getCurrentUserRole } from "@/lib/auth-utils"
+import { requireServerAuthContext } from "@/lib/auth/server-context"
 import {
   buildDashboardProjectHealth,
   type DashboardProjectHealth,
@@ -8,7 +9,6 @@ import {
 } from "@/lib/job-costing/project-health"
 import { logServerError } from "@/lib/errors/log"
 import { canManageProjects } from "@/lib/roles"
-import { createClient } from "@/lib/supabase/server"
 
 export type DashboardProjectHealthResult = {
   rows: DashboardProjectHealth[]
@@ -18,20 +18,12 @@ export type DashboardProjectHealthResult = {
 }
 
 export async function getDashboardProjectHealthAction(): Promise<DashboardProjectHealthResult> {
-  const { user, canonicalRole } = await getCurrentUserRole()
+  const { canonicalRole } = await getCurrentUserRole()
   if (!canManageProjects(canonicalRole)) throw new Error("Mangler tilgang")
 
-  const supabase = await createClient()
-  const { data: profile, error: profileError } = await supabase
-    .from("users")
-    .select("company_id")
-    .eq("id", user.id)
-    .maybeSingle()
-
-  if (profileError || !profile?.company_id) {
-    throw new Error("Fant ikke bedrift")
-  }
-  const companyId = profile.company_id as string
+  // Samme kontekst som rollesjekken over nettopp løste opp — firmaet er med
+  // der, så det trengs ikke et eget users-oppslag før prosjektene kan hentes.
+  const { supabase, companyId } = await requireServerAuthContext()
 
   const projectsResult = await supabase
     .from("projects")

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { REALTIME_CONNECT_DELAY_MS } from "@/lib/client/realtime-delay"
 import { useAuth } from "@/components/auth-provider"
 import { useRoleContext } from "@/components/role-provider"
 
@@ -122,16 +123,12 @@ export function useNotifications(
     }
 
     let channel: ReturnType<typeof supabase.channel> | null = null
+    let connectTimer: number | null = null
     let cancelled = false
     const companyId = contextCompanyId
 
-    async function init() {
-      companyIdRef.current = companyId
-
-      await refresh()
+    function connect() {
       if (cancelled) return
-      setLoading(false)
-
       channel = supabase
         .channel(`notifications_${companyId}`)
         .on(
@@ -146,13 +143,27 @@ export function useNotifications(
             void refresh()
           }
         )
-        .subscribe()
+        .subscribe((status) => {
+          // Fang opp det som kom mens kanalen ventet med å koble til.
+          if (status === "SUBSCRIBED" && !cancelled) void refresh()
+        })
+    }
+
+    async function init() {
+      companyIdRef.current = companyId
+
+      await refresh()
+      if (cancelled) return
+      setLoading(false)
+
+      connectTimer = window.setTimeout(connect, REALTIME_CONNECT_DELAY_MS)
     }
 
     void init()
 
     return () => {
       cancelled = true
+      if (connectTimer !== null) window.clearTimeout(connectTimer)
       if (channel) supabase.removeChannel(channel)
     }
   }, [active, userId, contextCompanyId, refresh, supabase])
