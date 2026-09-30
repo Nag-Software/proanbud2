@@ -26,6 +26,8 @@ export type Customer = {
   lastContact: string;
   acceptanceRate?: number;
   syncStatus?: "synced" | "syncing" | "attention" | "none"
+  /** Feilmeldingen fra siste forsøk — kun satt når syncStatus er "attention". */
+  syncErrorMessage?: string | null
   syncLastSyncedAt?: string | null
   syncExternalUrl?: string | null
   projects?: CustomerProject[]

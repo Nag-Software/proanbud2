@@ -11,9 +11,11 @@ import { PlusCircle } from "lucide-react"
 interface KunderClientProps {
   initialData: Customer[]
   syncEnabled?: boolean
+  /** «Fiken» eller «Tripletex» — brukes i teksten på synk-merkene. */
+  syncProviderLabel?: string
 }
 
-export function KunderClient({ initialData, syncEnabled = false }: KunderClientProps) {
+export function KunderClient({ initialData, syncEnabled = false, syncProviderLabel }: KunderClientProps) {
   const [selectedCustomer, setSelectedCustomer] = React.useState<Customer | null>(null)
   const [isCustomerDrawerOpen, setIsCustomerDrawerOpen] = React.useState(false)
   const [isAddDrawerOpen, setIsAddDrawerOpen] = React.useState(false)
@@ -52,7 +54,12 @@ export function KunderClient({ initialData, syncEnabled = false }: KunderClientP
 
       
       <div>
-        <CustomerList data={data} onRowClick={handleRowClick} syncEnabled={syncEnabled} />
+        <CustomerList
+          data={data}
+          onRowClick={handleRowClick}
+          syncEnabled={syncEnabled}
+          syncProviderLabel={syncProviderLabel}
+        />
       </div>
 
       <CustomerDrawer 

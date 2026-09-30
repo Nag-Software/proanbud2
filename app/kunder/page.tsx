@@ -7,6 +7,14 @@ import { getAdapter } from "@/lib/regnskap/registry"
 import { createClient } from "@/lib/supabase/server"
 import { getServerAuthContext } from "@/lib/auth/server-context"
 
+type CustomerJobRow = {
+  status: string
+  payload: { customerId?: unknown } | null
+  last_error_message: string | null
+}
+
+const PROVIDER_LABELS: Record<string, string> = { fiken: "Fiken", tripletex: "Tripletex" }
+
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
@@ -18,7 +26,7 @@ export default async function Page() {
   // Hent kun kunder for den innloggede brukeren (RLS håndterer filtrering via company_id)
   let dbCustomers = []
   let customerLinks: Array<{ local_id: string; last_synced_at: string | null; external_url: string | null }> = []
-  let customerJobs: Array<{ status: string; payload: any }> = []
+  let customerJobs: CustomerJobRow[] = []
   let companyId: string | null = null
   let accountingProvider: string | null = null
   if (user) {
@@ -66,28 +74,30 @@ export default async function Page() {
           .in("entity_type", entityTypes),
         supabase
           .from("integration_jobs")
-          .select("status,payload")
+          .select("status,payload,last_error_message")
           .eq("company_id", companyId)
           .eq("provider", accountingProvider)
-          .eq("job_type", customerJobType || "customer.upsert"),
+          .eq("job_type", customerJobType || "customer.upsert")
+          // Nyeste først: køen får en ny jobb per kunde hver natt, så det er den
+          // siste som forteller hvordan det står til nå.
+          .order("created_at", { ascending: false }),
       ])
 
       customerLinks = (links || []) as Array<{ local_id: string; last_synced_at: string | null; external_url: string | null }>
-      customerJobs = (jobs || []) as Array<{ status: string; payload: any }>
+      customerJobs = (jobs || []) as CustomerJobRow[]
     }
   }
 
   const linkByCustomerId = new Map(customerLinks.map((link) => [link.local_id, link]))
-  const jobStatusByCustomerId = new Map<string, { syncing: number; failed: number }>()
+  // Kun den NYESTE jobben per kunde teller. Før telte vi alle feilede jobber
+  // noensinne, så én gammel feil ga «Krever handling» for alltid — selv om kunden
+  // hadde blitt synket uten problemer hver natt siden.
+  const latestJobByCustomerId = new Map<string, CustomerJobRow>()
 
   for (const job of customerJobs) {
     const customerId = job?.payload?.customerId
     if (!customerId || typeof customerId !== "string") continue
-
-    const prev = jobStatusByCustomerId.get(customerId) || { syncing: 0, failed: 0 }
-    if (["pending", "processing", "retry"].includes(job.status)) prev.syncing += 1
-    if (["failed", "dead_letter"].includes(job.status)) prev.failed += 1
-    jobStatusByCustomerId.set(customerId, prev)
+    if (!latestJobByCustomerId.has(customerId)) latestJobByCustomerId.set(customerId, job)
   }
   
   const customers = dbCustomers.map((c: any) => {
@@ -118,11 +128,12 @@ export default async function Page() {
       relevantOffers.length > 0 ? Math.round((acceptedOffers.length / relevantOffers.length) * 100) : 0
     
     const link = linkByCustomerId.get(c.id)
-    const jobState = jobStatusByCustomerId.get(c.id) || { syncing: 0, failed: 0 }
+    const latestJob = latestJobByCustomerId.get(c.id)
+    const syncFailed = latestJob ? ["failed", "dead_letter"].includes(latestJob.status) : false
 
-    const syncStatus = jobState.failed > 0
+    const syncStatus = syncFailed
       ? "attention"
-      : jobState.syncing > 0
+      : latestJob && ["pending", "processing", "retry"].includes(latestJob.status)
         ? "syncing"
         : link
           ? "synced"
@@ -146,6 +157,7 @@ export default async function Page() {
       lastContact: "",
       acceptanceRate,
       syncStatus,
+      syncErrorMessage: syncFailed ? latestJob?.last_error_message || null : null,
       syncLastSyncedAt: link?.last_synced_at || null,
       syncExternalUrl: link?.external_url || null,
       projects,
@@ -155,7 +167,11 @@ export default async function Page() {
   return (
     <AppPageShell segments={["Kunder"]}>
       <div className="flex flex-col gap-6 w-full min-w-0 max-w-full pb-8">
-        <KunderClient initialData={customers} syncEnabled={Boolean(accountingProvider)} />
+        <KunderClient
+          initialData={customers}
+          syncEnabled={Boolean(accountingProvider)}
+          syncProviderLabel={accountingProvider ? PROVIDER_LABELS[accountingProvider] : undefined}
+        />
       </div>
     </AppPageShell>
   )

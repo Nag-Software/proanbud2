@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import { ArrowDown, ArrowUp } from "lucide-react"
 
@@ -18,6 +19,15 @@ type DashboardKpiCardProps = {
   up: boolean
   points: TrendPoint[]
   href: string
+  /** Perioden tallet gjelder — «I år», «Denne måneden» … Står under tittelen. */
+  caption?: string
+  /**
+   * Tannhjulet øverst til høyre. Ligger ved siden av lenken, ikke inni den —
+   * en knapp inne i en lenke er ugyldig HTML og ville fulgt lenken ved trykk.
+   */
+  settings?: React.ReactNode
+  /** Nye tall er på vei (perioden ble nettopp byttet). */
+  busy?: boolean
   /**
    * Mobil: krymp kortet til en rute i et tre-kolonners rutenett og drop
    * mini-diagrammet. Tellerne (prosjekter, tilbud, kunder) har bare to
@@ -43,16 +53,20 @@ export function DashboardKpiCard({
   up,
   points,
   href,
+  caption,
+  settings,
+  busy = false,
   compactOnMobile = false,
   className,
 }: DashboardKpiCardProps) {
   const highestValue = Math.max(...points.map((point) => point.value), 1)
 
   return (
+    <div className={cn("relative h-full min-w-0", className)}>
     <Link
       href={href}
-      aria-label={label}
-      className={cn("group block h-full min-w-0", className)}
+      aria-label={caption ? `${label}, ${caption.toLowerCase()}` : label}
+      className="group block h-full min-w-0"
     >
       <Card
         className={cn(
@@ -60,21 +74,35 @@ export function DashboardKpiCard({
           compactOnMobile && "max-sm:gap-1.5 max-sm:py-3"
         )}
       >
-        <CardHeader className={cn(compactOnMobile && "max-sm:px-3")}>
+        {/* Høyremargen holder tittelen unna tannhjulet. */}
+        <CardHeader className={cn("gap-0", settings && "pr-12", compactOnMobile && "max-sm:px-3", compactOnMobile && settings && "max-sm:pr-8")}>
           <CardTitle
             className={cn(
+              "truncate",
               compactOnMobile &&
                 "max-sm:text-[11px] max-sm:leading-tight max-sm:font-medium max-sm:text-muted-foreground"
             )}
           >
             {label}
           </CardTitle>
+          {caption ? (
+            <p
+              className={cn(
+                "truncate text-xs text-muted-foreground",
+                compactOnMobile && "max-sm:text-[10px] max-sm:leading-tight"
+              )}
+            >
+              {caption}
+            </p>
+          ) : null}
         </CardHeader>
         <CardContent
           className={cn(
-            "flex flex-1 flex-col justify-between gap-4",
+            "flex flex-1 flex-col justify-between gap-4 transition-opacity",
+            busy && "opacity-50",
             compactOnMobile && "max-sm:gap-0.5 max-sm:px-3"
           )}
+          aria-busy={busy}
         >
           <div
             className={cn(
@@ -109,7 +137,9 @@ export function DashboardKpiCard({
 
           <div
             className={cn(
-              "grid h-16 items-end gap-2 rounded-md border bg-muted/30 px-3 py-2",
+              "grid h-16 items-end rounded-md border bg-muted/30 px-3 py-2",
+              // Tolv månedssøyler får ikke plass med samme luft som fire kvartaler.
+              points.length > 6 ? "gap-1" : "gap-2",
               compactOnMobile && "max-sm:hidden"
             )}
             style={{ gridTemplateColumns: `repeat(${points.length}, minmax(0, 1fr))` }}
@@ -147,5 +177,11 @@ export function DashboardKpiCard({
         </CardContent>
       </Card>
     </Link>
+      {settings ? (
+        <div className={cn("absolute top-2.5 right-2.5", compactOnMobile && "max-sm:top-0.5 max-sm:right-0.5")}>
+          {settings}
+        </div>
+      ) : null}
+    </div>
   )
 }

@@ -29,7 +29,18 @@ import { useUserRole } from "@/hooks/use-user-role"
 import { VenterPaDeg } from "@/components/dashboard/venter-pa-deg"
 import { useAuth } from "@/components/auth-provider"
 import { useRoleContext } from "@/components/role-provider"
+import { toast } from "sonner"
 import { DashboardKpiCard } from "./dashboard-kpi-card"
+import { fetchKpi, type KpiResult } from "./dashboard-kpi-data"
+import { DashboardKpiPeriodDialog } from "./dashboard-kpi-period-dialog"
+import {
+  DEFAULT_KPI_PERIODS,
+  KPI_KEYS,
+  isKpiPeriodKey,
+  resolveKpiPeriod,
+  type KpiKey,
+  type KpiPeriodKey,
+} from "./dashboard-kpi-periods"
 import {
   getDashboardProjectHealthAction,
   type DashboardProjectHealthResult,
@@ -98,17 +109,14 @@ const PerformanceGauge = dynamic(
 )
 
 interface DashboardData {
+  /** De fire KPI-kortene. Hvert kort har sin egen periode, valgt bak tannhjulet. */
+  kpis: Record<KpiKey, KpiResult>
+  activeProjects: number
+  // «Månedens ytelse»: denne måneden mot forrige — uavhengig av kortenes perioder.
   omsetning: number
   omsetningPrev: number
-  activeProjects: number
-  activeProjectsPrev: number
   tilbudSendt: number
   tilbudSentPrev: number
-  kunders: number
-  kundersPrev: number
-  todayOmsetning: number
-  yesterdayOmsetning: number
-  chartData: Array<{ date: string; omsetning: number; tilbud: number }>
   projectHealth: DashboardProjectHealthResult
   recentOffers: Array<{ id: string; title: string; kunde: string; prosjekt: string; tid: string }>
   tableOffers: Array<{ id: string; navn: string; shortId: string; kunde: string; verdi: number; status: string }>
@@ -121,7 +129,7 @@ interface DashboardData {
 // som rollecachen i role-provider. Kun visning: RLS + middleware er fortsatt
 // sikkerhetsgrensen, og nøkkelen er per bruker-id. Bump versjonen i prefikset
 // hvis DashboardData endrer form.
-const DASH_CACHE_PREFIX = "pa_dash_v4:"
+const DASH_CACHE_PREFIX = "pa_dash_v6:"
 
 type DashSnapshot = {
   data: DashboardData
@@ -136,7 +144,8 @@ function readDashSnapshot(userId: string): DashSnapshot | null {
     if (
       !d ||
       typeof d.omsetning !== "number" ||
-      !Array.isArray(d.chartData) ||
+      !d.kpis ||
+      KPI_KEYS.some((key) => !Array.isArray(d.kpis[key]?.points)) ||
       !d.projectHealth ||
       !Array.isArray(d.projectHealth.rows) ||
       !Array.isArray(d.recentOffers) ||
@@ -159,6 +168,45 @@ function writeDashSnapshot(userId: string, snapshot: DashSnapshot) {
   }
 }
 
+// Periodevalget per kort huskes per bruker i nettleseren. Det er en ren
+// visningspreferanse — ikke noe som må følge med til andre enheter.
+const KPI_PERIODS_PREFIX = "pa_kpi_periods_v1:"
+
+function readKpiPeriods(userId: string): Record<KpiKey, KpiPeriodKey> {
+  const periods = { ...DEFAULT_KPI_PERIODS }
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(KPI_PERIODS_PREFIX + userId) || "{}")
+    for (const key of KPI_KEYS) {
+      if (isKpiPeriodKey(stored?.[key])) periods[key] = stored[key]
+    }
+  } catch {
+    // Blokkert eller ødelagt storage — standardperiodene gjelder.
+  }
+  return periods
+}
+
+function writeKpiPeriods(userId: string, periods: Record<KpiKey, KpiPeriodKey>) {
+  try {
+    window.localStorage.setItem(KPI_PERIODS_PREFIX + userId, JSON.stringify(periods))
+  } catch {
+    // Valget gjelder likevel ut økten.
+  }
+}
+
+const KPI_TITLES: Record<KpiKey, string> = {
+  omsetning: "Total omsetning",
+  prosjekter: "Prosjekter",
+  tilbud: "Tilbud",
+  kunder: "Kunder",
+}
+
+const KPI_HREFS: Record<KpiKey, string> = {
+  omsetning: "/tilbud",
+  prosjekter: "/prosjekter",
+  tilbud: "/tilbud",
+  kunder: "/kunder",
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const { canonicalRole, loadingRole } = useUserRole()
@@ -174,6 +222,55 @@ export default function DashboardPage() {
   // Firmaet kommer fra rolle-konteksten (cachet per bruker), så spørringene
   // under — og «Venter på deg» — starter uten å vente på et eget users-oppslag.
   const { companyId, loadingRole: companyLoading } = useRoleContext()
+  const [kpiPeriods, setKpiPeriods] = useState(DEFAULT_KPI_PERIODS)
+  // Speiler kpiPeriods for de asynkrone svarene: et svar for en periode brukeren
+  // alt har byttet bort fra skal ikke skrive over kortet.
+  const kpiPeriodsRef = React.useRef(kpiPeriods)
+  const [busyKpis, setBusyKpis] = useState<ReadonlySet<KpiKey>>(new Set())
+
+  async function changeKpiPeriod(keys: readonly KpiKey[], period: KpiPeriodKey) {
+    const changed = keys.filter((key) => kpiPeriodsRef.current[key] !== period)
+    if (!changed.length) return
+
+    const next = { ...kpiPeriodsRef.current }
+    for (const key of changed) next[key] = period
+    kpiPeriodsRef.current = next
+    setKpiPeriods(next)
+    if (authUser) writeKpiPeriods(authUser.id, next)
+
+    // ?mock=1 har ingen database bak seg — kortene beholder eksempeltallene.
+    if (!companyId || !authUser) return
+
+    setBusyKpis((prev) => new Set([...prev, ...changed]))
+    const supabase = createClient()
+    await Promise.all(
+      changed.map(async (key) => {
+        try {
+          const result = await fetchKpi(supabase, companyId, key, period)
+          if (kpiPeriodsRef.current[key] !== period) return
+          setData((prev) => (prev ? { ...prev, kpis: { ...prev.kpis, [key]: result } } : prev))
+          // Hold hurtigbufferen i takt, så neste besøk åpner med riktig periode.
+          const cached = readDashSnapshot(authUser.id)
+          if (cached) {
+            writeDashSnapshot(authUser.id, {
+              data: { ...cached.data, kpis: { ...cached.data.kpis, [key]: result } },
+            })
+          }
+        } catch (error) {
+          reportClientError(error, { context: { action: "bytte periode på KPI-kort", key, period } })
+          toast.error("Kunne ikke hente tallene for perioden. Prøv igjen.")
+        } finally {
+          if (kpiPeriodsRef.current[key] === period) {
+            setBusyKpis((prev) => {
+              const rest = new Set(prev)
+              rest.delete(key)
+              return rest
+            })
+          }
+        }
+      })
+    )
+  }
 
   // Workers do not have access to the company dashboard — send them to projects.
   useEffect(() => {
@@ -194,9 +291,22 @@ export default function DashboardPage() {
         ) {
           // generate slightly varied mock data for more natural look
           const rand = (v: number, pct = 0.12) => Math.round(v * (1 + (Math.random() * 2 - 1) * pct))
-          const months = ["jan", "feb", "mar", "apr", "mai", "jun"]
-          const base = [50000, 60000, 45000, 70000, 55000, 35000]
-          const chartData = months.map((m, i) => ({ date: m, omsetning: rand(base[i], 0.18), tilbud: rand(Math.round(base[i] * 0.84), 0.2) }))
+          const quarterPoints = ["K1", "K2", "K3"].map((label, i) => ({
+            label,
+            value: rand([310000, 420000, 275000][i], 0.18),
+          }))
+          const thisYear = new Date().getFullYear()
+          const twoBars = (prev: number, value: number) => [
+            { label: `${thisYear - 1}`, value: prev },
+            { label: `${thisYear}`, value },
+          ]
+          const omsetningYear = quarterPoints.reduce((s, r) => s + r.value, 0)
+          const kpis: DashboardData["kpis"] = {
+            omsetning: { period: "year", value: omsetningYear, prev: Math.round(omsetningYear * 0.8), points: quarterPoints },
+            prosjekter: { period: "year", value: 12, prev: 9, points: twoBars(9, 12) },
+            tilbud: { period: "year", value: 48, prev: 36, points: twoBars(36, 48) },
+            kunder: { period: "all", value: 154, prev: null, points: twoBars(140, 154) },
+          }
 
           const mkTime = (daysAgo: number, hour: number, min: number) => {
             const d = new Date()
@@ -243,17 +353,12 @@ export default function DashboardPage() {
           }
 
           const mock: DashboardData = {
-            omsetning: chartData.reduce((s, r) => s + r.omsetning, 0),
-            omsetningPrev: Math.round(chartData.reduce((s, r) => s + Math.round(r.omsetning * 0.8), 0)),
-            activeProjects: 12,
-            activeProjectsPrev: 9,
-            tilbudSendt: 48,
-            tilbudSentPrev: 36,
-            kunders: 154,
-            kundersPrev: 140,
-            todayOmsetning: rand(12000, 0.2),
-            yesterdayOmsetning: rand(8500, 0.25),
-            chartData,
+            kpis,
+            activeProjects: 3,
+            omsetning: rand(95000, 0.18),
+            omsetningPrev: rand(80000, 0.18),
+            tilbudSendt: 6,
+            tilbudSentPrev: 5,
             projectHealth,
             recentOffers,
             tableOffers,
@@ -280,6 +385,10 @@ export default function DashboardPage() {
 
       // Gjenbesøk: mal siste kjente dashboard med en gang — de ferske
       // spørringene under kjører uansett og erstatter alt når de lander.
+      const periods = readKpiPeriods(authUser.id)
+      kpiPeriodsRef.current = periods
+      setKpiPeriods(periods)
+
       const snapshot = readDashSnapshot(authUser.id)
       if (snapshot && !cancelled) {
         setData(snapshot.data)
@@ -301,9 +410,6 @@ export default function DashboardPage() {
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
       const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
       const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString()
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
-      const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toISOString()
-      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString()
       // Server-actionen batchlaster alle aktive prosjekter og kostnadsradene
       // deres. Den startes samtidig med KPI-ene, men får ikke blokkere første
       // maling dersom prosjektøkonomien bruker litt lenger tid.
@@ -317,57 +423,39 @@ export default function DashboardPage() {
 
       const [
         omsetningRes, omsetningPrevRes,
-        activeProjectsRes, activeProjectsPrevRes,
+        activeProjectsRes,
         tilbudRes, tilbudPrevRes,
-        kundersRes, kundersPrevRes,
-        todayRes, yesterdayRes,
-        chartOffersRes, recentOffersRes, tableOffersRes,
+        recentOffersRes, tableOffersRes,
         topProjectsRes,
+        kpiResults,
       ] = await Promise.all([
         supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").or(acceptedSince(startOfMonth)),
         supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").or(acceptedBetween(startOfPrevMonth, endOfPrevMonth)),
         supabase.from("projects").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "active"),
-        supabase.from("projects").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "active").lte("created_at", endOfPrevMonth),
         supabase.from("offers").select("id", { count: "exact", head: true }).eq("company_id", companyId).neq("status", "draft").gte("created_at", startOfMonth),
         supabase.from("offers").select("id", { count: "exact", head: true }).eq("company_id", companyId).neq("status", "draft").gte("created_at", startOfPrevMonth).lte("created_at", endOfPrevMonth),
-        supabase.from("customers").select("id", { count: "exact", head: true }).eq("company_id", companyId),
-        supabase.from("customers").select("id", { count: "exact", head: true }).eq("company_id", companyId).lte("created_at", endOfPrevMonth),
-        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").or(acceptedSince(startOfToday)),
-        supabase.from("offers").select("amount_nok").eq("company_id", companyId).eq("status", "accepted").or(acceptedBetween(startOfYesterday, startOfToday)),
-        supabase.from("offers").select("amount_nok, status, created_at").eq("company_id", companyId).neq("status", "draft").gte("created_at", sixMonthsAgo).order("created_at", { ascending: true }),
         // «Aktive tilbud» = sendt og venter på svar. Godkjente og avviste er avgjort.
         supabase.from("offers").select("id, title, status, created_at, amount_nok, project_id").eq("company_id", companyId).eq("status", "sent").order("created_at", { ascending: false }).limit(5),
         supabase.from("offers").select("id, title, status, amount_nok, created_at, project_id").eq("company_id", companyId).order("created_at", { ascending: false }).limit(6),
         supabase.from("projects").select("id, name, customer_id").eq("company_id", companyId).eq("status", "active").limit(6),
+        // KPI-kortene, hvert i sin valgte periode — i samme bølge som resten.
+        Promise.all(KPI_KEYS.map((key) => fetchKpi(supabase, companyId, key, periods[key], now))),
       ])
 
-      // KPI values
       const omsetning = (omsetningRes.data || []).reduce((s, r) => s + (r.amount_nok || 0), 0)
       const omsetningPrev = (omsetningPrevRes.data || []).reduce((s, r) => s + (r.amount_nok || 0), 0)
       const activeProjects = activeProjectsRes.count || 0
-      const activeProjectsPrev = activeProjectsPrevRes.count || 0
       const tilbudSendt = tilbudRes.count || 0
       const tilbudSentPrev = tilbudPrevRes.count || 0
-      const kunders = kundersRes.count || 0
-      const kundersPrev = kundersPrevRes.count || 0
-      const todayOmsetning = (todayRes.data || []).reduce((s, r) => s + (r.amount_nok || 0), 0)
-      const yesterdayOmsetning = (yesterdayRes.data || []).reduce((s, r) => s + (r.amount_nok || 0), 0)
-
-      // Chart data - build 6-month skeleton then fill
-      const monthMap: Record<string, { date: string; omsetning: number; tilbud: number }> = {}
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-        const key = d.toLocaleDateString("no-NO", { month: "short" })
-        monthMap[key] = { date: key, omsetning: 0, tilbud: 0 }
-      }
-      ;(chartOffersRes.data || []).forEach(offer => {
-        const key = new Date(offer.created_at).toLocaleDateString("no-NO", { month: "short" })
-        if (monthMap[key]) {
-          monthMap[key].tilbud += offer.amount_nok || 0
-          if (offer.status === "accepted") monthMap[key].omsetning += offer.amount_nok || 0
+      const freshKpis = Object.fromEntries(KPI_KEYS.map((key, i) => [key, kpiResults[i]])) as DashboardData["kpis"]
+      // Byttet brukeren periode mens dette lastet, eier changeKpiPeriod det kortet.
+      const mergeKpis = (prev: DashboardData["kpis"] | undefined): DashboardData["kpis"] => {
+        const merged = { ...freshKpis }
+        for (const key of KPI_KEYS) {
+          if (prev?.[key] && kpiPeriodsRef.current[key] !== freshKpis[key].period) merged[key] = prev[key]
         }
-      })
-      const chartData = Object.values(monthMap)
+        return merged
+      }
 
       // Resolve project + customer names for feeds
       const allProjectIds = [
@@ -388,12 +476,10 @@ export default function DashboardPage() {
       // (never flashed back to empty) until the fresh ones land in phase 2.
       if (cancelled) return
       setData((prev) => ({
+        kpis: mergeKpis(prev?.kpis),
+        activeProjects,
         omsetning, omsetningPrev,
-        activeProjects, activeProjectsPrev,
         tilbudSendt, tilbudSentPrev,
-        kunders, kundersPrev,
-        todayOmsetning, yesterdayOmsetning,
-        chartData,
         projectHealth: prev?.projectHealth ?? {
           rows: [],
           totalActive: activeProjects,
@@ -479,12 +565,10 @@ export default function DashboardPage() {
       // and persist the complete snapshot so the NESTE besøk maler momentant.
       if (cancelled) return
       const fullData: DashboardData = {
+        kpis: freshKpis,
+        activeProjects,
         omsetning, omsetningPrev,
-        activeProjects, activeProjectsPrev,
         tilbudSendt, tilbudSentPrev,
-        kunders, kundersPrev,
-        todayOmsetning, yesterdayOmsetning,
-        chartData,
         projectHealth:
           projectHealthResult ??
           snapshot?.data.projectHealth ?? {
@@ -495,10 +579,14 @@ export default function DashboardPage() {
           },
         recentOffers, tableOffers, topProjects,
       }
-      setData(fullData)
+      // Et kort brukeren byttet periode på underveis skal ikke skrives tilbake
+      // til perioden denne lastingen startet med — verken på skjermen eller i bufferen.
+      setData((prev) => ({ ...fullData, kpis: mergeKpis(prev?.kpis) }))
       setFeedsLoading(false)
       setProjectHealthLoading(false)
-      writeDashSnapshot(authUser.id, { data: fullData })
+      writeDashSnapshot(authUser.id, {
+        data: { ...fullData, kpis: mergeKpis(readDashSnapshot(authUser.id)?.data.kpis) },
+      })
     }
     load()
     return () => {
@@ -521,58 +609,30 @@ export default function DashboardPage() {
         maximumFractionDigits: 0,
       });
 
-  const kpiCards = data ? [
-    {
-      label: "Godkjent denne måneden",
-      value: `${formatter.format(data.omsetning)}`,
-      change: pctChange(data.omsetning, data.omsetningPrev),
-      up: isUp(data.omsetning, data.omsetningPrev),
-      href: "/tilbud",
-      points: data.chartData.map((point) => ({
-        label: point.date,
-        value: point.omsetning,
-      })),
-      // Seks måneders kurve + et langt kronebeløp — dette kortet trenger hele
-      // bredden på mobil. De tre tellerne under deler en rad i stedet.
-      wide: true,
-    },
-    {
-      label: "Aktive prosjekter",
-      value: `${data.activeProjects}`,
-      change: pctChange(data.activeProjects, data.activeProjectsPrev),
-      up: isUp(data.activeProjects, data.activeProjectsPrev),
-      href: "/prosjekter",
-      points: [
-        { label: "Forrige", value: data.activeProjectsPrev },
-        { label: "Nå", value: data.activeProjects },
-      ],
-      wide: false,
-    },
-    {
-      label: "Tilbud sendt",
-      value: `${data.tilbudSendt}`,
-      change: pctChange(data.tilbudSendt, data.tilbudSentPrev),
-      up: isUp(data.tilbudSendt, data.tilbudSentPrev),
-      href: "/tilbud",
-      points: [
-        { label: "Forrige", value: data.tilbudSentPrev },
-        { label: "Nå", value: data.tilbudSendt },
-      ],
-      wide: false,
-    },
-    {
-      label: "Kunder totalt",
-      value: `${data.kunders}`,
-      change: pctChange(data.kunders, data.kundersPrev),
-      up: isUp(data.kunders, data.kundersPrev),
-      href: "/kunder",
-      points: [
-        { label: "Forrige", value: data.kundersPrev },
-        { label: "Nå", value: data.kunders },
-      ],
-      wide: false,
-    },
-  ] : []
+  const allKpisMatch = (period: KpiPeriodKey) => KPI_KEYS.every((key) => kpiPeriods[key] === period)
+
+  const kpiCards = data
+    ? KPI_KEYS.map((key) => {
+        const kpi = data.kpis[key]
+        // «Totalt» har ingen forrige periode — da vises ingen pil.
+        const change = kpi.prev === null ? "" : pctChange(kpi.value, kpi.prev)
+        return {
+          key,
+          label: KPI_TITLES[key],
+          // Etiketten følger tallene som faktisk vises, ikke valget som er på vei inn.
+          caption: resolveKpiPeriod(kpi.period).label,
+          value: key === "omsetning" ? formatter.format(kpi.value) : `${kpi.value}`,
+          change,
+          up: kpi.prev === null || isUp(kpi.value, kpi.prev),
+          href: KPI_HREFS[key],
+          points: kpi.points,
+          busy: busyKpis.has(key),
+          // Kurve + et langt kronebeløp — omsetningskortet trenger hele bredden
+          // på mobil. De tre tellerne under deler en rad i stedet.
+          wide: key === "omsetning",
+        }
+      })
+    : []
 
   // Avoid flashing company-wide dashboard data to workers while redirecting.
   if (canonicalRole === "worker") {
@@ -615,12 +675,26 @@ export default function DashboardPage() {
                     </CardContent>
                   </Card>
                 ))
-                : kpiCards.map(({ wide, ...k }) => (
+                : kpiCards.map(({ wide, key, ...k }) => (
                   <DashboardKpiCard
-                    key={k.label}
+                    key={key}
                     {...k}
                     compactOnMobile={!wide}
                     className={wide ? "max-sm:col-span-3" : undefined}
+                    settings={
+                      <DashboardKpiPeriodDialog
+                        kpi={key}
+                        title={k.label}
+                        value={kpiPeriods[key]}
+                        onChange={(period) => void changeKpiPeriod([key], period)}
+                        onApplyToAll={(period) => {
+                          void changeKpiPeriod(KPI_KEYS, period)
+                          toast.success(`Alle kortene viser nå «${resolveKpiPeriod(period).label.toLowerCase()}».`)
+                        }}
+                        allMatch={allKpisMatch(kpiPeriods[key])}
+                        className="max-sm:size-7"
+                      />
+                    }
                   />
                 ))
               }
