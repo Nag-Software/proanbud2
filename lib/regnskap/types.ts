@@ -35,6 +35,8 @@ export type AccountingCapability =
   | "travel"
   | "products"
   | "hours"
+  /** Hente faktiske kostnader ført på prosjektet i regnskapet. */
+  | "costs.pull"
 
 /** Kanoniske jobbtyper. Adapteren oversetter til sitt eget kø-vokabular. */
 export type AccountingJobType =
@@ -52,6 +54,7 @@ export type AccountingJobType =
   | "travel.upsert"
   | "travel.delete"
   | "hours.push"
+  | "costs.pull"
   | "reconcile.full"
 
 export const ACCOUNTING_JOB_TYPES: AccountingJobType[] = [
@@ -69,6 +72,7 @@ export const ACCOUNTING_JOB_TYPES: AccountingJobType[] = [
   "travel.upsert",
   "travel.delete",
   "hours.push",
+  "costs.pull",
   "reconcile.full",
 ]
 
@@ -93,6 +97,7 @@ export const JOB_TYPE_CAPABILITY: Record<AccountingJobType, AccountingCapability
   "travel.upsert": "travel",
   "travel.delete": "travel",
   "hours.push": "hours",
+  "costs.pull": "costs.pull",
   // reconcile er infrastruktur, ikke en forretningsevne
   "reconcile.full": null,
 }
@@ -128,6 +133,7 @@ export type AccountingScopeKey =
   | "products"
   | "inbox"
   | "hours"
+  | "costs"
   | "sendInvoiceFromAccounting"
 
 export type AccountingScopeConfig = Partial<Record<AccountingScopeKey, boolean>>

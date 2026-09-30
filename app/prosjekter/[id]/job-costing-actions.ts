@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { canManageProjects } from "@/lib/roles"
 import { fetchProjectProfitability, readProjectBudget } from "@/lib/job-costing/project-profitability"
 import type { ProjectProfitability } from "@/lib/job-costing/types"
+import { enqueueCostPull } from "@/lib/regnskap/sync"
 
 async function resolveCompanyProject(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -51,6 +52,30 @@ export async function getProjectProfitabilityAction(
   if (!canManageProjects(role)) throw new Error("Mangler tilgang")
 
   return fetchProjectProfitability(supabase, { companyId, projectId, ...budget })
+}
+
+/**
+ * «Hent på nytt»: les kostnadene ført på prosjektet i regnskapet nå, i stedet for
+ * å vente på nattjobben. Kjører køen før vi svarer, så fanen viser nye tall når
+ * den laster på nytt. Fiken kan være opptatt med en annen jobb (én forespørsel om
+ * gangen) — da ligger jobben i køen og tallene kommer litt senere.
+ */
+export async function pullAccountingCostsAction(projectId: string) {
+  const supabase = await createClient()
+  const { companyId, role } = await resolveCompanyProject(supabase, projectId)
+  if (!canManageProjects(role)) throw new Error("Mangler tilgang")
+
+  const provider = await enqueueCostPull({
+    companyId,
+    projectId,
+    source: "manual",
+    waitForCompletion: true,
+  })
+  if (!provider) {
+    throw new Error("Henting av kostnader er ikke slått på for regnskapsintegrasjonen.")
+  }
+  revalidatePath(`/prosjekter/${projectId}`)
+  return { provider }
 }
 
 /**

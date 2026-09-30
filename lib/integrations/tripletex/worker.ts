@@ -46,6 +46,8 @@ import {
 } from "@/lib/integrations/tripletex/mappers"
 import { getFreshTripletexConnection } from "@/lib/integrations/tripletex/session"
 import { averageCostRate } from "@/lib/job-costing/calc"
+import { processCostsPull } from "@/lib/integrations/tripletex/costs"
+import { processTimesheetSync } from "@/lib/integrations/tripletex/timesheet"
 import {
   tripletexCustomerUrl,
   tripletexInvoiceUrl,
@@ -1075,6 +1077,28 @@ async function processFullReconciliation(job: IntegrationJobRow) {
     idempotencyKey: `${reconcileRunKey}:poll-payments:${job.company_id}`,
   })
 
+  // Kostnadene på prosjektene endrer seg når regnskapsfører bokfører. En gang i
+  // døgnet holder — og «Hent fra regnskapet» på prosjektet tar resten.
+  if (scopes.costs !== false) {
+    await enqueueIntegrationJob({
+      companyId: job.company_id,
+      jobType: "costs.pull",
+      payload: { source: "reconcile" },
+      idempotencyKey: `${reconcileRunKey}:costs-pull:${job.company_id}`,
+    })
+  }
+
+  // Fanger opp timer som ble endret uten å trigge en avstemming (auto-lukkede
+  // økter, endringer direkte i databasen).
+  if (scopes.hours === true) {
+    await enqueueIntegrationJob({
+      companyId: job.company_id,
+      jobType: "timesheet.sync",
+      payload: { source: "reconcile" },
+      idempotencyKey: `${reconcileRunKey}:timesheet-sync:${job.company_id}`,
+    })
+  }
+
   if (customersEnabled) {
     const { error: pullError } = await supabase.from("integration_jobs").insert({
       company_id: job.company_id,
@@ -1954,6 +1978,12 @@ async function processJob(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
       return
     case "poll_payments":
       await processPollPayments(job)
+      return
+    case "timesheet.sync":
+      await processTimesheetSync(job)
+      return
+    case "costs.pull":
+      await processCostsPull(job)
       return
     default:
       throw new Error(`Unsupported job type: ${job.job_type}`)

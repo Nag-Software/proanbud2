@@ -24,6 +24,7 @@ import { decryptSecret } from "@/lib/integrations/tripletex/crypto"
 import { enqueueIntegrationJob } from "@/lib/integrations/tripletex/jobs"
 import {
   buildTripletexScopeConfig,
+  mergeTripletexScopeConfig,
   hasTripletexScopeOverride,
 } from "@/lib/integrations/tripletex/scopes"
 import { processTripletexQueueInBackground } from "@/lib/integrations/tripletex/sync"
@@ -538,7 +539,9 @@ export async function PATCH(request: Request) {
           ...encrypted,
           session_expires_at: session.expiresAt,
           sync_state: "connected",
-          scope_config: nextScopeConfig || existing.scope_config,
+          scope_config: nextScopeConfig
+            ? mergeTripletexScopeConfig(existing.scope_config, nextScopeConfig)
+            : existing.scope_config,
           last_error_at: null,
           last_error_message: null,
           last_success_at: new Date().toISOString(),
@@ -575,7 +578,12 @@ export async function PATCH(request: Request) {
     }
 
     if (action === "update_scope") {
-      const scopeConfig = buildTripletexScopeConfig(body)
+      const { data: current } = await admin
+        .from("tripletex_connections")
+        .select("scope_config")
+        .eq("company_id", ctx.companyId)
+        .maybeSingle()
+      const scopeConfig = mergeTripletexScopeConfig(current?.scope_config, buildTripletexScopeConfig(body))
 
       const { error: scopeError } = await admin
         .from("tripletex_connections")

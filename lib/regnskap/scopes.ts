@@ -34,6 +34,7 @@ const DEFAULTS: Record<AccountingProviderId, AccountingScopeConfig> = {
     documents: false,
     products: false,
     inbox: false,
+    costs: true,
   },
   tripletex: {
     customers: true,
@@ -44,6 +45,9 @@ const DEFAULTS: Record<AccountingProviderId, AccountingScopeConfig> = {
     documents: false,
     calendar: false,
     travelExpenses: false,
+    // Skriver i kundens timelister — opt-in. Kostnadshentingen bare leser.
+    hours: false,
+    costs: true,
   },
 }
 

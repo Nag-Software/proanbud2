@@ -13,6 +13,10 @@ export type TripletexScopeConfig = {
    * kanonisk navn, se lib/regnskap/scopes.ts.
    */
   sendInvoiceFromAccounting?: boolean
+  /** Godkjente timer → timelister i Tripletex. Opt-in, settes fra Regnskap-siden. */
+  hours?: boolean
+  /** Hente kostnader ført på prosjektet. Standard på. */
+  costs?: boolean
 }
 
 export function buildTripletexScopeConfig(body: Record<string, unknown>): TripletexScopeConfig {
@@ -24,7 +28,20 @@ export function buildTripletexScopeConfig(body: Record<string, unknown>): Triple
     calendar: body.scopeCalendar === true,
     documents: body.scopeDocuments === true,
     travelExpenses: body.scopeTravelExpenses === true,
+    // Denne siden har ingen bryter for timer og kostnader (de styres fra
+    // Regnskap-siden). Settes bare når de faktisk er sendt — se mergeTripletexScopeConfig.
+    ...(typeof body.scopeHours === "boolean" ? { hours: body.scopeHours } : {}),
+    ...(typeof body.scopeCosts === "boolean" ? { costs: body.scopeCosts } : {}),
   }
+}
+
+/**
+ * Legger nye brytere oppå de lagrede. Uten dette ville et lagre fra den gamle
+ * Tripletex-siden visket ut bryterne den ikke kjenner (timer, kostnader), og en
+ * bedrift som hadde slått på timeoverføring ville fått den stille slått av.
+ */
+export function mergeTripletexScopeConfig(existing: unknown, next: TripletexScopeConfig) {
+  return { ...((existing || {}) as Record<string, unknown>), ...next }
 }
 
 export function hasTripletexScopeOverride(body: Record<string, unknown>) {
@@ -35,7 +52,9 @@ export function hasTripletexScopeOverride(body: Record<string, unknown>) {
     body.scopeInvoices !== undefined ||
     body.scopeCalendar !== undefined ||
     body.scopeDocuments !== undefined ||
-    body.scopeTravelExpenses !== undefined
+    body.scopeTravelExpenses !== undefined ||
+    body.scopeHours !== undefined ||
+    body.scopeCosts !== undefined
   )
 }
 

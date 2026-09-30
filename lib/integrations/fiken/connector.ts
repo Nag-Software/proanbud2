@@ -537,6 +537,29 @@ export async function listFikenContacts(
 }
 
 /**
+ * GET /purchases — innkjøp (leverandørfakturaer og kontantkjøp) fra en dato.
+ * Fiken har ikke prosjektfilter på innkjøp, så vi leser alle og plukker linjene
+ * med prosjekt selv (lib/regnskap/costs.ts). Beløp er i øre.
+ */
+export async function listFikenPurchases(
+  connection: FikenConnectionRow,
+  input: { page: number; dateGe: string; pageSize?: number }
+): Promise<{ items: Record<string, unknown>[]; pageCount: number }> {
+  const pageSize = Math.min(input.pageSize ?? 100, 100)
+  const params = new URLSearchParams({
+    page: String(input.page),
+    pageSize: String(pageSize),
+    dateGe: input.dateGe,
+  })
+  const response = await fikenRequest(connection, {
+    path: companyPath(connection, `/purchases?${params.toString()}`),
+  })
+  const items = Array.isArray(response.json) ? (response.json as Record<string, unknown>[]) : []
+  const pageCount = Number(response.headers.get("Fiken-Api-Page-Count") || "1")
+  return { items, pageCount: Number.isFinite(pageCount) ? pageCount : 1 }
+}
+
+/**
  * GET /timeUsers — Fikens motstykke til Tripletex' ansatte.
  *
  * MERK: dette er en LESE-only ressurs. Fiken har intet endepunkt for å opprette

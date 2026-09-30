@@ -101,6 +101,46 @@ export async function enqueueReconcile(
   return enqueued ? active.adapter.id : null
 }
 
+/**
+ * Godkjente timer har endret seg. Bare en påminnelse til regnskapet om å avstemme —
+ * jobben selv regner ut hva som er nytt, endret eller borte. Skal aldri felle
+ * timeføringen: feil her logges og svelges av kalleren.
+ */
+export async function enqueueHoursSync(
+  companyId: string,
+  source = "manual"
+): Promise<AccountingProviderId | null> {
+  const active = await getReadyAccountingProvider(companyId)
+  if (!active) return null
+  const enqueued = await active.adapter.enqueueHoursSync(companyId, source)
+  if (!enqueued) return null
+  active.adapter.processQueueInBackground({ maxBatches: 2 })
+  return active.adapter.id
+}
+
+/**
+ * Hent kostnadene ført på prosjekt i regnskapet. Med `waitForCompletion` kjøres
+ * køen før vi returnerer — brukes av «Hent fra regnskapet»-knappen, så tallene
+ * er oppdatert når siden laster på nytt.
+ */
+export async function enqueueCostPull(input: {
+  companyId: string
+  projectId?: string | null
+  source?: string
+  waitForCompletion?: boolean
+}): Promise<AccountingProviderId | null> {
+  const active = await getReadyAccountingProvider(input.companyId)
+  if (!active) return null
+  const enqueued = await active.adapter.enqueueCostPull(input)
+  if (!enqueued) return null
+  if (input.waitForCompletion) {
+    await active.adapter.runWorker({ maxBatches: 3 })
+  } else {
+    active.adapter.processQueueInBackground()
+  }
+  return active.adapter.id
+}
+
 /** Kjør køen nå — brukes av «Synkroniser nå» og av worker-endepunktene. */
 export async function processAccountingQueue(companyId: string) {
   const active = await getReadyAccountingProvider(companyId)

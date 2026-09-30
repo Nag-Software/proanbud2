@@ -1,6 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
 
 import { createClient } from "@/lib/supabase/server"
 import { getServerAuthContext, getSessionUser } from "@/lib/auth/server-context"
@@ -19,6 +20,30 @@ import { completedEntriesQuery, fetchParticipantHours } from "@/lib/timeforing/p
 import { canManageProjects, normalizeRole } from "@/lib/roles"
 import { distanceToAreaMeters, haversineMeters, type AreaGeometry } from "@/lib/geo/point-in-polygon"
 import { osloDateString } from "@/lib/timeforing/oslo-date"
+import { enqueueHoursSync } from "@/lib/regnskap/sync"
+
+/**
+ * Godkjente timer har endret seg — be regnskapet avstemme timelistene etter at
+ * svaret er sendt. Gjør ingenting når bedriften ikke har slått på timeoverføring,
+ * og en feil her skal aldri felle selve timeføringen.
+ */
+function scheduleHoursSync(companyId: string | null | undefined) {
+  if (!companyId) return
+  after(async () => {
+    try {
+      await enqueueHoursSync(companyId, "timeforing")
+    } catch (error) {
+      await logServerError({
+        message: "Kunne ikke be regnskapet avstemme timer",
+        error,
+        level: "warning",
+        source: "action",
+        route: "scheduleHoursSync",
+        companyId,
+      })
+    }
+  })
+}
 
 const TIMEFORING_MODULE = "timeforing" as const
 
@@ -394,6 +419,7 @@ export async function stopWorkSessionAction(
 
     revalidatePath(`/prosjekter/${projectId}`)
     revalidatePath("/min-bedrift/timeforing")
+    scheduleHoursSync(companyId)
     return { ok: true, data: data as CompletedWorkSession }
   } catch (error) {
     await logServerError({
@@ -480,6 +506,7 @@ export async function addManualTimeEntryAction(
 
     revalidatePath(`/prosjekter/${projectId}`)
     revalidatePath("/min-bedrift/timeforing")
+    scheduleHoursSync(companyId)
     return { ok: true, data: data as CompletedWorkSession }
   } catch (error) {
     await logServerError({
@@ -677,6 +704,7 @@ async function setTimeEntryStatus(
     }
 
     revalidatePath("/min-bedrift/timeforing")
+    scheduleHoursSync(companyId)
     return { ok: true, data: null }
   } catch (error) {
     await logServerError({

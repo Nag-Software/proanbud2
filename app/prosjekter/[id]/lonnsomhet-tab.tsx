@@ -39,6 +39,7 @@ import type { SearchMaterial } from "@/lib/tilbud/company-price-utils"
 import { cn } from "@/lib/utils"
 import { formatMarginPct, formatSignedValue } from "@/lib/job-costing/format"
 
+import { AccountingCostsCard } from "./accounting-costs-card"
 import {
   addMaterialCostAction,
   deleteMaterialCostAction,
@@ -610,6 +611,10 @@ export function LonnsomhetTab({
       ? Math.round((actual.totalCostNok / data.budgetNok) * 100)
       : null
   const hoursDiff = data.hours.planned === null ? null : data.hours.logged - data.hours.planned
+  // Regnskapet vinner: har det kostnader på prosjektet, teller de i stedet for de
+  // manuelle materialpostene. Tekstene under må si hvilken kilde tallet kommer fra.
+  const accountingWins = data.accounting?.overridesManual === true
+  const accountingLabel = data.accounting?.provider === "fiken" ? "Fiken" : "Tripletex"
 
   return (
     <div ref={setRootElement} className="space-y-5 py-2">
@@ -642,7 +647,9 @@ export function LonnsomhetTab({
           value={formatNok(actual.totalCostNok)}
           hint={[
             `Lønn ${formatNok(actual.laborCostNok)}`,
-            `Material ${formatNok(actual.materialCostNok)}`,
+            accountingWins
+              ? `Innkjøp (${accountingLabel}) ${formatNok(actual.materialCostNok)}`
+              : `Material ${formatNok(actual.materialCostNok)}`,
             actual.drivingCostNok > 0 ? `Kjøring ${formatNok(actual.drivingCostNok)}` : null,
           ]
             .filter(Boolean)
@@ -652,7 +659,16 @@ export function LonnsomhetTab({
               <p>Alt som er påløpt på jobben så langt:</p>
               <p>
                 <strong>Lønnskost</strong> = førte timer × kostprisen din.{" "}
-                <strong>Materialkost</strong> = det som er registrert nederst på denne siden.{" "}
+                {accountingWins ? (
+                  <>
+                    <strong>Innkjøp</strong> = kostnadene som er bokført på prosjektet i{" "}
+                    {accountingLabel}.{" "}
+                  </>
+                ) : (
+                  <>
+                    <strong>Materialkost</strong> = det som er registrert nederst på denne siden.{" "}
+                  </>
+                )}
                 <strong>Kjøring</strong> = kjøregodtgjørelse etter statens satser fra kjøreboka.
               </p>
               <p>Avviste timer er ikke med. Private turer er ikke med.</p>
@@ -775,7 +791,7 @@ export function LonnsomhetTab({
                 showPlanned={showPlanned}
               />
               <ComparisonRow
-                label="Materialkost"
+                label={accountingWins ? `Innkjøp (${accountingLabel})` : "Materialkost"}
                 planned={planned?.materialCostNok ?? null}
                 actual={actual.materialCostNok}
                 format={formatNok}
@@ -906,6 +922,13 @@ export function LonnsomhetTab({
           </ul>
         )}
       </div>
+
+      <AccountingCostsCard
+        projectId={projectId}
+        canManage={canManage}
+        accounting={data.accounting}
+        onRefreshed={() => load({ silent: true })}
+      />
 
       {/* Materialkostnader */}
       <div className="rounded-lg border">
@@ -1161,12 +1184,19 @@ export function LonnsomhetTab({
           ) : null}
         </div>
 
+        {accountingWins && data.materialCosts.length > 0 ? (
+          <p className="border-b bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+            Telles ikke i resultatet: {accountingLabel} har kostnader på prosjektet, og de brukes i
+            stedet ({formatNok(data.accounting?.manualExcludedNok ?? 0)} holdes utenfor).
+          </p>
+        ) : null}
+
         {data.materialCosts.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">
             Ingen materialkostnader registrert ennå.
           </p>
         ) : (
-          <ul className="divide-y">
+          <ul className={cn("divide-y", accountingWins && "opacity-60")}>
             {data.materialCosts.map((m) => (
               <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">

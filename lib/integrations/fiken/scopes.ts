@@ -41,5 +41,6 @@ export function normalizeFikenScopeConfig(input: unknown): FikenScopeConfig {
     inbox: config.inbox === true,
     // Fiken er betalingsmottaker → sender faktura som standard.
     sendInvoiceFromFiken: config.sendInvoiceFromFiken !== false,
+    costs: config.costs !== false,
   }
 }
