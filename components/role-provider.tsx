@@ -35,6 +35,12 @@ type RoleContextValue = {
    * slå opp `users` hver for seg. Kun for UI/datahenting — RLS er grensen.
    */
   companyId: string | null
+  /**
+   * users.full_name og users.email, fra samme spørring som rollen. Brukermenyen
+   * og dashbordet leser dem herfra i stedet for å slå opp `users` på nytt.
+   */
+  fullName: string | null
+  email: string | null
 }
 
 const RoleContext = createContext<RoleContextValue>({
@@ -46,6 +52,8 @@ const RoleContext = createContext<RoleContextValue>({
   status: null,
   planKnown: false,
   companyId: null,
+  fullName: null,
+  email: null,
 })
 
 type PlanContextRow = {
@@ -76,6 +84,8 @@ function readRoleCache(userId: string): RoleContextValue | null {
       status: parsed.status ?? null,
       planKnown: parsed.planKnown === true,
       companyId: typeof parsed.companyId === "string" ? parsed.companyId : null,
+      fullName: typeof parsed.fullName === "string" ? parsed.fullName : null,
+      email: typeof parsed.email === "string" ? parsed.email : null,
     }
   } catch {
     return null
@@ -84,10 +94,10 @@ function readRoleCache(userId: string): RoleContextValue | null {
 
 function writeRoleCache(userId: string, value: RoleContextValue): void {
   try {
-    const { role, planKey, enabledModules, status, planKnown, companyId } = value
+    const { role, planKey, enabledModules, status, planKnown, companyId, fullName, email } = value
     window.localStorage.setItem(
       ROLE_CACHE_PREFIX + userId,
-      JSON.stringify({ role, planKey, enabledModules, status, planKnown, companyId })
+      JSON.stringify({ role, planKey, enabledModules, status, planKnown, companyId, fullName, email })
     )
   } catch {
     // Storage full/blocked — cache is best-effort only.
@@ -128,6 +138,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     status: null,
     planKnown: false,
     companyId: null,
+    fullName: null,
+    email: null,
   })
 
   // Hent rolle og plan på nytt når fanen blir synlig etter en stund borte, så
@@ -165,13 +177,15 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
             status: null,
             planKnown: true,
             companyId: null,
+            fullName: null,
+            email: null,
           })
         return
       }
 
       const supabase = createClient()
       const planPromise = supabase.rpc("get_company_plan_context")
-      const userRowPromise = supabase.from("users").select("role, company_id").eq("id", user.id).maybeSingle()
+      const userRowPromise = supabase.from("users").select("role, company_id, full_name, email").eq("id", user.id).maybeSingle()
 
       // Dev role mock (?mock=worker|pm|admin) — UI-only role override. Plan is
       // still read from the real company so plan-gated UI reflects reality.
@@ -203,6 +217,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
             loadingRole: false,
             planKnown: !planError,
             companyId: mockUserRow?.company_id ?? null,
+            fullName: mockUserRow?.full_name ?? null,
+            email: mockUserRow?.email ?? null,
             ...readPlan(planData as PlanContextRow),
           })
         return
@@ -231,6 +247,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         loadingRole: false,
         planKnown: !planError,
         companyId: userTableData?.company_id ?? null,
+        fullName: userTableData?.full_name ?? null,
+        email: userTableData?.email ?? null,
         ...readPlan(planData as PlanContextRow),
       }
       // Only cache trustworthy results: a transient RPC failure must not
