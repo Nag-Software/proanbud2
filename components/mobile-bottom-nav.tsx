@@ -76,6 +76,7 @@ export function MobileBottomNav() {
       <Link
         key={href}
         href={href}
+        prefetch={false}
         aria-label={href === "/timeforing" && hasActiveSession ? `${label} – stemplet inn` : label}
         aria-current={isActive ? "page" : undefined}
         className={cn(

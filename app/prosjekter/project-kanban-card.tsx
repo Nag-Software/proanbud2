@@ -128,7 +128,7 @@ export function ProjectKanbanCard({ project, onRemoved, onPatched }: ProjectKanb
         </DropdownMenu>
       </div>
 
-      <Link href={`/prosjekter/${project.id}`} className="flex flex-1 flex-col">
+      <Link href={`/prosjekter/${project.id}`} prefetch={false} className="flex flex-1 flex-col">
         {/* Flatere enn på kortvisningen — kanban-kolonnene skal vise flere kort
             samtidig, så bildet får bare være et gjenkjenningsmerke. */}
         <ProjectPhoto projectId={project.id} address={siteAddress} className="aspect-[16/7]" />

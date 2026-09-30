@@ -59,7 +59,7 @@ export function ArchiveProjectsTable({ projects, hasFilters = false }: ArchivePr
               return (
                 <TableRow key={project.id} className="group hover:bg-muted/30">
                   <TableCell className="py-3 align-middle">
-                    <Link href={`/prosjekter/${project.id}`} className="block min-w-[200px]">
+                    <Link href={`/prosjekter/${project.id}`} prefetch={false} className="block min-w-[200px]">
                       <span className="text-sm font-medium text-foreground group-hover:underline">
                         {project.name}
                       </span>
@@ -69,20 +69,21 @@ export function ArchiveProjectsTable({ projects, hasFilters = false }: ArchivePr
                     </Link>
                   </TableCell>
                   <TableCell className="py-3 align-middle">
-                    <Link href={`/prosjekter/${project.id}`} className="block text-sm text-foreground">
+                    <Link href={`/prosjekter/${project.id}`} prefetch={false} className="block text-sm text-foreground">
                       {customer.name}
                     </Link>
                   </TableCell>
                   <TableCell className="py-3 align-middle">
                     <Link
                       href={`/prosjekter/${project.id}`}
+                      prefetch={false}
                       className="block whitespace-nowrap text-sm text-muted-foreground"
                     >
                       {periodLabel}
                     </Link>
                   </TableCell>
                   <TableCell className="py-3 align-middle">
-                    <Link href={`/prosjekter/${project.id}`} className="block">
+                    <Link href={`/prosjekter/${project.id}`} prefetch={false} className="block">
                       <ProjectStatusFooter
                         status={project.status}
                         idPrefix={`${project.id}-archive`}

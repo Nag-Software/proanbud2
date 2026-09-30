@@ -39,7 +39,7 @@ export function TrialBanner() {
         </p>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" asChild>
-            <Link href="/innstillinger/betaling">Legg inn kort</Link>
+            <Link href="/innstillinger/betaling" prefetch={false}>Legg inn kort</Link>
           </Button>
           <Button
             variant="ghost"

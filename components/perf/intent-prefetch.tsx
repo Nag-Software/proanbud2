@@ -25,8 +25,12 @@ import { hasPageDataWarmer, warmPageData } from "@/lib/perf/page-data-warmers"
  * prefetch i utvikling).
  */
 
-/** Så lenge pekeren må hvile på en lenke før det regnes som en intensjon. */
-const HOVER_INTENT_MS = 100
+/**
+ * Så lenge pekeren må hvile på en lenke før det regnes som en intensjon.
+ * 100 ms var for kort: en mus som sveipes nedover menyen utløste full
+ * serverrendring av flere sider etter hverandre.
+ */
+const HOVER_INTENT_MS = 180
 
 const ENABLED = process.env.NODE_ENV === "production"
 

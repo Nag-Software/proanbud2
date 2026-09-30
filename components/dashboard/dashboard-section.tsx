@@ -58,7 +58,7 @@ export function DashboardTextLink({
 }) {
   return (
     <Button variant="link" size="sm" className="h-auto p-0 text-muted-foreground" asChild>
-      <Link href={href}>
+      <Link href={href} prefetch={false}>
         {children}
         <ArrowRight data-icon="inline-end" />
       </Link>

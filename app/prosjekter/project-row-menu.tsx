@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils"
 import { ClientAutocomplete, type ClientOption } from "./ny/components/client-autocomplete"
 import { updateProjectAction } from "./actions"
 import type { ProjectRow } from "./project-utils"
+import { notifySidebarProjectsChanged } from "@/lib/client/sidebar-projects"
 
 type DialogMode = "rename" | "customer" | "archive" | null
 
@@ -67,6 +68,7 @@ export function ProjectRowMenu({
     try {
       await updateProjectAction(project.id, { status: "archived" })
       toast.success("Prosjekt arkivert")
+      notifySidebarProjectsChanged()
       closeDialog()
       router.refresh()
     } catch (error) {
@@ -86,6 +88,7 @@ export function ProjectRowMenu({
     try {
       await updateProjectAction(project.id, { name: trimmedName })
       toast.success("Prosjektnavn oppdatert")
+      notifySidebarProjectsChanged()
       closeDialog()
       router.refresh()
     } catch (error) {

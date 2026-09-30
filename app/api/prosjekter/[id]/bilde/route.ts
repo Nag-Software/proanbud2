@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { getPlaceImage, normalizeAddress, type PlaceQuery } from "@/lib/geo/place-image"
 import { logServerError } from "@/lib/errors/log"
+import { getVerifiedUser } from "@/lib/auth/server-context"
 
 // Bilde av byggeplassen til et prosjekt, hentet fra adressen. Ruten finnes for at
 // kortene skal slippe å kjenne til adressen eller nøkkelen: klienten ber bare om
@@ -28,9 +29,11 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const supabase = await createClient()
+  // Ett kall per prosjektkort: JWT-et verifiseres lokalt i stedet for en
+  // rundtur til auth-serveren per bilde. RLS avgjør uansett hva som vises.
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await getVerifiedUser(supabase)
   if (!user) return new NextResponse(null, { status: 401 })
 
   try {
