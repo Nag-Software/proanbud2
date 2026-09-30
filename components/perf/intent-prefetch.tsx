@@ -10,9 +10,10 @@ import { hasPageDataWarmer, warmPageData } from "@/lib/perf/page-data-warmers"
 /**
  * Henter siden brukeren er i ferd med å åpne — og bare den.
  *
- * Når pekeren hviler på en lenke, eller fingeren treffer den, begynner
- * serveren å rendre siden med én gang. Klikket kommer typisk 100–300 ms
- * senere og gjenbruker svaret som allerede er på vei.
+ * Når pekeren hviler på en lenke, hentes sidens skall (loading.tsx), så
+ * klikket viser skjelettet med en gang. Når fingeren eller museknappen går
+ * ned, begynner serveren å rendre selve siden; klikket kommer typisk
+ * 50–150 ms senere og gjenbruker svaret som allerede er på vei.
  *
  * Erstatter bakgrunnsforvarmingen av HELE menyen (september 2026). Den
  * rendret ~20 sider per sidelasting og mangedoblet databasetrafikken; på
@@ -68,9 +69,14 @@ export function IntentPrefetch() {
     if (!ENABLED) return
     let hoverTimer: number | undefined
 
-    const prefetch = (href: string) => {
+    // Peking henter bare skallet (loading.tsx) — null databasekall, men klikket
+    // viser skjelettet med en gang. Selve siden rendres først ved trykk: å
+    // sveipe musa over prosjektkortene rendret ellers HVERT kort sitt prosjekt
+    // (~20 spørringer hver). Målt 2026-09-30: tre prosjekter rendret på ti
+    // sekunder, det klikkede to–tre ganger, og databasen ble mettet.
+    const prefetch = (href: string, kind: PrefetchKind) => {
       if (href === window.location.pathname + window.location.search) return
-      routerRef.current.prefetch(href, { kind: PrefetchKind.FULL })
+      routerRef.current.prefetch(href, { kind })
       // Sider som henter dataene sine i nettleseren (kalender, dokumenter,
       // mine priser) får også dataene sine i gang.
       const pathname = href.split("?")[0]
@@ -82,12 +88,12 @@ export function IntentPrefetch() {
       window.clearTimeout(hoverTimer)
       if (event.pointerType !== "mouse") return
       const href = internalLinkPath(event.target)
-      if (href) hoverTimer = window.setTimeout(() => prefetch(href), HOVER_INTENT_MS)
+      if (href) hoverTimer = window.setTimeout(() => prefetch(href, PrefetchKind.AUTO), HOVER_INTENT_MS)
     }
     const onPointerDown = (event: PointerEvent) => {
       // Berøring/klikk: ingen grunn til å vente — navigasjonen kommer straks.
       const href = internalLinkPath(event.target)
-      if (href) prefetch(href)
+      if (href) prefetch(href, PrefetchKind.FULL)
     }
 
     document.addEventListener("pointerover", onPointerOver, { passive: true })
