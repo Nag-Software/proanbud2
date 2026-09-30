@@ -10,8 +10,7 @@ import { useEffect } from "react"
  * Tidligere skjedde dette ved en tilfeldighet: supabase-js sender SIGNED_IN
  * hver gang fanen blir synlig, og AuthProvider kjørte router.refresh() på det
  * — ved HVERT fanebytte, også etter to sekunder. Nå er det bevisst, og bare
- * når siden kan ha blitt utdatert: etter lengre borte enn ruter-cachens
- * levetid for forvarmede sider (`staleTimes.static` i next.config.ts).
+ * når siden kan ha blitt utdatert: etter minst ett minutt borte.
  */
 const MIN_HIDDEN_MS = 60_000
 

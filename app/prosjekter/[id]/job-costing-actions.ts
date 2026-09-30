@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { canManageProjects } from "@/lib/roles"
 import { fetchProjectProfitability, readProjectBudget } from "@/lib/job-costing/project-profitability"
 import type { ProjectProfitability } from "@/lib/job-costing/types"
+import { getVerifiedUser } from "@/lib/auth/server-context"
 
 async function resolveCompanyProject(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -13,7 +14,7 @@ async function resolveCompanyProject(
 ) {
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await getVerifiedUser(supabase)
   if (!user) throw new Error("Du må være logget inn")
 
   const { data: profile } = await supabase

@@ -19,6 +19,7 @@ import type { ActionResult } from "@/lib/errors/action-result"
 import { canManageProjects } from "@/lib/roles"
 import { buildingModelSchema, createEmptyModel, parseBuildingModel, sanitizeModel } from "@/lib/cad/schema"
 import type { BuildingModel } from "@/lib/cad/types"
+import { getVerifiedUser } from "@/lib/auth/server-context"
 
 export type ProjectModelRecord = {
   id: string
@@ -54,7 +55,7 @@ async function resolveContext(projectId: string): Promise<ProjectContext> {
   const supabase = await createClient()
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await getVerifiedUser(supabase)
 
   if (!user) {
     return { ok: false, error: "Du må være logget inn." }

@@ -139,3 +139,27 @@ export async function getSessionUser(): Promise<{
   if (context) return { supabase: context.supabase, user: context.user }
   return { supabase: await createClient(), user: null }
 }
+
+/**
+ * Samme svarform som `supabase.auth.getUser()`, men JWT-et verifiseres lokalt
+ * (getClaims mot cachet JWKS, ES256) i stedet for en rundtur til
+ * auth-serveren. For HYPPIGE kall — tilstedeværelsessignal, automatisk
+ * oppdatering, autolagring — der hver rundtur koster opptil et sekund på en
+ * presset database. Gir bare `id` og `email`.
+ *
+ * Ikke for sensitive flyter (kontosletting, rolleadministrasjon, betaling):
+ * de skal fortsatt spørre auth-serveren, som også fanger en økt som er
+ * tilbakekalt før tokenet utløper. RLS er uansett grensen for dataene.
+ */
+export async function getVerifiedUser(
+  supabase: ServerAuthContext["supabase"]
+): Promise<{ data: { user: { id: string; email?: string } | null } }> {
+  const { data, error } = await supabase.auth.getClaims()
+  const claims = data?.claims
+  if (error || !claims?.sub) return { data: { user: null } }
+  return {
+    data: {
+      user: { id: claims.sub as string, email: typeof claims.email === "string" ? claims.email : undefined },
+    },
+  }
+}

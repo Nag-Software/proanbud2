@@ -13,6 +13,7 @@ import {
 import { sendChangeOrderApprovalEmail } from "@/lib/tilleggsarbeid/approval"
 import { isManualApprovalBasis, type ChangeOrderApprovalBasis } from "@/lib/tilleggsarbeid/approval.shared"
 import { logServerError } from "@/lib/errors/log"
+import { getVerifiedUser } from "@/lib/auth/server-context"
 
 type ActionResult = { ok: true } | { ok: false; error: string }
 
@@ -31,7 +32,7 @@ async function resolveProjectCompany(
 ) {
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await getVerifiedUser(supabase)
   if (!user) throw new Error("Du må være logget inn")
 
   const { data: profile } = await supabase

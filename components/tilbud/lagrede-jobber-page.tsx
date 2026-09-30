@@ -64,7 +64,7 @@ function parsePriceInput(value: string) {
 }
 
 export function LagredeJobberPage() {
-  // Forvarmet av app-skallet (lib/perf/page-data-warmers) — vis det som ligger
+  // Hentet allerede da lenken ble pekt på (lib/perf/page-data-warmers) — vis det som ligger
   // i cachen med en gang, og frisk opp i bakgrunnen.
   const [jobs, setJobs] = useState<SavedJob[]>(() => readPrefetched<SavedJob[]>(MINE_PRISER_KEYS.lagredeJobber) ?? [])
   const [search, setSearch] = useState("")
