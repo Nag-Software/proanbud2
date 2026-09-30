@@ -27,3 +27,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+// Vercel cron sender GET. Uten denne svarte ruta 405, og nattjobben kjørte aldri.
+export async function GET(request: Request) {
+  return POST(request)
+}
