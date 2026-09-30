@@ -13,6 +13,7 @@ import "server-only"
 import type { createClient } from "@/lib/supabase/server"
 import { logServerError } from "@/lib/errors/log"
 import {
+  averageCostRate,
   computeJobCosting,
   computeLaborCost,
   computePlannedCosts,
@@ -157,15 +158,8 @@ export async function fetchProjectProfitability(
     changeOrders.reduce((sum, row) => sum + Number(row.amount_nok || 0), 0)
   )
 
-  // Snitt av de kostprisene bedriften faktisk har satt. Timeprisene er per
-  // jobbtype, ikke per ansatt, så et snitt er det beste grunnlaget vi har —
-  // og fanen sier eksplisitt hvilken sats den har regnet med.
-  const costRates = (ratesResult.data ?? [])
-    .map((row) => Number(row.cost_rate_nok))
-    .filter((value) => Number.isFinite(value) && value > 0)
-  const costRateNok = costRates.length
-    ? round(costRates.reduce((a, b) => a + b, 0) / costRates.length)
-    : 0
+  // Fanen sier eksplisitt hvilken sats den har regnet med.
+  const costRateNok = averageCostRate(ratesResult.data ?? [])
 
   const loggedHours = round(participantHours.reduce((sum, entry) => sum + entry.totalHours, 0))
   const laborCostNok = computeLaborCost(loggedHours, costRateNok)

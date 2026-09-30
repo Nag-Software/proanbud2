@@ -45,6 +45,7 @@ import {
   resolveProjectStartDateForTripletex,
 } from "@/lib/integrations/tripletex/mappers"
 import { getFreshTripletexConnection } from "@/lib/integrations/tripletex/session"
+import { averageCostRate } from "@/lib/job-costing/calc"
 import {
   tripletexCustomerUrl,
   tripletexInvoiceUrl,
@@ -656,6 +657,32 @@ async function processProjectUpsert(job: IntegrationJobRow, cache?: WorkerRuntim
   }
 }
 
+/**
+ * Kostprisen per time som sendes på timelinjene — samme snitt som Lønnsomhet-fanen
+ * regner med. En feil her skal aldri stoppe synken: da sendes timelinjene uten
+ * kost, akkurat som før.
+ */
+async function fetchLaborCostRateNok(companyId: string): Promise<number | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from("hourly_rates")
+    .select("cost_rate_nok")
+    .eq("company_id", companyId)
+    .not("cost_rate_nok", "is", null)
+  if (error) {
+    await logServerError({
+      message: "Kunne ikke hente kostpris til Tripletex-linjer",
+      error,
+      source: "worker",
+      route: "runTripletexWorker",
+      companyId,
+    })
+    return null
+  }
+  const rate = averageCostRate(data ?? [])
+  return rate > 0 ? rate : null
+}
+
 async function processOfferUpsert(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
   const offerId = String(job.payload.offerId || "")
   if (!offerId) {
@@ -752,6 +779,7 @@ async function processOfferUpsert(job: IntegrationJobRow, cache?: WorkerRuntimeC
 
   const tilbudOrderLines = mapTilbudOrderLinesFromOffer(offer, externalId, {
     defaultVatTypeId: connection.default_vat_type_id,
+    laborCostRateNok: await fetchLaborCostRateNok(job.company_id),
   })
   await replaceTripletexTilbudOrderLines(connection, externalId, tilbudOrderLines as Record<string, unknown>[])
 
@@ -828,6 +856,7 @@ async function processOrderCreateFromOffer(job: IntegrationJobRow) {
     {
       defaultVatTypeId: connection.default_vat_type_id,
       defaultAccountId: connection.default_account_id,
+      laborCostRateNok: await fetchLaborCostRateNok(job.company_id),
     }
   )
 

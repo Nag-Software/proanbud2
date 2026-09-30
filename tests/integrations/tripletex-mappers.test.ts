@@ -76,6 +76,54 @@ describe("mapOrderFromOffer", () => {
     expect(Math.round(tripletexTotal)).toBe(16020)
   })
 
+  it("sends cost price so Tripletex shows the real dekningsgrad, not 100 %", () => {
+    const payload = mapOrderFromOffer(
+      {
+        id: "offer-4",
+        title: "Bad",
+        description: null,
+        amount_nok: 0,
+        line_items: [
+          { id: "1", subproject: "Bad", title: "Flis", description: "", quantity: 10, unit: "m2", supplier: "", unitPriceNok: 800, markupPercent: 25, discountPercent: 0 },
+          { id: "2", subproject: "Bad", title: "Arbeid", description: "", quantity: 8, unit: "time", supplier: "", unitPriceNok: 950, markupPercent: 0, discountPercent: 0 },
+          { id: "3", subproject: "Bad", title: "Rigg", description: "", quantity: 1, unit: "fastpris", supplier: "", unitPriceNok: 5000, markupPercent: 0, discountPercent: 0 },
+        ],
+      },
+      1,
+      2,
+      { laborCostRateNok: 450 }
+    )
+
+    const [material, labor, fixed] = payload.orderLines as Record<string, unknown>[]
+    // Material: innpris før påslag. Salgsprisen er fortsatt 1000.
+    expect(material.unitCostCurrency).toBe(800)
+    expect(material.unitPriceExcludingVatCurrency).toBe(1000)
+    // Timer: kostpris per time, ikke timelinjens salgspris.
+    expect(labor.unitCostCurrency).toBe(450)
+    // Fastpris har ingen kjent kost — utelates heller enn å sendes som 0.
+    expect(fixed).not.toHaveProperty("unitCostCurrency")
+    // Påslag sendes aldri: Tripletex skal ikke regne om salgsprisen fra kosten.
+    expect(material).not.toHaveProperty("markup")
+  })
+
+  it("leaves labor cost out when the company has no cost rate", () => {
+    const payload = mapOrderFromOffer(
+      {
+        id: "offer-5",
+        title: "Arbeid",
+        description: null,
+        amount_nok: 0,
+        line_items: [
+          { id: "1", subproject: "Generelt", title: "Arbeid", description: "", quantity: 8, unit: "time", supplier: "", unitPriceNok: 950, markupPercent: 0, discountPercent: 0 },
+        ],
+      },
+      1,
+      2
+    )
+
+    expect(payload.orderLines[0]).not.toHaveProperty("unitCostCurrency")
+  })
+
   it("omits project when prosjektmodul is not synced", () => {
     const payload = mapOrderFromOffer(
       {
@@ -168,5 +216,25 @@ describe("mapTilbudOrderLinesFromOffer", () => {
     expect(lines[0].project).toEqual({ id: 999 })
     expect(lines[0].count).toBe(5)
     expect(lines[0].vatType).toEqual({ id: 3 })
+    expect(lines[0].unitCostCurrency).toBe(400)
+  })
+
+  it("sends labor cost on tilbud hour lines", () => {
+    const lines = mapTilbudOrderLinesFromOffer(
+      {
+        id: "offer-1",
+        title: "Tilbud",
+        description: null,
+        amount_nok: 1000,
+        line_items: [
+          { id: "1", subproject: "Bad", title: "Arbeid", description: "", quantity: 4, unit: "timer", supplier: "", unitPriceNok: 900, markupPercent: 0, discountPercent: 0 },
+        ],
+      },
+      999,
+      { laborCostRateNok: 420 }
+    )
+
+    expect(lines[0].unitCostCurrency).toBe(420)
+    expect(lines[0].unitPriceExcludingVatCurrency).toBe(900)
   })
 })
