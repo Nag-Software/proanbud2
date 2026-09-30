@@ -35,18 +35,17 @@ async function resolveProjectCompany(
   } = await getVerifiedUser(supabase)
   if (!user) throw new Error("Du må være logget inn")
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("company_id, role")
-    .eq("id", user.id)
-    .maybeSingle()
+  // Profil og prosjekt slås opp i samme bølge: begge trenger bare id-er vi
+  // allerede har, og sjekken under er den samme. Sparte én rundtur per action.
+  const [{ data: profile }, { data: project }] = await Promise.all([
+    supabase.from("users").select("company_id, role").eq("id", user.id).maybeSingle(),
+    supabase
+      .from("projects")
+      .select("id, company_id, customer_id, customers(email, name)")
+      .eq("id", projectId)
+      .maybeSingle(),
+  ])
   if (!profile?.company_id) throw new Error("Fant ikke bedrift")
-
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, company_id, customer_id, customers(email, name)")
-    .eq("id", projectId)
-    .maybeSingle()
   if (!project || project.company_id !== profile.company_id) throw new Error("Ugyldig prosjekt")
 
   return {

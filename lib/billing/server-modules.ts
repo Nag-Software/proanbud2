@@ -78,11 +78,43 @@ export const getCurrentCompanyIdForUser = cache(async function getCurrentCompany
 // `cache()`-wrapped (keyed by companyId): `companyHasFeature` is often called
 // several times per render for different features on the same company. Caching
 // here collapses those into a single billing+modules read per company per render.
+type PlanAndModules = { plan: PlanKey | null; modules: string[]; status: string | null }
+
+// React cache() deler bare innenfor én render. Server-actions er egne
+// forespørsler, så hver fane på prosjektsiden leste company_billing +
+// company_modules på nytt — to kall per action. Denne korte minnecachen (per
+// serverinstans) deler svaret på tvers av forespørsler i 30 sekunder. Et
+// planbytte slår dermed igjennom innen et halvt minutt; porten er fortsatt
+// server-side, og RLS er uberørt.
+const PLAN_CACHE_TTL_MS = 30_000
+const planCache = new Map<string, { at: number; value: Promise<PlanAndModules> }>()
+
 export const getCompanyPlanAndModules = cache(async function getCompanyPlanAndModules(
   companyId: string
-): Promise<{ plan: PlanKey | null; modules: string[]; status: string | null }> {
+): Promise<PlanAndModules> {
+  const hit = planCache.get(companyId)
+  if (hit && Date.now() - hit.at < PLAN_CACHE_TTL_MS) return hit.value
+  const read = readCompanyPlanAndModules(companyId)
+  const value = read.then((result) => result.value)
+  planCache.set(companyId, { at: Date.now(), value })
+  // Bare vellykkede lesinger caches. En forbigående feil gir samme svar som
+  // før (ingen plan = lukket), men låser ikke funksjoner i 30 sekunder.
+  read.then(
+    (result) => {
+      if (!result.ok && planCache.get(companyId)?.value === value) planCache.delete(companyId)
+    },
+    () => {
+      if (planCache.get(companyId)?.value === value) planCache.delete(companyId)
+    }
+  )
+  return value
+})
+
+async function readCompanyPlanAndModules(
+  companyId: string
+): Promise<{ ok: boolean; value: PlanAndModules }> {
   const admin = createAdminClient()
-  const [{ data: billing }, { data: modules }] = await Promise.all([
+  const [{ data: billing, error: billingError }, { data: modules, error: modulesError }] = await Promise.all([
     admin
       .from("company_billing")
       .select("plan_key, status")
@@ -91,11 +123,14 @@ export const getCompanyPlanAndModules = cache(async function getCompanyPlanAndMo
     admin.from("company_modules").select("module_key").eq("company_id", companyId),
   ])
   return {
-    plan: (billing?.plan_key ?? null) as PlanKey | null,
-    modules: (modules ?? []).map((m) => m.module_key as string),
-    status: (billing?.status ?? null) as string | null,
+    ok: !billingError && !modulesError,
+    value: {
+      plan: (billing?.plan_key ?? null) as PlanKey | null,
+      modules: (modules ?? []).map((m) => m.module_key as string),
+      status: (billing?.status ?? null) as string | null,
+    },
   }
-})
+}
 
 /**
  * Does this company have access to `feature`? Honors plan inclusion (Proff

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { getVerifiedUser } from "@/lib/auth/server-context"
 import { canManageProjects } from "@/lib/roles"
 import { logServerError } from "@/lib/errors/log"
 
@@ -19,21 +20,16 @@ async function assertCanManageParticipants(
 ) {
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await getVerifiedUser(supabase)
   if (!user) throw new Error("Du må være logget inn")
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("company_id, role")
-    .eq("id", user.id)
-    .maybeSingle()
+  // Profil og prosjekt slås opp i samme bølge: begge trenger bare id-er vi
+  // allerede har, og sjekken under er den samme. Sparte én rundtur per action.
+  const [{ data: profile }, { data: project }] = await Promise.all([
+    supabase.from("users").select("company_id, role").eq("id", user.id).maybeSingle(),
+    supabase.from("projects").select("id, company_id").eq("id", projectId).maybeSingle(),
+  ])
   if (!profile?.company_id) throw new Error("Fant ikke bedrift")
-
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, company_id")
-    .eq("id", projectId)
-    .maybeSingle()
   if (!project || project.company_id !== profile.company_id) {
     throw new Error("Ugyldig prosjekt")
   }
@@ -120,7 +116,7 @@ export async function removeProjectParticipantAction(projectId: string, userId: 
 export async function getCompanyUsersAction() {
   const supabase = await createClient()
   
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getVerifiedUser(supabase)
   if (!user) throw new Error("Not authenticated")
 
   // Get user's company_id

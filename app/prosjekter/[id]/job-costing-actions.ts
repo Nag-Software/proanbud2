@@ -17,22 +17,17 @@ async function resolveCompanyProject(
   } = await getVerifiedUser(supabase)
   if (!user) throw new Error("Du må være logget inn")
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("company_id, role")
-    .eq("id", user.id)
-    .maybeSingle()
+  // Profil og prosjekt slås opp i samme bølge: begge trenger bare id-er vi
+  // allerede har, og sjekken under er den samme. Sparte én rundtur per action.
+  // `*` og ikke en kolonneliste med vilje for prosjektet: budsjettfeltene kom
+  // i db/76, og en eksplisitt liste ville gjort hele fanen død med «column does
+  // not exist» i en base der migrasjonen ennå ikke er kjørt. Med `*` mangler
+  // feltene bare, og de leses defensivt.
+  const [{ data: profile }, { data: project }] = await Promise.all([
+    supabase.from("users").select("company_id, role").eq("id", user.id).maybeSingle(),
+    supabase.from("projects").select("*").eq("id", projectId).maybeSingle(),
+  ])
   if (!profile?.company_id) throw new Error("Fant ikke bedrift")
-
-  // `*` og ikke en kolonneliste med vilje: budsjettfeltene kom i db/76, og en
-  // eksplisitt liste ville gjort hele fanen død med «column does not exist» i
-  // en base der migrasjonen ennå ikke er kjørt. Med `*` mangler feltene bare,
-  // og de leses defensivt.
-  const { data: project } = await supabase
-    .from("projects")
-    .select("*")
-    .eq("id", projectId)
-    .maybeSingle()
   if (!project || project.company_id !== profile.company_id) throw new Error("Ugyldig prosjekt")
 
   return {
