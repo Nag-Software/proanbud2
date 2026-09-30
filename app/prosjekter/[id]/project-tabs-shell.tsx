@@ -13,10 +13,37 @@ export type ProjectTabItem = {
   label: string
   shortLabel?: string
   hidden?: boolean
-  /** Tall ved fanen. Vises ikke når det er 0. */
-  count?: number
+  /**
+   * Tall ved fanen. Vises ikke når det er 0. Kan være et løfte fra serveren:
+   * da vises fanen med en gang, og tallet dukker opp når det er klart.
+   */
+  count?: number | Promise<number>
   /** Varsel i stedet for nøytral teller: noe venter på handling. */
   countTone?: "neutral" | "warning"
+}
+
+function isPromiseLike(value: unknown): value is Promise<number> {
+  return typeof (value as { then?: unknown } | null | undefined)?.then === "function"
+}
+
+function TabCount({ count, tone }: { count: number; tone?: ProjectTabItem["countTone"] }) {
+  if (!count) return null
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-1.5 text-[10.5px] font-semibold leading-4 tabular-nums",
+        tone === "warning"
+          ? "border-[color:var(--tone-warning)]/30 bg-[color:var(--overlay-warning)] text-[color:var(--tone-warning-strong)]"
+          : "bg-muted text-muted-foreground"
+      )}
+    >
+      {count}
+    </span>
+  )
+}
+
+function AsyncTabCount({ count, tone }: { count: Promise<number>; tone?: ProjectTabItem["countTone"] }) {
+  return <TabCount count={React.use(count)} tone={tone} />
 }
 
 /** Et sted inne i en fane (`?del=`). `nonce` endres ved hvert kall, også til samme sted. */
@@ -250,18 +277,13 @@ export function ProjectTabsShell({ tabs, defaultTab, header, children }: Project
                             )}
                           >
                             {isMobile ? (tab.shortLabel ?? tab.label) : tab.label}
-                            {tab.count ? (
-                              <span
-                                className={cn(
-                                  "rounded-full border px-1.5 text-[10.5px] font-semibold leading-4 tabular-nums",
-                                  tab.countTone === "warning"
-                                    ? "border-[color:var(--tone-warning)]/30 bg-[color:var(--overlay-warning)] text-[color:var(--tone-warning-strong)]"
-                                    : "bg-muted text-muted-foreground"
-                                )}
-                              >
-                                {tab.count}
-                              </span>
-                            ) : null}
+                            {isPromiseLike(tab.count) ? (
+                              <React.Suspense fallback={null}>
+                                <AsyncTabCount count={tab.count} tone={tab.countTone} />
+                              </React.Suspense>
+                            ) : (
+                              <TabCount count={tab.count ?? 0} tone={tab.countTone} />
+                            )}
                           </button>
                         )
                       })}
