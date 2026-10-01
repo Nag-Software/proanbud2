@@ -57,6 +57,13 @@ export type EnqueueCostPullInput = {
   source?: string
 }
 
+export type EnqueueMaterialCostInput = {
+  companyId: string
+  materialCostId: string
+  /** push = send som kladd; delete = fjern kladden vi sendte (slettet eller bokført). */
+  action: "push" | "delete"
+}
+
 export type WorkerOptions = { batchSize?: number; maxBatches?: number; workerId?: string }
 
 /**
@@ -102,6 +109,8 @@ export interface AccountingAdapter {
   enqueueHoursSync(companyId: string, source?: string): Promise<boolean>
   /** Hent kostnadene som er ført på prosjekt i regnskapet. */
   enqueueCostPull(input: EnqueueCostPullInput): Promise<boolean>
+  /** Send en manuell materialkost som kladd, eller rydd bort kladden. */
+  enqueueMaterialCostSync(input: EnqueueMaterialCostInput): Promise<boolean>
 
   processQueueInBackground(options?: WorkerOptions): void
   runWorker(options?: WorkerOptions): Promise<unknown>

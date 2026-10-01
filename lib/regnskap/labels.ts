@@ -30,7 +30,9 @@ const JOB_TYPE_LABELS: Record<string, string> = {
   "travel_expense.delete": "Fjernet kjøretur",
   "employee.sync_all": "Koblet ansatte",
   "timesheet.sync": "Overførte timer",
-  "costs.pull": "Hentet kostnader på prosjekt",
+  "costs.pull": "Hentet kostnader og inntekter på prosjekt",
+  "material_cost.push": "Sendte materialkost som kladd",
+  "material_cost.delete": "Fjernet kladd for materialkost",
   "reconcile.full": "Avstemming",
 }
 

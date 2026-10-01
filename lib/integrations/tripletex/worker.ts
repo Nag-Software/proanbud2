@@ -1,3 +1,4 @@
+import { processTripletexCostDelete, processTripletexCostPush } from "@/lib/integrations/tripletex/cost-push"
 import { logServerError } from "@/lib/errors/log"
 import {
   claimJobs,
@@ -1984,6 +1985,12 @@ async function processJob(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
       return
     case "costs.pull":
       await processCostsPull(job)
+      return
+    case "material_cost.push":
+      await processTripletexCostPush(job)
+      return
+    case "material_cost.delete":
+      await processTripletexCostDelete(job)
       return
     default:
       throw new Error(`Unsupported job type: ${job.job_type}`)

@@ -35,8 +35,10 @@ export type AccountingCapability =
   | "travel"
   | "products"
   | "hours"
-  /** Hente faktiske kostnader ført på prosjektet i regnskapet. */
+  /** Hente faktiske kostnader (og inntekter) ført på prosjektet i regnskapet. */
   | "costs.pull"
+  /** Sende materialkostnader ført i ProAnbud til regnskapet som kladd. */
+  | "costs.push"
 
 /** Kanoniske jobbtyper. Adapteren oversetter til sitt eget kø-vokabular. */
 export type AccountingJobType =
@@ -55,6 +57,8 @@ export type AccountingJobType =
   | "travel.delete"
   | "hours.push"
   | "costs.pull"
+  | "cost.push"
+  | "cost.delete"
   | "reconcile.full"
 
 export const ACCOUNTING_JOB_TYPES: AccountingJobType[] = [
@@ -73,6 +77,8 @@ export const ACCOUNTING_JOB_TYPES: AccountingJobType[] = [
   "travel.delete",
   "hours.push",
   "costs.pull",
+  "cost.push",
+  "cost.delete",
   "reconcile.full",
 ]
 
@@ -98,6 +104,8 @@ export const JOB_TYPE_CAPABILITY: Record<AccountingJobType, AccountingCapability
   "travel.delete": "travel",
   "hours.push": "hours",
   "costs.pull": "costs.pull",
+  "cost.push": "costs.push",
+  "cost.delete": "costs.push",
   // reconcile er infrastruktur, ikke en forretningsevne
   "reconcile.full": null,
 }
@@ -120,6 +128,8 @@ export type AccountingEntityType =
   | "employee"
   | "calendar_event"
   | "travel_expense"
+  /** Kladden en manuell materialkost ble sendt som (Fiken kjøpskladd / Tripletex bilag). */
+  | "material_cost"
 
 /** Kanonisk synk-omfang. Én liste, uansett leverandør. */
 export type AccountingScopeKey =

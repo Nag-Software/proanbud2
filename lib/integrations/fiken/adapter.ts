@@ -11,6 +11,7 @@ import { normalizeScopes, toStoredScopes } from "@/lib/regnskap/scopes"
 import type {
   AccountingAdapter,
   EnqueueCostPullInput,
+  EnqueueMaterialCostInput,
   EnqueueDocumentInput,
   EnqueueEntityInput,
   EnqueueOfferInput,
@@ -186,6 +187,23 @@ export const fikenAdapter: AccountingAdapter = {
       jobType,
       payload: { source: input.source ?? "manual" },
       idempotencyKey: `fiken:costs-pull:${input.companyId}:${Math.floor(Date.now() / 60_000)}`,
+    })
+    return true
+  },
+
+  async enqueueMaterialCostSync(input: EnqueueMaterialCostInput) {
+    const state = await this.getConnectionState(input.companyId)
+    const jobType = FIKEN_JOB_TYPES[input.action === "delete" ? "cost.delete" : "cost.push"]
+    if (!state?.ready || !jobType) return false
+    // Opprydding skjer også om kostnadssynken er slått av etterpå — kladden er vår.
+    if (input.action === "push" && state.scopes.costs === false) return false
+    await enqueueFikenJob({
+      companyId: input.companyId,
+      jobType,
+      payload: { materialCostId: input.materialCostId },
+      // Minuttbøtte: en post kan sendes igjen etter «Ikke samme kjøp». Dubletter
+      // stoppes av workeren (kobling + søk etter vår egen kladd), ikke av nøkkelen.
+      idempotencyKey: `fiken:material-cost-${input.action}:${input.materialCostId}:${Math.floor(Date.now() / 60_000)}`,
     })
     return true
   },

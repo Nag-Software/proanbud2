@@ -14,6 +14,7 @@ import type {
   AccountingAdapter,
   EnqueueCalendarInput,
   EnqueueCostPullInput,
+  EnqueueMaterialCostInput,
   EnqueueDocumentInput,
   EnqueueEntityInput,
   EnqueueOfferInput,
@@ -179,6 +180,23 @@ export const tripletexAdapter: AccountingAdapter = {
       jobType,
       payload: { source: input.source ?? "manual", projectId: input.projectId ?? null },
       idempotencyKey: `tripletex:costs-pull:${input.companyId}:${input.projectId ?? "all"}:${Math.floor(Date.now() / 60_000)}`,
+    })
+    return true
+  },
+
+  async enqueueMaterialCostSync(input: EnqueueMaterialCostInput) {
+    const state = await this.getConnectionState(input.companyId)
+    const jobType = TRIPLETEX_JOB_TYPES[input.action === "delete" ? "cost.delete" : "cost.push"]
+    if (!state?.ready || !jobType) return false
+    // Opprydding skjer også om kostnadssynken er slått av etterpå — kladden er vår.
+    if (input.action === "push" && state.scopes.costs === false) return false
+    await enqueueIntegrationJob({
+      companyId: input.companyId,
+      jobType,
+      payload: { materialCostId: input.materialCostId },
+      // Minuttbøtte: en post kan sendes igjen etter «Ikke samme kjøp». Dubletter
+      // stoppes av workeren (kobling + søk etter vår egen kladd), ikke av nøkkelen.
+      idempotencyKey: `tripletex:material-cost-${input.action}:${input.materialCostId}:${Math.floor(Date.now() / 60_000)}`,
     })
     return true
   },

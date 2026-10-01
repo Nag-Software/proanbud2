@@ -19,6 +19,8 @@ export const TRIPLETEX_JOB_TYPES: Record<AccountingJobType, string | null> = {
   "travel.delete": "travel_expense.delete",
   "hours.push": "timesheet.sync",
   "costs.pull": "costs.pull",
+  "cost.push": "material_cost.push",
+  "cost.delete": "material_cost.delete",
   "reconcile.full": "reconcile.full",
 }
 
@@ -33,4 +35,5 @@ export const TRIPLETEX_ENTITY_TYPES: Record<AccountingEntityType, string[]> = {
   employee: ["employee"],
   calendar_event: ["calendar_event"],
   travel_expense: ["travel_expense"],
+  material_cost: ["material_cost_voucher"],
 }
