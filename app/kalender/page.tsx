@@ -552,9 +552,7 @@ function KalenderPage() {
     return {
       style: {
         backgroundColor: event.backgroundColor || 'var(--primary)',
-        borderColor: event.backgroundColor || 'var(--primary)',
         color: event.textColor || 'var(--primary-foreground)',
-        borderRadius: 0,
       }
     }
   }
@@ -618,6 +616,7 @@ function KalenderPage() {
               events={filteredEvents}
               onDayClick={handleDayClick}
               onEventClick={handleEventClick}
+              onShowMore={setDaySheetDate}
             />
           ) : (
             <DnDCalendar
@@ -638,7 +637,8 @@ function KalenderPage() {
         </div>
       </div>
 
-      {/* Dagsark (mobil): dagens avtaler + «Ny avtale» — åpnes ved trykk på en dag. */}
+      {/* Dagsark: dagens avtaler + «Ny avtale» — åpnes ved trykk på en dag (mobil)
+          eller «+N flere» i månedsvisningen. */}
       <ResponsiveDialog
         open={daySheetDate !== null}
         onOpenChange={(open) => {

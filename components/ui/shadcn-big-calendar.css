@@ -103,8 +103,7 @@ button.rbc-input::-moz-focus-inner {
   z-index: 4;
 }
 .rbc-today {
-  background-color: var(--background);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 35%, transparent);
+  background-color: color-mix(in oklab, var(--primary) 4%, var(--background));
 }
 .rbc-toolbar {
   display: none;
@@ -183,7 +182,7 @@ button.rbc-input::-moz-focus-inner {
   display: none;
 }
 .rbc-event-overlaps {
-  box-shadow: -1px 1px 5px 0px var(--primary-foreground);
+  box-shadow: none;
 }
 .rbc-event-continues-prior {
   border-top-left-radius: 0;
@@ -712,3 +711,64 @@ button.rbc-input::-moz-focus-inner {
   order: 1;
 }
 
+
+/* ── Proanbud: ensartet uke/dag-visning ─────────────────────────────── */
+
+/* Kolonneoverskriftene (DayHeader) styrer selv typografien. */
+.rbc-time-header-cell .rbc-header {
+  font-weight: inherit;
+  font-size: inherit;
+  padding: 0;
+  border-bottom: none;
+}
+.rbc-time-header-cell .rbc-header:last-child {
+  border-right: none;
+}
+.rbc-header.rbc-today {
+  background-color: transparent;
+}
+.rbc-button-link {
+  display: block;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.rbc-button-link:hover {
+  background-color: var(--muted);
+}
+
+/* Hendelser: avrundet, med en tynn kant i bakgrunnsfargen så avtaler som
+   ligger tett (08–10, 10–11) får synlig skille. */
+.rbc-day-slot .rbc-event,
+.rbc-row-segment .rbc-event {
+  border: 1px solid var(--background);
+  border-radius: 6px;
+}
+.rbc-day-slot .rbc-event {
+  padding: 2px 6px;
+}
+.rbc-row-segment .rbc-event {
+  padding: 1px 6px;
+}
+.rbc-day-slot .rbc-event-content {
+  line-height: 1.2;
+}
+.rbc-time-view .rbc-allday-cell .rbc-row {
+  min-height: 0;
+}
+.rbc-time-view .rbc-allday-cell {
+  min-height: 8px;
+}
+.rbc-time-view .rbc-label {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  padding: 0 8px;
+}
+.rbc-time-content {
+  border-top-width: 1px;
+}

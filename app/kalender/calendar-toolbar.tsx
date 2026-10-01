@@ -15,7 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { format } from "date-fns"
+import { endOfWeek, format, isSameMonth, isSameYear, startOfWeek } from "date-fns"
 import { nb } from "date-fns/locale"
 import {
   ChevronLeft,
@@ -24,6 +24,7 @@ import {
   Settings2,
   SlidersHorizontal,
 } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 // String literals instead of importing `Views` from react-big-calendar — that
 // import alone would pull the (non-tree-shakeable) library into the toolbar's
@@ -54,6 +55,23 @@ const VIEW_LABELS: Record<CalendarView, string> = {
   month: "Måned",
   week: "Uke",
   day: "Dag",
+}
+
+/** Tittelen følger visningen: «Oktober 2026», «19.–25. okt. 2026», «28. sep. – 4. okt. 2026», «1. oktober 2026». */
+function periodLabel(date: Date, view: CalendarView) {
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+  // Ukedagen står allerede i kolonneoverskriften — tittelen holdes kort.
+  if (view === "day") return format(date, "d. MMMM yyyy", { locale: nb })
+  if (view === "week") {
+    const start = startOfWeek(date, { weekStartsOn: 1 })
+    const end = endOfWeek(date, { weekStartsOn: 1 })
+    if (isSameMonth(start, end)) {
+      return `${format(start, "d.")}–${format(end, "d. MMM yyyy", { locale: nb })}`
+    }
+    const startFmt = isSameYear(start, end) ? "d. MMM" : "d. MMM yyyy"
+    return `${format(start, startFmt, { locale: nb })} – ${format(end, "d. MMM yyyy", { locale: nb })}`
+  }
+  return cap(format(date, "LLLL yyyy", { locale: nb }))
 }
 
 export function CalendarToolbar({
@@ -91,8 +109,8 @@ export function CalendarToolbar({
   }
 
   return (
-    <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5">
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2 md:px-4">
+      <div className="flex min-w-0 items-center gap-1.5 md:gap-2">
         <Button
           variant="outline"
           size="sm"
@@ -101,30 +119,10 @@ export function CalendarToolbar({
           I dag
         </Button>
 
-        {/* Mobil tvinges til månedsvisning (se KalenderPage-effekten) — velgeren er kun støy der. */}
-        <Select value={view} onValueChange={(v) => onViewChange(v as CalendarView)}>
-          <SelectTrigger className="hidden h-8 w-[110px] md:flex">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectLabel>Visning</SelectLabel>
-              <SelectItem value="month">{VIEW_LABELS.month}</SelectItem>
-              <SelectItem value="week" className="hidden md:flex">
-                {VIEW_LABELS.week}
-              </SelectItem>
-              <SelectItem value="day" className="hidden md:flex">
-                {VIEW_LABELS.day}
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-
-        <div className="flex items-center">
+        <div className="flex shrink-0 items-center">
           <Button
             variant="ghost"
             size="icon-sm"
-           
             onClick={() => navigate(-1)}
             aria-label="Forrige periode"
           >
@@ -133,7 +131,6 @@ export function CalendarToolbar({
           <Button
             variant="ghost"
             size="icon-sm"
-           
             onClick={() => navigate(1)}
             aria-label="Neste periode"
           >
@@ -141,18 +138,47 @@ export function CalendarToolbar({
           </Button>
         </div>
 
-        <h2 className="truncate text-sm font-medium capitalize sm:text-base">
-          {format(date, "LLLL yyyy", { locale: nb })}
+        <h2 className="min-w-0 truncate text-sm font-medium sm:text-base">
+          {periodLabel(date, view)}
         </h2>
+        {view !== "month" && (
+          <span className="hidden shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground lg:inline">
+            Uke {format(date, "I")}
+          </span>
+        )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
+        {/* Mobil tvinges til månedsvisning (se KalenderPage-effekten) — velgeren er kun støy der. */}
+        <div
+          role="group"
+          aria-label="Visning"
+          className="hidden items-center gap-0.5 rounded-lg border border-border/60 bg-card p-0.5 md:inline-flex"
+        >
+          {(["month", "week", "day"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => onViewChange(v)}
+              aria-pressed={view === v}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                view === v
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+              )}
+            >
+              {VIEW_LABELS[v]}
+            </button>
+          ))}
+        </div>
+
         {showSourceFilter && (
           <Select
             value={visibleProvider}
             onValueChange={(v) => onVisibleProviderChange(v as CalendarSource)}
           >
-            <SelectTrigger className="hidden h-8 w-[150px] md:flex">
+            <SelectTrigger className="hidden h-8 w-[150px] xl:flex">
               <SlidersHorizontal className="mr-1 size-3.5" />
               <SelectValue />
             </SelectTrigger>
@@ -177,7 +203,7 @@ export function CalendarToolbar({
           <PopoverContent align="end" className="w-72">
             <div className="space-y-4">
               {showSourceFilter && (
-                <div className="space-y-2 md:hidden">
+                <div className="space-y-2 xl:hidden">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Kalenderkilde
                   </p>
@@ -294,7 +320,7 @@ export function CalendarToolbar({
 
         <Button size="sm" onClick={onAddEvent}>
           <Plus />
-          <span className="hidden sm:inline">Ny hendelse</span>
+          <span className="hidden sm:inline">Ny avtale</span>
         </Button>
       </div>
     </div>
