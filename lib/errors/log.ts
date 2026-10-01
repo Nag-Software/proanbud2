@@ -56,6 +56,17 @@ function extractMessage(error: unknown, fallback: string): string {
 
 function extractStack(error: unknown): string | null {
   if (error instanceof Error && error.stack) return error.stack
+  // Supabase/PostgREST-feil er vanlige objekter, ikke Error. Uten dette ble bare
+  // vår egen melding lagret, og selve årsaken (kode, detaljer) gikk tapt.
+  if (error && typeof error === "object") {
+    const { code, message, details, hint } = error as Record<string, unknown>
+    const parts = [
+      [code, message].filter((part) => typeof part === "string" && part).join(": "),
+      typeof details === "string" ? details : "",
+      typeof hint === "string" ? `Hint: ${hint}` : "",
+    ].filter(Boolean)
+    if (parts.length > 0) return parts.join("\n")
+  }
   return null
 }
 

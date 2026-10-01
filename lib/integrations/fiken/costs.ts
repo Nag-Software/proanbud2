@@ -4,6 +4,7 @@ import type { IntegrationJobRow } from "@/lib/integrations/tripletex/types"
 import { mapFikenPurchasesToCosts } from "@/lib/regnskap/costs"
 import { replaceProjectAccountingCosts } from "@/lib/regnskap/cost-store"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { osloDateString } from "@/lib/timeforing/oslo-date"
 
 /**
@@ -28,25 +29,34 @@ export async function processFikenCostsPull(job: IntegrationJobRow) {
   if (connection.scope_config?.costs === false) return
 
   const admin = createAdminClient()
-  const { data: links, error } = await admin
-    .from("external_entity_links")
-    .select("local_id, external_id")
-    .eq("company_id", job.company_id)
-    .eq("provider", "fiken")
-    .eq("entity_type", "project")
-  if (error) throw new Error(`Kunne ikke hente prosjektkoblinger: ${error.message}`)
+  const links = await fetchAllRows<{ local_id: string; external_id: string | number }>((from, to) =>
+    admin
+      .from("external_entity_links")
+      .select("local_id, external_id")
+      .eq("company_id", job.company_id)
+      .eq("provider", "fiken")
+      .eq("entity_type", "project")
+      .order("id", { ascending: true })
+      .range(from, to)
+  ).catch((error: Error) => {
+    throw new Error(`Kunne ikke hente prosjektkoblinger: ${error.message}`)
+  })
 
   // Uten koblede prosjekter kan ingen linje knyttes til noe — spar kallene.
-  if (!links || links.length === 0) return
+  if (links.length === 0) return
 
   const projectByFikenId = new Map(links.map((row) => [Number(row.external_id), String(row.local_id)]))
   const windowStart = osloDateString(new Date(Date.now() - WINDOW_DAYS * 86_400_000))
 
   const purchases: Record<string, unknown>[] = []
+  let complete = false
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const { items, pageCount } = await listFikenPurchases(connection, { page, dateGe: windowStart })
     purchases.push(...items)
-    if (page + 1 >= pageCount || items.length === 0) break
+    if (page + 1 >= pageCount || items.length === 0) {
+      complete = true
+      break
+    }
   }
 
   const rows = mapFikenPurchasesToCosts(purchases, projectByFikenId)
@@ -56,5 +66,7 @@ export async function processFikenCostsPull(job: IntegrationJobRow) {
     projectIds: [...new Set(projectByFikenId.values())],
     rows,
     windowStart,
+    // Stoppet på sidetaket: kjøp på sidene vi ikke leste er ikke borte, bare ikke sett.
+    skipCleanup: !complete,
   })
 }

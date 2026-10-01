@@ -163,9 +163,10 @@ export async function fetchProjectProfitability(
     ["kostnader fra regnskapet", accountingCostsResult],
     ["hentestatus fra regnskapet", accountingSyncsResult],
   ] as const) {
-    // 42P01: db/105 er ikke kjørt ennå. Da finnes det ingen regnskapskostnader,
-    // og fanen skal vise det samme som før — ikke fylle feilloggen.
-    if (result.error && result.error.code !== "42P01") {
+    // 42P01/PGRST205: db/105 er ikke kjørt ennå (PostgREST svarer PGRST205 for en
+    // tabell den ikke kjenner). Da finnes det ingen regnskapskostnader, og fanen skal
+    // vise det samme som før — ikke fylle feilloggen.
+    if (result.error && result.error.code !== "42P01" && result.error.code !== "PGRST205") {
       await logServerError({
         message: `Kunne ikke hente ${label} til lønnsomhet`,
         error: result.error,

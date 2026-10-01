@@ -12,6 +12,7 @@ import {
   type TimesheetLinkRow,
 } from "@/lib/regnskap/hours"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { osloDateString } from "@/lib/timeforing/oslo-date"
 
 /**
@@ -72,12 +73,11 @@ function readValues(response: unknown): Array<Record<string, unknown>> {
 
 async function fetchApprovedHours(companyId: string, since: string): Promise<ApprovedHourRow[]> {
   const admin = createAdminClient()
-  const rows: ApprovedHourRow[] = []
-  const pageSize = 1000
-  for (let from = 0; ; from += pageSize) {
-    // Samme utvalg som ProAnbud selv teller (fullførte økter), men bare GODKJENTE:
-    // ventende geofence-timer skal ikke i regnskapet før en leder har sagt ja.
-    const { data, error } = await admin
+  // Samme utvalg som ProAnbud selv teller (fullførte økter), men bare GODKJENTE:
+  // ventende geofence-timer skal ikke i regnskapet før en leder har sagt ja.
+  // `id` til slutt gir entydig sortering, så sidene ikke overlapper.
+  return fetchAllRows<ApprovedHourRow>((from, to) =>
+    admin
       .from("time_entries")
       .select("user_id, project_id, entry_date, hours, description")
       .eq("company_id", companyId)
@@ -86,24 +86,28 @@ async function fetchApprovedHours(companyId: string, since: string): Promise<App
       .not("hours", "is", null)
       .gte("entry_date", since)
       .order("entry_date", { ascending: true })
-      .range(from, from + pageSize - 1)
-    if (error) throw new Error(`Kunne ikke hente timer: ${error.message}`)
-    rows.push(...((data ?? []) as ApprovedHourRow[]))
-    if (!data || data.length < pageSize) break
-  }
-  return rows
+      .order("id", { ascending: true })
+      .range(from, to)
+  ).catch((error: Error) => {
+    throw new Error(`Kunne ikke hente timer: ${error.message}`)
+  })
 }
 
 async function fetchLinkMap(companyId: string, entityType: "employee" | "project") {
   const admin = createAdminClient()
-  const { data, error } = await admin
-    .from("external_entity_links")
-    .select("local_id, external_id")
-    .eq("company_id", companyId)
-    .eq("provider", "tripletex")
-    .eq("entity_type", entityType)
-  if (error) throw new Error(`Kunne ikke hente koblinger (${entityType}): ${error.message}`)
-  return new Map((data ?? []).map((row) => [String(row.local_id), Number(row.external_id)]))
+  const rows = await fetchAllRows<{ local_id: string; external_id: string | number }>((from, to) =>
+    admin
+      .from("external_entity_links")
+      .select("local_id, external_id")
+      .eq("company_id", companyId)
+      .eq("provider", "tripletex")
+      .eq("entity_type", entityType)
+      .order("id", { ascending: true })
+      .range(from, to)
+  ).catch((error: Error) => {
+    throw new Error(`Kunne ikke hente koblinger (${entityType}): ${error.message}`)
+  })
+  return new Map(rows.map((row) => [String(row.local_id), Number(row.external_id)]))
 }
 
 export async function processTimesheetSync(job: IntegrationJobRow) {
@@ -116,29 +120,38 @@ export async function processTimesheetSync(job: IntegrationJobRow) {
   const admin = createAdminClient()
   const since = osloDateString(new Date(Date.now() - WINDOW_DAYS * 86_400_000))
 
-  const [hourRows, linksResult, employees, projects] = await Promise.all([
+  const [hourRows, links, employees, projects] = await Promise.all([
     fetchApprovedHours(job.company_id, since),
-    admin
-      .from("accounting_timesheet_links")
-      .select("user_id, project_id, entry_date, external_id, activity_external_id, pushed_hours")
-      .eq("company_id", job.company_id)
-      .eq("provider", "tripletex")
-      .gte("entry_date", since),
+    // Uten paginering ville koblinger forbi 1000 sett ut som nye dager og blitt sendt på nytt.
+    fetchAllRows<TimesheetLinkRow>((from, to) =>
+      admin
+        .from("accounting_timesheet_links")
+        .select("user_id, project_id, entry_date, external_id, activity_external_id, pushed_hours")
+        .eq("company_id", job.company_id)
+        .eq("provider", "tripletex")
+        .gte("entry_date", since)
+        .order("id", { ascending: true })
+        .range(from, to)
+    ).catch((error: Error) => {
+      throw new Error(`Kunne ikke hente timekoblinger: ${error.message}`)
+    }),
     fetchLinkMap(job.company_id, "employee"),
     fetchLinkMap(job.company_id, "project"),
   ])
-  if (linksResult.error) throw new Error(`Kunne ikke hente timekoblinger: ${linksResult.error.message}`)
 
-  const plan = planTimesheetChanges(
-    aggregateApprovedHours(hourRows),
-    (linksResult.data ?? []) as TimesheetLinkRow[]
-  )
+  const plan = planTimesheetChanges(aggregateApprovedHours(hourRows), links)
 
   const failures: string[] = []
   const missingEmployees = new Set<string>()
-  const activityByProject = new Map<number, number | null>()
+  const missingProjects = new Set<string>()
+  // Aktivitetene Tripletex tilbyr avhenger av både prosjekt og ansatt, så de caches per par.
+  const activityByParticipant = new Map<string, number | null>()
   const participantsAdded = new Set<string>()
   let operations = 0
+  // Skrivinger som faktisk gikk gjennom. En oppfølgingsjobb køes bare når denne
+  // jobben kom et stykke — ellers ville rader som alltid feiler (låst periode)
+  // brukt opp hele budsjettet hver gang og køet nye jobber i det uendelige.
+  let progress = 0
 
   const saveLink = async (aggregate: HoursAggregate, externalId: number, activityId: number | null) => {
     const { error } = await admin.from("accounting_timesheet_links").upsert(
@@ -170,17 +183,63 @@ export async function processTimesheetSync(job: IntegrationJobRow) {
       .eq("entry_date", String(link.entry_date).slice(0, 10))
   }
 
-  const resolveActivity = async (projectExternalId: number, employeeExternalId: number, date: string) => {
-    if (activityByProject.has(projectExternalId)) return activityByProject.get(projectExternalId) ?? null
+  const addParticipant = async (projectExternalId: number, employeeExternalId: number) => {
+    const participantKey = `${projectExternalId}:${employeeExternalId}`
+    if (participantsAdded.has(participantKey)) return false
+    participantsAdded.add(participantKey)
+    operations += 1
+    await tripletexRequest(connection, {
+      method: "POST",
+      path: "/project/participant",
+      body: { project: { id: projectExternalId }, employee: { id: employeeExternalId } },
+    }).catch(() => null)
+    return true
+  }
+
+  const fetchActivity = async (projectExternalId: number, employeeExternalId: number, date: string) => {
     operations += 1
     const response = await tripletexRequest(connection, {
       path:
         `/activity/>forTimeSheet?projectId=${projectExternalId}&employeeId=${employeeExternalId}` +
         `&date=${date}&count=100&fields=id,name`,
     })
-    const activityId = pickTimesheetActivity(readValues(response))
-    activityByProject.set(projectExternalId, activityId)
+    return pickTimesheetActivity(readValues(response))
+  }
+
+  const resolveActivity = async (projectExternalId: number, employeeExternalId: number, date: string) => {
+    const key = `${projectExternalId}:${employeeExternalId}`
+    if (activityByParticipant.has(key)) return activityByParticipant.get(key) ?? null
+    let activityId = await fetchActivity(projectExternalId, employeeExternalId, date)
+    // Ingen aktivitet å føre på = som regel at den ansatte ikke er deltaker på prosjektet.
+    if (!activityId && (await addParticipant(projectExternalId, employeeExternalId))) {
+      activityId = await fetchActivity(projectExternalId, employeeExternalId, date)
+    }
+    activityByParticipant.set(key, activityId)
     return activityId
+  }
+
+  /**
+   * Timeføringen vi skulle til å opprette, hvis den allerede står i Tripletex.
+   * Skjer når en tidligere kjøring fikk sendt den, men ikke fikk lagret koblingen
+   * (nettfeil etter POST, databasefeil). Uten dette oppslaget ville et nytt forsøk
+   * POSTet samme timer en gang til.
+   */
+  const findExistingEntry = async (
+    aggregate: HoursAggregate,
+    employeeExternalId: number,
+    projectExternalId: number,
+    activityId: number
+  ) => {
+    operations += 1
+    const dayAfter = osloDateString(new Date(Date.parse(`${aggregate.date}T12:00:00Z`) + 86_400_000))
+    const response = await tripletexRequest(connection, {
+      path:
+        `/timesheet/entry?employeeId=${employeeExternalId}&projectId=${projectExternalId}` +
+        `&activityId=${activityId}&dateFrom=${aggregate.date}&dateTo=${dayAfter}&count=10&fields=id,hours,date`,
+    })
+    return (
+      readValues(response).find((entry) => String(entry.date ?? "").slice(0, 10) === aggregate.date) ?? null
+    )
   }
 
   const createEntry = async (
@@ -193,6 +252,20 @@ export async function processTimesheetSync(job: IntegrationJobRow) {
       failures.push(`Prosjektet har ingen aktivitet det kan føres timer på (${aggregate.date})`)
       return
     }
+
+    const existing = await findExistingEntry(aggregate, employeeExternalId, projectExternalId, activityId)
+    if (existing) {
+      const existingId = Number(existing.id)
+      if (Number.isFinite(existingId) && Math.abs(Number(existing.hours) - aggregate.hours) < 0.01) {
+        await saveLink(aggregate, existingId, activityId)
+        progress += 1
+        return
+      }
+      // Noen har ført timer på samme dag/aktivitet direkte i Tripletex. Ikke skriv over dem.
+      failures.push(`${aggregate.date}: Det finnes allerede en timeføring i Tripletex med andre timer`)
+      return
+    }
+
     const body = {
       employee: { id: employeeExternalId },
       project: { id: projectExternalId },
@@ -202,29 +275,12 @@ export async function processTimesheetSync(job: IntegrationJobRow) {
       comment: aggregate.comment || undefined,
     }
 
-    let response: unknown
-    try {
-      operations += 1
-      response = await tripletexRequest(connection, { method: "POST", path: "/timesheet/entry", body })
-    } catch (error) {
-      if (isTransient(error)) throw error
-      // Vanligste årsak: den ansatte er ikke deltaker på prosjektet. Legg den til
-      // én gang og prøv igjen — resten av feilene rapporteres som de er.
-      const participantKey = `${projectExternalId}:${employeeExternalId}`
-      if (participantsAdded.has(participantKey)) throw error
-      participantsAdded.add(participantKey)
-      operations += 2
-      await tripletexRequest(connection, {
-        method: "POST",
-        path: "/project/participant",
-        body: { project: { id: projectExternalId }, employee: { id: employeeExternalId } },
-      }).catch(() => null)
-      response = await tripletexRequest(connection, { method: "POST", path: "/timesheet/entry", body })
-    }
-
+    operations += 1
+    const response = await tripletexRequest(connection, { method: "POST", path: "/timesheet/entry", body })
     const externalId = Number(readValue(response)?.id)
     if (!Number.isFinite(externalId)) throw new Error("Tripletex svarte uten id på timeføringen")
     await saveLink(aggregate, externalId, activityId)
+    progress += 1
   }
 
   for (const aggregate of plan.create) {
@@ -241,8 +297,10 @@ export async function processTimesheetSync(job: IntegrationJobRow) {
         companyId: job.company_id,
         jobType: "project.upsert",
         payload: { projectId: aggregate.projectId },
-        idempotencyKey: `timesheet:project:${aggregate.projectId}`,
+        // Datert nøkkel: feiler overføringen, prøves den igjen neste døgn i stedet for aldri.
+        idempotencyKey: `timesheet:project:${aggregate.projectId}:${osloDateString(new Date())}`,
       })
+      missingProjects.add(aggregate.projectId)
       continue
     }
     try {
@@ -275,6 +333,7 @@ export async function processTimesheetSync(job: IntegrationJobRow) {
         },
       })
       await saveLink(aggregate, Number(link.external_id), activityId)
+      progress += 1
     } catch (error) {
       if (isTransient(error)) throw error
       if (errorStatus(error) === 404) {
@@ -311,6 +370,7 @@ export async function processTimesheetSync(job: IntegrationJobRow) {
         continue
       }
     }
+    progress += 1
     await admin
       .from("accounting_timesheet_links")
       .delete()
@@ -321,7 +381,7 @@ export async function processTimesheetSync(job: IntegrationJobRow) {
       .eq("entry_date", String(link.entry_date).slice(0, 10))
   }
 
-  if (operations >= MAX_OPERATIONS) {
+  if (operations >= MAX_OPERATIONS && progress > 0) {
     await enqueueIntegrationJob({
       companyId: job.company_id,
       jobType: "timesheet.sync",
@@ -340,6 +400,12 @@ export async function processTimesheetSync(job: IntegrationJobRow) {
     })
     failures.push(
       `${missingEmployees.size} ansatt${missingEmployees.size === 1 ? "" : "e"} mangler kobling til en Tripletex-ansatt (kobles på e-postadresse)`
+    )
+  }
+
+  if (missingProjects.size > 0) {
+    failures.push(
+      `${missingProjects.size} prosjekt${missingProjects.size === 1 ? "" : "er"} er ikke i Tripletex ennå — timene sendes når prosjektet er overført`
     )
   }
 

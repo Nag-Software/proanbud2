@@ -4,6 +4,7 @@ import type { IntegrationJobRow } from "@/lib/integrations/tripletex/types"
 import { mapTripletexPostingsToCosts } from "@/lib/regnskap/costs"
 import { replaceProjectAccountingCosts } from "@/lib/regnskap/cost-store"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { osloDateString } from "@/lib/timeforing/oslo-date"
 
 /**
@@ -33,31 +34,40 @@ export async function processCostsPull(job: IntegrationJobRow) {
   const admin = createAdminClient()
   const onlyProjectId = typeof job.payload.projectId === "string" ? job.payload.projectId : null
 
-  let projectQuery = admin
-    .from("external_entity_links")
-    .select("local_id, external_id")
-    .eq("company_id", job.company_id)
-    .eq("provider", "tripletex")
-    .eq("entity_type", "project")
-  if (onlyProjectId) projectQuery = projectQuery.eq("local_id", onlyProjectId)
-
+  // Paginert: kjørebokkoblingene vokser med hver tur, og forbi 1000 ville reiseregninger
+  // ellers telt dobbelt (som kjøring OG som «andre kostnader»).
   const [projectLinks, tripLinks] = await Promise.all([
-    projectQuery,
-    admin
-      .from("external_entity_links")
-      .select("external_id")
-      .eq("company_id", job.company_id)
-      .eq("provider", "tripletex")
-      .eq("entity_type", "kjorebok_trip"),
+    fetchAllRows<{ local_id: string; external_id: string | number }>((from, to) => {
+      let query = admin
+        .from("external_entity_links")
+        .select("local_id, external_id")
+        .eq("company_id", job.company_id)
+        .eq("provider", "tripletex")
+        .eq("entity_type", "project")
+      if (onlyProjectId) query = query.eq("local_id", onlyProjectId)
+      return query.order("id", { ascending: true }).range(from, to)
+    }).catch((error: Error) => {
+      throw new Error(`Kunne ikke hente prosjektkoblinger: ${error.message}`)
+    }),
+    fetchAllRows<{ external_id: string | number }>((from, to) =>
+      admin
+        .from("external_entity_links")
+        .select("external_id")
+        .eq("company_id", job.company_id)
+        .eq("provider", "tripletex")
+        .eq("entity_type", "kjorebok_trip")
+        .order("id", { ascending: true })
+        .range(from, to)
+    ).catch((error: Error) => {
+      throw new Error(`Kunne ikke hente kjørebokkoblinger: ${error.message}`)
+    }),
   ])
-  if (projectLinks.error) throw new Error(`Kunne ikke hente prosjektkoblinger: ${projectLinks.error.message}`)
-  if (tripLinks.error) throw new Error(`Kunne ikke hente kjørebokkoblinger: ${tripLinks.error.message}`)
 
-  const ownTravelExpenseIds = new Set((tripLinks.data ?? []).map((row) => Number(row.external_id)))
+  const ownTravelExpenseIds = new Set(tripLinks.map((row) => Number(row.external_id)))
   // «dateTo» er ekskluderende i Tripletex; i morgen tar med alt til og med i dag.
   const dateTo = osloDateString(new Date(Date.now() + 86_400_000))
 
-  for (const link of projectLinks.data ?? []) {
+  for (const link of projectLinks) {
     const projectId = String(link.local_id)
     const projectExternalId = Number(link.external_id)
 

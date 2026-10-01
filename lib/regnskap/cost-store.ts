@@ -1,6 +1,7 @@
 import type { AccountingCostRow } from "@/lib/regnskap/costs"
 import type { AccountingProviderId } from "@/lib/regnskap/types"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { fetchAllRows } from "@/lib/supabase/fetch-all"
 
 const CHUNK = 500
 
@@ -25,6 +26,8 @@ export async function replaceProjectAccountingCosts(input: {
   projectIds: string[]
   rows: AccountingCostRow[]
   windowStart?: string
+  /** Hentingen ble ikke fullført: lagre det som ble sett, men ikke slett resten. */
+  skipCleanup?: boolean
 }) {
   const admin = createAdminClient()
   const now = new Date().toISOString()
@@ -55,17 +58,22 @@ export async function replaceProjectAccountingCosts(input: {
   for (const row of input.rows) countByProject.set(row.projectId, (countByProject.get(row.projectId) ?? 0) + 1)
 
   for (const projectId of input.projectIds) {
-    let existingQuery = admin
-      .from("project_accounting_costs")
-      .select("id, external_id")
-      .eq("company_id", input.companyId)
-      .eq("provider", input.provider)
-      .eq("project_id", projectId)
-    if (input.windowStart) existingQuery = existingQuery.gte("cost_date", input.windowStart)
-    const { data: existing, error: existingError } = await existingQuery
-    if (existingError) throw new Error(`Kunne ikke lese lagrede kostnader: ${existingError.message}`)
-
-    const stale = (existing ?? []).filter((row) => !seen.has(String(row.external_id))).map((row) => String(row.id))
+    let stale: string[] = []
+    if (!input.skipCleanup) {
+      const existing = await fetchAllRows<{ id: string; external_id: string }>((from, to) => {
+        let query = admin
+          .from("project_accounting_costs")
+          .select("id, external_id")
+          .eq("company_id", input.companyId)
+          .eq("provider", input.provider)
+          .eq("project_id", projectId)
+        if (input.windowStart) query = query.gte("cost_date", input.windowStart)
+        return query.order("id", { ascending: true }).range(from, to)
+      }).catch((error: Error) => {
+        throw new Error(`Kunne ikke lese lagrede kostnader: ${error.message}`)
+      })
+      stale = existing.filter((row) => !seen.has(String(row.external_id))).map((row) => String(row.id))
+    }
     for (const batch of chunks(stale)) {
       const { error } = await admin.from("project_accounting_costs").delete().in("id", batch)
       if (error) throw new Error(`Kunne ikke rydde kostnader: ${error.message}`)
