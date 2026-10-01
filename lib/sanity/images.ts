@@ -6,6 +6,7 @@ import {
 } from "@/lib/sanity/config"
 import { sanityFetch } from "@/lib/sanity/api"
 import { logServerError } from "@/lib/errors/log"
+import { withSupportedParams } from "@/lib/llm/openai-fetch"
 
 type StockImageCandidate = {
   url: string
@@ -201,7 +202,7 @@ async function generateEnglishImageSearchQueries(input: {
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withSupportedParams({
       model,
       temperature: 0.2,
       response_format: { type: "json_object" },
@@ -231,7 +232,7 @@ Rules:
 - Prefer construction, building, contractors, jobsite context when relevant`,
         },
       ],
-    }),
+    })),
   })
 
   if (!response.ok) {

@@ -22,8 +22,70 @@ import type { BuildingModel, Opening, Point, Roof, Slab, Storey, Wall } from "./
 
 const pointSchema = z.object({ x: z.number(), y: z.number() })
 
+// Modellen bruker gjerne egne ord for tak- og åpningstyper («hip», «saltak»,
+// «garage_door»). Kjente synonymer oversettes; alt annet faller til en trygg
+// standard i stedet for at hele skissen forkastes (ZodError → «prøv igjen»).
+const ROOF_KIND_ALIASES: Record<string, "flat" | "mono" | "gable"> = {
+  flat: "flat",
+  flatt: "flat",
+  none: "flat",
+  mono: "mono",
+  pult: "mono",
+  pulttak: "mono",
+  shed: "mono",
+  pent: "mono",
+  "lean-to": "mono",
+  skillion: "mono",
+  gable: "gable",
+  saltak: "gable",
+  hip: "gable",
+  valm: "gable",
+  valmtak: "gable",
+  pyramid: "gable",
+  gambrel: "gable",
+  mansard: "gable",
+}
+
+const OPENING_KIND_ALIASES: Record<string, "door" | "window" | "opening"> = {
+  door: "door",
+  dør: "door",
+  garage_door: "door",
+  garasjeport: "door",
+  port: "door",
+  window: "window",
+  vindu: "window",
+  skylight: "window",
+  opening: "opening",
+  åpning: "opening",
+  passage: "opening",
+}
+
+function aliasEnum<T extends string>(aliases: Record<string, T>) {
+  return (value: unknown) => {
+    if (typeof value !== "string") return value
+    return aliases[value.trim().toLowerCase().replace(/\s+/g, "_")] ?? value
+  }
+}
+
+/**
+ * Liste der ugyldige elementer droppes enkeltvis. Ett rart vindu skal ikke
+ * velte en ellers brukbar plan.
+ */
+function lenientArray<T extends z.ZodType>(item: T, max: number) {
+  return z
+    .array(z.unknown())
+    .default([])
+    .transform((items) =>
+      items
+        .map((entry) => item.safeParse(entry))
+        .filter((result) => result.success)
+        .map((result) => result.data as z.output<T>)
+        .slice(0, max)
+    )
+}
+
 const aiOpeningSchema = z.object({
-  kind: z.enum(["door", "window", "opening"]),
+  kind: z.preprocess(aliasEnum(OPENING_KIND_ALIASES), z.enum(["door", "window", "opening"])),
   at: pointSchema,
   widthM: z.number().min(0.2).max(20),
   heightM: z.number().min(0.2).max(6),
@@ -34,38 +96,37 @@ const aiOpeningSchema = z.object({
 const aiWallSchema = z.object({
   a: pointSchema,
   b: pointSchema,
-  thicknessM: z.number().min(0.03).max(1.5).optional(),
-  type: z.enum(["interior", "load_bearing", "partition"]).optional(),
+  thicknessM: z.number().min(0.03).max(1.5).optional().catch(undefined),
+  type: z.enum(["interior", "load_bearing", "partition"]).optional().catch(undefined),
 })
 
+// Verdier utenfor rimelige grenser blir `undefined`, så byggingen bruker
+// standardverdien (DEFAULTS) — i stedet for å avvise hele skissen.
 const aiStoreySchema = z.object({
-  name: z.string().max(60).optional(),
-  elevationM: z.number().min(-20).max(100).optional(),
-  heightM: z.number().min(1.5).max(8).optional(),
+  name: z.string().max(60).optional().catch(undefined),
+  elevationM: z.number().min(-20).max(100).optional().catch(undefined),
+  heightM: z.number().min(1.5).max(8).optional().catch(undefined),
   outline: z.array(pointSchema).min(3).max(60),
-  exteriorWallThicknessM: z.number().min(0.05).max(1.5).optional(),
-  interiorWalls: z.array(aiWallSchema).max(120).default([]),
-  openings: z.array(aiOpeningSchema).max(120).default([]),
-  rooms: z
-    .array(z.object({ name: z.string().max(60), at: pointSchema }))
-    .max(60)
-    .default([]),
-  hasFloorSlab: z.boolean().default(true),
+  exteriorWallThicknessM: z.number().min(0.05).max(1.5).optional().catch(undefined),
+  interiorWalls: lenientArray(aiWallSchema, 120),
+  openings: lenientArray(aiOpeningSchema, 120),
+  rooms: lenientArray(z.object({ name: z.string().max(60), at: pointSchema }), 60),
+  hasFloorSlab: z.boolean().default(true).catch(true),
 })
 
 const aiRoofSchema = z.object({
-  kind: z.enum(["flat", "mono", "gable"]),
-  pitchDeg: z.number().min(0).max(70).default(30),
-  directionDeg: z.number().min(-360).max(360).default(0),
-  overhangM: z.number().min(0).max(3).default(0.4),
+  kind: z.preprocess(aliasEnum(ROOF_KIND_ALIASES), z.enum(["flat", "mono", "gable"]).catch("gable")),
+  pitchDeg: z.number().min(0).max(70).default(30).catch(30),
+  directionDeg: z.number().min(-360).max(360).default(0).catch(0),
+  overhangM: z.number().min(0).max(3).default(0.4).catch(0.4),
 })
 
 export const aiSketchSchema = z.object({
-  name: z.string().max(120).optional(),
-  summary: z.string().max(600).optional(),
-  assumptions: z.array(z.string().max(300)).max(20).default([]),
+  name: z.string().max(120).optional().catch(undefined),
+  summary: z.string().max(600).optional().catch(undefined),
+  assumptions: z.array(z.string().max(300)).max(20).default([]).catch([]),
   storeys: z.array(aiStoreySchema).min(1).max(6),
-  roof: aiRoofSchema.nullish(),
+  roof: aiRoofSchema.nullish().catch(null),
 })
 
 export type AiSketch = z.infer<typeof aiSketchSchema>

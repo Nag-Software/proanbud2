@@ -16,6 +16,22 @@ type OpenAiFetchOptions = {
   timeoutMs?: number
 }
 
+/**
+ * gpt-5-familien og o-seriens resonneringsmodeller avviser `temperature`/`top_p`
+ * ≠ standard med 400 — og en 400 prøves aldri igjen, så kallet bare døde (KI-
+ * sammendraget i tilbud falt stille tilbake til standardteksten). Fjernes her så
+ * kallstedene kan sende dem uten å vite hvilken modell OPENAI_MODEL peker på.
+ */
+export function withSupportedParams<T>(body: T): T {
+  if (!body || typeof body !== "object") return body
+  const model = (body as { model?: unknown }).model
+  if (typeof model !== "string" || !/^(gpt-5|o\d)/i.test(model)) return body
+  const rest = { ...(body as Record<string, unknown>) }
+  delete rest.temperature
+  delete rest.top_p
+  return rest as T
+}
+
 export async function openaiFetch(
   path: string,
   body: unknown,
@@ -42,7 +58,7 @@ export async function openaiFetch(
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(withSupportedParams(body)),
         signal: AbortSignal.timeout(timeoutMs),
       })
     } catch (error) {
