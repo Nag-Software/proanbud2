@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { logServerError } from "@/lib/errors/log"
+import { getVerifiedUser } from "@/lib/auth/server-context"
 
 // Lightweight presence ping. The authenticated app shell calls this on a timer
 // so Sjefen → Analyse can show a live active-user count and map. Best-effort:
@@ -12,7 +13,7 @@ export async function POST() {
     const supabase = await createClient()
     const {
       data: { user },
-    } = await supabase.auth.getUser()
+    } = await getVerifiedUser(supabase)
     if (!user) {
       return new NextResponse(null, { status: 204 })
     }

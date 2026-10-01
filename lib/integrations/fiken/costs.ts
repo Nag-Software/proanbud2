@@ -1,14 +1,15 @@
-import { listFikenPurchases } from "@/lib/integrations/fiken/connector"
+import { listFikenPurchases, listFikenSales } from "@/lib/integrations/fiken/connector"
 import { getFreshFikenConnection } from "@/lib/integrations/fiken/session"
 import type { IntegrationJobRow } from "@/lib/integrations/tripletex/types"
-import { mapFikenPurchasesToCosts } from "@/lib/regnskap/costs"
-import { replaceProjectAccountingCosts } from "@/lib/regnskap/cost-store"
+import { mapFikenPurchasesToCosts, mapFikenSalesToRevenues } from "@/lib/regnskap/costs"
+import { replaceProjectAccountingCosts, replaceProjectAccountingRevenues } from "@/lib/regnskap/cost-store"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { osloDateString } from "@/lib/timeforing/oslo-date"
 
 /**
- * Innkjøp ført på prosjekt i Fiken → ProAnbud (`costs.pull`).
+ * Innkjøp og salg ført på prosjekt i Fiken → ProAnbud (`costs.pull`).
+ * Kostnadene havner i materiallisten, inntektene i «Fakturert».
  *
  * Fiken har ikke prosjektfilter på innkjøp, så jobben leser alle innkjøp fra en
  * dato og plukker linjene som er merket med et koblet prosjekt. Kall serielt:
@@ -68,5 +69,26 @@ export async function processFikenCostsPull(job: IntegrationJobRow) {
     windowStart,
     // Stoppet på sidetaket: kjøp på sidene vi ikke leste er ikke borte, bare ikke sett.
     skipCleanup: !complete,
+  })
+
+  // Inntekter: /sales dekker fakturaer, kontantsalg og eksterne fakturaer — også de
+  // som er laget direkte i Fiken. Samme vindu og sidetak som innkjøpene.
+  const sales: Record<string, unknown>[] = []
+  let salesComplete = false
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const { items, pageCount } = await listFikenSales(connection, { page, dateGe: windowStart })
+    sales.push(...items)
+    if (page + 1 >= pageCount || items.length === 0) {
+      salesComplete = true
+      break
+    }
+  }
+  await replaceProjectAccountingRevenues({
+    companyId: job.company_id,
+    provider: "fiken",
+    projectIds: [...new Set(projectByFikenId.values())],
+    rows: mapFikenSalesToRevenues(sales, projectByFikenId),
+    windowStart,
+    skipCleanup: !salesComplete,
   })
 }

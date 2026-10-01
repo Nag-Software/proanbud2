@@ -37,7 +37,7 @@ export function ProjectCard({ project, customers }: ProjectCardProps) {
         />
       </div>
 
-      <Link href={`/prosjekter/${project.id}`} className="flex flex-1 flex-col">
+      <Link href={`/prosjekter/${project.id}`} prefetch={false} className="flex flex-1 flex-col">
         <ProjectPhoto projectId={project.id} address={siteAddress} />
 
         <div className="flex flex-1 flex-col gap-2.5 p-3.5">

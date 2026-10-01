@@ -51,6 +51,7 @@ const FIKEN: ProviderCapabilities = {
       "Overføring av timer til Fiken er ikke bygget ennå. Timene ligger i ProAnbud og teller i lønnsomheten der.",
   },
   "costs.pull": SUPPORTED,
+  "costs.push": SUPPORTED,
 }
 
 const TRIPLETEX: ProviderCapabilities = {
@@ -72,6 +73,7 @@ const TRIPLETEX: ProviderCapabilities = {
   },
   hours: SUPPORTED,
   "costs.pull": SUPPORTED,
+  "costs.push": SUPPORTED,
 }
 
 export const CAPABILITIES: Record<AccountingProviderId, ProviderCapabilities> = {
@@ -166,8 +168,8 @@ export const SCOPE_ITEMS: {
   {
     key: "costs",
     capability: "costs.pull",
-    label: "Kostnader på prosjekt",
+    label: "Kostnader og inntekter på prosjekt",
     description:
-      "Innkjøp og andre kostnader ført på prosjektet i regnskapet hentes inn, så dekningsgraden i ProAnbud blir riktig.",
+      "Kostnader og inntekter ført på prosjektet i regnskapet hentes inn hver natt. Materialkostnader du fører i ProAnbud sendes til regnskapet som kladd, så regnskapsføreren kan bokføre dem uten at noe føres to ganger.",
   },
 ]

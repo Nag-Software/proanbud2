@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react"
 
 import { useAuth } from "@/components/auth-provider"
 import { useRoleContext } from "@/components/role-provider"
-import { createClient } from "@/lib/supabase/client"
 import {
   identifyAnalyticsUser,
   isAnalyticsEnabled,
@@ -22,7 +21,7 @@ import {
  */
 export function AnalyticsIdentify() {
   const { user, loading } = useAuth()
-  const { role, loadingRole } = useRoleContext()
+  const { role, loadingRole, companyId } = useRoleContext()
   const identifiedIdRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -38,28 +37,10 @@ export function AnalyticsIdentify() {
 
     if (loadingRole || identifiedIdRef.current === user.id) return
 
-    let active = true
-    const supabase = createClient()
-    // Ett lite oppslag for company_id (kun egen rad, RLS-beskyttet) — kjøres
-    // maks én gang per innlogget bruker per sidelast.
-    supabase
-      .from("users")
-      .select("company_id")
-      .eq("id", user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!active) return
-        identifyAnalyticsUser(user.id, {
-          company_id: (data?.company_id as string | null) ?? null,
-          role: role ?? null,
-        })
-        identifiedIdRef.current = user.id
-      })
-
-    return () => {
-      active = false
-    }
-  }, [user, loading, role, loadingRole])
+    // Firmaet kommer fra rolle-konteksten — ikke et eget users-oppslag.
+    identifyAnalyticsUser(user.id, { company_id: companyId, role: role ?? null })
+    identifiedIdRef.current = user.id
+  }, [user, loading, role, loadingRole, companyId])
 
   return null
 }

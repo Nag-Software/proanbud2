@@ -10,7 +10,6 @@
  * lagring kan gjøre eldre arbeid uopprettelig.
  */
 
-import { revalidatePath } from "next/cache"
 
 import { createClient } from "@/lib/supabase/server"
 import { logServerError } from "@/lib/errors/log"
@@ -19,6 +18,7 @@ import type { ActionResult } from "@/lib/errors/action-result"
 import { canManageProjects } from "@/lib/roles"
 import { buildingModelSchema, createEmptyModel, parseBuildingModel, sanitizeModel } from "@/lib/cad/schema"
 import type { BuildingModel } from "@/lib/cad/types"
+import { getVerifiedUser } from "@/lib/auth/server-context"
 
 export type ProjectModelRecord = {
   id: string
@@ -54,7 +54,7 @@ async function resolveContext(projectId: string): Promise<ProjectContext> {
   const supabase = await createClient()
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await getVerifiedUser(supabase)
 
   if (!user) {
     return { ok: false, error: "Du må være logget inn." }
@@ -363,7 +363,11 @@ export async function saveProjectModelAction(input: {
       return { ok: false, error: "Kunne ikke lagre modellen. Prøv igjen om litt." }
     }
 
-    revalidatePath(`/prosjekter/${input.projectId}`)
+    // Ingen revalidatePath her: prosjektsiden leser ikke modellen (3D-fanen
+    // henter sine egne data), og editoren autolagrer 1,5 s etter hver endring.
+    // En revalidering ville rendret HELE prosjektsiden (~15 spørringer) på nytt
+    // for hver lagring — målt 2026-09-30: 31 lagringer på 5 minutter mettet
+    // databasen og gjorde alle kall i appen 20–40 s trege.
     return { ok: true, data: { revision: nextRevision } }
   } catch (error) {
     await logServerError({

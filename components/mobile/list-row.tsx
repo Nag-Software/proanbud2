@@ -86,7 +86,7 @@ export function MobileListRow({
   // Uten egen handlingsknapp er raden bare en lenke — enklest og mest robust.
   if (href && !action) {
     return (
-      <Link href={href} className={shell}>
+      <Link href={href} prefetch={false} className={shell}>
         {body}
       </Link>
     )
@@ -95,7 +95,7 @@ export function MobileListRow({
   return (
     <div className={shell}>
       {href && (
-        <Link href={href} className="absolute inset-0 z-0" aria-label={undefined}>
+        <Link href={href} prefetch={false} className="absolute inset-0 z-0" aria-label={undefined}>
           <span className="sr-only">{typeof title === "string" ? title : "Åpne"}</span>
         </Link>
       )}

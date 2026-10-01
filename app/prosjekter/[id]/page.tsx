@@ -17,16 +17,23 @@ import { fetchProjectProfitability, readProjectBudget } from "@/lib/job-costing/
 import type { ProjectProfitability } from "@/lib/job-costing/types"
 
 import FilerTab from "./filer-tab"
-import IDagTab from "./i-dag-tab"
-import KvalitetTab from "./kvalitet-tab"
-import { OkonomiTab } from "./okonomi-tab"
 import OppgaverTab from "./oppgaver-tab"
 import { ProjectHeader } from "./project-header"
-import { ProjectOverviewTab, type OverviewTask } from "./project-overview-tab"
+import type { OverviewTask } from "./project-overview-tab"
 import type { ProjectPerson } from "./project-people-sheet"
+import {
+  kvalitetWaitingCount,
+  StreamedIDagTab,
+  StreamedKvalitetTab,
+  StreamedOkonomiTab,
+  StreamedOverviewTab,
+  StreamedProjectHeader,
+  StreamedTabSkeleton,
+  StreamedTimerTab,
+  type ProjectSecondaryData,
+} from "./project-streamed"
 import { ProjectTabsShell } from "./project-tabs-shell"
 import { ProjectWorkSessionProvider } from "./project-work-session"
-import TimerTab from "./timer-tab"
 
 type MemberUser = {
   id: string
@@ -160,23 +167,26 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   // å legge til sjekklister fra maler er forbeholdt ledere (KvalitetTab).
   const showKvalitet = hasKs || hasAvvik
 
-  // The three gated datasets are independent — fetch them concurrently. Each
-  // keeps its own gate: timeføring (admin/manager only, matching the action's
-  // canManageProjects gate), Avvik -> hasAvvik, KS -> hasKs. Mini companies
-  // never hit the Proff-only data paths.
-  const [participantHours, projectDeviations, projectChecklists, profitability] = await Promise.all([
+  // Tredje bølge: lønnsomhet, timer per deltaker, avvik og sjekklister. Den
+  // startes her, men siden venter IKKE på den — header, faner og prosjektdata
+  // vises med en gang, og delene som trenger dette strømmes inn hver i sin
+  // Suspense-grense (se project-streamed.tsx). De fire er uavhengige og
+  // beholder hver sin port: timeføring (admin/manager, samme som actionens
+  // canManageProjects), Avvik → hasAvvik, KS → hasKs, lønnsomhet ikke for
+  // håndverkere. Mini-bedrifter treffer aldri Proff-spørringene.
+  const secondary: Promise<ProjectSecondaryData> = Promise.all([
     hasTimeforing && canManageProjects(canonicalRole)
       ? fetchParticipantHours(supabase, resolvedParams.id)
-      : Promise.resolve([] as Awaited<ReturnType<typeof fetchParticipantHours>>),
+      : Promise.resolve([] as ProjectSecondaryData["participantHours"]),
     hasAvvik
       ? getDeviationsAction({ projectId: resolvedParams.id })
-      : Promise.resolve([] as Awaited<ReturnType<typeof getDeviationsAction>>),
+      : Promise.resolve([] as ProjectSecondaryData["projectDeviations"]),
     hasKs
       ? getProjectChecklistsAction(resolvedParams.id)
-      : Promise.resolve([] as Awaited<ReturnType<typeof getProjectChecklistsAction>>),
+      : Promise.resolve([] as ProjectSecondaryData["projectChecklists"]),
     // Lønnsomheten hentes server-side slik at både pengeflyten på Oversikt og
-    // sammendraget på Økonomi viser de samme tallene med én gang. Håndverkere
-    // ser ingen av delene, og skal da heller ikke koste en spørring.
+    // sammendraget på Økonomi viser de samme tallene. Håndverkere ser ingen av
+    // delene, og skal da heller ikke koste en spørring.
     !isWorker && companyId
       ? fetchProjectProfitability(supabase, {
           companyId,
@@ -184,7 +194,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           ...readProjectBudget(project),
         })
       : Promise.resolve(null as ProjectProfitability | null),
-  ])
+  ]).then(([participantHours, projectDeviations, projectChecklists, profitability]) => ({
+    participantHours,
+    projectDeviations,
+    projectChecklists,
+    profitability,
+  }))
+  // Hver strømmet del venter selv på løftet og får feilen der. Denne linjen
+  // hindrer bare en «unhandled rejection» om ingen del på siden bruker det.
+  secondary.catch(() => {})
 
   const projectPeople: ProjectPerson[] = normalizedMembers.map((member) => {
     const memberUser = member.users
@@ -222,7 +240,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const totalOfferValue = offers.reduce((sum, offer) => sum + Number(offer.amount_nok || 0), 0)
   const acceptedOffers = offers.filter((offer) => offer.status === "accepted").length
   const sentOffers = offers.filter((offer) => offer.status === "sent").length
-  const totalHours = participantHours.reduce((sum, entry) => sum + entry.totalHours, 0)
 
   const acceptedChangeOrders = changeOrders.filter((order) => order.status === "accepted")
   const changeOrderSummary = {
@@ -238,18 +255,24 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       })),
   }
 
-  const openDeviationCount = projectDeviations.filter((deviation) => deviation.status === "open").length
-  const unfinishedChecklistCount = projectChecklists.filter((checklist) => checklist.status !== "completed").length
-  const kvalitetWaiting = (hasAvvik ? openDeviationCount : 0) + (hasKs ? unfinishedChecklistCount : 0)
+  const kvalitetWaiting = kvalitetWaitingCount(secondary, { hasKs, hasAvvik })
 
   const customer = getProjectCustomer(project)
   const siteAddress = getProjectSiteAddress(project)
 
-  const personHours = participantHours.map((entry) => ({
-    userId: entry.userId,
-    totalHours: entry.totalHours,
-    entryCount: entry.entryCount,
-  }))
+  const headerProps = {
+    project,
+    people: projectPeople,
+    flags: {
+      isWorker,
+      isProjectAdmin,
+      hasTimeforing,
+      hasKjorebok,
+      hasTasks,
+      hasKs,
+      hasAvvik,
+    },
+  }
 
   const page = (
     <Suspense fallback={<div className="h-24 animate-pulse rounded-md bg-muted" />}>
@@ -278,39 +301,39 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           { value: "filer", label: "Filer" },
         ]}
         header={
-          <ProjectHeader
-            project={project}
-            people={projectPeople}
-            hours={canManageProjects(canonicalRole) ? personHours : []}
-            flags={{
-              isWorker,
-              isProjectAdmin,
-              hasTimeforing,
-              hasKjorebok,
-              hasTasks,
-              hasKs,
-              hasAvvik,
-            }}
-          />
+          // Headeren vises med en gang; timene per deltaker (i personarket)
+          // kommer til når tredje bølge lander.
+          <Suspense fallback={<ProjectHeader {...headerProps} hours={[]} />}>
+            <StreamedProjectHeader
+              {...headerProps}
+              data={secondary}
+              showHours={canManageProjects(canonicalRole)}
+            />
+          </Suspense>
         }
       >
         {isWorker ? (
           <ProjectTabPanel value="idag" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-            <IDagTab
-              projectId={project.id}
-              currentUserId={user.id}
-              tasks={overviewTasks}
-              checklists={hasKs ? projectChecklists : []}
-              openDeviationCount={openDeviationCount}
-              siteAddress={siteAddress}
-              customer={{ name: customer.name, phone: customer.phone }}
-              flags={{ hasTasks, hasKs, hasAvvik, hasKjorebok }}
-            />
+            <Suspense fallback={<StreamedTabSkeleton />}>
+              <StreamedIDagTab
+                data={secondary}
+                hasKs={hasKs}
+                projectId={project.id}
+                currentUserId={user.id}
+                tasks={overviewTasks}
+                siteAddress={siteAddress}
+                customer={{ name: customer.name, phone: customer.phone }}
+                flags={{ hasTasks, hasKs, hasAvvik, hasKjorebok }}
+              />
+            </Suspense>
           </ProjectTabPanel>
         ) : (
           <>
             <ProjectTabPanel value="oversikt" className="m-0 focus-visible:outline-none focus-visible:ring-0">
-              <ProjectOverviewTab
+              <Suspense fallback={<StreamedTabSkeleton />}>
+              <StreamedOverviewTab
+                data={secondary}
+                hasAvvik={hasAvvik}
                 project={{
                   status: project.status,
                   description: project.description,
@@ -320,24 +343,19 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 }}
                 customer={customer}
                 tasks={overviewTasks}
-                deviations={hasAvvik ? projectDeviations : []}
-                checklists={projectChecklists}
                 participants={projectPeople}
-                participantHours={participantHours}
                 offersSummary={{
                   total: totalOfferValue,
                   accepted: acceptedOffers,
                   sent: sentOffers,
                 }}
                 changeOrders={changeOrderSummary}
-                profitability={profitability}
                 metrics={{
                   progressPercent,
                   doneTasks,
                   totalTasks: tasks.length,
                   openTasks,
                   overdueTasks,
-                  totalHours,
                 }}
                 flags={{
                   isProjectAdmin,
@@ -346,10 +364,13 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   hasTasks,
                 }}
               />
+              </Suspense>
             </ProjectTabPanel>
 
             <ProjectTabPanel value="okonomi">
-              <OkonomiTab
+              <Suspense fallback={<StreamedTabSkeleton />}>
+              <StreamedOkonomiTab
+                data={secondary}
                 projectId={project.id}
                 projectName={project.name}
                 customerName={customer.name}
@@ -357,9 +378,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 changeOrders={changeOrders}
                 customerEmail={projectCustomer?.email ?? null}
                 canManage={isProjectAdmin}
-                profitability={profitability}
                 counts={{ offers: offers.length, changeOrders: changeOrders.length }}
               />
+              </Suspense>
             </ProjectTabPanel>
           </>
         )}
@@ -385,26 +406,29 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         </ProjectTabPanel>
 
         <ProjectTabPanel value="timer">
-          <TimerTab
-            projectId={project.id}
-            currentUserId={user.id}
-            canViewAllEntries={isProjectAdmin}
-            hasTimeforing={hasTimeforing}
-            hasKjorebok={hasKjorebok}
-            participantHours={participantHours}
-          />
+          <Suspense fallback={<StreamedTabSkeleton />}>
+            <StreamedTimerTab
+              data={secondary}
+              projectId={project.id}
+              currentUserId={user.id}
+              canViewAllEntries={isProjectAdmin}
+              hasTimeforing={hasTimeforing}
+              hasKjorebok={hasKjorebok}
+            />
+          </Suspense>
         </ProjectTabPanel>
 
         {showKvalitet && (
           <ProjectTabPanel value="kvalitet">
-            <KvalitetTab
+            <Suspense fallback={<StreamedTabSkeleton />}>
+            <StreamedKvalitetTab
+              data={secondary}
               projectId={project.id}
-              checklists={projectChecklists}
-              deviations={projectDeviations}
               showChecklists={hasKs}
               showDeviations={hasAvvik}
               canManageChecklists={!isWorker}
             />
+            </Suspense>
           </ProjectTabPanel>
         )}
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { getVerifiedUser } from "@/lib/auth/server-context"
 import { createClient as createServerSupabase } from "@/lib/supabase/server"
 import { logServerError } from "@/lib/errors/log"
 import { parseProjectIdFromDocumentPath } from "@/lib/integrations/tripletex/scopes"
@@ -113,11 +114,14 @@ async function canManageProjectDocuments(
   return !error && data === true
 }
 
+// Filer-fanen og dokumentsiden kaller ruten ofte (liste, søk, mapper). JWT-et
+// verifiseres lokalt i stedet for en rundtur til auth-serveren per kall; RLS
+// og can_manage_project_documents avgjør fortsatt hva som er lov.
 async function getAuthenticatedUser() {
   const supabase = await createServerSupabase()
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await getVerifiedUser(supabase)
   return { supabase, user }
 }
 

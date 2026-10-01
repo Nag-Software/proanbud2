@@ -34,6 +34,7 @@ import { useNotifications, type NotificationItem } from "@/hooks/use-notificatio
 import { NotificationsPopover } from "@/components/notifications-popover"
 import { useOpenDeviationCount } from "@/hooks/use-open-deviation-count"
 import { useActiveWorkSession } from "@/hooks/use-active-work-session"
+import { SIDEBAR_PROJECTS_CHANGED_EVENT } from "@/lib/client/sidebar-projects"
 
 type SidebarProject = {
   name: string
@@ -253,6 +254,42 @@ const data: {
 }
 
 
+// Siste kjente «Pågående prosjekter» per bruker. Kun visning — RLS avgjør
+// uansett hva spørringen får returnere.
+const SIDEBAR_PROJECTS_CACHE_PREFIX = "pa_sidebar_projects_v1:"
+
+type SidebarProjectRow = { id: string; name: string }
+
+function toSidebarProject(row: SidebarProjectRow): SidebarProject {
+  return { name: row.name, url: `/prosjekter/${row.id}`, icon: <FrameIcon /> }
+}
+
+function readSidebarProjects(userId: string): SidebarProjectRow[] | null {
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_PROJECTS_CACHE_PREFIX + userId)
+    if (!raw) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return null
+    return parsed.filter(
+      (row): row is SidebarProjectRow =>
+        typeof row === "object" && row !== null && typeof row.id === "string" && typeof row.name === "string"
+    )
+  } catch {
+    return null
+  }
+}
+
+function writeSidebarProjects(userId: string, rows: SidebarProjectRow[]) {
+  try {
+    window.localStorage.setItem(
+      SIDEBAR_PROJECTS_CACHE_PREFIX + userId,
+      JSON.stringify(rows.map(({ id, name }) => ({ id, name })))
+    )
+  } catch {
+    // Full/blokkert storage — cachen er kun best-effort.
+  }
+}
+
 function AppSidebarHeader({
   unreadCount,
   notifications,
@@ -382,32 +419,42 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Suppress the messages badge entirely when the plan lacks Meldinger.
   const visibleUnreadCount = featureEnabled("meldinger") ? unreadCount : 0;
 
+  // Prosjektlista males fra forrige besøk med en gang, og hentes én gang per
+  // økt. Nøklet på bruker-id (ikke user-objektet), så den ikke hentes på nytt
+  // når sesjonen fornyes.
+  const userId: string | null = user?.id ?? null
   React.useEffect(() => {
-    async function fetchProjects() {
-      if (!user || role === null) return;
-      
-      const supabase = createClient();
-      
-      const { data: projectsData, error } = await supabase
+    if (!userId) return
+    const cached = readSidebarProjects(userId)
+    if (cached) setActiveProjects(cached.map(toSidebarProject))
+  }, [userId])
+
+  React.useEffect(() => {
+    if (!userId || role === null) return
+    let cancelled = false
+
+    async function fetchProjects(id: string) {
+      const { data: projectsData, error } = await createClient()
         .from("projects")
         .select("id, name")
         .in("status", ["planning", "active"])
         .order("updated_at", { ascending: false })
         .limit(5);
 
-      if (projectsData && !error) {
-        setActiveProjects(
-          projectsData.map(p => ({
-            name: p.name,
-            url: `/prosjekter/${p.id}`,
-            icon: <FrameIcon />,
-          }))
-        );
-      }
+      if (cancelled || !projectsData || error) return
+      setActiveProjects(projectsData.map(toSidebarProject));
+      writeSidebarProjects(id, projectsData)
     }
 
-    fetchProjects();
-  }, [user, role]);
+    void fetchProjects(userId);
+    // Nytt, arkivert eller omdøpt prosjekt: hent lista på nytt.
+    const onChanged = () => void fetchProjects(userId)
+    window.addEventListener(SIDEBAR_PROJECTS_CHANGED_EVENT, onChanged)
+    return () => {
+      cancelled = true
+      window.removeEventListener(SIDEBAR_PROJECTS_CHANGED_EVENT, onChanged)
+    }
+  }, [userId, role]);
 
   const filteredNavMain = data.navMain
     .map((item) => {

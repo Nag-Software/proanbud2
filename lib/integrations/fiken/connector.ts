@@ -560,6 +560,63 @@ export async function listFikenPurchases(
 }
 
 /**
+ * GET /sales — salg (fakturaer, kontantsalg, eksterne fakturaer) fra en dato.
+ * Inntektssiden av prosjektøkonomien. Beløp i øre.
+ */
+export async function listFikenSales(
+  connection: FikenConnectionRow,
+  input: { page: number; dateGe: string; pageSize?: number }
+): Promise<{ items: Record<string, unknown>[]; pageCount: number }> {
+  const pageSize = Math.min(input.pageSize ?? 100, 100)
+  const params = new URLSearchParams({
+    page: String(input.page),
+    pageSize: String(pageSize),
+    dateGe: input.dateGe,
+  })
+  const response = await fikenRequest(connection, {
+    path: companyPath(connection, `/sales?${params.toString()}`),
+  })
+  const items = Array.isArray(response.json) ? (response.json as Record<string, unknown>[]) : []
+  const pageCount = Number(response.headers.get("Fiken-Api-Page-Count") || "1")
+  return { items, pageCount: Number.isFinite(pageCount) ? pageCount : 1 }
+}
+
+// --- Kjøpskladd (materialkost fra ProAnbud) ----------------------------------
+/** POST /purchases/drafts. 201 + Location; id-en ligger i `locationId`. */
+export async function createFikenPurchaseDraft(connection: FikenConnectionRow, draft: Record<string, unknown>) {
+  return fikenRequest(connection, {
+    method: "POST",
+    path: companyPath(connection, "/purchases/drafts"),
+    body: draft,
+  })
+}
+
+/**
+ * DELETE /purchases/drafts/{id}. Egen ressurs med egen id-serie (som tilbud og
+ * faktura) — aldri bland med /invoices/drafts eller /offers/drafts.
+ */
+export async function deleteFikenPurchaseDraft(connection: FikenConnectionRow, draftId: number) {
+  return fikenRequest(connection, {
+    method: "DELETE",
+    path: companyPath(connection, `/purchases/drafts/${draftId}`),
+  })
+}
+
+/** GET /purchases/drafts — brukes til å finne igjen vår egen kladd før vi oppretter en ny. */
+export async function listFikenPurchaseDrafts(
+  connection: FikenConnectionRow,
+  input: { page: number; pageSize?: number }
+): Promise<{ items: Record<string, unknown>[]; pageCount: number }> {
+  const pageSize = Math.min(input.pageSize ?? 100, 100)
+  const response = await fikenRequest(connection, {
+    path: companyPath(connection, `/purchases/drafts?page=${input.page}&pageSize=${pageSize}`),
+  })
+  const items = Array.isArray(response.json) ? (response.json as Record<string, unknown>[]) : []
+  const pageCount = Number(response.headers.get("Fiken-Api-Page-Count") || "1")
+  return { items, pageCount: Number.isFinite(pageCount) ? pageCount : 1 }
+}
+
+/**
  * GET /timeUsers — Fikens motstykke til Tripletex' ansatte.
  *
  * MERK: dette er en LESE-only ressurs. Fiken har intet endepunkt for å opprette

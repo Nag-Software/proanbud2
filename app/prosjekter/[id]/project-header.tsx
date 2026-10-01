@@ -186,47 +186,69 @@ function RegisterMenu({ projectId, flags }: { projectId: string; flags: ProjectH
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64">
+          {showMoney && (
+            <>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Penger
+                </DropdownMenuLabel>
+                <MenuItem
+                  icon={FilePlus2}
+                  onSelect={() => inTab("okonomi", "ny-ekstrajobb", "tilleggsarbeid")}
+                >
+                  Ny ekstrajobb
+                </MenuItem>
+                <MenuItem icon={FileText} onSelect={() => router.push(`/nytt-tilbud?projectId=${projectId}`)}>
+                  Nytt tilbud
+                </MenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+            </>
+          )}
+
           {showWork && (
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Tid og kjøring
-              </DropdownMenuLabel>
-              {work &&
-                (work.session ? (
-                  <MenuItem icon={Square} tone="success" onSelect={() => void work.stop()}>
-                    Stemple ut
-                    <span className="ml-auto text-xs tabular-nums text-muted-foreground">{work.elapsedLabel}</span>
-                  </MenuItem>
-                ) : (
-                  <>
-                    <MenuItem icon={MapPin} tone="success" onSelect={work.checkInWithGps}>
-                      Stemple inn på plassen
+            <>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Tid og kjøring
+                </DropdownMenuLabel>
+                {work &&
+                  (work.session ? (
+                    <MenuItem icon={Square} tone="success" onSelect={() => void work.stop()}>
+                      Stemple ut
+                      <span className="ml-auto text-xs tabular-nums text-muted-foreground">{work.elapsedLabel}</span>
                     </MenuItem>
-                    <MenuItem icon={Play} onSelect={() => void work.startWithoutGps()}>
-                      Start uten GPS
+                  ) : (
+                    <>
+                      <MenuItem icon={MapPin} tone="success" onSelect={work.checkInWithGps}>
+                        Stemple inn på plassen
+                      </MenuItem>
+                      <MenuItem icon={Play} onSelect={() => void work.startWithoutGps()}>
+                        Start uten GPS
+                      </MenuItem>
+                    </>
+                  ))}
+                {work && (
+                  <MenuItem icon={Clock} onSelect={work.openManual}>
+                    Før timer manuelt
+                  </MenuItem>
+                )}
+                {flags.hasKjorebok && (
+                  <>
+                    <MenuItem icon={Navigation} onSelect={() => setTrackerOpen(true)}>
+                      Start kjøring
+                    </MenuItem>
+                    <MenuItem icon={Car} onSelect={() => router.push(newTripPath(projectId))}>
+                      Ny kjøretur
                     </MenuItem>
                   </>
-                ))}
-              {work && (
-                <MenuItem icon={Clock} onSelect={work.openManual}>
-                  Før timer manuelt
-                </MenuItem>
-              )}
-              {flags.hasKjorebok && (
-                <>
-                  <MenuItem icon={Navigation} onSelect={() => setTrackerOpen(true)}>
-                    Start kjøring
-                  </MenuItem>
-                  <MenuItem icon={Car} onSelect={() => router.push(newTripPath(projectId))}>
-                    Ny kjøretur
-                  </MenuItem>
-                </>
-              )}
-            </DropdownMenuGroup>
+                )}
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+            </>
           )}
 
           {/* «Last opp» finnes for alle, så denne gruppa er aldri tom. */}
-          {showWork && <DropdownMenuSeparator />}
           <DropdownMenuGroup>
             <DropdownMenuLabel className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
               På plassen
@@ -250,26 +272,6 @@ function RegisterMenu({ projectId, flags }: { projectId: string; flags: ProjectH
               Last opp bilde eller fil
             </MenuItem>
           </DropdownMenuGroup>
-
-          {showMoney && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuLabel className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Penger
-                </DropdownMenuLabel>
-                <MenuItem
-                  icon={FilePlus2}
-                  onSelect={() => inTab("okonomi", "ny-ekstrajobb", "tilleggsarbeid")}
-                >
-                  Ny ekstrajobb
-                </MenuItem>
-                <MenuItem icon={FileText} onSelect={() => router.push(`/nytt-tilbud?projectId=${projectId}`)}>
-                  Nytt tilbud
-                </MenuItem>
-              </DropdownMenuGroup>
-            </>
-          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

@@ -139,6 +139,7 @@ function MoreLink({
   return (
     <Link
       href={entry.href}
+      prefetch={false}
       onClick={onNavigate}
       className={cn(
         // Samme hevede flate som sekundærknappen — se «Knapper — systemet».

@@ -23,6 +23,8 @@ export const FIKEN_JOB_TYPES: Record<AccountingJobType, string | null> = {
   "travel.delete": null,
   "hours.push": null,
   "costs.pull": "costs.pull",
+  "cost.push": "material_cost.push",
+  "cost.delete": "material_cost.delete",
   "reconcile.full": "reconcile.full",
 }
 
@@ -43,4 +45,5 @@ export const FIKEN_ENTITY_TYPES: Record<AccountingEntityType, string[]> = {
   employee: ["employee", "time_user"],
   calendar_event: [],
   travel_expense: [],
+  material_cost: ["material_cost_draft"],
 }

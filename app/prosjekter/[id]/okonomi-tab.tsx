@@ -15,13 +15,16 @@ import { LonnsomhetTab } from "./lonnsomhet-tab"
 import { useProjectFocus, useProjectShell, useProjectTabState } from "./project-tabs-shell"
 import TilbudTab from "./tilbud-tab"
 
-/** Seksjonene, i samme rekkefølge som pengene går. Verdiene er `?del=`. */
+/**
+ * Seksjonene. Kostnader og budsjett står rett under tilbudet: budsjettet kommer
+ * fra tilbudet, og det er der man ser om jobben går som regnet. Verdiene er `?del=`.
+ */
 const SECTIONS = [
   { value: "sammendrag", label: "Sammendrag" },
   { value: "tilbud", label: "Tilbud" },
+  { value: "kostnader", label: "Kostnader og budsjett" },
   { value: "tilleggsarbeid", label: "Tilleggsarbeid" },
   { value: "fakturering", label: "Fakturering" },
-  { value: "kostnader", label: "Kostnader og budsjett" },
 ] as const
 
 const sectionId = (value: string) => `okonomi-${value}`
@@ -159,7 +162,15 @@ export function OkonomiTab({
                   offers={offers}
                 />
               </section>
-
+            </>
+          }
+          detailsHeading={
+            <h2 id={sectionId("kostnader")} className="scroll-mt-4 pt-2 text-base font-semibold">
+              Kostnader og budsjett
+            </h2>
+          }
+          afterDetails={
+            <>
               <section id={sectionId("tilleggsarbeid")} className="scroll-mt-4">
                 <EtterfaktureringTab
                   projectId={projectId}
@@ -174,11 +185,6 @@ export function OkonomiTab({
                 <FaktureringPanel projectId={projectId} canManage={canManage} refreshSignal={changeSignal} />
               </section>
             </>
-          }
-          detailsHeading={
-            <h2 id={sectionId("kostnader")} className="scroll-mt-4 pt-2 text-base font-semibold">
-              Kostnader og budsjett
-            </h2>
           }
         />
       </div>

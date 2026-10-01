@@ -18,6 +18,10 @@ import {
 } from "@/components/ui/sidebar"
 import { ChevronRightIcon } from "lucide-react"
 
+// Menylenkene forhåndshentes ikke automatisk. Next henter ellers ALLE
+// synlige lenker ved hver sidelasting — målt 2026-09-30: 17 middleware-kjøringer
+// i samme sekund, hver med egen serverrendring. IntentPrefetch (app-skallet)
+// henter siden når lenken pekes på eller trykkes, så klikket er like raskt.
 export function NavMain({
   items,
 }: {
@@ -52,7 +56,7 @@ export function NavMain({
             return (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton asChild tooltip={item.title} className="text-[14px] font-medium">
-                  <Link href={item.url} data-tour={item.tourId}>
+                  <Link href={item.url} prefetch={false} data-tour={item.tourId}>
                     {item.icon}
                     <span>{item.title}</span>
                   </Link>
@@ -86,7 +90,7 @@ export function NavMain({
                     {visibleSubItems?.map((subItem) => (
                       <SidebarMenuSubItem key={subItem.title}>
                         <SidebarMenuSubButton asChild className="text-[15px]">
-                          <Link href={subItem.url} data-tour={subItem.tourId}>
+                          <Link href={subItem.url} prefetch={false} data-tour={subItem.tourId}>
                             <span>{subItem.title}</span>
                             {subItem.badge != null && subItem.badge > 0 && (
                               <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground tabular-nums">

@@ -11,6 +11,7 @@ import "server-only"
  */
 
 import type { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
 import {
   averageCostRate,
@@ -20,13 +21,13 @@ import {
   resolveApprovedHours,
 } from "@/lib/job-costing/calc"
 import type {
-  AccountingCost,
   LaborByUser,
   MaterialCost,
+  MaterialCostSync,
   PlannedSource,
   ProjectProfitability,
 } from "@/lib/job-costing/types"
-import { resolveMaterialCostSource } from "@/lib/regnskap/costs"
+import { summarizeMaterialCosts } from "@/lib/regnskap/costs"
 import { fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import type { OfferLineItem } from "@/lib/tilbud/types"
 
@@ -89,8 +90,9 @@ export async function fetchProjectProfitability(
     materialsResult,
     tripsResult,
     ratesResult,
-    accountingCostsResult,
     accountingSyncsResult,
+    revenuesResult,
+    invoicesResult,
   ] = await Promise.all([
     supabase
       .from("offers")
@@ -105,7 +107,7 @@ export async function fetchProjectProfitability(
     // jobbene der det ble tjent mest.
     supabase
       .from("change_orders")
-      .select("amount_nok")
+      .select("amount_nok, estimated_hours")
       .eq("company_id", input.companyId)
       .eq("project_id", input.projectId)
       .eq("status", "accepted"),
@@ -113,12 +115,16 @@ export async function fetchProjectProfitability(
     // og uferdige økter, slik at lønnskosten her er den samme timebunken som
     // Timeføring-fanen viser.
     fetchParticipantHours(supabase, input.projectId),
+    // Alle materialkostnader — manuelle og bokførte i regnskapet (db/107) — i én tabell.
     supabase
       .from("project_material_costs")
-      .select("id, supplier_name, description, amount_nok, invoice_ref, cost_date, created_at")
+      .select(
+        "id, source, supplier_name, description, amount_nok, invoice_ref, cost_date, created_at, account_number, account_name, voucher_ref, replaced_by"
+      )
       .eq("company_id", input.companyId)
       .eq("project_id", input.projectId)
-      .order("cost_date", { ascending: false, nullsFirst: false }),
+      .order("cost_date", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false }),
     // Kjøregodtgjørelse er ekte utbetalte penger på prosjektet, og registreres
     // allerede uten at noen må taste noe. `amount_nok` er statens sats — altså
     // det bedriften betaler ut. `fuel_cost_nok` er bare et anslag på hva
@@ -135,16 +141,6 @@ export async function fetchProjectProfitability(
       .select("cost_rate_nok")
       .eq("company_id", input.companyId)
       .not("cost_rate_nok", "is", null),
-    // Kostnadene ført på prosjektet i regnskapet (db/105). Hentes av synk-jobben;
-    // her bare leses de.
-    supabase
-      .from("project_accounting_costs")
-      .select(
-        "id, provider, cost_date, account_number, account_name, supplier_name, description, voucher_ref, amount_nok"
-      )
-      .eq("company_id", input.companyId)
-      .eq("project_id", input.projectId)
-      .order("cost_date", { ascending: false, nullsFirst: false }),
     supabase
       .from("project_accounting_cost_syncs")
       .select("provider, pulled_at")
@@ -152,6 +148,18 @@ export async function fetchProjectProfitability(
       .eq("project_id", input.projectId)
       .order("pulled_at", { ascending: false })
       .limit(1),
+    // Inntekt bokført på prosjektet i regnskapet (db/108) → «Fakturert».
+    supabase
+      .from("project_accounting_revenues")
+      .select("amount_nok")
+      .eq("company_id", input.companyId)
+      .eq("project_id", input.projectId),
+    supabase
+      .from("project_invoices")
+      .select("amount_nok, status, created_at")
+      .eq("company_id", input.companyId)
+      .eq("project_id", input.projectId)
+      .neq("status", "cancelled"),
   ])
 
   for (const [label, result] of [
@@ -160,8 +168,9 @@ export async function fetchProjectProfitability(
     ["materialkostnader", materialsResult],
     ["kjørebok", tripsResult],
     ["timepriser", ratesResult],
-    ["kostnader fra regnskapet", accountingCostsResult],
     ["hentestatus fra regnskapet", accountingSyncsResult],
+    ["inntekter fra regnskapet", revenuesResult],
+    ["fakturaer", invoicesResult],
   ] as const) {
     // 42P01/PGRST205: db/105 er ikke kjørt ennå (PostgREST svarer PGRST205 for en
     // tabell den ikke kjenner). Da finnes det ingen regnskapskostnader, og fanen skal
@@ -203,35 +212,85 @@ export async function fetchProjectProfitability(
 
   const revenueNok = round(offersNok + changeOrdersNok + hourlyNok)
 
-  const materialCosts = (materialsResult.data ?? []) as MaterialCost[]
-  const manualMaterialNok = round(
-    materialCosts.reduce((sum, row) => sum + Number(row.amount_nok || 0), 0)
-  )
-
-  // Regnskapet vinner: har det kostnader på prosjektet, er de fasiten og de
-  // manuelle postene holdes utenfor. Uten kostnader der gjelder de manuelle.
-  const accountingCosts = ((accountingCostsResult.data ?? []) as AccountingCost[]).map((row) => ({
+  const materialCosts = ((materialsResult.data ?? []) as MaterialCost[]).map((row) => ({
     ...row,
+    source: row.source ?? "manual",
     amount_nok: Number(row.amount_nok),
+    replaced_by: row.replaced_by ?? null,
   }))
+  // Bokført i regnskapet teller alltid; manuelle poster teller til samme kjøp er
+  // funnet igjen som bokført (replaced_by), så ingenting telles to ganger.
+  const { materialCostNok, ...materialSummary } = summarizeMaterialCosts(materialCosts)
   const lastSync = (accountingSyncsResult.data ?? [])[0] as
-    | { provider: AccountingCost["provider"]; pulled_at: string }
+    | { provider: MaterialCostSync["provider"]; pulled_at: string }
     | undefined
-  const materialSource = resolveMaterialCostSource({
-    manualNok: manualMaterialNok,
-    accountingRows: accountingCosts,
-  })
-  const materialCostNok = materialSource.materialCostNok
-  const accounting = lastSync || accountingCosts.length > 0
-    ? {
-        provider: lastSync?.provider ?? accountingCosts[0].provider,
-        pulledAt: lastSync?.pulled_at ?? new Date().toISOString(),
-        costs: accountingCosts,
-        totalNok: materialSource.source === "regnskap" ? materialCostNok : 0,
-        overridesManual: materialSource.source === "regnskap",
-        manualExcludedNok: materialSource.manualExcludedNok,
-      }
+  const costSync: MaterialCostSync | null = lastSync
+    ? { provider: lastSync.provider, pulledAt: lastSync.pulled_at }
     : null
+
+  // Kladdstatus på manuelle poster: koblingen sier «ligger som kladd», køen sier
+  // «på vei» eller «feilet». Lest med service role — begge er synk-bokføring uten
+  // brukerpolicy; selskapet er allerede verifisert av kalleren.
+  const pendingManualIds = materialCosts
+    .filter((row) => row.source === "manual" && !row.replaced_by)
+    .map((row) => row.id)
+  if (pendingManualIds.length > 0) {
+    const admin = createAdminClient()
+    const [linksResult, jobsResult] = await Promise.all([
+      admin
+        .from("external_entity_links")
+        .select("local_id, sync_status")
+        .eq("company_id", input.companyId)
+        .in("entity_type", ["material_cost_draft", "material_cost_voucher"])
+        .in("local_id", pendingManualIds),
+      admin
+        .from("integration_jobs")
+        .select("payload, status, last_error_message, created_at")
+        .eq("company_id", input.companyId)
+        .eq("job_type", "material_cost.push")
+        .in("payload->>materialCostId", pendingManualIds)
+        .order("created_at", { ascending: false }),
+    ])
+    const sent = new Set(
+      (linksResult.data ?? []).filter((row) => row.sync_status === "sent").map((row) => String(row.local_id))
+    )
+    const latestJob = new Map<string, { status: string; last_error_message: string | null }>()
+    for (const job of jobsResult.data ?? []) {
+      const id = String((job.payload as Record<string, unknown> | null)?.materialCostId ?? "")
+      if (id && !latestJob.has(id)) latestJob.set(id, job)
+    }
+    for (const row of materialCosts) {
+      if (row.source !== "manual" || row.replaced_by) continue
+      const job = latestJob.get(row.id)
+      if (sent.has(row.id)) row.accounting_status = "draft"
+      else if (job && ["pending", "processing", "retry"].includes(job.status)) row.accounting_status = "pending"
+      else if (job && ["failed", "dead_letter"].includes(job.status)) {
+        row.accounting_status = "failed"
+        row.accounting_error = job.last_error_message
+      }
+    }
+  }
+
+  const proanbudInvoices = (invoicesResult.data ?? []) as Array<{
+    amount_nok: number | string
+    status: string
+    created_at: string
+  }>
+  const invoicesNok = (rows: typeof proanbudInvoices) =>
+    round(rows.reduce((sum, row) => sum + Number(row.amount_nok || 0), 0))
+  const paidNok = invoicesNok(proanbudInvoices.filter((row) => row.status === "paid"))
+  const invoiced: ProjectProfitability["invoiced"] = costSync
+    ? {
+        // Fakturaer laget i ProAnbud etter siste henting har ikke rukket inn i
+        // regnskapstallene ennå — de legges til så tallet ikke henger etter.
+        totalNok: round(
+          (revenuesResult.data ?? []).reduce((sum, row) => sum + Number(row.amount_nok || 0), 0) +
+            invoicesNok(proanbudInvoices.filter((row) => row.created_at > costSync.pulledAt))
+        ),
+        paidNok,
+        source: "regnskap",
+      }
+    : { totalNok: invoicesNok(proanbudInvoices), paidNok, source: "proanbud" }
 
   const drivingCostNok = round(
     (tripsResult.data ?? []).reduce((sum, row) => sum + Number(row.amount_nok || 0), 0)
@@ -272,31 +331,53 @@ export async function fetchProjectProfitability(
 
   const budgetedHours = toNumberOrNull(input.budgetedHours)
   const budgetedMaterialNok = toNumberOrNull(input.budgetedMaterialNok)
-  const hasManualBudget = budgetedHours !== null || budgetedMaterialNok !== null
 
-  let plannedSource: PlannedSource | null = null
-  let plannedLaborCostNok = 0
-  let plannedMaterialCostNok = 0
-  let plannedHours: number | null = null
+  // Standardbudsjettet for timer er det kunden har sagt ja til: timene i de
+  // aksepterte tilbudene (timelinjer + beregnede timer på fastprislinjer) pluss
+  // anslåtte timer på godkjent tilleggsarbeid. Et timetall satt på prosjektet vinner.
+  const changeOrderHours = round(
+    changeOrders.reduce((sum, row) => sum + (Number(row.estimated_hours) || 0), 0)
+  )
+  const defaultHoursRaw = round((rawPlanned?.hours ?? 0) + changeOrderHours)
+  const defaultHours = defaultHoursRaw > 0 ? defaultHoursRaw : null
+  // Materialbudsjettet har bare et standardtall når tilbudet har ekte kostgrunnlag
+  // (fastprislinjer sier hva kunden betaler, ikke hva materialene koster).
+  const defaultMaterialNok =
+    hasOfferCostBasis && rawPlanned && rawPlanned.materialCostNok > 0 ? rawPlanned.materialCostNok : null
 
-  if (hasOfferCostBasis && rawPlanned) {
-    plannedSource = "tilbud"
-    // Timelinjene i tilbudet står med bedriftens timepris (salgspris) og 0 %
-    // påslag. Regnes de som kostnad, blir dekningsbidraget på arbeid 0 kr. Har
-    // bedriften kostpris, regnes kalkulerte timer derfor om med den — samme sats
-    // som førte timer, så kalkyle og faktisk er sammenlignbare.
-    plannedLaborCostNok =
-      costRateNok > 0 && rawPlanned.costBasisHours > 0
-        ? computeLaborCost(rawPlanned.costBasisHours, costRateNok)
-        : rawPlanned.laborCostNok
-    plannedMaterialCostNok = rawPlanned.materialCostNok
-    plannedHours = rawPlanned.hours > 0 ? rawPlanned.hours : null
-  } else if (hasManualBudget) {
-    plannedSource = "budsjett"
-    plannedLaborCostNok = computeLaborCost(budgetedHours ?? 0, costRateNok)
-    plannedMaterialCostNok = budgetedMaterialNok ?? 0
-    plannedHours = budgetedHours
+  const plannedHours = budgetedHours ?? defaultHours
+  const plannedMaterialNok = budgetedMaterialNok ?? defaultMaterialNok
+  const budget: ProjectProfitability["budget"] = {
+    hours: plannedHours,
+    hoursSource: budgetedHours !== null ? "manuell" : defaultHours !== null ? "tilbud" : null,
+    defaultHours,
+    offerHours: round(rawPlanned?.hours ?? 0),
+    changeOrderHours,
+    materialNok: plannedMaterialNok,
+    materialSource:
+      budgetedMaterialNok !== null ? "manuell" : defaultMaterialNok !== null ? "tilbud" : null,
+    defaultMaterialNok,
   }
+
+  const plannedSource: PlannedSource | null =
+    budgetedHours !== null || budgetedMaterialNok !== null
+      ? "budsjett"
+      : plannedHours !== null || plannedMaterialNok !== null
+        ? "tilbud"
+        : null
+
+  // Timene regnes om med kostprisen — samme sats som førte timer, så budsjett og
+  // faktisk er sammenlignbare. Uten kostpris faller vi tilbake på tilbudets
+  // timelinjer (salgspris), slik kalkylen alltid har gjort.
+  const plannedLaborCostNok =
+    plannedHours === null
+      ? 0
+      : costRateNok > 0
+        ? computeLaborCost(plannedHours, costRateNok)
+        : budgetedHours === null && hasOfferCostBasis && rawPlanned
+          ? rawPlanned.laborCostNok
+          : 0
+  const plannedMaterialCostNok = plannedMaterialNok ?? 0
 
   const planned = plannedSource
     ? (() => {
@@ -360,8 +441,11 @@ export async function fetchProjectProfitability(
     },
     costRateNok,
     materialCosts,
-    accounting,
+    materialSummary,
+    costSync,
+    invoiced,
     laborByUser,
     budgetInput: { hours: budgetedHours, materialNok: budgetedMaterialNok },
+    budget,
   }
 }

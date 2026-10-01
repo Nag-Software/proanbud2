@@ -86,7 +86,7 @@ function KalenderPage() {
   // Auth) — middleware har allerede sluppet brukeren inn på siden.
   const { user: authUser, loading: authLoading } = useAuth()
   const userId: string | null = authUser?.id ?? null
-  // Forvarmet av app-skallet (lib/perf/page-data-warmers): det som ligger i
+  // Hentet allerede da lenken ble pekt på (lib/perf/page-data-warmers): det som ligger i
   // cachen vises med en gang, og friskes opp i bakgrunnen.
   const [integrations, setIntegrations] = useState<{ provider: string }[]>(
     () => (userId ? readPrefetched<{ provider: string }[]>(CALENDAR_KEYS.integrations(userId)) : undefined) ?? []

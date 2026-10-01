@@ -1,7 +1,7 @@
 /**
  * Liten minnecache for sider som henter dataene sine i nettleseren.
  *
- * Brukes av bakgrunnsforvarmingen (som fyller den før brukeren klikker) og av
+ * Brukes av forhåndshentingen (som fyller den når lenken pekes på) og av
  * sidene selv (som viser det som ligger der med en gang og friskt opp i
  * bakgrunnen). Et kall som allerede er i gang deles, så en side som åpnes
  * mens forvarmingen fortsatt henter, venter på det samme svaret i stedet for

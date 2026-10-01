@@ -1,13 +1,23 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { Customer } from "./schema"
 import { CustomerRowActions } from "./columns"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Building2, Mail, Phone, Search, User, Users } from "lucide-react"
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogTrigger,
+} from "@/components/ui/responsive-dialog"
+import { AlertTriangle, Building2, Mail, Phone, Search, User, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const PAGE_SIZE = 10
@@ -43,11 +53,18 @@ function getTone(name: string): (typeof AVATAR_TONES)[number] {
 interface CustomerListProps {
   data: Customer[]
   onRowClick: (customer: Customer) => void
-  /** Show a small Tripletex sync chip per row. Only when Tripletex is connected. */
+  /** Vis et lite synk-merke per rad. Kun når et regnskapssystem er tilkoblet. */
   syncEnabled?: boolean
+  /** «Fiken» eller «Tripletex». */
+  syncProviderLabel?: string
 }
 
-export function CustomerList({ data, onRowClick, syncEnabled = false }: CustomerListProps) {
+export function CustomerList({
+  data,
+  onRowClick,
+  syncEnabled = false,
+  syncProviderLabel = "regnskapet",
+}: CustomerListProps) {
   const [query, setQuery] = React.useState("")
   const [typeFilter, setTypeFilter] = React.useState<TypeFilter>("alle")
   const [page, setPage] = React.useState(0)
@@ -133,6 +150,7 @@ export function CustomerList({ data, onRowClick, syncEnabled = false }: Customer
               customer={customer}
               onRowClick={onRowClick}
               syncEnabled={syncEnabled}
+              syncProviderLabel={syncProviderLabel}
             />
           ))}
         </div>
@@ -171,10 +189,12 @@ function CustomerRow({
   customer,
   onRowClick,
   syncEnabled,
+  syncProviderLabel,
 }: {
   customer: Customer
   onRowClick: (customer: Customer) => void
   syncEnabled: boolean
+  syncProviderLabel: string
 }) {
   const isBusiness = customer.type === "bedrift"
   const tone = getTone(customer.name)
@@ -189,6 +209,8 @@ function CustomerRow({
         onRowClick(customer)
       }}
       onKeyDown={(event) => {
+        // Kun når selve raden har fokus — ellers stjeler vi Enter fra knappene i den.
+        if (event.target !== event.currentTarget) return
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault()
           onRowClick(customer)
@@ -227,7 +249,7 @@ function CustomerRow({
 
       {syncEnabled && customer.syncStatus && customer.syncStatus !== "none" && (
         <span className="hidden lg:inline-flex">
-          <SyncBadge status={customer.syncStatus} />
+          <SyncBadge customer={customer} providerLabel={syncProviderLabel} />
         </span>
       )}
 
@@ -293,11 +315,64 @@ function ContactButton({
   )
 }
 
-function SyncBadge({ status }: { status: NonNullable<Customer["syncStatus"]> }) {
+function SyncBadge({ customer, providerLabel }: { customer: Customer; providerLabel: string }) {
+  const status = customer.syncStatus
   if (status === "synced") return <Badge variant="outline">Synkronisert</Badge>
   if (status === "syncing") return <Badge variant="secondary">Synker …</Badge>
-  if (status === "attention") return <Badge variant="destructive">Krever handling</Badge>
+  if (status === "attention") return <SyncFailedBadge customer={customer} providerLabel={providerLabel} />
   return null
+}
+
+/**
+ * Et rødt merke uten forklaring er bare støy. Dette sier hva som er galt, og et
+ * trykk viser feilmeldingen og hvor du retter det.
+ */
+function SyncFailedBadge({ customer, providerLabel }: { customer: Customer; providerLabel: string }) {
+  return (
+    // Dialogen portaleres ut av raden, men React bobler fortsatt klikk hit —
+    // stopp dem, ellers åpner et klikk i dialogen også kundeskuffen.
+    <span data-prevent-row-click onClick={(event) => event.stopPropagation()}>
+      <ResponsiveDialog>
+        <ResponsiveDialogTrigger asChild>
+          <Badge asChild variant="destructive">
+            <button type="button" className="cursor-pointer hover:bg-destructive/20">
+              <AlertTriangle />
+              Ikke synket til {providerLabel}
+            </button>
+          </Badge>
+        </ResponsiveDialogTrigger>
+        <ResponsiveDialogContent className="sm:max-w-md">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>
+              {customer.name} kom ikke frem til {providerLabel}
+            </ResponsiveDialogTitle>
+            <ResponsiveDialogDescription asChild>
+              <div className="space-y-3 text-left text-sm text-muted-foreground">
+                <p>
+                  Siste forsøk på å sende kunden til {providerLabel} feilet. Kunden er trygt lagret
+                  her — det er bare kopien i {providerLabel} som mangler eller er utdatert.
+                </p>
+                {customer.syncErrorMessage && (
+                  <p className="rounded-md border bg-muted/50 px-3 py-2 text-foreground">
+                    <span className="block text-xs text-muted-foreground">
+                      Melding fra {providerLabel}
+                    </span>
+                    {customer.syncErrorMessage}
+                  </p>
+                )}
+                <p>Under Regnskap kan du se hva som stoppet og prøve på nytt.</p>
+              </div>
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ResponsiveDialogFooter>
+            <Button asChild>
+              <Link href="/min-bedrift/regnskap">Gå til Regnskap</Link>
+            </Button>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+    </span>
+  )
 }
 
 function EmptyState({ hasCustomers, query }: { hasCustomers: boolean; query: string }) {

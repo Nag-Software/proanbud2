@@ -3,7 +3,7 @@ import { addMonths, endOfMonth, startOfMonth, subMonths } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
 
 /**
- * Hentere for kalendersiden, delt mellom siden selv og bakgrunnsforvarmingen
+ * Hentere for kalendersiden, delt mellom siden selv og forhåndshentingen
  * (lib/perf/page-data-warmers.ts). Egen liten modul, så app-skallet ikke drar
  * med seg den store kalenderkomponenten.
  */

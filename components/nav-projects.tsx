@@ -39,7 +39,9 @@ export function NavProjects({
         {projects.map((item) => (
           <SidebarMenuItem key={item.name}>
             <SidebarMenuButton asChild className="text-sm">
-              <Link href={item.url}>
+              {/* Ingen automatisk forhåndshenting: IntentPrefetch henter siden
+                  når lenken pekes på eller trykkes. */}
+              <Link href={item.url} prefetch={false}>
                 {item.icon}
                 <span>{item.name}</span>
               </Link>

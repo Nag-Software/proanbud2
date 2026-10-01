@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
 
 import { describe, expect, it } from "vitest"
@@ -14,12 +14,23 @@ import { TRIPLETEX_JOB_TYPES } from "@/lib/integrations/tripletex/job-map"
  * nummer to på samme arbeid. db/88 retter listen.
  *
  * Testen leser migrasjonen, ikke koden: det er SQL-en som avgjør hva som skjer.
+ * Den NYESTE migrasjonen som definerer funksjonen gjelder (db/88, senere db/108).
  */
-const SQL = readFileSync(path.join(process.cwd(), "db/88_reaper_begge_leverandorer.sql"), "utf8")
+const SQL = (() => {
+  const dir = path.join(process.cwd(), "db")
+  const files = readdirSync(dir)
+    .filter((name) => /^\d+_.*\.sql$/.test(name))
+    .sort((a, b) => Number.parseInt(b, 10) - Number.parseInt(a, 10))
+  for (const name of files) {
+    const sql = readFileSync(path.join(dir, name), "utf8")
+    if (sql.includes("FUNCTION public.integration_reap_stuck_jobs")) return sql
+  }
+  throw new Error("fant ingen migrasjon som definerer integration_reap_stuck_jobs")
+})()
 
 function unsafeList(): string[] {
   const block = SQL.match(/v_unsafe TEXT\[\] := ARRAY\[([\s\S]*?)\];/)
-  expect(block, "fant ikke v_unsafe i db/88").toBeTruthy()
+  expect(block, "fant ikke v_unsafe i reaper-migrasjonen").toBeTruthy()
   return [...block![1].matchAll(/'([^']+)'/g)].map((m) => m[1])
 }
 
@@ -37,6 +48,7 @@ describe("reaper: utrygge jobber", () => {
     "customer.upsert",
     "project.upsert",
     "travel_expense.upsert",
+    "material_cost.push",
   ]
 
   for (const jobType of mustBeUnsafe) {
@@ -55,6 +67,8 @@ describe("reaper: utrygge jobber", () => {
     "customer.pull_all",
     "employee.sync_all",
     "document.upload",
+    "costs.pull",
+    "material_cost.delete",
   ]
 
   for (const jobType of mustBeSafe) {

@@ -1,6 +1,6 @@
 /**
  * Hentere for «Mine priser»-sidene, delt mellom sidene selv og
- * bakgrunnsforvarmingen (lib/perf/page-data-warmers.ts). Ligger i en egen,
+ * forhåndshentingen (lib/perf/page-data-warmers.ts). Ligger i en egen,
  * liten modul så forvarmingen i app-skallet ikke drar med seg de store
  * sidekomponentene.
  */

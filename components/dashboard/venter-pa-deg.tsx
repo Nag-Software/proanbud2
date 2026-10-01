@@ -783,7 +783,7 @@ export function VenterPaDeg({ companyId }: { companyId: string | null }) {
                     <span className="line-clamp-2 block text-xs text-muted-foreground">{item.meta}</span>
                   </span>
                   <Button asChild size="sm" className="shrink-0">
-                    <Link href={item.href}>{item.action}</Link>
+                    <Link href={item.href} prefetch={false}>{item.action}</Link>
                   </Button>
                   <button
                     type="button"

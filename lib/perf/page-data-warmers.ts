@@ -14,9 +14,8 @@ import { fetchPrefetched } from "@/lib/perf/prefetch-cache"
  * er vist. Å forvarme ruten alene gir dem bare skallet; her fyller vi også
  * cachene sidene leser fra, så innholdet står klart ved første klikk.
  *
- * Kjøres av RouteWarmer som egne oppgaver i samme kø som rutene — én om
- * gangen og bare når brukeren er inaktiv — derfor returnerer hver varmer et
- * løfte som løses når hentingen er ferdig.
+ * Kjøres av IntentPrefetch når brukeren peker på eller trykker på lenken
+ * til siden — aldri i bakgrunnen for sider hen ikke har vist at hen skal til.
  */
 
 // Hvor gamle data som er gode nok til at forvarmingen lar være å hente på nytt.

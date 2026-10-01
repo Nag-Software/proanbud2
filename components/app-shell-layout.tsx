@@ -11,7 +11,7 @@ import { TutorialWizard } from "@/components/onboarding/tutorial-wizard"
 import { NativeNavBridge, NativeNavState } from "@/components/native-nav-bridge"
 import { PresenceHeartbeat } from "@/components/presence-heartbeat"
 import { RefreshOnReturn } from "@/components/perf/refresh-on-return"
-import { RouteWarmer } from "@/components/perf/route-warmer"
+import { IntentPrefetch } from "@/components/perf/intent-prefetch"
 import { useNativePlatform } from "@/hooks/use-is-native-app"
 import { TrialBanner } from "@/components/billing/trial-banner"
 import { ShellBreadcrumb } from "@/components/shell-breadcrumb"
@@ -49,9 +49,9 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider>
       <PresenceHeartbeat />
-      {/* Bakgrunnsforvarming av sidene (viker alltid for brukeren), og
-          oppfrisking av siden når man kommer tilbake til fanen. Rendrer ingenting. */}
-      <RouteWarmer />
+      {/* Henter siden brukeren peker på / trykker på, og frisker opp siden
+          når man kommer tilbake til fanen. Rendrer ingenting. */}
+      <IntentPrefetch />
       <RefreshOnReturn />
       <NativeNavBridge />
       <AppSidebar />

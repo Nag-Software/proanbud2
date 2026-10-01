@@ -15,11 +15,15 @@ import { OPEN_DEVIATION_STATUSES } from "@/lib/hms/constants"
 import type { DeviationStats, DeviationWithRelations } from "@/lib/hms/types"
 import { canManageProjects } from "@/lib/roles"
 
+// Fremmednøkkelen må navngis: project_checklist_items peker også tilbake på
+// deviations (deviation_id), så uten hint svarer PostgREST 300 (tvetydig) og
+// alt falt til reservespørringen under — ett ekstra kall per visning, og uten
+// melder og sjekkliste. Målt 2026-09-30.
 const DEVIATION_SELECT = `
   *,
   projects(id, name),
   reporter:users!reported_by(id, full_name, email),
-  checklist_item:project_checklist_items(
+  checklist_item:project_checklist_items!deviations_checklist_item_id_fkey(
     id,
     title,
     checklist:project_checklists(id, name, project_id)

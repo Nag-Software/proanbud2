@@ -156,3 +156,21 @@ export async function resolveAccountingProviderId(
   const active = await getActiveAccountingProvider(companyId)
   return active?.adapter.id ?? null
 }
+
+/**
+ * En manuell materialkost er lagt til (push) eller slettet/bokført (delete).
+ * Sendes som kladd til regnskapet — se lib/regnskap/cost-push.ts. Skal aldri felle
+ * lagringen i ProAnbud: kalleren logger og svelger feil.
+ */
+export async function enqueueMaterialCostSync(input: {
+  companyId: string
+  materialCostId: string
+  action: "push" | "delete"
+}): Promise<AccountingProviderId | null> {
+  const active = await getReadyAccountingProvider(input.companyId)
+  if (!active) return null
+  const enqueued = await active.adapter.enqueueMaterialCostSync(input)
+  if (!enqueued) return null
+  active.adapter.processQueueInBackground({ maxBatches: 2 })
+  return active.adapter.id
+}

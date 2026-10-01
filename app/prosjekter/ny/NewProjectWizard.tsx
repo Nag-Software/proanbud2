@@ -10,6 +10,7 @@ import { toast } from "sonner"
 import { z } from "zod"
 
 import { createProjectAction } from "../actions"
+import { notifySidebarProjectsChanged } from "@/lib/client/sidebar-projects"
 import { reportClientError } from "@/lib/errors/client"
 import { AddCustomerDrawer } from "@/components/kunder/add-customer-drawer"
 import { Button } from "@/components/ui/button"
@@ -470,6 +471,7 @@ export function NewProjectWizard({ currentUserId, customers, employees, initialC
       if (result.data.warning) {
         toast.warning(result.data.warning)
       }
+      notifySidebarProjectsChanged()
 
       const uploadedDocuments = await uploadProjectDocuments(
         result.data.id,

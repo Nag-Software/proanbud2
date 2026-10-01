@@ -4,8 +4,10 @@ import {
   isProjectCostAccount,
   mapFikenPurchasesToCosts,
   mapTripletexPostingsToCosts,
+  matchManualToBooked,
   parseAccountNumber,
-  resolveMaterialCostSource,
+  summarizeMaterialCosts,
+  type MaterialCostLike,
 } from "@/lib/regnskap/costs"
 
 describe("kontoregelen", () => {
@@ -110,18 +112,73 @@ describe("mapFikenPurchasesToCosts", () => {
   })
 })
 
-describe("resolveMaterialCostSource", () => {
-  it("bruker de manuelle postene når regnskapet ikke har noe", () => {
-    expect(resolveMaterialCostSource({ manualNok: 4000, accountingRows: [] })).toEqual({
-      materialCostNok: 4000,
-      source: "manuell",
-      manualExcludedNok: 0,
-    })
+const manual = (id: string, amount: number, date: string | null, extra: Partial<MaterialCostLike> = {}): MaterialCostLike => ({
+  id,
+  source: "manual",
+  amount_nok: amount,
+  cost_date: date,
+  ...extra,
+})
+const booked = (id: string, amount: number, date: string | null, voucher: string | null = null): MaterialCostLike => ({
+  id,
+  source: "tripletex",
+  amount_nok: amount,
+  cost_date: date,
+  voucher_ref: voucher,
+})
+
+describe("matchManualToBooked", () => {
+  it("kobler en manuell post til bokført kostnad med samme beløp", () => {
+    const matches = matchManualToBooked([manual("m1", 6950, "2026-09-17"), booked("b1", 6950, "2026-09-18")])
+    expect([...matches]).toEqual([["m1", "b1"]])
   })
 
-  it("lar regnskapet vinne og holder manuelle poster utenfor", () => {
+  it("godtar beløp tastet inkl. mva og summen av et bilag med flere linjer", () => {
+    const matches = matchManualToBooked([
+      manual("inkl", 1250, "2026-09-01"),
+      booked("b1", 1000, "2026-09-02"),
+      manual("faktura", 3000, "2026-09-10"),
+      booked("l1", 2000, "2026-09-11", "201-2026"),
+      booked("l2", 1000, "2026-09-11", "201-2026"),
+    ])
+    expect(matches.get("inkl")).toBe("b1")
+    expect(matches.get("faktura")).toBe("l1")
+  })
+
+  it("kobler ikke når datoene ligger langt fra hverandre eller beløpet avviker", () => {
+    expect(matchManualToBooked([manual("m1", 5000, "2026-01-01"), booked("b1", 5000, "2026-06-01")]).size).toBe(0)
+    expect(matchManualToBooked([manual("m1", 5000, "2026-09-01"), booked("b1", 5100, "2026-09-01")]).size).toBe(0)
+  })
+
+  it("lar hver bokført kostnad erstatte bare én manuell post", () => {
+    const matches = matchManualToBooked([
+      manual("m1", 900, "2026-09-01"),
+      manual("m2", 900, "2026-09-03"),
+      booked("b1", 900, "2026-09-02"),
+    ])
+    expect(matches.size).toBe(1)
+  })
+
+  it("rører ikke eksisterende koblinger eller poster markert «ikke samme kjøp»", () => {
+    const matches = matchManualToBooked([
+      manual("m1", 900, "2026-09-01", { replaced_by: "b1" }),
+      manual("m2", 900, "2026-09-01", { keep_separate: true }),
+      booked("b1", 900, "2026-09-02"),
+      booked("b2", 900, "2026-09-02"),
+    ])
+    expect(matches.size).toBe(0)
+  })
+})
+
+describe("summarizeMaterialCosts", () => {
+  it("teller bokført pluss manuelle poster som ikke er bokført, aldri samme kjøp to ganger", () => {
     expect(
-      resolveMaterialCostSource({ manualNok: 4000, accountingRows: [{ amount_nok: "12500" }, { amount_nok: -500 }] })
-    ).toEqual({ materialCostNok: 12000, source: "regnskap", manualExcludedNok: 4000 })
+      summarizeMaterialCosts([
+        booked("b1", 12500, null),
+        booked("kreditnota", -500, null),
+        manual("m1", 4000, null, { replaced_by: "b1" }),
+        manual("m2", 1240, null),
+      ])
+    ).toEqual({ materialCostNok: 13240, bookedNok: 12000, manualNok: 1240, replacedNok: 4000 })
   })
 })

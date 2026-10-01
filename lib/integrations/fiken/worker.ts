@@ -1,3 +1,4 @@
+import { processFikenCostDelete, processFikenCostPush } from "@/lib/integrations/fiken/cost-push"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
 import {
@@ -1303,6 +1304,12 @@ async function processJob(job: IntegrationJobRow) {
       return
     case "costs.pull":
       await processFikenCostsPull(job)
+      return
+    case "material_cost.push":
+      await processFikenCostPush(job)
+      return
+    case "material_cost.delete":
+      await processFikenCostDelete(job)
       return
     default:
       throw new Error(`Unsupported Fiken job type: ${job.job_type}`)

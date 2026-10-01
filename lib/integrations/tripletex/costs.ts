@@ -1,14 +1,14 @@
 import { tripletexRequest } from "@/lib/integrations/tripletex/connector"
 import { getFreshTripletexConnection } from "@/lib/integrations/tripletex/session"
 import type { IntegrationJobRow } from "@/lib/integrations/tripletex/types"
-import { mapTripletexPostingsToCosts } from "@/lib/regnskap/costs"
-import { replaceProjectAccountingCosts } from "@/lib/regnskap/cost-store"
+import { mapTripletexPostingsToCosts, mapTripletexPostingsToRevenues } from "@/lib/regnskap/costs"
+import { replaceProjectAccountingCosts, replaceProjectAccountingRevenues } from "@/lib/regnskap/cost-store"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { fetchAllRows } from "@/lib/supabase/fetch-all"
 import { osloDateString } from "@/lib/timeforing/oslo-date"
 
 /**
- * Kostnader ført på prosjekt i Tripletex → ProAnbud (`costs.pull`).
+ * Kostnader og inntekter ført på prosjekt i Tripletex → ProAnbud (`costs.pull`).
  *
  * Leser hovedbokposteringene på hvert koblede prosjekt. Hva som telles (og hva
  * som bevisst holdes utenfor — lønn og kjørebokas egne reiseregninger) står i
@@ -105,6 +105,27 @@ export async function processCostsPull(job: IntegrationJobRow) {
       provider: "tripletex",
       projectIds: [projectId],
       rows,
+    })
+
+    // Inntekter (3000–3999) — alt som er fakturert på prosjektet, også fakturaer
+    // laget direkte i Tripletex.
+    const revenuePostings: Array<Record<string, unknown>> = []
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const response = await tripletexRequest(connection, {
+        path:
+          `/ledger/posting?projectId=${projectExternalId}&dateFrom=2000-01-01&dateTo=${dateTo}` +
+          `&accountNumberFrom=3000&accountNumberTo=3999&from=${from}&count=${PAGE_SIZE}` +
+          `&fields=id,date,description,amount,invoiceNumber,account(number,name),customer(name),voucher(id,number,year)`,
+      })
+      const page = readValues(response)
+      revenuePostings.push(...page)
+      if (page.length < PAGE_SIZE) break
+    }
+    await replaceProjectAccountingRevenues({
+      companyId: job.company_id,
+      provider: "tripletex",
+      projectIds: [projectId],
+      rows: mapTripletexPostingsToRevenues(revenuePostings, { projectId }),
     })
   }
 }

@@ -77,7 +77,7 @@ function parseRateInput(value: string) {
 }
 
 export function TimepriserPage() {
-  // Forvarmet av app-skallet (lib/perf/page-data-warmers) — vis det som ligger
+  // Hentet allerede da lenken ble pekt på (lib/perf/page-data-warmers) — vis det som ligger
   // i cachen med en gang, og frisk opp i bakgrunnen.
   const [rates, setRates] = useState<HourlyRate[]>(() => readPrefetched<HourlyRate[]>(MINE_PRISER_KEYS.timepriser) ?? [])
   const [search, setSearch] = useState("")
