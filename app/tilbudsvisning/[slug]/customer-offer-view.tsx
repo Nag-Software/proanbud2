@@ -244,6 +244,10 @@ export function CustomerOfferView({
     return () => mediaQuery.removeEventListener("change", closeOnDesktop)
   }, [])
 
+  // Avslag er endelig (serveren stenger for nye svar), så det bekreftes i en
+  // dialog først — på mobil ligger «Avslå» rett ved siden av «Godta».
+  const [rejectOpen, setRejectOpen] = useState(false)
+
   const reject = async () => {
     setIsResponding(true)
     try {
@@ -257,6 +261,7 @@ export function CustomerOfferView({
         throw new Error(payload.error || "Kunne ikke sende svaret")
       }
       setOffer((prev) => (prev ? { ...prev, status: payload.status, canRespond: false } : prev))
+      setRejectOpen(false)
       toast.success("Tilbudet er avslått")
     } catch (error) {
       reportClientError(error, { context: { action: "respond to public offer", slug, response: "reject" } })
@@ -474,7 +479,7 @@ export function CustomerOfferView({
                     <Check className="mr-2 h-4 w-4" />
                     Godta tilbud
                   </Button>
-                  <Button variant="outline" onClick={() => void reject()} disabled={isResponding} className="min-w-[140px]">
+                  <Button variant="outline" onClick={() => setRejectOpen(true)} disabled={isResponding} className="min-w-[140px]">
                     <X className="mr-2 h-4 w-4" />
                     Avslå
                   </Button>
@@ -593,7 +598,7 @@ export function CustomerOfferView({
               )}
               Godta
             </Button>
-            <Button size="lg" variant="outline" className="flex-1" onClick={() => void reject()} disabled={isResponding}>
+            <Button size="lg" variant="outline" className="flex-1" onClick={() => setRejectOpen(true)} disabled={isResponding}>
               <X className="mr-2 h-4 w-4" />
               Avslå
             </Button>
@@ -702,6 +707,26 @@ export function CustomerOfferView({
                 Bekreft og godta
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={rejectOpen} onOpenChange={(open) => !isResponding && setRejectOpen(open)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Avslå tilbudet?</DialogTitle>
+            <DialogDescription>
+              {`Tilbud ${offer.offerReference} blir markert som avslått hos ${offer.company.name || "bedriften"}. Svaret kan ikke endres etterpå.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setRejectOpen(false)} disabled={isResponding}>
+              Avbryt
+            </Button>
+            <Button variant="destructive" onClick={() => void reject()} disabled={isResponding}>
+              {isResponding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <X className="mr-2 h-4 w-4" />}
+              Avslå tilbudet
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
