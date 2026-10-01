@@ -38,7 +38,11 @@ function authHeader(connection: TripletexConnectionRow) {
   return `Basic ${encoded}`
 }
 
-async function parseTripletexResponse(response: Response) {
+/**
+ * `label` er metode + sti UTEN spørrestreng (sesjons-URL-en har tokens i query).
+ * Uten den sa feilloggen bare «401» — ikke hvilket endepunkt som avviste.
+ */
+async function parseTripletexResponse(response: Response, label?: string) {
   const text = await response.text()
   let json: any = null
   try {
@@ -48,7 +52,8 @@ async function parseTripletexResponse(response: Response) {
   }
 
   if (!response.ok) {
-    const error = new Error(`Tripletex request failed (${response.status})`) as Error & {
+    const where = label ? ` ${label}` : ""
+    const error = new Error(`Tripletex request failed (${response.status})${where}`) as Error & {
       status?: number
       body?: any
       rateLimitResetAt?: string
@@ -75,8 +80,9 @@ async function parseTripletexResponse(response: Response) {
 
 export async function tripletexRequest(connection: TripletexConnectionRow, options: RequestOptions) {
   const url = `${getTripletexBaseUrl()}${options.path}`
+  const method = options.method || "GET"
   const response = await fetch(url, {
-    method: options.method || "GET",
+    method,
     headers: {
       Authorization: authHeader(connection),
       "Content-Type": "application/json",
@@ -87,7 +93,7 @@ export async function tripletexRequest(connection: TripletexConnectionRow, optio
     signal: AbortSignal.timeout(25000),
   })
 
-  return parseTripletexResponse(response)
+  return parseTripletexResponse(response, `${method} ${options.path.split("?")[0]}`)
 }
 
 export async function refreshTripletexSessionWithCandidates(
@@ -145,7 +151,7 @@ export async function refreshTripletexSession(
     signal: AbortSignal.timeout(25000),
   })
 
-  const json = await parseTripletexResponse(response)
+  const json = await parseTripletexResponse(response, "PUT /token/session/:create")
   const token = json?.value?.token || json?.value?.sessionToken || json?.value
   const expiresAt = json?.value?.expirationDate || json?.value?.expiresAt || null
 
@@ -440,7 +446,7 @@ export async function uploadTripletexProjectDocument(
     signal: AbortSignal.timeout(30000),
   })
 
-  return parseTripletexResponse(response)
+  return parseTripletexResponse(response, `POST /documentArchive/project/${projectExternalId}`)
 }
 
 export async function createTripletexProjectActivity(

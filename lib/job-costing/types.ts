@@ -14,6 +14,38 @@ export type MaterialCost = {
   created_at: string
 }
 
+/** Én kostnad ført på prosjektet i regnskapet (Tripletex/Fiken). Kun lesing. */
+export type AccountingCost = {
+  id: string
+  provider: "fiken" | "tripletex"
+  cost_date: string | null
+  account_number: string | null
+  account_name: string | null
+  supplier_name: string | null
+  description: string | null
+  voucher_ref: string | null
+  amount_nok: number
+}
+
+/**
+ * Kostnadene fra regnskapet. `null` når prosjektet aldri er hentet (ingen
+ * integrasjon, eller ikke koblet ennå) — da er de manuelle postene alt vi har.
+ */
+export type ProjectAccountingCosts = {
+  provider: "fiken" | "tripletex"
+  /** Sist hentet. */
+  pulledAt: string
+  costs: AccountingCost[]
+  totalNok: number
+  /**
+   * true når regnskapet har kostnader på prosjektet: da er de fasiten, og de
+   * manuelle materialpostene telles IKKE (samme faktura ville stått to steder).
+   */
+  overridesManual: boolean
+  /** Summen av manuelle poster som dermed holdes utenfor. */
+  manualExcludedNok: number
+}
+
 export type ProfitabilitySide = {
   laborCostNok: number
   materialCostNok: number
@@ -88,6 +120,7 @@ export type ProjectProfitability = {
   /** Snitt kostpris (kr/t) fra bedriftens timepriser. 0 = ikke satt noe sted. */
   costRateNok: number
   materialCosts: MaterialCost[]
+  accounting: ProjectAccountingCosts | null
   laborByUser: LaborByUser[]
   /** Målene som er satt på prosjektet, for redigeringsskjemaet. */
   budgetInput: {

@@ -22,6 +22,7 @@ export const FIKEN_JOB_TYPES: Record<AccountingJobType, string | null> = {
   "travel.upsert": null,
   "travel.delete": null,
   "hours.push": null,
+  "costs.pull": "costs.pull",
   "reconcile.full": "reconcile.full",
 }
 

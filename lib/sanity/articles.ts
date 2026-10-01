@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { withSupportedParams } from "@/lib/llm/openai-fetch"
 
 import {
   assertSanityWriteConfig,
@@ -247,7 +248,7 @@ Krav:
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
+    body: JSON.stringify(withSupportedParams({
       model,
       temperature: 0.8,
       response_format: { type: "json_object" },
@@ -255,7 +256,7 @@ Krav:
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-    }),
+    })),
   })
 
   if (!response.ok) {

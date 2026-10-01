@@ -30,8 +30,9 @@ test("registreringssiden rendrer med skjema", async ({ page }) => {
 
 test("ukjent offentlig tilbudslenke lekker ikke innhold", async ({ page }) => {
   await page.goto("/tilbudsvisning/finnes-ikke-e2e-probe")
-  // Teksten vises både i selve siden og i en toast — .first() unngår strict-krasj.
   await expect(page.getByText("Tilbudet finnes ikke").first()).toBeVisible({ timeout: 15_000 })
+  // En ukjent lenke er forventet — den skal ikke gi feil-toast.
+  await expect(page.getByText("Kunne ikke laste tilbud")).toHaveCount(0)
 })
 
 test("feil innlogging feiler pent uten krasj", async ({ page }) => {

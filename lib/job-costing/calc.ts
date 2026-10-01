@@ -53,6 +53,47 @@ export function isHourUnit(unit: string | null | undefined): boolean {
  */
 const SALES_PRICE_UNITS = new Set(["fastpris", "rs", "rund sum", "rundsum"])
 
+export function isSalesPriceUnit(unit: string | null | undefined): boolean {
+  return SALES_PRICE_UNITS.has((unit ?? "").trim().toLowerCase())
+}
+
+/**
+ * Bedriftens kostpris per time: snittet av kostprisene som faktisk er satt i
+ * Timepriser. Timeprisene er per jobbtype, ikke per ansatt, så et snitt er det
+ * beste grunnlaget vi har. 0 betyr «ingen kostpris satt».
+ *
+ * Lønnsomhet-fanen og kostprisen som sendes til regnskapet bruker begge denne,
+ * så dekningsgraden i Proanbud og i regnskapsprogrammet regnes av samme sats.
+ */
+export function averageCostRate(rates: Array<{ cost_rate_nok: unknown }>): number {
+  const values = rates
+    .map((row) => Number(row.cost_rate_nok))
+    .filter((value) => Number.isFinite(value) && value > 0)
+  return values.length ? round(values.reduce((a, b) => a + b, 0) / values.length) : 0
+}
+
+/**
+ * Kostpris per enhet på en tilbudslinje, eks. mva — det regnskapet trenger for å
+ * regne dekningsgrad. `null` betyr «ukjent», og skal sendes som ingenting, ikke 0.
+ *
+ * - Material: innprisen (`unitPriceNok`, før påslag).
+ * - Timer: bedriftens kostpris per time. Timelinjens `unitPriceNok` er SALGSprisen,
+ *   så den kan ikke brukes som kost. Uten kostpris i Timepriser er kosten ukjent.
+ * - Fastpris/RS: bare salgspris, ingen kostnadsdeling — ukjent.
+ */
+export function lineUnitCost(
+  item: Pick<OfferLineItem, "unit" | "unitPriceNok">,
+  laborCostRateNok: number | null | undefined
+): number | null {
+  if (isSalesPriceUnit(item.unit)) return null
+  if (isHourUnit(item.unit)) {
+    const rate = Number(laborCostRateNok)
+    return Number.isFinite(rate) && rate > 0 ? round(rate) : null
+  }
+  const unitPrice = Number(item.unitPriceNok)
+  return Number.isFinite(unitPrice) && unitPrice >= 0 ? round(unitPrice) : null
+}
+
 export type PlannedCosts = {
   /** Kalkulert lønnskost = timelinjenes mengde × kostpris i tilbudet (før påslag). */
   laborCostNok: number
@@ -97,7 +138,7 @@ export function computePlannedCosts(lineItems: OfferLineItem[]): PlannedCosts {
     const lineRevenue = calculateLineItemTotal(item)
     const unit = (item.unit ?? "").trim().toLowerCase()
 
-    if (SALES_PRICE_UNITS.has(unit)) {
+    if (isSalesPriceUnit(unit)) {
       fixedPriceRevenueNok += lineRevenue
       const plannedHours = Number(item.plannedHours)
       if (Number.isFinite(plannedHours) && plannedHours > 0) {

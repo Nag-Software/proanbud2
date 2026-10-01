@@ -17,7 +17,8 @@ export const TRIPLETEX_JOB_TYPES: Record<AccountingJobType, string | null> = {
   "calendar.upsert": "calendar.activity.upsert",
   "travel.upsert": "travel_expense.upsert",
   "travel.delete": "travel_expense.delete",
-  "hours.push": null,
+  "hours.push": "timesheet.sync",
+  "costs.pull": "costs.pull",
   "reconcile.full": "reconcile.full",
 }
 

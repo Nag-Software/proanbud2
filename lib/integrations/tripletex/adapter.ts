@@ -13,6 +13,7 @@ import { normalizeScopes, toStoredScopes } from "@/lib/regnskap/scopes"
 import type {
   AccountingAdapter,
   EnqueueCalendarInput,
+  EnqueueCostPullInput,
   EnqueueDocumentInput,
   EnqueueEntityInput,
   EnqueueOfferInput,
@@ -150,6 +151,34 @@ export const tripletexAdapter: AccountingAdapter = {
       jobType: "reconcile.full",
       payload: { source },
       idempotencyKey: `tripletex:reconcile:${companyId}:${Math.floor(Date.now() / 60_000)}`,
+    })
+    return true
+  },
+
+  async enqueueHoursSync(companyId: string, source = "manual") {
+    const state = await this.getConnectionState(companyId)
+    const jobType = TRIPLETEX_JOB_TYPES["hours.push"]
+    if (!state?.ready || !jobType || state.scopes.hours !== true) return false
+    // Nøkkel per minutt: flere godkjenninger på rad blir én avstemming, og en
+    // endring etter at jobben har kjørt får en ny.
+    await enqueueIntegrationJob({
+      companyId,
+      jobType,
+      payload: { source },
+      idempotencyKey: `tripletex:timesheet-sync:${companyId}:${Math.floor(Date.now() / 60_000)}`,
+    })
+    return true
+  },
+
+  async enqueueCostPull(input: EnqueueCostPullInput) {
+    const state = await this.getConnectionState(input.companyId)
+    const jobType = TRIPLETEX_JOB_TYPES["costs.pull"]
+    if (!state?.ready || !jobType || state.scopes.costs === false) return false
+    await enqueueIntegrationJob({
+      companyId: input.companyId,
+      jobType,
+      payload: { source: input.source ?? "manual", projectId: input.projectId ?? null },
+      idempotencyKey: `tripletex:costs-pull:${input.companyId}:${input.projectId ?? "all"}:${Math.floor(Date.now() / 60_000)}`,
     })
     return true
   },

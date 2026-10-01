@@ -49,6 +49,21 @@ export function buildClientErrorPayload(
   }
 }
 
+// Nettleserens meldinger når en fetch brytes før den når serveren (Chrome,
+// Safari, Firefox). Sier ingenting om koden — fanen sov, nettet byttet, eller
+// brukeren navigerte bort.
+const NETWORK_FAILURE_PATTERN =
+  /^(TypeError: )?(Failed to fetch|Load failed|NetworkError when attempting to fetch resource\.?|network error|The network connection was lost\.?)$/i
+
+/**
+ * Nettverksbrudd i bakgrunnshandlinger (rapportert som `warning`) logges ikke:
+ * de fylte feilloggen med støy uten å peke på en bug. Feil på `error`-nivå
+ * (feilgrense, brukerhandling) rapporteres fortsatt. Eksportert for test.
+ */
+export function isIgnorableClientError(payload: ClientErrorReport): boolean {
+  return payload.level === "warning" && NETWORK_FAILURE_PATTERN.test(payload.message.trim())
+}
+
 /**
  * Best-effort client → server error report. Never throws and never blocks the UI:
  * call it alongside a user-facing toast when something fails. The report shows up in
@@ -61,6 +76,7 @@ export function reportClientError(input: ClientErrorReport | unknown, extra?: Pa
       extra,
       typeof window !== "undefined" ? window.location?.pathname : undefined
     )
+    if (isIgnorableClientError(payload)) return
 
     void fetch("/api/errors", {
       method: "POST",

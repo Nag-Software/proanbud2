@@ -28,6 +28,8 @@ export type FikenScopeConfig = {
    * den digitale aksepten — Fikens tilbud har ingen aksept-flyt.
    */
   sendInvoiceFromFiken: boolean
+  /** Hente kostnader ført på prosjekt (innkjøp). Standard på — den bare leser. */
+  costs?: boolean
 }
 
 export type FikenConnectionRow = {

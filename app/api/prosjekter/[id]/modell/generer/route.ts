@@ -24,6 +24,9 @@ const bodySchema = z.object({
   persist: z.boolean().default(false),
 })
 
+/** Samlet grense for inline bilder (base64 blåser opp ~33 %; OpenAI tar maks ~50 MB). */
+const MAX_INLINE_IMAGE_BYTES = 24 * 1024 * 1024
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -83,7 +86,6 @@ export async function POST(
     return NextResponse.json({ error: "Ugyldig forespørsel" }, { status: 400 })
   }
 
-  // Signerte URL-er til bildene — KI-en må kunne hente dem over HTTP.
   const { data: references } = await supabase
     .from("project_model_references")
     .select("storage_bucket, storage_path")
@@ -91,11 +93,21 @@ export async function POST(
     .order("created_at", { ascending: true })
     .limit(6)
 
+  // Bildene sendes inline (data-URL). Med signerte URL-er måtte OpenAI hente dem
+  // fra Supabase selv, og rakk det ikke innen sin timeout ble hele genereringen
+  // avvist («invalid_image_url»). Store filer faller tilbake til signert URL så
+  // forespørselen ikke sprenger OpenAIs størrelsesgrense.
   const imageUrls: string[] = []
+  let inlineBytes = 0
   for (const reference of references ?? []) {
-    const { data: signed } = await supabase.storage
-      .from(reference.storage_bucket || "project_models")
-      .createSignedUrl(reference.storage_path, 60 * 20)
+    const bucket = supabase.storage.from(reference.storage_bucket || "project_models")
+    const { data: file } = await bucket.download(reference.storage_path)
+    if (file && file.type.startsWith("image/") && inlineBytes + file.size <= MAX_INLINE_IMAGE_BYTES) {
+      inlineBytes += file.size
+      imageUrls.push(`data:${file.type};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}`)
+      continue
+    }
+    const { data: signed } = await bucket.createSignedUrl(reference.storage_path, 60 * 20)
     if (signed?.signedUrl) imageUrls.push(signed.signedUrl)
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { buildClientErrorPayload, actionErrorMessage } from "@/lib/errors/client"
+import { buildClientErrorPayload, actionErrorMessage, isIgnorableClientError } from "@/lib/errors/client"
 
 // Payloaden går gjennom JSON.stringify før den sendes — test det serveren faktisk mottar.
 function roundTrip(payload: unknown) {
@@ -63,5 +63,19 @@ describe("actionErrorMessage", () => {
   it("bruker reserveteksten for ukjente verdier og tomme meldinger", () => {
     expect(actionErrorMessage("oops", "Kunne ikke lagre")).toBe("Kunne ikke lagre")
     expect(actionErrorMessage(new Error("  "), "Kunne ikke lagre")).toBe("Kunne ikke lagre")
+  })
+})
+
+describe("isIgnorableClientError", () => {
+  it("dropper nettverksbrudd fra bakgrunnshandlinger (warning)", () => {
+    for (const message of ["Failed to fetch", "TypeError: Failed to fetch", "Load failed", "TypeError: Load failed", "network error"]) {
+      expect(isIgnorableClientError(buildClientErrorPayload(new TypeError(message), { level: "warning" }))).toBe(true)
+    }
+  })
+
+  it("beholder nettverksbrudd på error-nivå og andre advarsler", () => {
+    expect(isIgnorableClientError(buildClientErrorPayload(new TypeError("Failed to fetch")))).toBe(false)
+    expect(isIgnorableClientError(buildClientErrorPayload({ message: "upstream request timeout", level: "warning" }))).toBe(false)
+    expect(isIgnorableClientError(buildClientErrorPayload({ message: "Failed to fetch prosjekt: 500", level: "warning" }))).toBe(false)
   })
 })

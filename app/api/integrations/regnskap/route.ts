@@ -135,6 +135,15 @@ export async function PATCH(request: Request) {
       case "update_scope": {
         const next = scopesFromRequestBody(adapter.id, body, active.state.scopes)
         await adapter.updateScopes(ctx.companyId, next)
+
+        // Nettopp slått på: første overføring nå, ikke først i nattjobben.
+        const turnedOn = (key: "hours" | "costs") =>
+          next[key] === true && active.state.scopes[key] !== true
+        const hoursQueued = turnedOn("hours") && (await adapter.enqueueHoursSync(ctx.companyId, "scope_on"))
+        const costsQueued =
+          turnedOn("costs") && (await adapter.enqueueCostPull({ companyId: ctx.companyId, source: "scope_on" }))
+        if (hoursQueued || costsQueued) adapter.processQueueInBackground()
+
         return NextResponse.json({ ok: true, scopes: next })
       }
 

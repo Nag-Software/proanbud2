@@ -47,8 +47,10 @@ const FIKEN: ProviderCapabilities = {
   },
   hours: {
     supported: false,
-    unsupportedReason: "Overføring av timer til regnskapet er ikke bygget ennå.",
+    unsupportedReason:
+      "Overføring av timer til Fiken er ikke bygget ennå. Timene ligger i ProAnbud og teller i lønnsomheten der.",
   },
+  "costs.pull": SUPPORTED,
 }
 
 const TRIPLETEX: ProviderCapabilities = {
@@ -68,10 +70,8 @@ const TRIPLETEX: ProviderCapabilities = {
     supported: false,
     unsupportedReason: "Produktsynk er ikke bygget ennå.",
   },
-  hours: {
-    supported: false,
-    unsupportedReason: "Overføring av timer til regnskapet er ikke bygget ennå.",
-  },
+  hours: SUPPORTED,
+  "costs.pull": SUPPORTED,
 }
 
 export const CAPABILITIES: Record<AccountingProviderId, ProviderCapabilities> = {
@@ -162,5 +162,12 @@ export const SCOPE_ITEMS: {
     capability: "hours",
     label: "Timer",
     description: "Godkjente timer overføres til timelistene i regnskapet.",
+  },
+  {
+    key: "costs",
+    capability: "costs.pull",
+    label: "Kostnader på prosjekt",
+    description:
+      "Innkjøp og andre kostnader ført på prosjektet i regnskapet hentes inn, så dekningsgraden i ProAnbud blir riktig.",
   },
 ]

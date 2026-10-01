@@ -10,6 +10,7 @@ import { runFikenWorker } from "@/lib/integrations/fiken/worker"
 import { normalizeScopes, toStoredScopes } from "@/lib/regnskap/scopes"
 import type {
   AccountingAdapter,
+  EnqueueCostPullInput,
   EnqueueDocumentInput,
   EnqueueEntityInput,
   EnqueueOfferInput,
@@ -165,6 +166,26 @@ export const fikenAdapter: AccountingAdapter = {
       jobType: "reconcile.full",
       payload: { source },
       idempotencyKey: `fiken:reconcile:${companyId}:${Math.floor(Date.now() / 60_000)}`,
+    })
+    return true
+  },
+
+  async enqueueHoursSync() {
+    // Se capabilities.ts: timeoverføring til Fiken er ikke bygget.
+    return false
+  },
+
+  async enqueueCostPull(input: EnqueueCostPullInput) {
+    const state = await this.getConnectionState(input.companyId)
+    const jobType = FIKEN_JOB_TYPES["costs.pull"]
+    if (!state?.ready || !jobType || state.scopes.costs === false) return false
+    // Fiken har ikke prosjektfilter på innkjøp, så jobben henter alltid alle
+    // koblede prosjekter i ett løp. projectId avgjør bare dedupe-nøkkelen.
+    await enqueueFikenJob({
+      companyId: input.companyId,
+      jobType,
+      payload: { source: input.source ?? "manual" },
+      idempotencyKey: `fiken:costs-pull:${input.companyId}:${Math.floor(Date.now() / 60_000)}`,
     })
     return true
   },

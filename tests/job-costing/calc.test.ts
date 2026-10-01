@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  averageCostRate,
   computeEstimatedMaterialCost,
   computeJobCosting,
   computeLaborCost,
   computeOfferRevenue,
   computePlannedCosts,
   isHourUnit,
+  lineUnitCost,
   resolveApprovedHours,
 } from "../../lib/job-costing/calc"
 import type { OfferLineItem } from "../../lib/tilbud/types"
@@ -121,5 +123,25 @@ describe("job-costing calc", () => {
   it("godkjente timer: null når verken overstyrt eller tilbud har timelinjer", () => {
     expect(resolveApprovedHours(null, null)).toEqual({ value: null, source: null })
     expect(resolveApprovedHours(null, 0)).toEqual({ value: null, source: null })
+  })
+})
+
+describe("averageCostRate", () => {
+  it("averages only the cost rates that are actually set", () => {
+    expect(averageCostRate([{ cost_rate_nok: 400 }, { cost_rate_nok: "500" }, { cost_rate_nok: null }, { cost_rate_nok: 0 }])).toBe(450)
+  })
+
+  it("returns 0 when no cost rate is set", () => {
+    expect(averageCostRate([])).toBe(0)
+    expect(averageCostRate([{ cost_rate_nok: null }])).toBe(0)
+  })
+})
+
+describe("lineUnitCost", () => {
+  it("uses innpris for material, cost rate for hours, and nothing for fixed price", () => {
+    expect(lineUnitCost({ unit: "m2", unitPriceNok: 800 }, 450)).toBe(800)
+    expect(lineUnitCost({ unit: "Time", unitPriceNok: 950 }, 450)).toBe(450)
+    expect(lineUnitCost({ unit: "time", unitPriceNok: 950 }, 0)).toBeNull()
+    expect(lineUnitCost({ unit: "RS", unitPriceNok: 5000 }, 450)).toBeNull()
   })
 })

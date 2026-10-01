@@ -45,6 +45,9 @@ import {
   resolveProjectStartDateForTripletex,
 } from "@/lib/integrations/tripletex/mappers"
 import { getFreshTripletexConnection } from "@/lib/integrations/tripletex/session"
+import { averageCostRate } from "@/lib/job-costing/calc"
+import { processCostsPull } from "@/lib/integrations/tripletex/costs"
+import { processTimesheetSync } from "@/lib/integrations/tripletex/timesheet"
 import {
   tripletexCustomerUrl,
   tripletexInvoiceUrl,
@@ -656,6 +659,32 @@ async function processProjectUpsert(job: IntegrationJobRow, cache?: WorkerRuntim
   }
 }
 
+/**
+ * Kostprisen per time som sendes på timelinjene — samme snitt som Lønnsomhet-fanen
+ * regner med. En feil her skal aldri stoppe synken: da sendes timelinjene uten
+ * kost, akkurat som før.
+ */
+async function fetchLaborCostRateNok(companyId: string): Promise<number | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from("hourly_rates")
+    .select("cost_rate_nok")
+    .eq("company_id", companyId)
+    .not("cost_rate_nok", "is", null)
+  if (error) {
+    await logServerError({
+      message: "Kunne ikke hente kostpris til Tripletex-linjer",
+      error,
+      source: "worker",
+      route: "runTripletexWorker",
+      companyId,
+    })
+    return null
+  }
+  const rate = averageCostRate(data ?? [])
+  return rate > 0 ? rate : null
+}
+
 async function processOfferUpsert(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
   const offerId = String(job.payload.offerId || "")
   if (!offerId) {
@@ -752,6 +781,7 @@ async function processOfferUpsert(job: IntegrationJobRow, cache?: WorkerRuntimeC
 
   const tilbudOrderLines = mapTilbudOrderLinesFromOffer(offer, externalId, {
     defaultVatTypeId: connection.default_vat_type_id,
+    laborCostRateNok: await fetchLaborCostRateNok(job.company_id),
   })
   await replaceTripletexTilbudOrderLines(connection, externalId, tilbudOrderLines as Record<string, unknown>[])
 
@@ -828,6 +858,7 @@ async function processOrderCreateFromOffer(job: IntegrationJobRow) {
     {
       defaultVatTypeId: connection.default_vat_type_id,
       defaultAccountId: connection.default_account_id,
+      laborCostRateNok: await fetchLaborCostRateNok(job.company_id),
     }
   )
 
@@ -1045,6 +1076,28 @@ async function processFullReconciliation(job: IntegrationJobRow) {
     payload: { source: "reconcile" },
     idempotencyKey: `${reconcileRunKey}:poll-payments:${job.company_id}`,
   })
+
+  // Kostnadene på prosjektene endrer seg når regnskapsfører bokfører. En gang i
+  // døgnet holder — og «Hent fra regnskapet» på prosjektet tar resten.
+  if (scopes.costs !== false) {
+    await enqueueIntegrationJob({
+      companyId: job.company_id,
+      jobType: "costs.pull",
+      payload: { source: "reconcile" },
+      idempotencyKey: `${reconcileRunKey}:costs-pull:${job.company_id}`,
+    })
+  }
+
+  // Fanger opp timer som ble endret uten å trigge en avstemming (auto-lukkede
+  // økter, endringer direkte i databasen).
+  if (scopes.hours === true) {
+    await enqueueIntegrationJob({
+      companyId: job.company_id,
+      jobType: "timesheet.sync",
+      payload: { source: "reconcile" },
+      idempotencyKey: `${reconcileRunKey}:timesheet-sync:${job.company_id}`,
+    })
+  }
 
   if (customersEnabled) {
     const { error: pullError } = await supabase.from("integration_jobs").insert({
@@ -1925,6 +1978,12 @@ async function processJob(job: IntegrationJobRow, cache?: WorkerRuntimeCache) {
       return
     case "poll_payments":
       await processPollPayments(job)
+      return
+    case "timesheet.sync":
+      await processTimesheetSync(job)
+      return
+    case "costs.pull":
+      await processCostsPull(job)
       return
     default:
       throw new Error(`Unsupported job type: ${job.job_type}`)

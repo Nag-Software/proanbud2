@@ -2,6 +2,7 @@ import {
   buildTripletexOfferExternalAccountsNumber,
   buildTripletexOfferNumber,
 } from "@/lib/integrations/tripletex/offer-identity"
+import { lineUnitCost } from "@/lib/job-costing/calc"
 import { calculateLineItemUnitPriceWithMarkupBeforeDiscount, type OfferLineItem } from "@/lib/tilbud/types"
 
 export function mapCustomerToTripletex(customer: {
@@ -152,7 +153,27 @@ function lineUnitPriceExVat(item: OfferLineItem) {
   return calculateLineItemUnitPriceWithMarkupBeforeDiscount(item)
 }
 
-function buildOrderLine(item: OfferLineItem, options?: { defaultVatTypeId?: number | null; defaultAccountId?: number | null }) {
+/**
+ * Kostpris per enhet på linja. Uten den regner Tripletex hele salgsprisen som
+ * dekningsbidrag, og ordren/tilbudet viser 100 % dekningsgrad. Bare kostprisen
+ * sendes — ikke `markup` — så Tripletex aldri regner om salgsprisen fra kosten.
+ * Ukjent kost (fastpris, timer uten kostpris) utelates heller enn å sendes som 0.
+ */
+function applyLineUnitCost(line: Record<string, unknown>, item: OfferLineItem, laborCostRateNok?: number | null) {
+  const unitCost = lineUnitCost(item, laborCostRateNok)
+  if (unitCost !== null) {
+    line.unitCostCurrency = unitCost
+  }
+}
+
+type OfferLineOptions = {
+  defaultVatTypeId?: number | null
+  defaultAccountId?: number | null
+  /** Bedriftens kostpris per time (averageCostRate). Brukes som kost på timelinjer. */
+  laborCostRateNok?: number | null
+}
+
+function buildOrderLine(item: OfferLineItem, options?: OfferLineOptions) {
   const descriptionParts = [item.title.trim()]
   if (item.description.trim()) {
     descriptionParts.push(item.description.trim())
@@ -166,6 +187,7 @@ function buildOrderLine(item: OfferLineItem, options?: { defaultVatTypeId?: numb
     count: item.quantity,
     unitPriceExcludingVatCurrency: lineUnitPriceExVat(item),
   }
+  applyLineUnitCost(line, item, options?.laborCostRateNok)
 
   if (item.discountPercent > 0) {
     line.discount = item.discountPercent
@@ -195,10 +217,7 @@ export function mapOrderFromOffer(
   },
   customerExternalId: number,
   projectExternalId?: number | null,
-  options?: {
-    defaultVatTypeId?: number | null
-    defaultAccountId?: number | null
-  }
+  options?: OfferLineOptions
 ) {
   const lineItems = normalizeOfferLineItems(offer.line_items)
   const orderDate = new Date().toISOString().slice(0, 10)
@@ -270,7 +289,7 @@ export function mapTilbudOrderLinesFromOffer(
     line_items?: unknown
   },
   tilbudExternalId: number,
-  options?: { defaultVatTypeId?: number | null }
+  options?: { defaultVatTypeId?: number | null; laborCostRateNok?: number | null }
 ) {
   const lineItems = normalizeOfferLineItems(offer.line_items)
   const lines =
@@ -288,6 +307,7 @@ export function mapTilbudOrderLinesFromOffer(
             count: item.quantity,
             unitPriceExcludingVatCurrency: lineUnitPriceExVat(item),
           }
+          applyLineUnitCost(line, item, options?.laborCostRateNok)
 
           if (item.discountPercent > 0) {
             line.discount = item.discountPercent

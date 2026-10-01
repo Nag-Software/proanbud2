@@ -45,6 +45,7 @@ import {
   resolveFikenProjectStartDate,
 } from "@/lib/integrations/fiken/mappers"
 import { pollFikenPayments } from "@/lib/integrations/fiken/payments"
+import { processFikenCostsPull } from "@/lib/integrations/fiken/costs"
 import { getFreshFikenConnection } from "@/lib/integrations/fiken/session"
 import { normalizeFikenScopeConfig } from "@/lib/integrations/fiken/scopes"
 import { fikenContactUrl, fikenInvoiceUrl, fikenOfferUrl, fikenProjectUrl } from "@/lib/integrations/fiken/urls"
@@ -1053,6 +1054,11 @@ async function processFullReconciliation(job: IntegrationJobRow) {
       : Promise.resolve({ data: [] as Array<{ id: string; customer_id: string; project_id: string | null; status: string }> }),
   ])
 
+  // Innkjøp bokført på prosjekt siden sist. Én gang i døgnet holder.
+  if (scopes.costs !== false) {
+    await insertJob("costs.pull", { source: "reconcile" }, `${runKey}:costs-pull`)
+  }
+
   if (scopes.contacts) {
     for (const customer of customersResult.data || []) {
       await insertJob("contact.upsert", { customerId: customer.id }, `${runKey}:contact:${customer.id}`)
@@ -1294,6 +1300,9 @@ async function processJob(job: IntegrationJobRow) {
       return
     case "employee.sync_all":
       await processEmployeeSyncAll(job)
+      return
+    case "costs.pull":
+      await processFikenCostsPull(job)
       return
     default:
       throw new Error(`Unsupported Fiken job type: ${job.job_type}`)

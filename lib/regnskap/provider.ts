@@ -50,6 +50,13 @@ export type EnqueueCalendarInput = {
   end: string
 }
 
+export type EnqueueCostPullInput = {
+  companyId: string
+  /** Bare dette prosjektet. Uten: alle prosjekter som er koblet til regnskapet. */
+  projectId?: string | null
+  source?: string
+}
+
 export type WorkerOptions = { batchSize?: number; maxBatches?: number; workerId?: string }
 
 /**
@@ -88,6 +95,13 @@ export interface AccountingAdapter {
   /** Hent kunder FRA regnskapet. Returnerer false når leverandøren ikke kan det. */
   enqueueCustomerPull(companyId: string, source?: string): Promise<boolean>
   enqueueReconcile(companyId: string, source?: string): Promise<boolean>
+  /**
+   * Avstem godkjente timer mot regnskapets timelister. false når leverandøren
+   * ikke kan det, eller bedriften ikke har slått det på.
+   */
+  enqueueHoursSync(companyId: string, source?: string): Promise<boolean>
+  /** Hent kostnadene som er ført på prosjekt i regnskapet. */
+  enqueueCostPull(input: EnqueueCostPullInput): Promise<boolean>
 
   processQueueInBackground(options?: WorkerOptions): void
   runWorker(options?: WorkerOptions): Promise<unknown>

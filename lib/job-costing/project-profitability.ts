@@ -13,17 +13,20 @@ import "server-only"
 import type { createClient } from "@/lib/supabase/server"
 import { logServerError } from "@/lib/errors/log"
 import {
+  averageCostRate,
   computeJobCosting,
   computeLaborCost,
   computePlannedCosts,
   resolveApprovedHours,
 } from "@/lib/job-costing/calc"
 import type {
+  AccountingCost,
   LaborByUser,
   MaterialCost,
   PlannedSource,
   ProjectProfitability,
 } from "@/lib/job-costing/types"
+import { resolveMaterialCostSource } from "@/lib/regnskap/costs"
 import { fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 import type { OfferLineItem } from "@/lib/tilbud/types"
 
@@ -86,6 +89,8 @@ export async function fetchProjectProfitability(
     materialsResult,
     tripsResult,
     ratesResult,
+    accountingCostsResult,
+    accountingSyncsResult,
   ] = await Promise.all([
     supabase
       .from("offers")
@@ -130,6 +135,23 @@ export async function fetchProjectProfitability(
       .select("cost_rate_nok")
       .eq("company_id", input.companyId)
       .not("cost_rate_nok", "is", null),
+    // Kostnadene ført på prosjektet i regnskapet (db/105). Hentes av synk-jobben;
+    // her bare leses de.
+    supabase
+      .from("project_accounting_costs")
+      .select(
+        "id, provider, cost_date, account_number, account_name, supplier_name, description, voucher_ref, amount_nok"
+      )
+      .eq("company_id", input.companyId)
+      .eq("project_id", input.projectId)
+      .order("cost_date", { ascending: false, nullsFirst: false }),
+    supabase
+      .from("project_accounting_cost_syncs")
+      .select("provider, pulled_at")
+      .eq("company_id", input.companyId)
+      .eq("project_id", input.projectId)
+      .order("pulled_at", { ascending: false })
+      .limit(1),
   ])
 
   for (const [label, result] of [
@@ -138,8 +160,13 @@ export async function fetchProjectProfitability(
     ["materialkostnader", materialsResult],
     ["kjørebok", tripsResult],
     ["timepriser", ratesResult],
+    ["kostnader fra regnskapet", accountingCostsResult],
+    ["hentestatus fra regnskapet", accountingSyncsResult],
   ] as const) {
-    if (result.error) {
+    // 42P01/PGRST205: db/105 er ikke kjørt ennå (PostgREST svarer PGRST205 for en
+    // tabell den ikke kjenner). Da finnes det ingen regnskapskostnader, og fanen skal
+    // vise det samme som før — ikke fylle feilloggen.
+    if (result.error && result.error.code !== "42P01" && result.error.code !== "PGRST205") {
       await logServerError({
         message: `Kunne ikke hente ${label} til lønnsomhet`,
         error: result.error,
@@ -157,15 +184,8 @@ export async function fetchProjectProfitability(
     changeOrders.reduce((sum, row) => sum + Number(row.amount_nok || 0), 0)
   )
 
-  // Snitt av de kostprisene bedriften faktisk har satt. Timeprisene er per
-  // jobbtype, ikke per ansatt, så et snitt er det beste grunnlaget vi har —
-  // og fanen sier eksplisitt hvilken sats den har regnet med.
-  const costRates = (ratesResult.data ?? [])
-    .map((row) => Number(row.cost_rate_nok))
-    .filter((value) => Number.isFinite(value) && value > 0)
-  const costRateNok = costRates.length
-    ? round(costRates.reduce((a, b) => a + b, 0) / costRates.length)
-    : 0
+  // Fanen sier eksplisitt hvilken sats den har regnet med.
+  const costRateNok = averageCostRate(ratesResult.data ?? [])
 
   const loggedHours = round(participantHours.reduce((sum, entry) => sum + entry.totalHours, 0))
   const laborCostNok = computeLaborCost(loggedHours, costRateNok)
@@ -184,9 +204,34 @@ export async function fetchProjectProfitability(
   const revenueNok = round(offersNok + changeOrdersNok + hourlyNok)
 
   const materialCosts = (materialsResult.data ?? []) as MaterialCost[]
-  const materialCostNok = round(
+  const manualMaterialNok = round(
     materialCosts.reduce((sum, row) => sum + Number(row.amount_nok || 0), 0)
   )
+
+  // Regnskapet vinner: har det kostnader på prosjektet, er de fasiten og de
+  // manuelle postene holdes utenfor. Uten kostnader der gjelder de manuelle.
+  const accountingCosts = ((accountingCostsResult.data ?? []) as AccountingCost[]).map((row) => ({
+    ...row,
+    amount_nok: Number(row.amount_nok),
+  }))
+  const lastSync = (accountingSyncsResult.data ?? [])[0] as
+    | { provider: AccountingCost["provider"]; pulled_at: string }
+    | undefined
+  const materialSource = resolveMaterialCostSource({
+    manualNok: manualMaterialNok,
+    accountingRows: accountingCosts,
+  })
+  const materialCostNok = materialSource.materialCostNok
+  const accounting = lastSync || accountingCosts.length > 0
+    ? {
+        provider: lastSync?.provider ?? accountingCosts[0].provider,
+        pulledAt: lastSync?.pulled_at ?? new Date().toISOString(),
+        costs: accountingCosts,
+        totalNok: materialSource.source === "regnskap" ? materialCostNok : 0,
+        overridesManual: materialSource.source === "regnskap",
+        manualExcludedNok: materialSource.manualExcludedNok,
+      }
+    : null
 
   const drivingCostNok = round(
     (tripsResult.data ?? []).reduce((sum, row) => sum + Number(row.amount_nok || 0), 0)
@@ -315,6 +360,7 @@ export async function fetchProjectProfitability(
     },
     costRateNok,
     materialCosts,
+    accounting,
     laborByUser,
     budgetInput: { hours: budgetedHours, materialNok: budgetedMaterialNok },
   }
