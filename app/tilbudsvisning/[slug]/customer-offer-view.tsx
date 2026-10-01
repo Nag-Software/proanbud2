@@ -30,6 +30,8 @@ import {
   type OfferPricingModel,
 } from "@/lib/tilbud/types"
 
+import { OfferNotFound } from "./offer-not-found"
+
 type PublicOfferPayload = {
   title: string
   description: string
@@ -175,11 +177,15 @@ export function CustomerOfferView({
 
   const loadOffer = useCallback(async () => {
     const response = await fetch(`/api/public/tilbud/${slug}`)
+    // Ukjent/utløpt lenke er et forventet utfall, ikke en feil: siden viser
+    // «Tilbudet finnes ikke» uten toast og uten å havne i /sjefen/feil.
+    if (response.status === 404) return false
     const payload = await response.json()
     if (!response.ok) {
-      throw new Error(payload.error || "Tilbudet finnes ikke")
+      throw new Error(payload.error || "Kunne ikke laste tilbud")
     }
     setOffer(payload.offer)
+    return true
   }, [slug])
 
   const loadMessages = useCallback(async () => {
@@ -199,8 +205,8 @@ export function CustomerOfferView({
   useEffect(() => {
     void (async () => {
       try {
-        await loadOffer()
-        if (chatEnabled) {
+        const found = await loadOffer()
+        if (found && chatEnabled) {
           await loadMessages()
         }
       } catch (error) {
@@ -397,14 +403,7 @@ export function CustomerOfferView({
   }
 
   if (!offer) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-6">
-        <div className="max-w-md rounded-2xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
-          <p className="text-lg font-medium text-neutral-900">Tilbudet finnes ikke</p>
-          <p className="mt-2 text-sm text-neutral-500">Lenken kan være utløpt eller ugyldig.</p>
-        </div>
-      </div>
-    )
+    return <OfferNotFound />
   }
 
   return (
