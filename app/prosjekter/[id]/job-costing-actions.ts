@@ -6,11 +6,8 @@ import { createClient } from "@/lib/supabase/server"
 import { canManageProjects } from "@/lib/roles"
 import { fetchProjectProfitability, readProjectBudget } from "@/lib/job-costing/project-profitability"
 import type { ProjectProfitability } from "@/lib/job-costing/types"
-<<<<<<< HEAD
 import { getVerifiedUser } from "@/lib/auth/server-context"
-=======
 import { enqueueCostPull } from "@/lib/regnskap/sync"
->>>>>>> preview
 
 async function resolveCompanyProject(
   supabase: Awaited<ReturnType<typeof createClient>>,
