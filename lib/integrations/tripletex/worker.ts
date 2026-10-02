@@ -1111,15 +1111,18 @@ async function processFullReconciliation(job: IntegrationJobRow) {
   }
 
   if (customersEnabled) {
-    const { error: pullError } = await supabase.from("integration_jobs").insert({
-      company_id: job.company_id,
-      provider: "tripletex",
-      job_type: "customer.pull_all",
-      payload: { source: "reconcile" },
-      idempotency_key: `${reconcileRunKey}:customer-pull:${job.company_id}`,
-      status: "pending",
-      next_run_at: new Date().toISOString(),
-    })
+    const { error: pullError } = await supabase.from("integration_jobs").upsert(
+      {
+        company_id: job.company_id,
+        provider: "tripletex",
+        job_type: "customer.pull_all",
+        payload: { source: "reconcile" },
+        idempotency_key: `${reconcileRunKey}:customer-pull:${job.company_id}`,
+        status: "pending",
+        next_run_at: new Date().toISOString(),
+      },
+      { onConflict: "idempotency_key", ignoreDuplicates: true }
+    )
 
     if (pullError && pullError.code !== "23505") {
       throw new Error(pullError.message)
@@ -1152,15 +1155,18 @@ async function processFullReconciliation(job: IntegrationJobRow) {
   // index) make each entity's create at-most-once across all runs and the accept path.
   if (customersEnabled) {
     for (const customer of customersResult.data || []) {
-      const { error } = await supabase.from("integration_jobs").insert({
-        company_id: job.company_id,
-        provider: "tripletex",
-        job_type: "customer.upsert",
-        payload: { customerId: customer.id },
-        idempotency_key: `tripletex:customer:${customer.id}`,
-        status: "pending",
-        next_run_at: new Date().toISOString(),
-      })
+      const { error } = await supabase.from("integration_jobs").upsert(
+        {
+          company_id: job.company_id,
+          provider: "tripletex",
+          job_type: "customer.upsert",
+          payload: { customerId: customer.id },
+          idempotency_key: `tripletex:customer:${customer.id}`,
+          status: "pending",
+          next_run_at: new Date().toISOString(),
+        },
+        { onConflict: "idempotency_key", ignoreDuplicates: true }
+      )
       if (error && error.code !== "23505") {
         throw new Error(error.message)
       }
@@ -1169,15 +1175,18 @@ async function processFullReconciliation(job: IntegrationJobRow) {
 
   if (projectsEnabled) {
     for (const project of projectsResult.data || []) {
-      const { error } = await supabase.from("integration_jobs").insert({
-        company_id: job.company_id,
-        provider: "tripletex",
-        job_type: "project.upsert",
-        payload: { projectId: project.id },
-        idempotency_key: `tripletex:project:${project.id}`,
-        status: "pending",
-        next_run_at: new Date().toISOString(),
-      })
+      const { error } = await supabase.from("integration_jobs").upsert(
+        {
+          company_id: job.company_id,
+          provider: "tripletex",
+          job_type: "project.upsert",
+          payload: { projectId: project.id },
+          idempotency_key: `tripletex:project:${project.id}`,
+          status: "pending",
+          next_run_at: new Date().toISOString(),
+        },
+        { onConflict: "idempotency_key", ignoreDuplicates: true }
+      )
       if (error && error.code !== "23505") {
         throw new Error(error.message)
       }
@@ -1190,31 +1199,37 @@ async function processFullReconciliation(job: IntegrationJobRow) {
       const customerId = String(offer.customer_id)
       const projectId = offer.project_id ? String(offer.project_id) : null
 
-      const { error: offerError } = await supabase.from("integration_jobs").insert({
-        company_id: job.company_id,
-        provider: "tripletex",
-        job_type: "offer.upsert",
-        payload: { offerId, customerId, projectId },
-        // Matches the accept/send quote key: `tripletex:offer:<id>:quote` + `:upsert`.
-        idempotency_key: `tripletex:offer:${offerId}:quote:upsert`,
-        status: "pending",
-        next_run_at: new Date().toISOString(),
-      })
+      const { error: offerError } = await supabase.from("integration_jobs").upsert(
+        {
+          company_id: job.company_id,
+          provider: "tripletex",
+          job_type: "offer.upsert",
+          payload: { offerId, customerId, projectId },
+          // Matches the accept/send quote key: `tripletex:offer:<id>:quote` + `:upsert`.
+          idempotency_key: `tripletex:offer:${offerId}:quote:upsert`,
+          status: "pending",
+          next_run_at: new Date().toISOString(),
+        },
+        { onConflict: "idempotency_key", ignoreDuplicates: true }
+      )
       if (offerError && offerError.code !== "23505") {
         throw new Error(offerError.message)
       }
 
       if (offer.status === "accepted") {
-        const { error: orderError } = await supabase.from("integration_jobs").insert({
-          company_id: job.company_id,
-          provider: "tripletex",
-          job_type: "order.create_from_offer",
-          payload: { offerId, customerId, ...(projectId ? { projectId } : {}) },
-          // Matches the accept/send order key: `tripletex:offer:<id>:order` + `:order`.
-          idempotency_key: `tripletex:offer:${offerId}:order:order`,
-          status: "pending",
-          next_run_at: new Date().toISOString(),
-        })
+        const { error: orderError } = await supabase.from("integration_jobs").upsert(
+          {
+            company_id: job.company_id,
+            provider: "tripletex",
+            job_type: "order.create_from_offer",
+            payload: { offerId, customerId, ...(projectId ? { projectId } : {}) },
+            // Matches the accept/send order key: `tripletex:offer:<id>:order` + `:order`.
+            idempotency_key: `tripletex:offer:${offerId}:order:order`,
+            status: "pending",
+            next_run_at: new Date().toISOString(),
+          },
+          { onConflict: "idempotency_key", ignoreDuplicates: true }
+        )
         if (orderError && orderError.code !== "23505") {
           throw new Error(orderError.message)
         }

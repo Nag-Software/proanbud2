@@ -16,15 +16,20 @@ export async function enqueueIntegrationJob(input: {
   provider?: string
 }) {
   const supabase = createAdminClient()
-  const { error } = await supabase.from("integration_jobs").insert({
-    company_id: input.companyId,
-    provider: input.provider || "tripletex",
-    job_type: input.jobType,
-    payload: input.payload,
-    idempotency_key: input.idempotencyKey,
-    status: "pending",
-    next_run_at: new Date().toISOString(),
-  })
+  // ON CONFLICT DO NOTHING i stedet for INSERT + 23505: samme dedup, men uten en
+  // ERROR-linje i Postgres-loggen for hver jobb som allerede ligger i køen.
+  const { error } = await supabase.from("integration_jobs").upsert(
+    {
+      company_id: input.companyId,
+      provider: input.provider || "tripletex",
+      job_type: input.jobType,
+      payload: input.payload,
+      idempotency_key: input.idempotencyKey,
+      status: "pending",
+      next_run_at: new Date().toISOString(),
+    },
+    { onConflict: "idempotency_key", ignoreDuplicates: true }
+  )
 
   if (error && error.code !== "23505") {
     throw new Error(`Failed to enqueue integration job: ${error.message}`)
