@@ -45,7 +45,10 @@ import {
   mapTravelExpenseFromTrip,
   resolveProjectStartDateForTripletex,
 } from "@/lib/integrations/tripletex/mappers"
-import { getFreshTripletexConnection } from "@/lib/integrations/tripletex/session"
+import {
+  forceRefreshTripletexSession,
+  getFreshTripletexConnection,
+} from "@/lib/integrations/tripletex/session"
 import { averageCostRate } from "@/lib/job-costing/calc"
 import { processCostsPull } from "@/lib/integrations/tripletex/costs"
 import { processTimesheetSync } from "@/lib/integrations/tripletex/timesheet"
@@ -240,6 +243,13 @@ function classifyError(error: unknown) {
   }
 
   return { kind: "failed" as const, code: `http_${status}`, message }
+}
+
+const TRIPLETEX_AUTH_REJECTED_MESSAGE =
+  "Tripletex avviste API-nøkkelen. Koble til Tripletex på nytt under Integrasjoner."
+
+function isUnauthorized(error: unknown) {
+  return (error as { status?: number })?.status === 401
 }
 
 async function processCustomerUpsert(job: IntegrationJobRow) {
@@ -2011,6 +2021,9 @@ export async function runTripletexWorker(input?: { workerId?: string; batchSize?
     projectManagerIdsByCompany: new Map<string, number[]>(),
   }
 
+  // Utfallet av den tvungne sesjonsfornyelsen per bedrift i denne kjøringen.
+  const sessionRefreshByCompany = new Map<string, Awaited<ReturnType<typeof forceRefreshTripletexSession>>>()
+
   // Recover jobs orphaned in 'processing' by a worker that died mid-run (Vercel timeout,
   // deploy, OOM): idempotent steps are requeued, non-idempotent creators are failed for
   // manual review. Best-effort — never block today's run. See db/44.
@@ -2025,6 +2038,15 @@ export async function runTripletexWorker(input?: { workerId?: string; batchSize?
     claimed += jobs.length
 
     for (const job of jobs) {
+      // Tripletex har allerede avvist API-nøkkelen i denne kjøringen: ikke spør igjen for
+      // hver jobb. Jobben feiler med samme kode, så «Prøv feilede på nytt» henter den
+      // opp igjen etter at bedriften har koblet til på nytt.
+      if (sessionRefreshByCompany.get(job.company_id) === "rejected") {
+        await markJobFailed(job, "http_401", TRIPLETEX_AUTH_REJECTED_MESSAGE)
+        failed += 1
+        continue
+      }
+
       try {
         await processJob(job, runtimeCache)
         await markJobCompleted(job.id)
@@ -2032,6 +2054,51 @@ export async function runTripletexWorker(input?: { workerId?: string; batchSize?
         completed += 1
       } catch (error) {
         const classified = classifyError(error)
+
+        // 401 = Tripletex avviser sesjonen. Den kan bli ugyldig før session_expires_at,
+        // og da fornyet vi den aldri — hver jobb feilet til noen koblet til på nytt for
+        // hånd. Første 401 per bedrift gir én tvungen fornyelse.
+        if (isUnauthorized(error) && !sessionRefreshByCompany.has(job.company_id)) {
+          const outcome = await forceRefreshTripletexSession(job.company_id)
+          sessionRefreshByCompany.set(job.company_id, outcome)
+
+          if (outcome === "refreshed") {
+            // Ny sesjon er lagret; kjør jobben igjen i neste runde. En 401 avvises før
+            // Tripletex gjør noe, så en ny kjøring kan ikke dobbeltopprette.
+            await markJobRetry(job, classified.code, classified.message, new Date().toISOString())
+            retried += 1
+            continue
+          }
+
+          if (outcome === "unavailable") {
+            await markJobRetry(job, classified.code, classified.message)
+            retried += 1
+            await updateTripletexConnectionHealth({
+              companyId: job.company_id,
+              success: false,
+              errorMessage: classified.message,
+            })
+            continue
+          }
+
+          await markJobFailed(job, classified.code, classified.message)
+          failed += 1
+          await logServerError({
+            message: "Tripletex avviser API-nøkkelen – bedriften må koble til på nytt",
+            error,
+            source: "worker",
+            route: "runTripletexWorker",
+            companyId: job.company_id,
+            context: { jobId: job.id, jobType: job.job_type, code: classified.code },
+          })
+          await updateTripletexConnectionHealth({
+            companyId: job.company_id,
+            success: false,
+            errorMessage: TRIPLETEX_AUTH_REJECTED_MESSAGE,
+          })
+          continue
+        }
+
         if (classified.kind === "retry") {
           await markJobRetry(job, classified.code, classified.message, classified.rateLimitResetAt)
           retried += 1
