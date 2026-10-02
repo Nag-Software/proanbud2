@@ -26,9 +26,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Låst til 11.28.2: 11.28.3 lager symlenken
+      # .pnpm/vite@*/node_modules/fsevents -> ../../../.. for den hoppede
+      # macOS-pakken fsevents, og Turbopack-filsporingen (outputFileTracingIncludes
+      # for Chromium i PDF-rutene) stopper bygget med «symlink … infinite loop».
       - uses: pnpm/action-setup@v4
         with:
-          version: 11
+          version: 11.28.2
 
       - uses: actions/setup-node@v4
         with:
