@@ -440,11 +440,15 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
     <Button
       size="xl"
       type="button"
-      className="w-full gap-2 text-base font-semibold"
+      className="w-full gap-2 text-base font-semibold md:h-[var(--control-h-lg)] md:text-sm"
       onClick={handleGeofenceCheckIn}
       disabled={!selectedProjectId || isSubmitting || checkingIn}
     >
-      {checkingIn ? <Loader2 className="size-5 animate-spin" /> : <MapPin className="size-5" />}
+      {checkingIn ? (
+        <Loader2 className="size-5 animate-spin md:size-4" />
+      ) : (
+        <MapPin className="size-5 md:size-4" />
+      )}
       {checkingIn ? "Henter posisjon …" : "Stemple inn på plassen"}
     </Button>
   )
@@ -452,33 +456,40 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
   const showStickyCheckIn = !activeSession && projects.length > 0
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4 pb-8">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Timeføring</h1>
-        <p className="text-sm text-muted-foreground">
+    <div className="mx-auto w-full max-w-2xl space-y-4 pb-8 md:max-w-xl md:space-y-3">
+      <div className="space-y-0.5">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-xl">
+          Timeføring
+        </h1>
+        {/* Kun desktop: på mobil stjeler linja høyde fra selve stemplingen. */}
+        <p className="hidden text-[13px] text-muted-foreground md:block">
           Stemple inn når du starter — timene lagres når du stempler ut.
         </p>
       </div>
 
       {activeSession ? (
-        <div className="rounded-xl border border-green-200 bg-green-50 p-5 dark:border-green-900/60 dark:bg-green-950/30">
+        <div className="rounded-xl border border-green-200 bg-green-50 p-5 md:p-4 dark:border-green-900/60 dark:bg-green-950/30">
           <div className="flex items-center gap-2.5">
             <span className="relative flex size-3">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60" />
               <span className="relative inline-flex size-3 rounded-full bg-green-600" />
             </span>
-            <p className="font-semibold text-green-900 dark:text-green-100">Du er stemplet inn</p>
+            <p className="font-semibold text-green-900 md:text-sm dark:text-green-100">
+              Du er stemplet inn
+            </p>
           </div>
 
-          <p className="mt-4 text-lg font-semibold text-foreground">{activeSession.projectName}</p>
-          <p className="text-sm text-green-900/70 dark:text-green-200/70">
+          <p className="mt-4 text-lg font-semibold text-foreground md:mt-3 md:text-base">
+            {activeSession.projectName}
+          </p>
+          <p className="text-sm text-green-900/70 md:text-[13px] dark:text-green-200/70">
             Startet{" "}
             {startedToday
               ? `kl. ${format(startedAtDate!, "HH:mm")}`
               : format(startedAtDate!, "d. MMM 'kl.' HH:mm", { locale: nb })}
           </p>
 
-          <p className="mt-4 text-4xl font-semibold tabular-nums text-green-900 dark:text-green-50">
+          <p className="mt-4 text-4xl font-semibold tabular-nums text-green-900 md:mt-3 md:text-3xl dark:text-green-50">
             {elapsedLabel}
           </p>
 
@@ -487,27 +498,31 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
           <Button size="xl"
             type="button"
             variant="destructive"
-            className="mt-5 w-full gap-2 text-base font-semibold"
+            className="mt-5 w-full gap-2 text-base font-semibold md:mt-4 md:h-[var(--control-h-lg)] md:text-sm"
             onClick={handleStopp}
             disabled={isSubmitting}
           >
-            {isSubmitting ? <Loader2 className="size-5 animate-spin" /> : <Square className="size-5" />}
+            {isSubmitting ? (
+              <Loader2 className="size-5 animate-spin md:size-4" />
+            ) : (
+              <Square className="size-5 md:size-4" />
+            )}
             Stemple ut
           </Button>
         </div>
       ) : projects.length === 0 ? (
         <NoProjectsState role={role} />
       ) : (
-        <div className="space-y-4 rounded-xl border p-5">
+        <div className="space-y-4 rounded-xl border p-5 md:space-y-3 md:p-4">
           <div>
-            <h2 className="font-semibold">Hvilket prosjekt jobber du på?</h2>
-            <p className="text-sm text-muted-foreground">
+            <h2 className="font-semibold md:text-sm">Hvilket prosjekt jobber du på?</h2>
+            <p className="text-sm text-muted-foreground md:text-[13px]">
               Velg prosjekt og stemple inn — vi husker valget til neste gang.
             </p>
           </div>
 
           {projects.length <= MAX_PROJECT_CARDS ? (
-            <div className="grid gap-2">
+            <div className="grid gap-2 md:gap-1.5">
               {projects.map((project) => {
                 const selected = project.id === selectedProjectId
                 return (
@@ -517,7 +532,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
                     onClick={() => selectProject(project.id)}
                     aria-pressed={selected}
                     className={cn(
-                      "flex min-h-12 items-center justify-between gap-3 rounded-lg border px-4 py-3 text-left text-base font-medium transition-colors",
+                      "flex min-h-12 items-center justify-between gap-3 rounded-lg border px-4 py-3 text-left text-base font-medium transition-colors md:min-h-9 md:px-3 md:py-1.5 md:text-sm",
                       selected
                         ? "border-primary bg-primary/5"
                         : "hover:bg-muted/50"
@@ -525,9 +540,9 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
                   >
                     <span className="min-w-0 truncate">{project.name}</span>
                     {selected ? (
-                      <CheckCircle2 className="size-5 shrink-0 text-primary" />
+                      <CheckCircle2 className="size-5 shrink-0 text-primary md:size-4" />
                     ) : (
-                      <Circle className="size-5 shrink-0 text-muted-foreground/40" />
+                      <Circle className="size-5 shrink-0 text-muted-foreground/40 md:size-4" />
                     )}
                   </button>
                 )
@@ -545,7 +560,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
               placeholder="Velg prosjekt"
               searchPlaceholder="Søk på prosjekt eller adresse …"
               emptyText="Ingen prosjekter passer søket"
-              className="h-12 w-full text-base"
+              className="h-12 w-full text-base md:h-9 md:text-sm"
             />
           )}
 
@@ -563,7 +578,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
           <Button size="lg"
             type="button"
             variant="outline"
-            className="w-full gap-2"
+            className="w-full gap-2 md:h-[var(--control-h)]"
             onClick={handleStartWithoutGps}
             disabled={!selectedProjectId || isSubmitting || checkingIn}
           >
@@ -574,24 +589,24 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
       )}
 
       {projects.length > 0 && (
-        <div className="rounded-xl border p-5">
+        <div className="rounded-xl border p-5 md:px-4 md:py-3">
           <button
             type="button"
             onClick={handleToggleManual}
-            className="flex w-full items-center gap-2 text-left"
+            className="flex w-full items-center gap-2 text-left md:gap-2.5"
           >
-            <Pencil className="size-5 text-primary" />
+            <Pencil className="size-5 text-primary md:size-4" />
             <div>
-              <h2 className="font-semibold">Før timer manuelt</h2>
-              <p className="text-sm text-muted-foreground">
+              <h2 className="font-semibold md:text-sm">Før timer manuelt</h2>
+              <p className="text-sm text-muted-foreground md:text-[13px]">
                 Glemte du å stemple? Før opp arbeid i ettertid.
               </p>
             </div>
           </button>
 
           {showManual && (
-            <div className="mt-4 space-y-3">
-              <div className="space-y-2">
+            <div className="mt-4 space-y-3 md:mt-3">
+              <div className="space-y-2 md:space-y-1.5">
                 <Label htmlFor="manual-project">Prosjekt</Label>
                 <SearchableSelect
                   id="manual-project"
@@ -601,23 +616,23 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
                   placeholder="Velg prosjekt"
                   searchPlaceholder="Søk på prosjekt eller adresse …"
                   emptyText="Ingen prosjekter passer søket"
-                  className="h-10 w-full"
+                  className="h-10 w-full md:h-9"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="manual-date">Dato</Label>
-                <DatePicker
-                  id="manual-date"
-                  value={manualDate}
-                  maxDate={todayLocalISODate()}
-                  onChange={setManualDate}
-                  className="h-10 w-full"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
+              {/* Desktop: dato, fra og til på én linje. Mobil: dato over, tidene side om side. */}
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(0,1fr)_7rem_7rem]">
+                <div className="col-span-2 space-y-2 md:col-span-1 md:space-y-1.5">
+                  <Label htmlFor="manual-date">Dato</Label>
+                  <DatePicker
+                    id="manual-date"
+                    value={manualDate}
+                    maxDate={todayLocalISODate()}
+                    onChange={setManualDate}
+                    className="h-10 w-full md:h-9"
+                  />
+                </div>
+                <div className="space-y-2 md:space-y-1.5">
                   <Label htmlFor="manual-from">Fra</Label>
                   <Input
                     id="manual-from"
@@ -626,7 +641,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
                     onChange={(event) => setManualFrom(event.target.value)}
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 md:space-y-1.5">
                   <Label htmlFor="manual-to">Til</Label>
                   <Input
                     id="manual-to"
@@ -637,7 +652,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 md:space-y-1.5">
                 <Label htmlFor="manual-note">Notat (valgfritt)</Label>
                 <Textarea
                   id="manual-note"
@@ -648,7 +663,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
                 />
               </div>
 
-              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm md:py-1.5 md:text-[13px]">
                 {manualHours && manualHours > 0 ? (
                   <span>
                     Beregnet: <span className="font-semibold">{formatT(manualHours)}</span>
@@ -664,7 +679,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
 
               <Button size="lg"
                 type="button"
-                className="w-full"
+                className="w-full md:h-[var(--control-h)]"
                 onClick={handleSaveManual}
                 disabled={manualSubmitting}
               >
@@ -676,30 +691,37 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
       )}
 
       <div className="rounded-xl border">
-        <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
+        <div className="flex items-center justify-between gap-3 border-b px-5 py-4 md:px-4 md:py-3">
           <div>
-            <h2 className="font-semibold">Denne uka</h2>
-            <p className="text-sm text-muted-foreground">Sum fra mandag · listen viser de siste 7 dagene</p>
+            <h2 className="font-semibold md:text-sm">Denne uka</h2>
+            <p className="text-sm text-muted-foreground md:text-[13px]">
+              Sum fra mandag · listen viser de siste 7 dagene
+            </p>
           </div>
-          <p className="text-2xl font-semibold tabular-nums">{formatT(weekHours)}</p>
+          <p className="shrink-0 whitespace-nowrap text-2xl font-semibold tabular-nums md:text-xl">
+            {formatT(weekHours)}
+          </p>
         </div>
 
         {recentEntries.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+          <p className="px-5 py-8 text-center text-sm text-muted-foreground md:px-4 md:py-6 md:text-[13px]">
             Ingen timer registrert de siste 7 dagene ennå.
           </p>
         ) : (
           <div className="divide-y">
             {recentEntries.map((entry) => (
-              <div key={entry.id} className="flex items-center justify-between gap-3 px-5 py-3">
+              <div
+                key={entry.id}
+                className="flex items-center justify-between gap-3 px-5 py-3 md:px-4 md:py-2"
+              >
                 <div className="min-w-0">
-                  <p className="truncate font-medium">{entry.projectName}</p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="truncate font-medium md:text-sm">{entry.projectName}</p>
+                  <p className="text-sm text-muted-foreground md:text-xs">
                     {format(entryDateToDay(entry.entryDate), "EEEE d. MMM", { locale: nb })}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <span className="font-medium tabular-nums">{formatT(entry.hours)}</span>
+                  <span className="font-medium tabular-nums md:text-sm">{formatT(entry.hours)}</span>
                   {entry.status === "pending" ? (
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
                       Venter
