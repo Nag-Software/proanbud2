@@ -31,6 +31,7 @@ import { CreateProjectDrawer } from "@/app/prosjekter/create-project-dialog"
 import { NativeMenuBridge } from "@/components/native-nav-bridge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useNotifications, type NotificationItem } from "@/hooks/use-notifications"
+import { useCompanyNotifications, type CompanyNotificationItem } from "@/hooks/use-company-notifications"
 import { NotificationsPopover } from "@/components/notifications-popover"
 import { useOpenDeviationCount } from "@/hooks/use-open-deviation-count"
 import { useActiveWorkSession } from "@/hooks/use-active-work-session"
@@ -293,17 +294,23 @@ function writeSidebarProjects(userId: string, rows: SidebarProjectRow[]) {
 function AppSidebarHeader({
   unreadCount,
   notifications,
+  offerNotifications,
   notificationsLoading,
+  messagesEnabled,
   onMarkAllRead,
   onMarkThreadRead,
+  onMarkNotificationRead,
   canCreateProject,
   roleLoading,
 }: {
   unreadCount: number
   notifications: NotificationItem[]
+  offerNotifications: CompanyNotificationItem[]
   notificationsLoading: boolean
+  messagesEnabled: boolean
   onMarkAllRead: () => void
   onMarkThreadRead: (customerId: string) => void
+  onMarkNotificationRead: (id: string) => void
   canCreateProject: boolean
   roleLoading: boolean
 }) {
@@ -326,7 +333,7 @@ function AppSidebarHeader({
           {isCollapsed && unreadCount > 0 && (
             <span
               className="pointer-events-none absolute -right-1 -top-1 size-2 rounded-full bg-primary ring-2 ring-sidebar"
-              aria-label={`${unreadCount} uleste meldinger`}
+              aria-label={`${unreadCount} uleste varsler`}
             />
           )}
         </div>
@@ -334,10 +341,13 @@ function AppSidebarHeader({
           <div className="shrink-0">
             <NotificationsPopover
               notifications={notifications}
+              offerNotifications={offerNotifications}
               unreadCount={unreadCount}
               loading={notificationsLoading}
+              messagesEnabled={messagesEnabled}
               onMarkAllRead={onMarkAllRead}
               onMarkThreadRead={onMarkThreadRead}
+              onMarkNotificationRead={onMarkNotificationRead}
             />
           </div>
         )}
@@ -407,6 +417,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     markAllRead,
     markThreadRead,
   } = useNotifications({ enabled: loadingRole || hasFeature("meldinger") });
+  // Tilbudsvarsler (kunden åpnet / e-posten kom ikke frem) gjelder alle planer,
+  // men ikke arbeidere — de jobber ikke med tilbud.
+  const {
+    notifications: offerNotifications,
+    unreadCount: offerUnreadCount,
+    loading: offerNotificationsLoading,
+    markRead: markOfferNotificationRead,
+    markAllRead: markAllOfferNotificationsRead,
+  } = useCompanyNotifications({ enabled: roleKnown && !isWorker });
   const openDeviationCount = useOpenDeviationCount();
   const { hasActiveSession } = useActiveWorkSession();
   const [activeProjects, setActiveProjects] = React.useState<SidebarProject[]>([]);
@@ -418,6 +437,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     loadingRole || hasFeature(feature);
   // Suppress the messages badge entirely when the plan lacks Meldinger.
   const visibleUnreadCount = featureEnabled("meldinger") ? unreadCount : 0;
+  // Bjella teller begge deler; «Meldinger» i menyen teller fortsatt bare meldinger.
+  const bellUnreadCount = visibleUnreadCount + offerUnreadCount;
+  const markAllNotificationsRead = React.useCallback(() => {
+    void markAllRead();
+    void markAllOfferNotificationsRead();
+  }, [markAllRead, markAllOfferNotificationsRead]);
 
   // Prosjektlista males fra forrige besøk med en gang, og hentes én gang per
   // økt. Nøklet på bruker-id (ikke user-objektet), så den ikke hentes på nytt
@@ -556,11 +581,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           aldri kan drifte fra hverandre. Rendrer ingenting. */}
       <NativeMenuBridge items={filteredNavMain} />
       <AppSidebarHeader
-        unreadCount={visibleUnreadCount}
+        unreadCount={bellUnreadCount}
         notifications={notifications}
-        notificationsLoading={notificationsLoading}
-        onMarkAllRead={markAllRead}
+        offerNotifications={offerNotifications}
+        notificationsLoading={notificationsLoading || offerNotificationsLoading}
+        messagesEnabled={featureEnabled("meldinger")}
+        onMarkAllRead={markAllNotificationsRead}
         onMarkThreadRead={markThreadRead}
+        onMarkNotificationRead={markOfferNotificationRead}
         canCreateProject={!isWorker}
         roleLoading={!roleKnown}
       />

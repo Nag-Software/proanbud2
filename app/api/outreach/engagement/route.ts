@@ -4,6 +4,7 @@ import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
 import type { ProspectRow } from "@/lib/outreach/types"
+import { isScannerUserAgent } from "@/lib/tilbud/offer-tracking.shared"
 
 export const maxDuration = 15
 
@@ -27,9 +28,6 @@ const schema = z.object({
   dwell_ms: z.number().int().min(0).max(3_600_000).optional(),
 })
 
-/** Kjente lenkeskannere og roboter. Aldri et menneske. */
-const SCANNER = /(bot|crawler|spider|preview|scanner|monitor|curl|wget|python-requests|headless|safelinks|proofpoint|mimecast|barracuda)/i
-
 /** Under dette er «visning» ikke et menneske som leser. */
 const MIN_DWELL_MS = 3000
 
@@ -40,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   const userAgent = request.headers.get("user-agent") ?? ""
-  if (SCANNER.test(userAgent)) {
+  if (isScannerUserAgent(userAgent)) {
     // Svar 200: en skanner skal ikke få vite at den ble avvist, og siden skal
     // ikke se ut som den feiler.
     return NextResponse.json({ ok: true, counted: false })

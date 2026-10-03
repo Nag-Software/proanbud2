@@ -7,6 +7,7 @@ import { calculateOfferTotals, type OfferCompanyContext, type OfferLineItem } fr
 import { logOfferActivity, OFFER_ACTIVITY } from "@/lib/tilbud/offer-activity"
 import { createClient } from "@/lib/supabase/server"
 import { canSendOffers } from "@/lib/roles"
+import { shouldResetCustomerView } from "@/lib/tilbud/offer-tracking.shared"
 import {
   computeValidUntilDate,
   formatDocumentCurrency,
@@ -40,6 +41,8 @@ type OfferSendRecord = {
   recipient_name: string | null
   recipient_email: string | null
   recipient_phone: string | null
+  status: string | null
+  customer_viewed_at: string | null
   customers?:
     | {
         name: string | null
@@ -105,7 +108,7 @@ export async function sendOfferToCustomer(input: SendOfferInput) {
   const { data: offer, error: offerError } = await supabase
     .from("offers")
     .select(
-      "id, title, description, created_at, quote_valid_until, source_summary, analysis_result, line_items, recipient_name, recipient_email, recipient_phone, customers(name, email, phone, address, city, org_number), projects(name)"
+      "id, title, description, created_at, quote_valid_until, source_summary, analysis_result, line_items, recipient_name, recipient_email, recipient_phone, status, customer_viewed_at, customers(name, email, phone, address, city, org_number), projects(name)"
     )
     .eq("id", input.offerId)
     .eq("company_id", input.companyId)
@@ -147,11 +150,14 @@ export async function sendOfferToCustomer(input: SendOfferInput) {
     validUntilText: validUntil ? formatOfferDate(validUntil) : null,
   })
 
-  const { error: sendError } = await resend.emails.send({
+  const { data: sent, error: sendError } = await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL?.trim() || "Proanbud <post@proanbud.no>",
     to: recipientEmail,
     subject: `Tilbud ${offerReference} fra ${companyName}`,
     html: emailHtml,
+    // Følger med i Resend-webhooken, så en hendelse som kommer før
+    // email_provider_id er lagret nedenfor likevel kan knyttes til tilbudet.
+    tags: [{ name: "offer_id", value: input.offerId }],
   })
   // Må kaste FØR offers.status settes til "sent" nedenfor — ellers markeres
   // tilbudet som sendt selv om e-posten aldri nådde kunden.
@@ -159,11 +165,25 @@ export async function sendOfferToCustomer(input: SendOfferInput) {
     throw new Error(`Kunne ikke sende tilbud på e-post: ${sendError.message ?? JSON.stringify(sendError)}`)
   }
 
+  // Ny runde (første utsending, sendt på nytt etter utkast, eller ny adresse)
+  // starter «åpnet» på nytt. En purring til samme adresse beholder den.
+  const resetCustomerView = shouldResetCustomerView({
+    previousStatus: offerRecord.status,
+    previousRecipientEmail: offerRecord.recipient_email,
+    nextRecipientEmail: recipientEmail,
+  })
+
   const { error: updateError } = await supabase
     .from("offers")
     .update({
       status: "sent",
       sent_at: sentAt,
+      // Leveringsstatus gjelder alltid den siste e-posten (stemples av
+      // /api/webhooks/resend).
+      email_provider_id: sent?.id ?? null,
+      email_delivered_at: null,
+      email_bounced_at: null,
+      ...(resetCustomerView ? { customer_viewed_at: null } : {}),
       send_to_customer_direct: true,
       public_slug: publicSlug,
       recipient_name: recipientName,
@@ -203,6 +223,7 @@ export async function sendOfferToCustomer(input: SendOfferInput) {
     sentAt,
     recipientEmail,
     recipientName,
+    customerViewedAt: resetCustomerView ? null : offerRecord.customer_viewed_at,
   }
 }
 

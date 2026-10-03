@@ -5,6 +5,7 @@ import { useMemo, useState } from "react"
 import { OfferCard, type OfferCardData } from "@/components/tilbud/offer-card"
 import { offerStatusConfigByValue, type Quota } from "@/components/tilbud/columns"
 import { readProjectSummaryFromAnalysis } from "@/lib/tilbud/project-summary.shared"
+import { getOfferCustomerSignal } from "@/lib/tilbud/customer-signal"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -16,6 +17,10 @@ type OfferRow = {
     status?: string | null
     created_at?: string | null
     analysis_result?: unknown
+    sent_at?: string | null
+    customer_viewed_at?: string | null
+    email_delivered_at?: string | null
+    email_bounced_at?: string | null
 }
 
 type TilbudTabProps = {
@@ -64,6 +69,14 @@ export default function TilbudTab({ offers, readOnly = false }: TilbudTabProps) 
                 createdRaw,
                 amount,
                 status: normalizeStatus(item.status),
+                // Vises på kortet, men er med vilje ikke en del av søket.
+                signal: getOfferCustomerSignal({
+                    status: normalizeStatus(item.status),
+                    sentAt: item.sent_at,
+                    customerViewedAt: item.customer_viewed_at,
+                    emailDeliveredAt: item.email_delivered_at,
+                    emailBouncedAt: item.email_bounced_at,
+                }),
             }
         })
     }, [offers])

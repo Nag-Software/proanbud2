@@ -47,6 +47,7 @@ import {
   type OfferEditProposal,
 } from "@/components/tilbud/ai-offer-editor"
 import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
+import { OfferDeliveryStatus, type OfferTrackingState } from "@/components/tilbud/offer-delivery-status"
 import { OfferTermsFields } from "@/components/tilbud/offer-terms-fields"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
@@ -322,12 +323,15 @@ function CustomerInfoDisplay({
 export function OfferDetailClient({
   initialOffer,
   linkedCustomer,
+  tracking: initialTracking,
   activity,
   company,
   tripletexSync: initialTripletexSync = null,
 }: {
   initialOffer: OfferPageModel
   linkedCustomer: LinkedCustomer
+  /** Åpnet / levert / kom ikke frem — stemples av kundesiden og Resend-webhooken. */
+  tracking: OfferTrackingState
   activity: OfferActivityItem[]
   company: OfferCompanyContext | null
   tripletexSync?: AccountingSyncState
@@ -377,6 +381,9 @@ export function OfferDetailClient({
   const [lineItems, setLineItems] = useState<OfferLineItem[]>(initialOffer.lineItems)
   const [accountingSync, setAccountingSync] = useState<AccountingSyncState>(initialTripletexSync)
   const [activityLog, setActivityLog] = useState<OfferActivityItem[]>(activity)
+  // Egen state, synket fra props: `offer` over leses bare ved første render,
+  // så en router.refresh() ville ellers aldri vise at kunden har åpnet tilbudet.
+  const [tracking, setTracking] = useState<OfferTrackingState>(initialTracking)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isMessageOpen, setIsMessageOpen] = useState(false)
   const [isSendDialogOpen, setIsSendDialogOpen] = useState(false)
@@ -635,6 +642,13 @@ export function OfferDetailClient({
           recipientEmail: payload.offer.recipientEmail,
           recipientName: payload.offer.recipientName,
         }))
+        // Ny e-post: leveringsstatus starter på nytt. «Åpnet» beholdes bare
+        // når det var en purring til samme adresse (avgjøres på serveren).
+        setTracking({
+          customerViewedAt: payload.offer.customerViewedAt ?? null,
+          emailDeliveredAt: null,
+          emailBouncedAt: null,
+        })
         setIsSendDialogOpen(false)
         void triggerAccountingSyncInBackground()
         toast.success("Tilbud sendt til kunde på e-post")
@@ -661,6 +675,14 @@ export function OfferDetailClient({
   useEffect(() => {
     setActivityLog(activity)
   }, [activity])
+
+  useEffect(() => {
+    setTracking({
+      customerViewedAt: initialTracking.customerViewedAt,
+      emailDeliveredAt: initialTracking.emailDeliveredAt,
+      emailBouncedAt: initialTracking.emailBouncedAt,
+    })
+  }, [initialTracking.customerViewedAt, initialTracking.emailDeliveredAt, initialTracking.emailBouncedAt])
 
   useEffect(() => {
     if (isFirstAutosaveRunRef.current) {
@@ -746,6 +768,16 @@ export function OfferDetailClient({
                 {documentTotals.vatRegistered ? ` · ${formatNok(documentTotals.totalInclVatNok)} inkl. mva` : ""}
               </p>
             </div>
+
+            <OfferDeliveryStatus
+              status={offer.status}
+              sentAt={offer.sentAt}
+              recipientEmail={offer.recipientEmail}
+              customerViewedAt={tracking.customerViewedAt}
+              emailDeliveredAt={tracking.emailDeliveredAt}
+              emailBouncedAt={tracking.emailBouncedAt}
+              onResend={openSendDialog}
+            />
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <div className="flex items-center gap-2">

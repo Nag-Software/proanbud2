@@ -35,6 +35,9 @@ type OfferRecord = {
   created_at: string | null
   updated_at: string | null
   sent_at: string | null
+  customer_viewed_at: string | null
+  email_delivered_at: string | null
+  email_bounced_at: string | null
   recipient_name: string | null
   recipient_email: string | null
   recipient_phone: string | null
@@ -249,7 +252,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
     supabase
       .from("offers")
       .select(
-        "id, title, description, status, amount_nok, subtotal_nok, discount_nok, quote_valid_until, created_at, updated_at, sent_at, recipient_name, recipient_email, recipient_phone, source_summary, source_documents, line_items, analysis_result, pricing_model, contract_basis, markup_percent, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, customer_id, project_id, customers(id, name, email, phone, address, postal_code, city, org_number), projects(id, name, customer_id, customers(id, name, email, phone, address, postal_code, city, org_number))"
+        "id, title, description, status, amount_nok, subtotal_nok, discount_nok, quote_valid_until, created_at, updated_at, sent_at, customer_viewed_at, email_delivered_at, email_bounced_at, recipient_name, recipient_email, recipient_phone, source_summary, source_documents, line_items, analysis_result, pricing_model, contract_basis, markup_percent, accepted_at, accepted_by_name, accepted_email, accepted_method, accepted_document_sha256, customer_id, project_id, customers(id, name, email, phone, address, postal_code, city, org_number), projects(id, name, customer_id, customers(id, name, email, phone, address, postal_code, city, org_number))"
       )
       .eq("id", id)
       .eq("company_id", companyId)
@@ -341,6 +344,11 @@ export default async function OfferDetailPage({ params }: { params: Promise<Para
                   documentSha256: offer.accepted_document_sha256 || "",
                 }
               : null,
+        }}
+        tracking={{
+          customerViewedAt: offer.customer_viewed_at || null,
+          emailDeliveredAt: offer.email_delivered_at || null,
+          emailBouncedAt: offer.email_bounced_at || null,
         }}
         activity={activityRows}
         company={company}

@@ -106,6 +106,54 @@ describe("tilbudskortet – status", () => {
   })
 })
 
+describe("tilbudskortet – åpnet av kunden", () => {
+  const apnet = { kind: "viewed", label: "Åpnet 3. okt", tone: "success" } as const
+  const ikkeFrem = { kind: "bounced", label: "Kom ikke frem", tone: "danger" } as const
+
+  it("viser ingenting ekstra når tilbudet ikke har signal", () => {
+    const { kort } = renderKort({ status: "sent" })
+    expect(within(kort).queryByText(/åpnet|kom ikke frem/i)).toBeNull()
+  })
+
+  it("viser signalet på samme rad som statusmerket", () => {
+    const { kort } = renderKort({ status: "sent", signal: apnet })
+    const signal = within(kort).getByText("Åpnet 3. okt")
+    expect(signal.parentElement).toBe(within(kort).getByText("Sendt").parentElement)
+  })
+
+  it("fargen bæres av en prikk som er skjult for skjermlesere", () => {
+    const { kort } = renderKort({ status: "sent", signal: apnet })
+    const prikk = within(kort).getByText("Åpnet 3. okt").querySelector("span")
+    expect(prikk?.classList.contains("bg-[var(--tone-success)]")).toBe(true)
+    expect(prikk?.getAttribute("aria-hidden")).toBe("true")
+  })
+
+  it("«Kom ikke frem» står i varselfarge", () => {
+    const { kort } = renderKort({ status: "sent", signal: ikkeFrem })
+    const signal = within(kort).getByText("Kom ikke frem")
+    expect(signal.classList.contains("text-[var(--tone-danger-strong)]")).toBe(true)
+    expect(signal.querySelector("span")?.classList.contains("bg-[var(--tone-danger)]")).toBe(true)
+  })
+
+  it("signalet er tekst — ikke et ikon, en lenke eller en knapp", () => {
+    const { kort } = renderKort({ status: "sent", created: "", signal: apnet })
+    // Pilen i «Åpne» er fortsatt det eneste ikonet.
+    expect(kort.querySelectorAll("svg")).toHaveLength(1)
+    expect(kort.querySelectorAll("a, button")).toHaveLength(0)
+  })
+
+  it("kolliderer ikke med «Åpne»-lenketeksten", () => {
+    const { kort } = renderKort({ status: "sent", signal: apnet })
+    expect(within(kort).getByText("Åpne")).toBeTruthy()
+    expect(screen.getByRole("link", { name: /Åpnet 3\. okt/ })).toBeTruthy()
+  })
+
+  it("vises også med lesetilgang", () => {
+    const { kort } = renderKort({ status: "sent", signal: apnet }, true)
+    expect(within(kort).getByText("Åpnet 3. okt")).toBeTruthy()
+  })
+})
+
 describe("tilbudskortet – lenke og lesetilgang", () => {
   it("hele kortet er én lenke til tilbudet", () => {
     const { kort } = renderKort({ id: "abc-123" })

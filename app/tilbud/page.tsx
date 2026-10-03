@@ -3,6 +3,7 @@ import { checkRoleAccess } from "@/lib/auth-utils"
 import { getCurrentCompanyIdForUser } from "@/lib/billing/server-modules"
 import { logServerError } from "@/lib/errors/log"
 import { createClient } from "@/lib/supabase/server"
+import { getOfferCustomerSignal } from "@/lib/tilbud/customer-signal"
 
 import { TilbudListClient, type OfferListRow } from "./tilbud-list-client"
 
@@ -23,6 +24,10 @@ type OfferQueryRow = {
   amount_nok: number | null
   created_at: string | null
   recipient_name: string | null
+  sent_at: string | null
+  customer_viewed_at: string | null
+  email_delivered_at: string | null
+  email_bounced_at: string | null
   customers: RelatedCustomer | RelatedCustomer[] | null
   projects:
     | { name: string | null; customers: RelatedCustomer | RelatedCustomer[] | null }
@@ -52,7 +57,7 @@ export default async function TilbudPage() {
   let offersQuery = supabase
     .from("offers")
     .select(
-      "id, title, status, amount_nok, created_at, recipient_name, customers(name), projects(name, customers(name))"
+      "id, title, status, amount_nok, created_at, recipient_name, sent_at, customer_viewed_at, email_delivered_at, email_bounced_at, customers(name), projects(name, customers(name))"
     )
     .order("created_at", { ascending: false })
     .limit(OFFER_LIMIT)
@@ -107,6 +112,13 @@ export default async function TilbudPage() {
       amountNok: offer.amount_nok || 0,
       status,
       createdAt: offer.created_at,
+      signal: getOfferCustomerSignal({
+        status,
+        sentAt: offer.sent_at,
+        customerViewedAt: offer.customer_viewed_at,
+        emailDeliveredAt: offer.email_delivered_at,
+        emailBouncedAt: offer.email_bounced_at,
+      }),
     }
   })
 

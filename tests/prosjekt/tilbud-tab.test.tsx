@@ -129,6 +129,45 @@ describe("Tilbud-fanen – visning", () => {
   })
 })
 
+describe("Tilbud-fanen – åpnet av kunden", () => {
+  const SENDT = { ...RIVING, sent_at: "2026-10-02T07:14:00Z" }
+
+  it("viser «Ikke åpnet» på et sendt tilbud kunden ikke har sett", () => {
+    renderTab([SENDT])
+    expect(within(eneKort()).getByText("Ikke åpnet")).toBeTruthy()
+  })
+
+  it("viser når kunden åpnet tilbudet", () => {
+    renderTab([{ ...SENDT, customer_viewed_at: "2026-10-03T12:12:00Z" }])
+    expect(within(eneKort()).getByText("Åpnet 3. okt")).toBeTruthy()
+  })
+
+  it("viser «Levert, ikke åpnet» og «Kom ikke frem» fra e-postens status", () => {
+    renderTab([{ ...SENDT, email_delivered_at: "2026-10-02T07:14:09Z" }])
+    expect(within(eneKort()).getByText("Levert, ikke åpnet")).toBeTruthy()
+    cleanup()
+    renderTab([{ ...SENDT, email_bounced_at: "2026-10-02T07:14:09Z" }])
+    expect(within(eneKort()).getByText("Kom ikke frem")).toBeTruthy()
+  })
+
+  it("viser ikke signal på utkast, godkjente og avviste tilbud", () => {
+    renderTab([
+      { ...FJOS, sent_at: "2026-10-02T07:14:00Z" },
+      { ...GRUNN, sent_at: "2026-10-02T07:14:00Z", customer_viewed_at: "2026-10-03T12:12:00Z" },
+      { ...VENTILASJON, sent_at: "2026-10-02T07:14:00Z" },
+    ])
+    expect(screen.queryByText(/åpnet|kom ikke frem/i)).toBeNull()
+  })
+
+  it("signalet er ikke søkbart — «åpnet» skal ikke treffe alle sendte tilbud", async () => {
+    const user = userEvent.setup()
+    renderTab([{ ...SENDT, customer_viewed_at: "2026-10-03T12:12:00Z" }, GRUNN])
+    await sok(user, "åpnet")
+    expect(screen.queryAllByRole("link")).toHaveLength(0)
+    expect(screen.getByText("Ingen tilbud matcher søket.")).toBeTruthy()
+  })
+})
+
 describe("Tilbud-fanen – data inn i kortet", () => {
   it("trimmer tittelen", () => {
     renderTab([{ ...RIVING, title: "  Tak på låve  " }])

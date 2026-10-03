@@ -6,6 +6,8 @@ import { ArrowRight, CalendarDays } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { offerStatusConfigByValue, type Quota } from "@/components/tilbud/columns"
+import { OfferCustomerSignalLabel } from "@/components/tilbud/customer-signal"
+import type { OfferCustomerSignal } from "@/lib/tilbud/customer-signal"
 
 export type OfferCardData = {
   id: string
@@ -14,6 +16,8 @@ export type OfferCardData = {
   created: string
   amount: number
   status: Quota["status"]
+  /** Åpnet / ikke åpnet / kom ikke frem — bare på sendte tilbud. */
+  signal?: OfferCustomerSignal | null
 }
 
 function formatNOK(amount: number) {
@@ -38,10 +42,13 @@ export function OfferCard({ offer, readOnly = false }: OfferCardProps) {
   const body = (
     <>
       <div className="flex flex-1 flex-col items-start p-3.5">
-        <Badge variant="outline" className={cn("font-medium", statusConfig.badgeClass)}>
-          <span className={cn("size-1.5 rounded-full", statusConfig.dotClass)} aria-hidden />
-          {statusConfig.label}
-        </Badge>
+        <div className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+          <Badge variant="outline" className={cn("font-medium", statusConfig.badgeClass)}>
+            <span className={cn("size-1.5 rounded-full", statusConfig.dotClass)} aria-hidden />
+            {statusConfig.label}
+          </Badge>
+          {offer.signal ? <OfferCustomerSignalLabel signal={offer.signal} /> : null}
+        </div>
 
         {/* Beløpet er det man leter etter under Økonomi. Et avvist tilbud er
             ikke penger på vei inn, så der dempes det. */}

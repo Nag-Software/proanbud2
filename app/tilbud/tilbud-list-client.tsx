@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/table"
 import { FileText, PlusCircle, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { OfferCustomerSignalLabel } from "@/components/tilbud/customer-signal"
+import type { OfferCustomerSignal } from "@/lib/tilbud/customer-signal"
 
 export type OfferListRow = {
   id: string
@@ -27,6 +29,8 @@ export type OfferListRow = {
   amountNok: number
   status: "draft" | "sent" | "accepted" | "rejected"
   createdAt: string | null
+  /** Åpnet / ikke åpnet / kom ikke frem — bare på sendte tilbud. */
+  signal?: OfferCustomerSignal | null
 }
 
 type StatusFilter = "alle" | OfferListRow["status"]
@@ -257,6 +261,9 @@ export function TilbudListClient({ rows }: { rows: OfferListRow[] }) {
                         <TableCell className="py-3 align-middle">
                           <Link href={`/tilbud/${row.id}`} className="block">
                             <StatusBadge status={row.status} />
+                            {row.signal ? (
+                              <OfferCustomerSignalLabel signal={row.signal} className="mt-1.5 flex" />
+                            ) : null}
                           </Link>
                         </TableCell>
                         <TableCell className="py-3 align-middle">
@@ -290,7 +297,10 @@ export function TilbudListClient({ rows }: { rows: OfferListRow[] }) {
                           {[row.customer, row.project].filter(Boolean).join(" · ") || row.shortId}
                         </p>
                       </div>
-                      <StatusBadge status={row.status} />
+                      <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <StatusBadge status={row.status} />
+                        {row.signal ? <OfferCustomerSignalLabel signal={row.signal} /> : null}
+                      </div>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-sm font-medium text-foreground tabular-nums">

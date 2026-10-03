@@ -13,6 +13,8 @@ import { PresenceHeartbeat } from "@/components/presence-heartbeat"
 import { RefreshOnReturn } from "@/components/perf/refresh-on-return"
 import { IntentPrefetch } from "@/components/perf/intent-prefetch"
 import { useNativePlatform } from "@/hooks/use-is-native-app"
+import { useCompanyNotifications } from "@/hooks/use-company-notifications"
+import { useUserRole } from "@/hooks/use-user-role"
 import { TrialBanner } from "@/components/billing/trial-banner"
 import { ShellBreadcrumb } from "@/components/shell-breadcrumb"
 import { Separator } from "@/components/ui/separator"
@@ -34,6 +36,28 @@ function shouldUsePersistentShell(pathname: string) {
   if (isSjefenRoute(pathname)) return false
   if (isSelgerRoute(pathname)) return false
   return true
+}
+
+/**
+ * Menyknappen. På mobil bor bjella inne i sidebaren, så et ulest tilbudsvarsel
+ * (kunden åpnet tilbudet / e-posten kom ikke frem) får en prikk her — ellers
+ * ser ingen det før de tilfeldigvis åpner menyen. Deler datakilde med bjella.
+ */
+function ShellSidebarTrigger() {
+  const { isWorker, roleKnown } = useUserRole()
+  const { unreadCount } = useCompanyNotifications({ enabled: roleKnown && !isWorker })
+
+  return (
+    <span className="relative -ml-1 inline-flex">
+      <SidebarTrigger />
+      {unreadCount > 0 && (
+        <span
+          className="pointer-events-none absolute right-0.5 top-0.5 size-2 rounded-full bg-primary ring-2 ring-background md:hidden"
+          aria-label={`${unreadCount} uleste varsler`}
+        />
+      )}
+    </span>
+  )
 }
 
 function PersistentShellFrame({ children }: { children: ReactNode }) {
@@ -63,7 +87,7 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
                 en ekte destinasjon), så hamburgeren er igjen veien inn til
                 sidebaren på mobil — der profil, varsler og prosjektsnarveier
                 bor. «Mer»-arket i bunnbaren dekker sidene, ikke kontoen. */}
-            <SidebarTrigger className="-ml-1" />
+            <ShellSidebarTrigger />
             <Separator
               orientation="vertical"
               className="mr-2 hidden data-vertical:h-4 data-vertical:self-auto md:block"

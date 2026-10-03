@@ -114,7 +114,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       .order("due_date"),
     supabase
       .from("offers")
-      .select("id, title, description, amount_nok, status, created_at, analysis_result")
+      .select(
+        "id, title, description, amount_nok, status, created_at, analysis_result, sent_at, customer_viewed_at, email_delivered_at, email_bounced_at"
+      )
       .eq("project_id", resolvedParams.id),
     supabase
       .from("change_orders")

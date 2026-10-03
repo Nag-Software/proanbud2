@@ -13,6 +13,8 @@ export const OFFER_ACTIVITY = {
   UPDATED: "offer.updated",
   SENT: "offer.sent",
   VIEWED: "offer.viewed",
+  EMAIL_DELIVERED: "offer.email.delivered",
+  EMAIL_BOUNCED: "offer.email.bounced",
   ACCEPTED: "offer.accepted",
   REJECTED: "offer.rejected",
   CUSTOMER_MESSAGE: "offer.customer.message",
@@ -43,7 +45,13 @@ export function getOfferActivityTone(eventType: string) {
   ) {
     return "theme-activity-success"
   }
-  if (value.includes("declined") || value.includes("voided") || value.includes("error") || value === OFFER_ACTIVITY.REJECTED) {
+  if (
+    value.includes("declined") ||
+    value.includes("voided") ||
+    value.includes("error") ||
+    value === OFFER_ACTIVITY.REJECTED ||
+    value === OFFER_ACTIVITY.EMAIL_BOUNCED
+  ) {
     return "theme-activity-error"
   }
   return "theme-activity-info"

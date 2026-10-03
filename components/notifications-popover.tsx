@@ -4,7 +4,7 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { format, isToday, isYesterday } from "date-fns"
 import { nb } from "date-fns/locale"
-import { Bell, BellOff, CheckCheck, ChevronRight, MessageSquare } from "lucide-react"
+import { AlertTriangle, Bell, BellOff, CheckCheck, ChevronRight, Eye, MessageSquare } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -16,13 +16,20 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import type { NotificationItem } from "@/hooks/use-notifications"
+import type { CompanyNotificationItem } from "@/hooks/use-company-notifications"
 
 interface NotificationsPopoverProps {
+  /** Innkommende kundemeldinger (grupperes per kunde). */
   notifications: NotificationItem[]
+  /** Tilbudsvarsler: kunden åpnet tilbudet / e-posten kom ikke frem. */
+  offerNotifications?: CompanyNotificationItem[]
   unreadCount: number
   loading: boolean
+  /** Uten Meldinger-funksjonen vises ikke lenken til innboksen. */
+  messagesEnabled?: boolean
   onMarkAllRead: () => void
   onMarkThreadRead: (customerId: string) => void
+  onMarkNotificationRead?: (id: string) => void
 }
 
 type Conversation = {
@@ -32,6 +39,11 @@ type Conversation = {
   createdAt: string
   unread: number
 }
+
+// Meldinger og tilbudsvarsler vises i én liste, nyeste først.
+type Entry =
+  | { type: "conversation"; createdAt: string; conversation: Conversation }
+  | { type: "notification"; createdAt: string; notification: CompanyNotificationItem }
 
 function initialsOf(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -55,10 +67,13 @@ function formatTime(value: string) {
 
 export function NotificationsPopover({
   notifications,
+  offerNotifications,
   unreadCount,
   loading,
+  messagesEnabled = true,
   onMarkAllRead,
   onMarkThreadRead,
+  onMarkNotificationRead,
 }: NotificationsPopoverProps) {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
@@ -85,10 +100,29 @@ export function NotificationsPopover({
     return Array.from(byCustomer.values())
   }, [notifications])
 
+  const entries = React.useMemo<Entry[]>(() => {
+    const merged: Entry[] = [
+      ...conversations.map(
+        (conversation): Entry => ({ type: "conversation", createdAt: conversation.createdAt, conversation })
+      ),
+      ...(offerNotifications ?? []).map(
+        (notification): Entry => ({ type: "notification", createdAt: notification.createdAt, notification })
+      ),
+    ]
+    return merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }, [conversations, offerNotifications])
+
   function openThread(customerId: string) {
     onMarkThreadRead(customerId)
     setOpen(false)
     router.push(`/meldinger?kunde=${customerId}`)
+  }
+
+  function openNotification(notification: CompanyNotificationItem) {
+    onMarkNotificationRead?.(notification.id)
+    setOpen(false)
+    // Bare interne stier — href kommer fra databasen.
+    if (notification.href?.startsWith("/")) router.push(notification.href)
   }
 
   function openInbox() {
@@ -157,20 +191,80 @@ export function NotificationsPopover({
               </div>
             ))}
           </div>
-        ) : conversations.length === 0 ? (
+        ) : entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
               <BellOff className="h-5 w-5 text-muted-foreground" />
             </div>
             <p className="text-sm font-medium text-foreground">Ingen varsler</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              Du er à jour. Nye meldinger fra kunder dukker opp her.
+              Du er à jour. Nye meldinger fra kunder og hendelser på tilbudene dine dukker opp her.
             </p>
           </div>
         ) : (
           <ScrollArea className="max-h-[min(60vh,420px)]">
             <div className="flex flex-col p-1.5">
-              {conversations.map((conversation) => {
+              {entries.map((entry) => {
+                if (entry.type === "notification") {
+                  const { notification } = entry
+                  const isUnread = !notification.readAt
+                  const isBounce = notification.kind === "offer_email_bounced"
+                  const Icon = isBounce ? AlertTriangle : Eye
+                  return (
+                    <button
+                      key={`varsel-${notification.id}`}
+                      type="button"
+                      onClick={() => openNotification(notification)}
+                      className={cn(
+                        "group relative flex w-full items-start gap-3 rounded-md px-2.5 py-2.5 text-left transition-colors hover:bg-accent",
+                        isUnread && "bg-primary/[0.04]"
+                      )}
+                    >
+                      <div className="relative shrink-0">
+                        <span
+                          className={cn(
+                            "flex h-9 w-9 items-center justify-center rounded-full",
+                            isBounce
+                              ? "bg-[var(--overlay-danger)] text-[var(--tone-danger-strong)]"
+                              : "bg-[var(--overlay-success)] text-[var(--tone-success-strong)]"
+                          )}
+                        >
+                          <Icon className="h-4 w-4" aria-hidden />
+                        </span>
+                        {isUnread && (
+                          <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-popover" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span
+                            className={cn(
+                              "truncate text-sm",
+                              isUnread ? "font-semibold text-foreground" : "font-medium text-foreground"
+                            )}
+                          >
+                            {notification.title}
+                          </span>
+                          <span className="shrink-0 text-[10px] text-muted-foreground">
+                            {formatTime(notification.createdAt)}
+                          </span>
+                        </div>
+                        {notification.body && (
+                          <p
+                            className={cn(
+                              "mt-0.5 line-clamp-2 text-xs leading-relaxed",
+                              isUnread ? "text-foreground/80" : "text-muted-foreground"
+                            )}
+                          >
+                            {notification.body}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  )
+                }
+
+                const { conversation } = entry
                 const isUnread = conversation.unread > 0
                 return (
                   <button
@@ -224,15 +318,17 @@ export function NotificationsPopover({
           </ScrollArea>
         )}
 
-        <button
-          type="button"
-          onClick={openInbox}
-          className="flex w-full items-center justify-center gap-1.5 border-t border-border px-4 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <MessageSquare className="h-3.5 w-3.5" />
-          Se alle meldinger
-          <ChevronRight className="h-3.5 w-3.5" />
-        </button>
+        {messagesEnabled && (
+          <button
+            type="button"
+            onClick={openInbox}
+            className="flex w-full items-center justify-center gap-1.5 border-t border-border px-4 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            Se alle meldinger
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        )}
       </PopoverContent>
     </Popover>
   )

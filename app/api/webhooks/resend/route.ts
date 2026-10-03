@@ -6,6 +6,7 @@ import { computeLeadScore } from "@/lib/selger/scoring"
 import { recordUnsubscribe } from "@/lib/outreach/send"
 import { stopSequenceForEmail } from "@/lib/outreach/sequence"
 import { logServerError } from "@/lib/errors/log"
+import { handleOfferEmailEvent } from "@/lib/tilbud/offer-email-events"
 
 export const runtime = "nodejs"
 
@@ -17,11 +18,15 @@ export const runtime = "nodejs"
 //   • delivered / opened / clicked events are stamped onto seller_email_log (by
 //     Resend message id) so the outreach dashboard can show what's actually
 //     working — open rate, click rate, delivery rate.
+//   • Tilbuds-e-post (lib/tilbud/send-offer.ts): delivered / bounced / failed /
+//     suppressed stemples på offers (db/109), så firmaet ser «levert» og «kom
+//     ikke frem». Det kjøres FØR outreach-flyten og endrer den ikke.
 //
 // Prod setup: create the webhook in the Resend dashboard pointing at this route,
 // subscribe to email.delivered + email.opened + email.clicked + email.bounced +
-// email.complained, enable open/click tracking on the sending domain, and set
-// RESEND_WEBHOOK_SECRET.
+// email.complained (+ email.failed and email.suppressed for offers), enable
+// open/click tracking on the sending domain, and set RESEND_WEBHOOK_SECRET.
+// Offer tracking needs no open/click tracking — only delivery events.
 
 type ResendEvent = {
   type?: string
@@ -30,7 +35,11 @@ type ResendEvent = {
     email?: string
     email_id?: string
     id?: string
-    bounce?: { type?: string; subType?: string }
+    created_at?: string
+    tags?: Record<string, string> | Array<{ name?: string; value?: string }>
+    bounce?: { type?: string; subType?: string; message?: string }
+    failed?: { reason?: string }
+    suppressed?: { type?: string; message?: string }
   }
 }
 
@@ -157,6 +166,26 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient()
   const provider = messageId(event.data)
+
+  // Tilbuds-e-post først. En feil her skal aldri gi 500: da ville Resend
+  // prøve ALLE hendelser på nytt, også outreach-hendelsene under.
+  try {
+    const offerResult = await handleOfferEmailEvent(admin, event)
+    if (offerResult === "retry") {
+      // Hendelsen kom før send-offer rakk å lagre Resend-id-en. Resend prøver
+      // igjen om noen sekunder, og da finnes den.
+      return NextResponse.json({ ok: false, retry: "offer-not-stored-yet" }, { status: 503 })
+    }
+  } catch (error) {
+    await logServerError({
+      message: "Kunne ikke behandle Resend-hendelse for tilbud",
+      error,
+      source: "api",
+      route: "POST /api/webhooks/resend",
+      level: "warning",
+      context: { eventType: event.type ?? null, emailId: provider },
+    })
+  }
 
   // Engagement events: stamp the log row (delivery/open/click rates) AND, for
   // opens/clicks, warm up the prospect so hot leads surface in the seller cockpit.
