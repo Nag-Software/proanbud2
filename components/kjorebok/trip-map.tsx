@@ -1,10 +1,13 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import maplibregl from "maplibre-gl"
+import * as maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 
+import { MAPLIBRE_WORKER_URL } from "@/lib/geo/maplibre-worker"
 import type { LngLat, RouteResult } from "@/lib/kjorebok/types"
+
+maplibregl.setWorkerUrl(MAPLIBRE_WORKER_URL)
 
 // Dark, CarPlay-like vector map. Renders one or more route polylines (the
 // selected one bright with a glow, alternatives muted), start/end markers and an
