@@ -122,16 +122,21 @@ export async function reportTrialStarted(input: {
 
     // Idempotensport: vinner vi ikke INSERT-en, er konverteringen allerede
     // sendt (eller sendes akkurat nå av en parallell webhook-retry).
+    // ON CONFLICT DO NOTHING gir ingen rad tilbake ved konflikt — og ingen
+    // ERROR-linje i Postgres-loggen slik en 23505 fra vanlig INSERT gjorde.
     const { data: claimed, error: claimError } = await admin
       .from("ad_conversions")
-      .insert({
-        provider: PROVIDER,
-        event_name: "trial_started",
-        event_id: input.trialId,
-        company_id: input.companyId,
-        oppref,
-        obref,
-      })
+      .upsert(
+        {
+          provider: PROVIDER,
+          event_name: "trial_started",
+          event_id: input.trialId,
+          company_id: input.companyId,
+          oppref,
+          obref,
+        },
+        { onConflict: "provider,event_name,event_id", ignoreDuplicates: true }
+      )
       .select("id")
       .maybeSingle()
 
@@ -142,6 +147,9 @@ export async function reportTrialStarted(input: {
       if ((claimError as { code?: string }).code === "42P01") return
       throw claimError
     }
+
+    // Ingen rad = konflikten over: en annen kjøring eier allerede konverteringen.
+    if (!claimed?.id) return
 
     const consentDenied =
       input.consentCookie !== undefined &&

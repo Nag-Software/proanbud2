@@ -1024,15 +1024,18 @@ async function processFullReconciliation(job: IntegrationJobRow) {
   const runKey = `fiken-reconcile-run:${job.id}`
 
   const insertJob = async (jobType: string, payload: Record<string, unknown>, key: string) => {
-    const { error } = await supabase.from("integration_jobs").insert({
-      company_id: job.company_id,
-      provider: "fiken",
-      job_type: jobType,
-      payload,
-      idempotency_key: key,
-      status: "pending",
-      next_run_at: new Date().toISOString(),
-    })
+    const { error } = await supabase.from("integration_jobs").upsert(
+      {
+        company_id: job.company_id,
+        provider: "fiken",
+        job_type: jobType,
+        payload,
+        idempotency_key: key,
+        status: "pending",
+        next_run_at: new Date().toISOString(),
+      },
+      { onConflict: "idempotency_key", ignoreDuplicates: true }
+    )
     if (error && error.code !== "23505") {
       throw new Error(error.message)
     }

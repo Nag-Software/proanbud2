@@ -30,13 +30,14 @@ function sessionNeedsRefresh(connection: TripletexConnectionRow) {
 }
 
 export async function ensureFreshTripletexConnection(
-  connection: TripletexConnectionRow
+  connection: TripletexConnectionRow,
+  options?: { force?: boolean }
 ): Promise<TripletexConnectionRow> {
   if (connection.sync_state === "disconnected") {
     throw new Error("Tripletex connection is disconnected")
   }
 
-  if (!sessionNeedsRefresh(connection)) {
+  if (!options?.force && !sessionNeedsRefresh(connection)) {
     return connection
   }
 
@@ -95,4 +96,47 @@ export async function getFreshTripletexConnection(companyId: string) {
   }
 
   return ensureFreshTripletexConnection(data as TripletexConnectionRow)
+}
+
+/**
+ * Lag en ny sesjon selv om den lagrede ikke har nådd utløpsdatoen. Tripletex kan avvise
+ * en sesjon før `session_expires_at` (401) — da hjelper ikke utløpssjekken, og alle
+ * jobbene feilet med 401 helt til noen koblet til på nytt for hånd.
+ *
+ * - "refreshed": ny sesjon er lagret, jobben kan kjøres på nytt.
+ * - "rejected": Tripletex avviser også API-nøklene (slettet/utløpt) — bedriften må
+ *   koble til på nytt.
+ * - "unavailable": vi fikk ikke svar (nettverk/5xx/DB) — prøv igjen senere.
+ */
+export async function forceRefreshTripletexSession(
+  companyId: string
+): Promise<"refreshed" | "rejected" | "unavailable"> {
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from("tripletex_connections")
+    .select("*")
+    .eq("company_id", companyId)
+    .maybeSingle()
+
+  if (error) {
+    return "unavailable"
+  }
+
+  if (!data || data.sync_state === "disconnected") {
+    return "rejected"
+  }
+
+  try {
+    await ensureFreshTripletexConnection(data as TripletexConnectionRow, { force: true })
+    return "refreshed"
+  } catch (refreshError) {
+    const status = (refreshError as { status?: number })?.status
+    if (status && status >= 400 && status < 500 && status !== 429) {
+      return "rejected"
+    }
+    if (refreshError instanceof Error && refreshError.message === "Tripletex tokens are missing") {
+      return "rejected"
+    }
+    return "unavailable"
+  }
 }
