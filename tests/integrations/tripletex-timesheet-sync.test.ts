@@ -34,7 +34,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 }))
 vi.mock("@/lib/errors/log", () => ({ logServerError: vi.fn(async () => undefined) }))
 
-const enqueue = vi.fn<[Row], Promise<{ id: number }>>(async () => ({ id: 1 }))
+const enqueue = vi.fn<(job: Row) => Promise<{ id: number }>>(async () => ({ id: 1 }))
 vi.mock("@/lib/integrations/tripletex/jobs", () => ({
   enqueueIntegrationJob: (job: Row) => enqueue(job),
 }))

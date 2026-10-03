@@ -1,12 +1,15 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import maplibregl from "maplibre-gl"
+import * as maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { useTheme } from "next-themes"
 
 import { geoJsonCircle } from "@/lib/geo/circle"
+import { MAPLIBRE_WORKER_URL } from "@/lib/geo/maplibre-worker"
 import type { KartCustomer, KartGeofence, KartTrip } from "@/app/kart/actions"
+
+maplibregl.setWorkerUrl(MAPLIBRE_WORKER_URL)
 
 type FenceGeometry =
   | { type: "Polygon"; coordinates: number[][][] }

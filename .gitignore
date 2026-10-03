@@ -49,3 +49,6 @@ proanbud-old/
 # Playwright
 test-results/
 playwright-report/
+
+# maplibre-arbeideren kopieres fra node_modules (scripts/copy-maplibre-worker.mjs)
+/public/maplibre/
