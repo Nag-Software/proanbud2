@@ -6,6 +6,7 @@ import { completeClientLogin } from "@/lib/auth/client-login"
 import { reportClientError } from "@/lib/errors/client"
 import { track } from "@/lib/analytics/track"
 import { measureAdEvent } from "@/lib/analytics/openai-ads"
+import { trackMetaRegistration } from "@/lib/analytics/meta-pixel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -137,6 +138,11 @@ export default function CreateCompanyClient() {
       if (created?.trialId) {
         measureAdEvent("trial_started", { type: "plan_enrollment" }, created.trialId)
       }
+
+      // Meta: registreringen er først fullført når firmaet finnes. Dekker både
+      // e-post- og Google-registrering, og hopper over inviterte ansatte (de
+      // kommer aldri hit). Pixel + Conversions API med samme event-ID.
+      trackMetaRegistration(created?.company?.id)
 
       // Bedriften er opprettet og users.company_id er skrevet server-side. Men en
       // hard navigering kan nå middleware-gaten FØR denne nettleser-sesjonen klarer
