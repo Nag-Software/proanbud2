@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 
 import { getUsageSummary, requireCompanyAdmin } from "@/lib/billing/guards"
+import { isRetentionOfferAvailable } from "@/lib/billing/cancellation"
+import { RETENTION_OFFER_PERCENT } from "@/lib/billing/cancellation-reasons"
 import { MODULE_PRICING, PLAN_LABELS, PLAN_PRICING, SEAT_PRICE_NOK } from "@/lib/billing/plans"
 import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -21,6 +23,10 @@ export async function GET() {
       .from("company_modules")
       .select("module_key, enabled_at")
       .eq("company_id", auth.context.companyId)
+
+    // «For dyrt» i oppsigelsesdialogen utløser 50 % av neste måned — én gang
+    // per firma, kun betalende på månedlig trekk.
+    const retentionOfferAvailable = await isRetentionOfferAvailable(auth.context.companyId)
 
     const planKey = summary.plan_key
     const interval = summary.billing_interval
@@ -43,6 +49,7 @@ export async function GET() {
             applied: Boolean(welcomeDiscount.appliedAt),
           }
         : null,
+      retention_offer: retentionOfferAvailable ? { percent_off: RETENTION_OFFER_PERCENT } : null,
       seat_price_nok: SEAT_PRICE_NOK,
       overage_unit_nok: 9.5,
     })

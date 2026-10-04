@@ -6,6 +6,7 @@ import { CheckIcon, Loader2Icon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { CancelSubscriptionDialog } from "@/components/billing/cancel-subscription-dialog"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
@@ -40,6 +41,7 @@ type BillingSummary = {
   included_seats: number
   chargeable_seats: number
   welcome_discount: { code: string; percent_off: number; applied: boolean } | null
+  retention_offer: { percent_off: number } | null
   seat_price_nok: number
   overage_unit_nok: number
   pricing: { monthlyNok: number; yearlyTotalNok: number } | null
@@ -76,6 +78,7 @@ export function BillingPageClient() {
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [enabledModules, setEnabledModules] = useState<Set<string>>(new Set())
+  const [cancelOpen, setCancelOpen] = useState(false)
 
   const loadSummary = useCallback(async () => {
     setLoading(true)
@@ -187,6 +190,23 @@ export function BillingPageClient() {
       await loadSummary()
     } catch (error) {
       reportClientError(error, { context: { action: "avslutt prøveperiode" } })
+      toast.error(actionErrorMessage(error, "Noe gikk galt"))
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function resumeSubscription() {
+    setActionLoading("resume")
+    try {
+      const res = await fetch("/api/stripe/resume", { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "Kunne ikke gjenoppta abonnementet")
+      track("abonnement_gjenopptatt")
+      toast.success("Abonnementet fortsetter som før.")
+      await loadSummary()
+    } catch (error) {
+      reportClientError(error, { context: { action: "gjenoppta abonnement" } })
       toast.error(actionErrorMessage(error, "Noe gikk galt"))
     } finally {
       setActionLoading(null)
@@ -306,9 +326,19 @@ export function BillingPageClient() {
   return (
     <div className="w-full max-w-5xl space-y-6 px-4 py-6 md:px-6">
       {cancelDate && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-          Abonnementet avsluttes {cancelDate}. Du beholder tilgangen til da. Åpne «Administrer
-          betaling» for å gjenoppta abonnementet.
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+          <p>Abonnementet avsluttes {cancelDate}. Du beholder tilgangen til da.</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 border-amber-400 bg-transparent text-amber-900 hover:bg-amber-100 hover:text-amber-900"
+            onClick={resumeSubscription}
+            disabled={actionLoading !== null}
+          >
+            {actionLoading === "resume" && <Loader2Icon className="mr-2 size-4 animate-spin" />}
+            Gjenoppta abonnementet
+          </Button>
         </div>
       )}
 
@@ -495,6 +525,37 @@ export function BillingPageClient() {
           </div>
         </section>
       </div>
+
+      {/* Oppsigelse skjer kun her (ikke i Stripe-portalen), og grunnen er obligatorisk. */}
+      {!cancelDate && (
+        <div className="flex justify-center border-t pt-6">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            onClick={() => setCancelOpen(true)}
+            disabled={actionLoading !== null}
+          >
+            Avslutt abonnement
+          </Button>
+        </div>
+      )}
+
+      <CancelSubscriptionDialog
+        open={cancelOpen}
+        onOpenChange={setCancelOpen}
+        accessUntil={summary?.status === "trialing" ? (trialEnd ?? renewDate) : renewDate}
+        retentionOffer={summary?.retention_offer ?? null}
+        onDone={(outcome) => {
+          toast.success(
+            outcome === "discount_accepted"
+              ? "Rabatten er lagt inn. Neste faktura trekkes med halv pris."
+              : "Abonnementet avsluttes ved periodens slutt."
+          )
+          void loadSummary()
+        }}
+      />
     </div>
   )
 }

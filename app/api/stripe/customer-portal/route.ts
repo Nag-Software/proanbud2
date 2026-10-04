@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import type Stripe from "stripe"
 
 import { requireCompanyAdmin } from "@/lib/billing/guards"
+import { getPortalConfigurationWithoutCancel } from "@/lib/billing/portal-config"
 import { isStripeResourceMissing } from "@/lib/billing/stripe-helpers"
 import { isStripeConfigured } from "@/lib/stripe/server"
 import { getStripe } from "@/lib/stripe/server"
@@ -126,8 +127,11 @@ export async function POST(request: Request) {
     })
 
     const stripe = getStripe()
+    // Oppsigelse skjer kun i appen (grunnen er obligatorisk) — ikke i portalen.
+    const configuration = await getPortalConfigurationWithoutCancel(stripe)
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: customerId,
+      ...(configuration ? { configuration } : {}),
       return_url: `${getBaseUrl(request)}/innstillinger/betaling`,
     })
 

@@ -18,6 +18,7 @@ import {
   ScrollTextIcon,
   ShieldCheckIcon,
   TriangleAlertIcon,
+  UserMinusIcon,
   UsersIcon,
 } from "lucide-react"
 
@@ -91,6 +92,11 @@ const navItems = [
     title: "Fakturaer",
     url: "/sjefen/fakturaer",
     icon: <ReceiptIcon className="size-4" />,
+  },
+  {
+    title: "Oppsigelser",
+    url: "/sjefen/oppsigelser",
+    icon: <UserMinusIcon className="size-4" />,
   },
   {
     title: "Meldinger",
