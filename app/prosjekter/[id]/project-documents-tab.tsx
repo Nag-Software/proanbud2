@@ -24,6 +24,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useProjectIntent } from "./project-tabs-shell"
+import { FileViewerOverlay } from "@/components/file-viewer-overlay"
+import { isRenderableImage } from "@/components/dokumenter/utils"
 
 type DocumentItem = {
   id: string
@@ -79,6 +81,8 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState("")
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Mobil bildeviser (se components/file-viewer-overlay.tsx).
+  const [viewerFile, setViewerFile] = useState<{ name: string; url: string } | null>(null)
 
   const [renameTarget, setRenameTarget] = useState<DocumentItem | null>(null)
   const [renameValue, setRenameValue] = useState("")
@@ -221,7 +225,11 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
 
   function openFile(item: DocumentItem) {
     const url = item.webUrl ?? item.downloadUrl
-    if (url) window.open(url, "_blank", "noreferrer")
+    if (!url) return
+    // Bilder vises oppå siden med Lukk — i appens WebView har window.open
+    // ingen vei tilbake. PDF o.l. åpnes direkte; der gir app-skallet Tilbake.
+    if (isRenderableImage(item)) setViewerFile({ name: item.name, url })
+    else window.open(url, "_blank", "noreferrer")
   }
 
   return (
@@ -406,7 +414,9 @@ export default function ProjectDocumentsTab({ projectId }: Props) {
         </DialogContent>
       </Dialog>
 
-
+      {viewerFile && (
+        <FileViewerOverlay name={viewerFile.name} url={viewerFile.url} onClose={() => setViewerFile(null)} />
+      )}
     </div>
   )
 }

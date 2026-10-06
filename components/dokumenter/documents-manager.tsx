@@ -3,7 +3,8 @@
 import { useCallback, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { useConfirm } from "@/components/ui/confirm-dialog"
-import { sortItems } from "./utils"
+import { isRenderableImage, sortItems } from "./utils"
+import { FileViewerOverlay } from "@/components/file-viewer-overlay"
 import * as api from "./data/api"
 import {
   cacheInsertItem,
@@ -57,6 +58,8 @@ export default function DocumentsManager() {
   const search = useSearch(provider, searchMode ? trimmedQuery : "", searchReload)
 
   const [previewItem, setPreviewItem] = useState<DocumentItem | null>(null)
+  // Mobil bildeviser (se components/file-viewer-overlay.tsx).
+  const [viewerFile, setViewerFile] = useState<{ name: string; url: string } | null>(null)
   const [newFolderOpen, setNewFolderOpen] = useState(false)
   const [newAreaOpen, setNewAreaOpen] = useState(false)
   const [renameTarget, setRenameTarget] = useState<DocumentItem | null>(null)
@@ -261,8 +264,15 @@ export default function DocumentsManager() {
         return
       }
       void api.resolveFileUrl(item).then((url) => {
-        if (url) window.open(url, "_blank", "noreferrer")
-        else toast.error("Ingen lenke tilgjengelig for filen.")
+        if (!url) {
+          toast.error("Ingen lenke tilgjengelig for filen.")
+          return
+        }
+        // Bilder vises oppå siden med Lukk — window.open har ingen vei tilbake
+        // i appens WebView. PDF o.l. åpnes fortsatt direkte (WebKit ruller
+        // ikke PDF i iframe); der sørger app-skallet for Tilbake-raden.
+        if (isRenderableImage(item)) setViewerFile({ name: item.name, url })
+        else window.open(url, "_blank", "noreferrer")
       })
     },
     [hasPreviewPane]
@@ -535,6 +545,10 @@ export default function DocumentsManager() {
       )}
 
       <UploadQueue queue={uploadQueue} />
+
+      {viewerFile && (
+        <FileViewerOverlay name={viewerFile.name} url={viewerFile.url} onClose={() => setViewerFile(null)} />
+      )}
 
       <NewFolderDialog open={newFolderOpen} onOpenChange={setNewFolderOpen} onSubmit={submitNewFolder} />
       <NewAreaDialog open={newAreaOpen} onOpenChange={setNewAreaOpen} onSubmit={submitNewArea} />
