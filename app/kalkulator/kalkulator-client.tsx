@@ -148,7 +148,9 @@ export function KalkulatorClient() {
         return
       }
       if (!res.ok || !data.tilbud) {
-        throw new Error(data.error || "Kunne ikke lage tilbudet.")
+        // Uten feiltekst i svaret er det ikke ruten som svarte (tidsavbrudd i
+        // Vercel/proxyen) — ta med statusen, så feilloggen viser hva som skjedde.
+        throw new Error(data.error || `Kunne ikke lage tilbudet (${res.status}). Prøv igjen om et øyeblikk.`)
       }
       track("kalkulator_generert", { fag })
       setTilbud(data.tilbud as Tilbud)

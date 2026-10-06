@@ -43,8 +43,16 @@ import {
 // (ikke per dag) og håndheves på serveren per nettleser + nettverk — se
 // lib/kalkulator/quota.ts. Hvert tilbud koster tokens; målet er registreringer.
 
-// Nettprissøk + full analyse tar gjerne 20–40s — samme takhøyde som analyse-ruten.
-export const maxDuration = 60
+// Nettprissøk + full analyse tar gjerne 20–40s, men resonneringsmodellen bruker
+// tidvis over et minutt. Markedssiden proxyer hit (proanbud.no → app) og gir opp
+// etter 120s, så alt må være ferdig — også feilhåndteringen — innen det.
+export const maxDuration = 120
+// Ett forsøk må få hele vinduet: standard 30s × 3 forsøk avbrøt et tregt, men
+// friskt kall og startet på nytt til Vercel drepte funksjonen — da kjører aldri
+// catch-blokken (ingen logg, ingen tilbakeført kvote, klienten får ren tekst).
+const MODEL_TIMEOUT_MS = 85_000
+/** Feilet kallet raskere enn dette (429/5xx), rekker vi ett forsøk til. */
+const FAST_FAILURE_MS = 10_000
 
 const bodySchema = z.object({
   beskrivelse: z.string().min(20, "Beskriv jobben litt mer utfyllende (minst 20 tegn).").max(2000),
@@ -251,13 +259,23 @@ export async function POST(request: Request) {
       priceFileAttachments: [],
     }).join("\n\n")
 
-    const response = await openaiFetch("chat/completions", {
-      model: process.env.OPENAI_MODEL || "gpt-5.2-mini",
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
+    const callModel = () =>
+      openaiFetch(
+        "chat/completions",
+        {
+          model: process.env.OPENAI_MODEL || "gpt-5.2-mini",
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
+            { role: "user", content: userPrompt },
+          ],
+        },
+        { timeoutMs: MODEL_TIMEOUT_MS, retries: 0 }
+      )
+    const modelStartedAt = Date.now()
+    const response = await callModel().catch((error) => {
+      if (Date.now() - modelStartedAt > FAST_FAILURE_MS) throw error
+      return callModel()
     })
 
     const payload = (await response.json()) as {
