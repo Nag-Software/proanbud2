@@ -736,6 +736,12 @@ html[data-native="ios"] .native-ios-hide {
   display: none !important;
 }
 
+/* Motstykket: vises BARE i iOS-appen (f.eks. hint til Google-brukere om at de
+   må sette et passord, siden Google-knappen er skjult der). */
+html:not([data-native="ios"]) .native-ios-only {
+  display: none !important;
+}
+
 /* Uten webtopplinjen (native-hide over) starter sideinnholdet rett under
    statuslinjen — litt luft, så overskriftene ikke klistrer seg i kanten. */
 html[data-native] .shell-scroll:not(.overflow-hidden) {

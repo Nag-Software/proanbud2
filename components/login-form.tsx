@@ -162,6 +162,15 @@ function LoginFormInner({
               </Field>
               <Field>
                 <Button type="submit" disabled={loading}>{loading ? 'Logger inn…' : 'Logg inn'}</Button>
+                {/* Google-knappen er skjult i iOS-appen (over). En som bare har
+                    logget inn med Google har ikke noe passord — uten dette
+                    hintet er appen en blindvei for dem. */}
+                {!APPLE_LOGIN_ENABLED && (
+                  <FieldDescription className="native-ios-only text-center">
+                    Pleier du å logge inn med Google? Trykk «Glemt passordet?» og
+                    sett et passord, så kommer du inn med e-post her i appen.
+                  </FieldDescription>
+                )}
                 {passwordUpdated ? (
                   <FieldDescription className="text-center text-green-600 dark:text-green-500">
                     Passordet ditt er oppdatert. Du kan nå logge inn.

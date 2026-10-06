@@ -24,19 +24,46 @@ describe('auth route helpers', () => {
 describe('auth UI', () => {
   const loginForm = readFileSync(resolve(__dirname, '../../components/login-form.tsx'), 'utf-8')
   const signupForm = readFileSync(resolve(__dirname, '../../components/signup-form.tsx'), 'utf-8')
+  const appleButton = readFileSync(
+    resolve(__dirname, '../../components/apple-login-button.tsx'),
+    'utf-8'
+  )
+  const globalsCss = readFileSync(resolve(__dirname, '../../app/globals.css'), 'utf-8')
   const middleware = readFileSync(resolve(__dirname, '../../lib/supabase/middleware.ts'), 'utf-8')
 
-  it('login form does not offer Apple login', () => {
-    expect(loginForm).not.toContain('AppleLoginButton')
-    expect(loginForm).not.toContain('APPLE_LOGIN_ENABLED')
+  // Apple-provideren er ikke satt opp i Supabase, så knappen må være AV til
+  // NEXT_PUBLIC_APPLE_LOGIN=1 settes — ellers feiler innlogging med Apple.
+  it('apple login is off unless NEXT_PUBLIC_APPLE_LOGIN=1', () => {
+    expect(appleButton).toContain('process.env.NEXT_PUBLIC_APPLE_LOGIN === "1"')
+    expect(process.env.NEXT_PUBLIC_APPLE_LOGIN).not.toBe('1')
+  })
+
+  // App Review 4.8: iOS-appen kan ikke tilby Google uten Apple. Med flagget av
+  // skjules Google (og skilleteksten) i iOS-appen via native-ios-hide, mens
+  // e-postinnlogging alltid står igjen.
+  it('login form gates Apple behind the flag and hides Google on iOS without it', () => {
+    expect(loginForm).toContain('APPLE_LOGIN_ENABLED && (')
+    expect(loginForm).toContain('<AppleLoginButton')
+    expect(loginForm.match(/!APPLE_LOGIN_ENABLED && "native-ios-hide"/g)).toHaveLength(2)
+    expect(loginForm).toContain('autoComplete="email"')
     expect(loginForm).toContain('completeClientLogin')
     expect(loginForm).not.toContain('getSession')
   })
 
-  it('signup form does not offer Apple login', () => {
-    expect(signupForm).not.toContain('AppleLoginButton')
-    expect(signupForm).not.toContain('APPLE_LOGIN_ENABLED')
+  it('signup form gates Apple behind the flag and hides Google on iOS without it', () => {
+    expect(signupForm).toContain('APPLE_LOGIN_ENABLED && (')
+    expect(signupForm).toContain('<AppleLoginButton')
+    expect(signupForm.match(/!APPLE_LOGIN_ENABLED && "native-ios-hide"/g)).toHaveLength(2)
+    expect(signupForm).toContain('autoComplete="email"')
     expect(signupForm).toContain('completeClientLogin')
+  })
+
+  it('native-ios-hide only applies inside the iOS app', () => {
+    expect(globalsCss).toContain('html[data-native="ios"] .native-ios-hide')
+    expect(globalsCss).toContain('html:not([data-native="ios"]) .native-ios-only')
+    // Google-brukere uten passord må få vite veien inn i iOS-appen.
+    expect(loginForm).toContain('native-ios-only')
+    expect(globalsCss).not.toMatch(/^\s*\.native-ios-hide\s*\{/m)
   })
 
   it('middleware redirects authenticated users away from login/signup', () => {
