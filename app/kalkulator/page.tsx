@@ -16,6 +16,10 @@ export const metadata: Metadata = {
   // feilmønster som www-canonical-saken på markedssiden — hvis du endrer denne,
   // sjekk at målet faktisk svarer 200.
   alternates: { canonical: "/verktoy/tilbudskalkulator" },
+  // Rot-layouten setter noindex for hele appen. Denne siden er unntaket: den
+  // serveres på proanbud.no/verktoy/tilbudskalkulator og skal indekseres der.
+  // Kopien på app-domenet peker canonical dit, så den konkurrerer ikke.
+  robots: { index: true, follow: true },
   openGraph: {
     title: "Gratis tilbudskalkulator for håndverkere",
     description:

@@ -1,7 +1,7 @@
 # OpenAI Ads (ChatGPT) — måling av prøvestart
 
 Hovedkonverteringen vi optimaliserer mot er **start av prøveperiode**, som skjer
-i appen (nye.proanbud.no). Markedssiden (proanbud.no, eget repo) er allerede satt
+i appen (app.proanbud.no). Markedssiden (proanbud.no, eget repo) er allerede satt
 opp: pixelen ligger i `<head>`, `oppref` fra annonseklikket lagres i en
 førsteparts `__oppref`-cookie, og interstitialen `/start` sender den videre som
 query-parameter til `/signup` her.
@@ -22,7 +22,7 @@ ingen attribusjon lagres, ingen konvertering sendes, appen knekker ikke.
 ```
 annonseklikk (ChatGPT)
   → proanbud.no: pixel lagrer oppref i __oppref
-  → /start: sender ?oppref=… til nye.proanbud.no/signup
+  → /start: sender ?oppref=… til app.proanbud.no/signup
   → /signup: refs lagres i ad_click_refs + registration_completed fyres
   → /create-company: refs kopieres til companies.ad_oppref/ad_obref
   → prøven opprettes: trial_started i nettleseren OG via Conversions API
@@ -71,7 +71,7 @@ ser nettleseren aldri noe.
   "type": "trial_started",
   "timestamp_ms": 1789200000000,
   "oppref": "…",
-  "source_url": "https://nye.proanbud.no/signup",
+  "source_url": "https://app.proanbud.no/signup",
   "user": { "obref": "…" },
   "data": { "type": "plan_enrollment", "plan_id": "proff" }
 }] }

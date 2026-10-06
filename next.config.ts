@@ -33,6 +33,23 @@ const nextConfig: NextConfig = {
   // her håndteres den på edge, uten å starte en funksjon. Porten består:
   // nettleseren gjør en NY forespørsel til destinasjonen, som går gjennom
   // middleware som alle andre.
+  // Appen skal ikke indekseres (se også metadata.robots i app/layout.tsx).
+  // Headeren dekker det meta-taggen ikke når: API-svar, PDF-er, redirects.
+  //
+  // Unntak: /verktoy/*, /kalkulator og sonens assets. Markedssiden proxyer dem
+  // til proanbud.no/verktoy/*, og headeren følger med svaret gjennom proxyen —
+  // uten unntaket ville vi avindeksert SEO-sidene på apex-domenet.
+  //
+  // Ikke bytt dette mot Disallow i robots.txt: da kan Google ikke crawle
+  // sidene, og ser aldri noindex.
+  async headers() {
+    return [
+      {
+        source: "/((?!verktoy$|verktoy/|verktoy-zone/|kalkulator$|kalkulator/).*)",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
+    ]
+  },
   async redirects() {
     return [
       {

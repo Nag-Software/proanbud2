@@ -40,6 +40,12 @@ export const metadata: Metadata = {
   description:
     "Samlet arbeidsflyt for bygg- og anleggsbedrifter: anbud, kontrakter, HMS/KS, timeføring og fakturering rett til Tripletex. Smart automatikk som akselererer hvert steg.",
   applicationName: "ProAnbud",
+  // Appen skal ikke indekseres — app-domenet er et verktøy bak innlogging, og
+  // /signup, /privacy, /terms m.fl. dukket opp i søk. Gjelder alt som arver
+  // herfra. Eneste unntak er sidene markedssiden proxyer til proanbud.no
+  // (app/verktoy/layout.tsx og app/kalkulator/page.tsx) — de MÅ være
+  // indekserbare. Samme regel ligger som X-Robots-Tag i next.config.ts.
+  robots: { index: false, follow: false },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

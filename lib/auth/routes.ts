@@ -19,12 +19,9 @@ export const AUTH_PUBLIC_ROUTE_PREFIXES = [
   // Gratis kalkulatorer/verktøy (timepris, påslag, jobb) — SEO-lead-magneter,
   // alltid åpne uten innlogging.
   '/verktoy',
-  // Søkemotorenes to inngangsfiler. Uten disse svarer middleware 307 til
-  // /login på begge, og da kan ingen crawler verken lese reglene våre eller
-  // finne sitemapet — de offentlige sidene blir i praksis uindekserbare.
-  // Begge inneholder utelukkende offentlige markedsførings-URLer.
+  // Uten denne svarer middleware 307 til /login, og da kan ingen crawler lese
+  // reglene våre. Appen har ingen sitemap — den er noindex.
   '/robots.txt',
-  '/sitemap.xml',
 ] as const
 
 export const SUBSCRIPTION_EXEMPT_ROUTE_PREFIXES = [

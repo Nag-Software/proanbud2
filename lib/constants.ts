@@ -11,7 +11,7 @@ export const BILLING_PATH = '/innstillinger/betaling'
  *
  * Fallbacken pekte tidligere på 'https://proanbud.no' — markedssiden, som er et
  * annet Vercel-prosjekt. Slår fallbacken inn (manglende env-var i en preview
- * eller et skript), bygger sitemap, robots og e-postlenker seg da på et domene
+ * eller et skript), bygger robots og e-postlenker seg da på et domene
  * som ikke serverer noen av disse rutene.
  *
  * app.proanbud.no er det kanoniske app-domenet etter DNS-omleggingen i juli
