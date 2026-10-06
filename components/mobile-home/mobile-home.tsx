@@ -521,9 +521,9 @@ function WorkerHome({ userId, companyId }: { userId: string; companyId: string |
               <Button
                 asChild
                 variant="outline"
-                // Uten knappens lyse sheen og skygge — på den mørke flaten ble
-                // den en blank, grå pille i stedet for en stille ramme.
-                className="flex-1 border-white/30 bg-transparent bg-[image:none] text-white shadow-none hover:bg-white/10 hover:text-white"
+                // Dempet grå flate uten sheen og skygge — sekundærvalget på
+                // det mørke kortet. Den hvite «Stemple ut» ved siden av er primær.
+                className="flex-1 border-transparent bg-white/15 bg-[image:none] text-white shadow-none hover:bg-white/20 hover:text-white"
               >
                 <Link href="/timeforing" prefetch={false}>
                   Bytt prosjekt
