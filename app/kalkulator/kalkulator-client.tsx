@@ -1,9 +1,9 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowRightIcon, Loader2Icon, SparklesIcon } from "lucide-react"
+import { ArrowRightIcon, CheckIcon, Loader2Icon, SparklesIcon } from "lucide-react"
 
 import { OfferDocumentPreview } from "@/components/tilbud/offer-document-preview"
 import type { OfferDocumentData } from "@/lib/tilbud/offer-document"
@@ -46,6 +46,27 @@ const SIGNUP_URL = appUrl(
 )
 const LOGIN_URL = appUrl("/login")
 
+const FREE_LIMIT = 3
+
+const FORDELER = [
+  "Ubegrenset antall tilbud",
+  "Dine egne priser, påslag og logo",
+  "Send til kunden — digital signering",
+]
+
+function Fordeler({ className }: { className?: string }) {
+  return (
+    <ul className={cn("space-y-1.5 text-left text-sm", className)}>
+      {FORDELER.map((fordel) => (
+        <li key={fordel} className="flex items-start gap-2">
+          <CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+          <span>{fordel}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 const PLACEHOLDER =
   "F.eks: Bytte 12 vinduer i enebolig fra 1978. To etasjer, stillas på baksiden. " +
   "Riving og bortkjøring inkludert."
@@ -56,6 +77,25 @@ export function KalkulatorClient() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [limitHit, setLimitHit] = useState(false)
+  // null = ikke hentet ennå. Serveren er fasit (nettleser + nettverk).
+  const [remaining, setRemaining] = useState<number | null>(null)
+  const [limit, setLimit] = useState(FREE_LIMIT)
+  const brukt = remaining === 0
+
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/kalkulator")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || typeof data?.remaining !== "number") return
+        setRemaining(data.remaining)
+        if (typeof data.limit === "number") setLimit(data.limit)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const [tilbud, setTilbud] = useState<Tilbud | null>(null)
 
   // Mater det EKTE tilbudsdokumentet (samme komponent som betalende kunder
@@ -103,7 +143,8 @@ export function KalkulatorClient() {
       if (res.status === 429) {
         track("kalkulator_grense_nadd")
         setLimitHit(true)
-        setError(data.error || "Dagens gratis tilbud er brukt opp.")
+        if (typeof data.remaining === "number") setRemaining(data.remaining)
+        setError(data.error || "De gratis tilbudene er brukt opp.")
         return
       }
       if (!res.ok || !data.tilbud) {
@@ -111,6 +152,7 @@ export function KalkulatorClient() {
       }
       track("kalkulator_generert", { fag })
       setTilbud(data.tilbud as Tilbud)
+      if (typeof data.remaining === "number") setRemaining(data.remaining)
     } catch (err) {
       track("kalkulator_feilet")
       reportClientError(err, { level: "warning", context: { action: "generer gratis kalkulator-tilbud" } })
@@ -145,7 +187,7 @@ export function KalkulatorClient() {
         {/* Hero */}
         <div className="space-y-3 text-center">
           <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-            Gratis · ingen innlogging
+            {FREE_LIMIT} gratis tilbud · ingen innlogging
           </p>
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
             Tilbudskalkulator for håndverkere
@@ -194,14 +236,14 @@ export function KalkulatorClient() {
             <span>{beskrivelse.length}/2000</span>
           </div>
 
-          {error && (
+          {error && !brukt && (
             <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {error}
               {limitHit && (
                 <div className="mt-2">
                   <Button size="sm" asChild>
                     <Link href={SIGNUP_URL} onClick={() => track("kalkulator_cta_klikket", { plassering: "grense" })}>
-                      Registrer deg gratis — uten kort
+                      Prøv gratis i 14 dager — uten kort
                     </Link>
                   </Button>
                 </div>
@@ -209,26 +251,63 @@ export function KalkulatorClient() {
             </div>
           )}
 
-          <Button size="lg"
-            className="mt-5 w-full text-base"
-            onClick={generer}
-            disabled={loading || beskrivelse.trim().length < 20}
-          >
-            {loading ? (
-              <>
-                <Loader2Icon className="mr-2 size-5 animate-spin" />
-                Bygger tilbudet …
-              </>
-            ) : (
-              <>
-                <SparklesIcon className="mr-2 size-5" />
-                Lag tilbudet
-              </>
-            )}
-          </Button>
-          <p className="mt-2 text-center text-xs text-muted-foreground">
-            3 gratis tilbud per dag — uten konto.
-          </p>
+          {brukt ? (
+            // Kvoten er brukt: knappen byttes ut med veien videre.
+            <div className="mt-5 rounded-xl border border-primary/25 bg-primary/5 p-5 sm:p-6">
+              <h2 className="text-lg font-semibold tracking-tight">
+                Du har brukt dine {limit} gratis tilbud
+              </h2>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                Fortsett i Proanbud — gratis i 14 dager, uten kort og uten binding.
+              </p>
+              <Fordeler className="mt-4" />
+              <Button size="lg" className="mt-5 w-full text-base" asChild>
+                <Link href={SIGNUP_URL} onClick={() => track("kalkulator_cta_klikket", { plassering: "grense" })}>
+                  Prøv Proanbud gratis
+                  <ArrowRightIcon className="ml-2 size-4" />
+                </Link>
+              </Button>
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                Tar under ett minutt. Har du konto?{" "}
+                <Link href={LOGIN_URL} className="underline underline-offset-2">
+                  Logg inn
+                </Link>
+              </p>
+            </div>
+          ) : (
+            <>
+              <Button
+                size="lg"
+                className="mt-5 w-full text-base"
+                onClick={generer}
+                disabled={loading || beskrivelse.trim().length < 20}
+              >
+                {loading ? (
+                  <>
+                    <Loader2Icon className="mr-2 size-5 animate-spin" />
+                    Bygger tilbudet …
+                  </>
+                ) : (
+                  <>
+                    <SparklesIcon className="mr-2 size-5" />
+                    Lag tilbudet
+                  </>
+                )}
+              </Button>
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                {remaining === null || remaining >= limit
+                  ? `${limit} gratis tilbud — uten konto.`
+                  : `${remaining} av ${limit} gratis tilbud igjen.`}{" "}
+                <Link
+                  href={SIGNUP_URL}
+                  className="font-medium text-foreground underline underline-offset-2"
+                  onClick={() => track("kalkulator_cta_klikket", { plassering: "skjema" })}
+                >
+                  Ubegrenset med gratis prøveperiode
+                </Link>
+              </p>
+            </>
+          )}
         </div>
 
         {/* Resultat: det ekte tilbudsdokumentet med vannmerke */}
@@ -262,34 +341,45 @@ export function KalkulatorClient() {
             </p>
 
             {/* CTA */}
-            <div className="mx-auto mt-6 max-w-3xl rounded-2xl border border-primary/25 bg-primary/5 p-6 text-center sm:p-8">
-              <h3 className="text-lg font-semibold tracking-tight">Vil du ha en nøyaktig kalkyle?</h3>
-              <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                Full KI-kalkulasjon med dine egne priser, din logo og digital signering.
-                14 dager gratis — uten kort.
-              </p>
-              <Button size="lg" className="mt-4 px-6 text-base" asChild>
-                <Link href={SIGNUP_URL} onClick={() => track("kalkulator_cta_klikket", { plassering: "resultat" })}>
-                  Fullfør tilbudet gratis
-                  <ArrowRightIcon className="ml-2 size-4" />
-                </Link>
-              </Button>
+            <div className="mx-auto mt-6 max-w-3xl rounded-2xl border border-primary/25 bg-primary/5 p-6 sm:p-8">
+              <div className="grid items-center gap-6 sm:grid-cols-[1fr_auto]">
+                <div>
+                  <h3 className="text-xl font-semibold tracking-tight">
+                    Gjør utkastet om til et tilbud du kan sende
+                  </h3>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                    Full KI-kalkulasjon i Proanbud — gratis i 14 dager, uten kort.
+                  </p>
+                  <Fordeler className="mt-4" />
+                </div>
+                <div className="text-center">
+                  <Button size="lg" className="w-full px-6 text-base sm:w-auto" asChild>
+                    <Link href={SIGNUP_URL} onClick={() => track("kalkulator_cta_klikket", { plassering: "resultat" })}>
+                      Prøv Proanbud gratis
+                      <ArrowRightIcon className="ml-2 size-4" />
+                    </Link>
+                  </Button>
+                  <p className="mt-2 text-xs text-muted-foreground">Ingen binding. Klar på ett minutt.</p>
+                </div>
+              </div>
             </div>
 
-            <div className="mt-4 text-center">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground"
-                onClick={() => {
-                  setTilbud(null)
-                  setBeskrivelse("")
-                  window.scrollTo({ top: 0, behavior: "smooth" })
-                }}
-              >
-                Lag et nytt utkast
-              </Button>
-            </div>
+            {!brukt && (
+              <div className="mt-4 text-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() => {
+                    setTilbud(null)
+                    setBeskrivelse("")
+                    window.scrollTo({ top: 0, behavior: "smooth" })
+                  }}
+                >
+                  Lag et nytt utkast{remaining !== null ? ` (${remaining} igjen)` : ""}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </main>

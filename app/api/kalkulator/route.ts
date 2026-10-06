@@ -22,6 +22,16 @@ import {
 import { finalizeGeneratedOfferLineItems } from "@/lib/tilbud/company-price-utils"
 import { formatHourlyRatesForPrompt } from "@/lib/tilbud/labor"
 import { calculateOfferTotals, type OfferLineItem } from "@/lib/tilbud/types"
+import {
+  KALKULATOR_COOKIE,
+  KALKULATOR_COOKIE_MAX_AGE,
+  KALKULATOR_LIMIT,
+  claimKalkulatorUse,
+  getKalkulatorUsed,
+  readVisitor,
+  refundKalkulatorUse,
+  visitorCookieValue,
+} from "@/lib/kalkulator/quota"
 
 // Offentlig KI-tilbudskalkulator (lead-magnet, ingen innlogging).
 //
@@ -29,11 +39,9 @@ import { calculateOfferTotals, type OfferLineItem } from "@/lib/tilbud/types"
 // ANALYSIS_SYSTEM_PROMPT + samme oppdragsgrunnlag med materialpriser fra
 // nettprissøk (Brave), innebygd norsk leverandørkatalog som fallback og
 // normalpris-indikator — bare uten bedriftens prisfiler/lagrede jobber
-// (anonym bruker har ingen). Grensen på gratisbruk ligger i en cookie —
-// bevisst lettvekts: volumet er lavt og målet er registreringer.
-
-const DAILY_LIMIT = Math.max(1, Number(process.env.KALKULATOR_DAILY_LIMIT) || 3)
-const LIMIT_COOKIE = "pa_kalk"
+// (anonym bruker har ingen). Gratiskvoten er et fast antall tilbud TOTALT
+// (ikke per dag) og håndheves på serveren per nettleser + nettverk — se
+// lib/kalkulator/quota.ts. Hvert tilbud koster tokens; målet er registreringer.
 
 // Nettprissøk + full analyse tar gjerne 20–40s — samme takhøyde som analyse-ruten.
 export const maxDuration = 60
@@ -91,10 +99,6 @@ function normalizeJsonFromModel(raw: string): string {
     .trim()
 }
 
-function osloToday(): string {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Oslo" }).format(new Date())
-}
-
 function toOfferLineItems(items: z.infer<typeof aiLineItemSchema>[]): OfferLineItem[] {
   return items.map((item) => ({
     id: crypto.randomUUID(),
@@ -136,7 +140,19 @@ function deriveTitle(beskrivelse: string, fagLabel: string): string {
   return `Pristilbud – ${fagLabel}`
 }
 
+/** Hvor mange gratis tilbud den besøkende har igjen — siden viser det før første klikk. */
+export async function GET(request: Request) {
+  const cookieStore = await cookies()
+  const visitor = readVisitor(cookieStore.get(KALKULATOR_COOKIE)?.value, request.headers)
+  const used = await getKalkulatorUsed(visitor)
+  return NextResponse.json(
+    { limit: KALKULATOR_LIMIT, remaining: Math.max(0, KALKULATOR_LIMIT - used) },
+    { headers: { "Cache-Control": "no-store" } }
+  )
+}
+
 export async function POST(request: Request) {
+  let usageId: string | null = null
   try {
     const parsed = bodySchema.safeParse(await request.json().catch(() => null))
     if (!parsed.success) {
@@ -146,20 +162,24 @@ export async function POST(request: Request) {
       )
     }
 
-    // Dagsgrense per nettleser — sjekkes FØR nettsøk/KI-kall.
-    const today = osloToday()
+    // Gratiskvoten sjekkes og bokføres FØR nettsøk/KI-kall.
     const cookieStore = await cookies()
-    const [cookieDate, cookieCount] = (cookieStore.get(LIMIT_COOKIE)?.value ?? "").split(":")
-    const usedToday = cookieDate === today ? Number(cookieCount) || 0 : 0
-    if (usedToday >= DAILY_LIMIT) {
+    const visitor = readVisitor(cookieStore.get(KALKULATOR_COOKIE)?.value, request.headers)
+    const claim = await claimKalkulatorUse(visitor)
+    if (!claim.allowed) {
       return NextResponse.json(
         {
-          error: `Du har brukt dagens ${DAILY_LIMIT} gratis tilbud. Registrer deg gratis for å lage så mange du vil — uten kort.`,
-          code: "limit",
+          error:
+            claim.reason === "global"
+              ? "Gratiskalkulatoren er fullt belagt akkurat nå. Prøv Proanbud gratis i 14 dager for å lage tilbudet med en gang — uten kort."
+              : `Du har brukt dine ${KALKULATOR_LIMIT} gratis tilbud. Prøv Proanbud gratis i 14 dager for å lage så mange du vil — uten kort.`,
+          code: claim.reason,
+          remaining: claim.reason === "limit" ? 0 : undefined,
         },
         { status: 429 }
       )
     }
+    usageId = claim.usageId
 
     const fagLabel = FAG_LABELS[parsed.data.fag ?? "annet"]
     const beskrivelse = parsed.data.beskrivelse.trim()
@@ -282,17 +302,20 @@ export async function POST(request: Request) {
         forbehold,
         totalInklMvaNok,
       },
-      remaining: DAILY_LIMIT - usedToday - 1,
+      remaining: Math.max(0, KALKULATOR_LIMIT - claim.used),
     })
-    res.cookies.set(LIMIT_COOKIE, `${today}:${usedToday + 1}`, {
+    res.cookies.set(KALKULATOR_COOKIE, visitorCookieValue(visitor, claim.used), {
       path: "/",
-      maxAge: 60 * 60 * 24,
+      maxAge: KALKULATOR_COOKIE_MAX_AGE,
       httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
     })
     return res
   } catch (error) {
     console.error("[kalkulator]", error)
+    // Brukeren fikk ikke noe tilbud — ikke trekk det fra kvoten.
+    await refundKalkulatorUse(usageId)
     await logServerError({
       message: "Gratis tilbudskalkulator feilet",
       error,
