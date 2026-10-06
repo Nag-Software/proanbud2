@@ -11,6 +11,7 @@ import { PROFF_INCLUDED_FEATURES } from "@/lib/billing/plans"
 import { track } from "@/lib/analytics/track"
 import { measureAdEvent } from "@/lib/analytics/openai-ads"
 import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
+import { useIsNativeApp } from "@/hooks/use-is-native-app"
 
 function OnboardingAbonnementContent() {
   const router = useRouter()
@@ -20,6 +21,10 @@ function OnboardingAbonnementContent() {
   // Én gratis prøve per bedrift: er trial_ends_at satt, er prøven brukt og
   // eneste vei videre er betalt Checkout.
   const [trialUsed, setTrialUsed] = useState(false)
+  // I Proanbud-appen kan betalt abonnement ikke startes (App Store 3.1.1) —
+  // den kortfrie prøven kan.
+  const isNative = useIsNativeApp()
+  const purchaseBlocked = isNative && trialUsed
 
   useEffect(() => {
     let cancelled = false
@@ -154,9 +159,11 @@ function OnboardingAbonnementContent() {
             {trialUsed ? "Prøveperioden er over" : "Start nå helt gratis"}
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            {trialUsed
-              ? "Velg Proff for å fortsette der du slapp — alt du la inn er tatt vare på."
-              : "14 dager Proff gratis · uten kort · ingen belastning"}
+            {purchaseBlocked
+              ? "Bedriften har ikke et aktivt abonnement. Abonnement kan ikke startes i appen — alt du la inn er tatt vare på."
+              : trialUsed
+                ? "Velg Proff for å fortsette der du slapp — alt du la inn er tatt vare på."
+                : "14 dager Proff gratis · uten kort · ingen belastning"}
           </p>
           {fromRedirect && !trialUsed && (
             <p className="text-sm text-muted-foreground">
@@ -165,32 +172,36 @@ function OnboardingAbonnementContent() {
           )}
         </div>
 
-        <div className="rounded-xl border p-5">
-          <p className="text-sm font-medium">Dette får du i Proff</p>
-          <ul className="mt-3 space-y-2">
-            {PROFF_INCLUDED_FEATURES.map((feature) => (
-              <li key={feature.key} className="flex items-start gap-2 text-sm">
-                <CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" />
-                <span>{feature.label}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {purchaseBlocked ? null : (
+          <>
+            <div className="rounded-xl border p-5">
+              <p className="text-sm font-medium">Dette får du i Proff</p>
+              <ul className="mt-3 space-y-2">
+                {PROFF_INCLUDED_FEATURES.map((feature) => (
+                  <li key={feature.key} className="flex items-start gap-2 text-sm">
+                    <CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <span>{feature.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
-        <Button size="lg"
-          className="w-full text-base"
-          onClick={trialUsed ? startPaidCheckout : startTrial}
-          disabled={loading}
-        >
-          {loading && <Loader2Icon className="mr-2 size-4 animate-spin" />}
-          {trialUsed ? "Velg Proff og fortsett" : "Start prøveperioden"}
-        </Button>
+            <Button size="lg"
+              className="w-full text-base"
+              onClick={trialUsed ? startPaidCheckout : startTrial}
+              disabled={loading}
+            >
+              {loading && <Loader2Icon className="mr-2 size-4 animate-spin" />}
+              {trialUsed ? "Velg Proff og fortsett" : "Start prøveperioden"}
+            </Button>
 
-        <p className="text-center text-sm text-muted-foreground">
-          {trialUsed
-            ? "Ingen binding — du kan si opp når som helst."
-            : "Ingen kortopplysninger nødvendig. Du kan avslutte prøven når som helst."}
-        </p>
+            <p className="text-center text-sm text-muted-foreground">
+              {trialUsed
+                ? "Ingen binding — du kan si opp når som helst."
+                : "Ingen kortopplysninger nødvendig. Du kan avslutte prøven når som helst."}
+            </p>
+          </>
+        )}
       </div>
     </div>
   )

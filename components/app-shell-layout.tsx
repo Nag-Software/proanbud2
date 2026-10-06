@@ -1,7 +1,7 @@
 "use client"
 
 import { usePathname } from "next/navigation"
-import { type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppShellProvider, useAppShell } from "@/components/app-shell-context"
@@ -12,7 +12,7 @@ import { NativeNavBridge, NativeNavState } from "@/components/native-nav-bridge"
 import { PresenceHeartbeat } from "@/components/presence-heartbeat"
 import { RefreshOnReturn } from "@/components/perf/refresh-on-return"
 import { IntentPrefetch } from "@/components/perf/intent-prefetch"
-import { useNativePlatform } from "@/hooks/use-is-native-app"
+import { useNativeAppFlag, useNativePlatform } from "@/hooks/use-is-native-app"
 import { useCompanyNotifications } from "@/hooks/use-company-notifications"
 import { useUserRole } from "@/hooks/use-user-role"
 import { TrialBanner } from "@/components/billing/trial-banner"
@@ -23,6 +23,8 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { APP_NAV_ENTRIES } from "@/lib/app-nav"
+import { FULL_NAV_ITEMS, WORKER_NAV_ITEMS } from "@/lib/nav-items"
 import { isPublicAuthRoute } from "@/lib/auth/routes"
 import { isSjefenRoute } from "@/lib/auth/platform-admin"
 import { isSelgerRoute } from "@/lib/auth/platform-seller"
@@ -60,15 +62,35 @@ function ShellSidebarTrigger() {
   )
 }
 
+/**
+ * Sider appen selv har en inngang til — fanene og «Mer»-arket. Der tegner den
+ * native skallet allerede tittel (og tilbakepil fra «Mer»), så webens topplinje
+ * er overflødig. Alt UNDER disse (et prosjekt, et tilbud, «Nytt tilbud» fra
+ * hjemmet) nås bare via SPA-navigasjon i WebViewen, og trenger en tilbake-rad.
+ */
+const NATIVE_ROOT_PATHS = new Set<string>([
+  "/",
+  ...FULL_NAV_ITEMS.map((item) => item.href),
+  ...WORKER_NAV_ITEMS.map((item) => item.href),
+  ...APP_NAV_ENTRIES.map((entry) => entry.href),
+])
+
 function PersistentShellFrame({ children }: { children: ReactNode }) {
   const shell = useAppShell()
+  const pathname = usePathname()
+  const isNative = useNativeAppFlag()
+  const nativePlatform = useNativePlatform()
+  // På iOS er hver fane (og hvert «Mer»-ark) sin egen WebView som starter på
+  // fanens egen side. Alt den navigerer til etterpå — også en annen fanes
+  // rotside, som Timer-lenken fra hjemmet — trenger en vei tilbake, ellers er
+  // fanen låst der. Android har én WebView som bytter rot via den dokkede
+  // baren, så der er rotsidene rot uansett hvordan man kom dit.
+  const [initialPath] = useState(pathname)
+  const isNativeRoot =
+    NATIVE_ROOT_PATHS.has(pathname) && (pathname === initialPath || nativePlatform === "android")
   const segments = shell?.pageMeta.segments ?? []
   const noPadding = shell?.pageMeta.noPadding ?? false
   const hideMobileTitle = shell?.pageMeta.hideMobileTitle ?? false
-  // Native iOS floats a Liquid Glass pill OVER the page (keep the spacer so
-  // content clears it); native Android docks its bar BELOW the WebView (no
-  // spacer needed). Regular web keeps its own fixed pill + spacer.
-  const nativePlatform = useNativePlatform()
 
   return (
     <SidebarProvider>
@@ -81,33 +103,56 @@ function PersistentShellFrame({ children }: { children: ReactNode }) {
       <AppSidebar />
       <SidebarInset className="h-svh min-h-0 overflow-hidden">
         <TrialBanner />
-        <header className="flex h-14 shrink-0 items-center gap-2 transition-[width,height] ease-linear md:h-16 group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+        {/* I appen ligger navigasjonen i den native fanelinjen og «Mer»-arket
+            har sitt eget søk, så på sidene appen selv har inngang til
+            (NATIVE_ROOT_PATHS) er denne linjen bare en dobbel topplinje —
+            native-hide. På undersider (prosjekt, tilbud …) beholdes den som en
+            slank tilbake-rad: pilen og tittelen fra ShellBreadcrumb, uten
+            hamburger og søk. Sidebaren (profil, varsler, Min konto) åpnes i
+            appen fra initialene øverst på hjemmet (components/mobile-home). */}
+        <header
+          className={cn(
+            "flex h-14 shrink-0 items-center gap-2 transition-[width,height] ease-linear md:h-16 group-has-data-[collapsible=icon]/sidebar-wrapper:h-12",
+            isNativeRoot && "native-hide"
+          )}
+        >
           <div className="flex min-w-0 flex-1 items-center gap-2 px-4">
             {/* Bunnmenyen har ikke lenger en «Meny»-fane (den plassen gikk til
                 en ekte destinasjon), så hamburgeren er igjen veien inn til
                 sidebaren på mobil — der profil, varsler og prosjektsnarveier
                 bor. «Mer»-arket i bunnbaren dekker sidene, ikke kontoen. */}
-            <ShellSidebarTrigger />
+            <span className="native-hide inline-flex">
+              <ShellSidebarTrigger />
+            </span>
             <Separator
               orientation="vertical"
               className="mr-2 hidden data-vertical:h-4 data-vertical:self-auto md:block"
             />
-            <ShellBreadcrumb segments={segments} hideMobileTitle={hideMobileTitle} />
+            <ShellBreadcrumb
+              segments={segments}
+              hideMobileTitle={hideMobileTitle}
+              // I appen har alle undersider en vei tilbake, også de med én
+              // crumb («Nytt tilbud» fra hjemmet) — ellers er fanen eneste utvei.
+              forceBack={isNative && !isNativeRoot}
+            />
           </div>
-          <div className="flex shrink-0 items-center pr-4">
+          <div className="native-hide flex shrink-0 items-center pr-4">
             <GlobalSearchTrigger />
           </div>
         </header>
         <div
           className={cn(
-            "flex min-h-0 w-full max-w-[2000px] min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "shell-scroll flex min-h-0 w-full max-w-[2000px] min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             noPadding ? "overflow-hidden" : "gap-4 p-4 pt-0 pb-4 md:pb-4"
           )}
         >
           {children}
         </div>
-        {/* Spacer reserving room for the fixed mobile bottom nav (incl. safe area) */}
-        {nativePlatform !== "android" && (
+        {/* Spacer reserving room for the fixed mobile bottom nav (incl. safe area).
+            Kun mobilweb: begge appene slutter WebViewen OVER sin egen bar
+            (iOS: src/insets.ts i proanbud-app, Android: dokket bar under), så
+            der ble dette en hvit stripe mellom innholdet og fanelinjen. */}
+        {nativePlatform === null && (
           <div
             className="shrink-0 md:hidden"
             style={{ height: `calc(${MOBILE_NAV_HEIGHT} + env(safe-area-inset-bottom))` }}

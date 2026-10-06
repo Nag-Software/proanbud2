@@ -4,13 +4,11 @@ import { startAppleLogin } from "@/lib/native-bridge"
 import { Button } from "@/components/ui/button"
 
 /**
- * IKKE I BRUK: knappen er fjernet fra /login og /registrer fordi Apple-
- * provideren ennå ikke er satt opp (Services ID + nøkkel fra Apple
- * Developer-kontoen mangler i Supabase), så innlogging med Apple ville
- * feilet. Filen og /api/auth/apple/* står igjen slik at valget kan settes
- * inn igjen i login-form.tsx og signup-form.tsx den dagen provideren er
- * konfigurert — App Review 4.8 krever Apple-innlogging i iOS-appen så lenge
- * vi tilbyr Google.
+ * Av til NEXT_PUBLIC_APPLE_LOGIN=1: Apple-provideren er ennå ikke satt opp i
+ * Supabase (Services ID + nøkkel fra Apple Developer-kontoen), så innlogging
+ * med Apple ville feilet. Flagget styrer to ting i login-form.tsx og
+ * signup-form.tsx: Apple-knappen vises, og Google-knappen slutter å skjules i
+ * iOS-appen — App Review 4.8 krever Apple-innlogging der vi tilbyr Google.
  */
 export const APPLE_LOGIN_ENABLED = process.env.NEXT_PUBLIC_APPLE_LOGIN === "1"
 

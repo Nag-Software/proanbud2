@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CancelSubscriptionDialog } from "@/components/billing/cancel-subscription-dialog"
 import { useConfirm } from "@/components/ui/confirm-dialog"
+import { useIsNativeApp } from "@/hooks/use-is-native-app"
 import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
 import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
@@ -72,8 +73,57 @@ function intervalLabel(interval: BillingInterval | null) {
   return null
 }
 
+/**
+ * Betalingssiden inne i Proanbud-appen: kun status. App Store (3.1.1) tillater
+ * ikke kjøp, priser eller lenker til kjøp utenom Apples egen betaling, så her
+ * finnes verken knapper, beløp eller henvisning til hvor man kjøper.
+ */
+function NativeBillingStatus({ summary }: { summary: BillingSummary | null }) {
+  const isActive = summary?.status === "active" || summary?.status === "trialing"
+  const trialEnd = formatDate(summary?.trial_ends_at ?? null)
+  const cancelDate = summary?.cancel_at_period_end
+    ? formatDate(summary?.cancel_at ?? summary?.period_end ?? null)
+    : null
+  const renewDate = formatDate(summary?.period_end ?? null)
+
+  return (
+    <div className="mx-auto w-full max-w-md space-y-4 px-4 py-10 md:px-6">
+      <h1 className="text-center text-xl font-semibold tracking-tight">Abonnement</h1>
+      <section className="rounded-xl border p-5">
+        {isActive ? (
+          <>
+            <div className="flex items-center gap-2">
+              <p className="text-lg font-semibold">{summary?.plan_label ?? "Abonnement"}</p>
+              {summary?.status && (
+                <Badge variant={summary.status === "active" ? "default" : "secondary"}>
+                  {STATUS_LABELS[summary.status] ?? summary.status}
+                </Badge>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {summary?.status === "trialing" && trialEnd
+                ? `Prøveperioden varer til ${trialEnd}.`
+                : cancelDate
+                  ? `Avsluttes ${cancelDate}.`
+                  : renewDate
+                    ? `Fornyes ${renewDate}.`
+                    : "Abonnementet er aktivt."}
+            </p>
+          </>
+        ) : (
+          <p className="text-sm">Bedriften har ikke et aktivt abonnement.</p>
+        )}
+      </section>
+      <p className="text-center text-sm text-muted-foreground">
+        Abonnement og betaling kan ikke endres i appen.
+      </p>
+    </div>
+  )
+}
+
 export function BillingPageClient() {
   const confirm = useConfirm()
+  const isNative = useIsNativeApp()
   const [summary, setSummary] = useState<BillingSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -277,6 +327,9 @@ export function BillingPageClient() {
     // Én gratis prøve per bedrift: er trial_ends_at satt, er prøven brukt og
     // eneste vei videre er betalt abonnement.
     const trialUsed = Boolean(summary?.trial_ends_at)
+    // Den kortfrie prøven er ikke et kjøp og kan startes i appen; betalt
+    // abonnement kan ikke.
+    if (isNative && trialUsed) return <NativeBillingStatus summary={summary} />
     return (
       <div className="mx-auto w-full max-w-md px-4 py-10 md:px-6">
         <div className="space-y-2 text-center">
@@ -300,6 +353,8 @@ export function BillingPageClient() {
       </div>
     )
   }
+
+  if (isNative) return <NativeBillingStatus summary={summary} />
 
   const trialEnd = formatDate(summary?.trial_ends_at ?? null)
   const interval = intervalLabel(summary?.billing_interval ?? null)

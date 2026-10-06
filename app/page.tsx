@@ -27,6 +27,8 @@ import { reportClientError } from "@/lib/errors/client"
 import { useRouter } from "next/navigation"
 import { useUserRole } from "@/hooks/use-user-role"
 import { VenterPaDeg } from "@/components/dashboard/venter-pa-deg"
+import { MobileHome } from "@/components/mobile-home/mobile-home"
+import { useNativeAppFlag } from "@/hooks/use-is-native-app"
 import { useAuth } from "@/components/auth-provider"
 import { useRoleContext } from "@/components/role-provider"
 import { toast } from "sonner"
@@ -207,7 +209,17 @@ const KPI_HREFS: Record<KpiKey, string> = {
   kunder: "/kunder",
 }
 
-export default function DashboardPage() {
+/**
+ * «/» har to ansikter: inne i Proanbud-appen (data-native) et eget hjem bygget
+ * for telefonen, ellers dashbordet under. Flagget leses synkront, så ingen av
+ * dem blinker innom den andre ved kald start.
+ */
+export default function HomePage() {
+  const native = useNativeAppFlag()
+  return native ? <MobileHome /> : <WebDashboardPage />
+}
+
+function WebDashboardPage() {
   const router = useRouter()
   const { canonicalRole, loadingRole } = useUserRole()
   // Reuse the session AuthProvider already resolved instead of a 3rd getUser()

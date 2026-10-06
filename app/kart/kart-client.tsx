@@ -654,12 +654,14 @@ export function KartClient({
               </p>
             ) : (
               <>
-                {/* Live metric row */}
-                <div className="mt-2.5 grid grid-cols-4 gap-1.5">
-                  <Stat label="På plass" value={selectedOps.crew.length} tone={selectedOps.crew.length ? "green" : "muted"} />
-                  <Stat label="Timer i dag" value={fmtHoursShort(selectedOps.hoursToday)} />
-                  <Stat label="Avvik" value={selectedOps.openAvvik} tone={selectedOps.openAvvik ? "red" : "muted"} />
-                  <Stat label="Forfalt" value={selectedOps.overdueTasks} tone={selectedOps.overdueTasks ? "amber" : "muted"} />
+                {/* Live-tallene som én rad piller — fire fliser med nuller tok
+                    en tredel av arket uten å si noe. Det som er ulikt null får
+                    farge, resten ligger dempet. */}
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  <Stat label="på plass" value={selectedOps.crew.length} tone={selectedOps.crew.length ? "green" : "muted"} />
+                  <Stat label="i dag" value={fmtHoursShort(selectedOps.hoursToday)} tone={selectedOps.hoursToday ? "default" : "muted"} />
+                  <Stat label="avvik" value={selectedOps.openAvvik} tone={selectedOps.openAvvik ? "red" : "muted"} />
+                  <Stat label="forfalt" value={selectedOps.overdueTasks} tone={selectedOps.overdueTasks ? "amber" : "muted"} />
                 </div>
 
                 {/* Crew on site now — the "På plass 0"-stat already covers the
@@ -694,7 +696,8 @@ export function KartClient({
                   </div>
                 )}
 
-                {/* One slim utility row: budget/frist (only when set) + geofence.
+                {/* One slim utility row: budget/frist (only when set) + the two
+                    sjeldne redigeringene (adresse, geofence) som tekstknapper.
                     Was two full-width rows — this is the mobile height budget. */}
                 <div className="mt-2.5 flex items-center justify-between gap-2 text-xs">
                   <span className="min-w-0 truncate text-muted-foreground">
@@ -706,25 +709,37 @@ export function KartClient({
                       </span>
                     )}
                   </span>
-                  <button
-                    type="button"
-                    onClick={startGeoEdit}
-                    className="flex shrink-0 items-center gap-1.5 rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
-                  >
-                    <Layers className="size-3.5" /> Geofence
-                  </button>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={openEditor}
+                      className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+                    >
+                      <Pencil className="size-3.5" /> Adresse
+                    </button>
+                    <button
+                      type="button"
+                      onClick={startGeoEdit}
+                      className="flex items-center gap-1.5 rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+                    >
+                      <Layers className="size-3.5" /> Geofence
+                    </button>
+                  </span>
                 </div>
               </>
             )}
             </div>
 
-            <div className="mt-2.5 flex shrink-0 flex-wrap gap-2 border-t pt-2.5">
-              <Button size="sm" variant="secondary" className="flex-1" onClick={openEditor}>
-                <Pencil className="size-4" />
-                {selected.lat == null ? "Sett adresse" : "Endre adresse"}
-              </Button>
-              {selected.lat != null && selected.lng != null && (
-                <Button asChild size="sm" variant="secondary" className="flex-1">
+            {/* To handlinger, ikke tre: åpne prosjektet er det man gjør, å
+                navigere dit er det andre. Adressen redigeres fra raden over. */}
+            <div className="mt-2.5 flex shrink-0 gap-2 border-t pt-2.5">
+              {selected.lat == null ? (
+                <Button size="sm" className="flex-1" onClick={openEditor}>
+                  <Pencil className="size-4" />
+                  Sett adresse
+                </Button>
+              ) : (
+                <Button asChild size="sm" variant="outline" className="flex-1">
                   <a
                     href={`https://www.google.com/maps/dir/?api=1&destination=${selected.lat},${selected.lng}`}
                     target="_blank"
@@ -735,7 +750,7 @@ export function KartClient({
                   </a>
                 </Button>
               )}
-              <Button asChild size="sm" variant="secondary" className="flex-1">
+              <Button asChild size="sm" className="flex-1">
                 <Link href={`/prosjekter/${selected.id}`}>
                   <Building2 className="size-4" />
                   Åpne prosjekt
@@ -874,10 +889,10 @@ function Stat({
           ? "bg-amber-100 text-amber-800"
           : "bg-muted/60 text-foreground"
   return (
-    <div className={cn("rounded-md px-2 py-1", toneClass)}>
-      <p className="text-[10px] leading-tight opacity-80">{label}</p>
-      <p className="text-sm font-medium leading-tight">{value}</p>
-    </div>
+    <span className={cn("inline-flex items-baseline gap-1 rounded-full px-2.5 py-1 text-xs", toneClass)}>
+      <span className="font-semibold tabular-nums">{value}</span>
+      <span className="opacity-80">{label}</span>
+    </span>
   )
 }
 

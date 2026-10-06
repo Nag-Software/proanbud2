@@ -43,7 +43,13 @@ export function PlanGate({ featureName, description, planLabel = "Proff", title 
         <p className="text-sm text-muted-foreground">
           {canManageBilling ? (
             <>
-              Oppgrader til <strong>{planLabel}</strong> for å låse opp denne funksjonen.
+              {/* Kjøpsoppfordring og knapp skjules i appen (App Store 3.1.1). */}
+              <span className="native-hide">
+                Oppgrader til <strong>{planLabel}</strong> for å låse opp denne funksjonen.
+              </span>
+              <span className="hidden [html[data-native]_&]:inline">
+                Funksjonen er ikke med i bedriftens abonnement.
+              </span>
             </>
           ) : (
             <>
@@ -60,7 +66,7 @@ export function PlanGate({ featureName, description, planLabel = "Proff", title 
           )}
         </p>
         {canManageBilling && !loadingRole && (
-          <Button asChild>
+          <Button asChild className="native-hide">
             <Link href="/innstillinger/betaling">Oppgrader til {planLabel}</Link>
           </Button>
         )}

@@ -31,6 +31,13 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { DatePicker } from "@/components/ui/date-picker"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SearchableSelect } from "@/components/ui/searchable-select"
@@ -152,6 +159,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
   const [manualNote, setManualNote] = useState("")
   const [manualError, setManualError] = useState<string | null>(null)
   const [manualSubmitting, setManualSubmitting] = useState(false)
+  const [manualDrawerOpen, setManualDrawerOpen] = useState(false)
 
   const activeSession = overview?.activeSession ?? null
   const projects = overview?.projects ?? []
@@ -333,6 +341,15 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
     })
   }
 
+  // Mobil: skjemaet bor i en skuff fra bunnen, åpnet fra knappen under
+  // «Stemple inn på plassen» i den faste baren. Samme skjema som i kortet.
+  function openManualDrawer() {
+    setManualError(null)
+    if (!manualDate) setManualDate(todayLocalISODate())
+    if (!manualProjectId && selectedProjectId) setManualProjectId(selectedProjectId)
+    setManualDrawerOpen(true)
+  }
+
   async function handleSaveManual() {
     setManualError(null)
 
@@ -376,6 +393,7 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
       )
       setManualNote("")
       setShowManual(false)
+      setManualDrawerOpen(false)
       await refresh()
     } catch (saveError) {
       reportClientError(saveError, {
@@ -454,6 +472,92 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
   )
 
   const showStickyCheckIn = !activeSession && projects.length > 0
+
+  // Ett skjema, to hjem: utslått i kortet (desktop, og mobil uten fast bar),
+  // i en skuff fra bunnen når den faste baren er der. Aldri begge samtidig,
+  // så id-ene kolliderer ikke.
+  const manualForm = (
+    <div className="mt-4 space-y-3 md:mt-3">
+      <div className="space-y-2 md:space-y-1.5">
+        <Label htmlFor="manual-project">Prosjekt</Label>
+        <SearchableSelect
+          id="manual-project"
+          value={manualProjectId}
+          onChange={setManualProjectId}
+          options={projectOptions}
+          placeholder="Velg prosjekt"
+          searchPlaceholder="Søk på prosjekt eller adresse …"
+          emptyText="Ingen prosjekter passer søket"
+          className="h-10 w-full md:h-9"
+        />
+      </div>
+
+      {/* Desktop: dato, fra og til på én linje. Mobil: dato over, tidene side om side. */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(0,1fr)_7rem_7rem]">
+        <div className="col-span-2 space-y-2 md:col-span-1 md:space-y-1.5">
+          <Label htmlFor="manual-date">Dato</Label>
+          <DatePicker
+            id="manual-date"
+            value={manualDate}
+            maxDate={todayLocalISODate()}
+            onChange={setManualDate}
+            className="h-10 w-full md:h-9"
+          />
+        </div>
+        <div className="space-y-2 md:space-y-1.5">
+          <Label htmlFor="manual-from">Fra</Label>
+          <Input
+            id="manual-from"
+            type="time"
+            value={manualFrom}
+            onChange={(event) => setManualFrom(event.target.value)}
+          />
+        </div>
+        <div className="space-y-2 md:space-y-1.5">
+          <Label htmlFor="manual-to">Til</Label>
+          <Input
+            id="manual-to"
+            type="time"
+            value={manualTo}
+            onChange={(event) => setManualTo(event.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2 md:space-y-1.5">
+        <Label htmlFor="manual-note">Notat (valgfritt)</Label>
+        <Textarea
+          id="manual-note"
+          value={manualNote}
+          onChange={(event) => setManualNote(event.target.value)}
+          placeholder="Hva jobbet du med?"
+          rows={2}
+        />
+      </div>
+
+      <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm md:py-1.5 md:text-[13px]">
+        {manualHours && manualHours > 0 ? (
+          <span>
+            Beregnet: <span className="font-semibold">{formatT(manualHours)}</span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Velg gyldig tidsrom for å beregne timer</span>
+        )}
+      </div>
+
+      {manualError && <p className="text-sm text-destructive">{manualError}</p>}
+
+      <Button
+        size="lg"
+        type="button"
+        className="w-full md:h-[var(--control-h)]"
+        onClick={handleSaveManual}
+        disabled={manualSubmitting}
+      >
+        {manualSubmitting ? "Lagrer …" : "Lagre timeføring"}
+      </Button>
+    </div>
+  )
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4 pb-8 md:max-w-xl md:space-y-3">
@@ -589,7 +693,14 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
       )}
 
       {projects.length > 0 && (
-        <div className="rounded-xl border p-5 md:px-4 md:py-3">
+        <div
+          className={cn(
+            "rounded-xl border p-5 md:px-4 md:py-3",
+            // Med den faste baren nederst ligger inngangen der (skuffen) —
+            // kortet ville bare vært det samme én gang til.
+            showStickyCheckIn && "hidden md:block"
+          )}
+        >
           <button
             type="button"
             onClick={handleToggleManual}
@@ -604,91 +715,20 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
             </div>
           </button>
 
-          {showManual && (
-            <div className="mt-4 space-y-3 md:mt-3">
-              <div className="space-y-2 md:space-y-1.5">
-                <Label htmlFor="manual-project">Prosjekt</Label>
-                <SearchableSelect
-                  id="manual-project"
-                  value={manualProjectId}
-                  onChange={setManualProjectId}
-                  options={projectOptions}
-                  placeholder="Velg prosjekt"
-                  searchPlaceholder="Søk på prosjekt eller adresse …"
-                  emptyText="Ingen prosjekter passer søket"
-                  className="h-10 w-full md:h-9"
-                />
-              </div>
-
-              {/* Desktop: dato, fra og til på én linje. Mobil: dato over, tidene side om side. */}
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(0,1fr)_7rem_7rem]">
-                <div className="col-span-2 space-y-2 md:col-span-1 md:space-y-1.5">
-                  <Label htmlFor="manual-date">Dato</Label>
-                  <DatePicker
-                    id="manual-date"
-                    value={manualDate}
-                    maxDate={todayLocalISODate()}
-                    onChange={setManualDate}
-                    className="h-10 w-full md:h-9"
-                  />
-                </div>
-                <div className="space-y-2 md:space-y-1.5">
-                  <Label htmlFor="manual-from">Fra</Label>
-                  <Input
-                    id="manual-from"
-                    type="time"
-                    value={manualFrom}
-                    onChange={(event) => setManualFrom(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2 md:space-y-1.5">
-                  <Label htmlFor="manual-to">Til</Label>
-                  <Input
-                    id="manual-to"
-                    type="time"
-                    value={manualTo}
-                    onChange={(event) => setManualTo(event.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2 md:space-y-1.5">
-                <Label htmlFor="manual-note">Notat (valgfritt)</Label>
-                <Textarea
-                  id="manual-note"
-                  value={manualNote}
-                  onChange={(event) => setManualNote(event.target.value)}
-                  placeholder="Hva jobbet du med?"
-                  rows={2}
-                />
-              </div>
-
-              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm md:py-1.5 md:text-[13px]">
-                {manualHours && manualHours > 0 ? (
-                  <span>
-                    Beregnet: <span className="font-semibold">{formatT(manualHours)}</span>
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">
-                    Velg gyldig tidsrom for å beregne timer
-                  </span>
-                )}
-              </div>
-
-              {manualError && <p className="text-sm text-destructive">{manualError}</p>}
-
-              <Button size="lg"
-                type="button"
-                className="w-full md:h-[var(--control-h)]"
-                onClick={handleSaveManual}
-                disabled={manualSubmitting}
-              >
-                {manualSubmitting ? "Lagrer …" : "Lagre timeføring"}
-              </Button>
-            </div>
-          )}
+          {showManual && manualForm}
         </div>
       )}
+
+      {/* Mobil med fast bar: skjemaet kommer som skuff fra bunnen i stedet. */}
+      <Drawer direction="bottom" open={manualDrawerOpen} onOpenChange={setManualDrawerOpen}>
+        <DrawerContent className="px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <DrawerHeader className="px-0">
+            <DrawerTitle>Før timer manuelt</DrawerTitle>
+            <DrawerDescription>Glemte du å stemple? Før opp arbeid i ettertid.</DrawerDescription>
+          </DrawerHeader>
+          <div className="min-h-0 overflow-y-auto">{manualForm}</div>
+        </DrawerContent>
+      </Drawer>
 
       <div className="rounded-xl border">
         <div className="flex items-center justify-between gap-3 border-b px-5 py-4 md:px-4 md:py-3">
@@ -744,9 +784,19 @@ export function TimeforingClient({ role, initial }: TimeforingClientProps) {
 
       {showStickyCheckIn && (
         <>
-          <StickyActionBarSpacer className="h-28" />
+          <StickyActionBarSpacer className="h-44" />
           <StickyActionBar>
             {checkInButton}
+            <Button
+              size="lg"
+              type="button"
+              variant="outline"
+              className="mt-2 w-full gap-2"
+              onClick={openManualDrawer}
+            >
+              <Pencil className="size-4" />
+              Før timer manuelt
+            </Button>
             <p className="mt-1.5 text-center text-[11px] text-muted-foreground">{GPS_HINT}</p>
           </StickyActionBar>
         </>
@@ -774,10 +824,14 @@ function ModuleMissingState({ role }: { role: CanonicalRole | null }) {
         <CardContent className="space-y-4">
           {isAdmin ? (
             <>
-              <p className="text-sm text-muted-foreground">
+              {/* Kjøpsoppfordring og knapp skjules i appen (App Store 3.1.1). */}
+              <p className="native-hide text-sm text-muted-foreground">
                 Aktiver Timeføring under Min bedrift → Betaling.
               </p>
-              <Button asChild>
+              <p className="hidden text-sm text-muted-foreground [html[data-native]_&]:block">
+                Timeføring er ikke med i bedriftens abonnement.
+              </p>
+              <Button asChild className="native-hide">
                 <Link href="/innstillinger/betaling">Gå til abonnement</Link>
               </Button>
             </>

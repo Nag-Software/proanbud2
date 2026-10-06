@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation"
 
 import { isNativeApp, isNativeAndroid, postToNative } from "@/lib/native-bridge"
 import { useNavItems } from "@/hooks/use-nav-items"
+import { useUserRole } from "@/hooks/use-user-role"
+import { FULL_NAV_ITEMS } from "@/lib/nav-items"
 import { useSidebar } from "@/components/ui/sidebar"
 import { useUnreadMessages } from "@/hooks/use-unread-messages"
 import { useActiveWorkSession } from "@/hooks/use-active-work-session"
@@ -56,6 +58,7 @@ export function NativeNavState({ shell }: { shell: boolean }) {
  */
 export function NativeNavBridge() {
   const { navItems, roleKnown } = useNavItems()
+  const { isWorker } = useUserRole()
   const { toggleSidebar } = useSidebar()
   const unreadCount = useUnreadMessages()
   const { hasActiveSession } = useActiveWorkSession()
@@ -72,10 +75,19 @@ export function NativeNavBridge() {
     }
   }, [])
 
+  // Appen har et eget hjem for håndverkere (components/mobile-home) som weben
+  // ikke har — på weben sendes de rett til Prosjekter. Fanen legges derfor til
+  // bare her, ikke i WORKER_NAV_ITEMS, så mobilwebens pille er som før.
+  const dashboardItem = FULL_NAV_ITEMS.find((item) => item.icon === "dashboard")
+  const appItems =
+    isWorker && dashboardItem && !navItems.some((item) => item.icon === "dashboard")
+      ? [dashboardItem, ...navItems]
+      : navItems
+
   // navItems gets a fresh array identity every render — compare by content so
   // we only post real changes.
   const itemsJson = JSON.stringify(
-    navItems.map(({ href, label, icon, exact }) => ({ href, label, icon, exact }))
+    appItems.map(({ href, label, icon, exact }) => ({ href, label, icon, exact }))
   )
   useEffect(() => {
     if (!isNativeApp() || !roleKnown) return

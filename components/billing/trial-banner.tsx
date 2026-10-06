@@ -5,6 +5,7 @@ import { XIcon } from "lucide-react"
 
 import { useBillingSummary } from "@/components/billing/billing-summary-provider"
 import { Button } from "@/components/ui/button"
+import { useIsNativeApp } from "@/hooks/use-is-native-app"
 import { useUserRole } from "@/hooks/use-user-role"
 
 function daysLeft(trialEndsAt: string): number {
@@ -16,6 +17,11 @@ function daysLeft(trialEndsAt: string): number {
 export function TrialBanner() {
   const { summary, dismissed, dismiss, loading } = useBillingSummary()
   const { isAdmin, loadingRole } = useUserRole()
+  const isNative = useIsNativeApp()
+
+  // Banneret ber om betalingskort — ikke tillatt i appen (App Store 3.1.1).
+  // Klassen `native-hide` under dekker tiden før hydrering.
+  if (isNative) return null
 
   if (!isAdmin || loadingRole) return null
 
@@ -31,7 +37,7 @@ export function TrialBanner() {
   const remaining = daysLeft(summary.trial_ends_at)
 
   return (
-    <div className="border border-orange-600/60 bg-orange-600/5 px-4 py-2">
+    <div className="native-hide border border-orange-600/60 bg-orange-600/5 px-4 py-2">
       <div className="flex max-w-[2000px] flex-wrap items-center justify-between gap-2 text-sm">
         <p className="text-foreground">
           Du har <strong>{remaining} dager</strong> igjen av prøveperioden. Legg inn betalingskort,

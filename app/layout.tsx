@@ -9,6 +9,7 @@ import { RoleProvider } from "@/components/role-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { ConfirmProvider } from "@/components/ui/confirm-dialog"
 import { PwaRegister } from "@/components/pwa-register"
+import { NativeAppFlag } from "@/components/native-app-flag"
 import { NativeAuthBridge } from "@/components/native-auth-bridge"
 import { NativeTrackingBridge } from "@/components/native-tracking-bridge"
 import { MockRoleBanner } from "@/components/dev/mock-role-banner"
@@ -89,6 +90,7 @@ export default function RootLayout({
       {/* OpenAI Ads-pixel: beforeInteractive legger snutten i <head>, slik at
           init + consent står i kø-en før noe event kan gå ut. */}
       <head>
+        <NativeAppFlag />
         <OpenAiPixel />
       </head>
       <body

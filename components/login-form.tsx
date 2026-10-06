@@ -9,6 +9,7 @@ import { completeClientLogin } from "@/lib/auth/client-login"
 import { reportClientError } from "@/lib/errors/client"
 import { authErrorMessage } from "@/lib/errors/user-message"
 import { startGoogleLogin } from "@/lib/native-bridge"
+import { APPLE_LOGIN_ENABLED, AppleLoginButton } from "@/components/apple-login-button"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -78,13 +79,18 @@ function LoginFormInner({
         <CardHeader className="text-center">
           <CardTitle className="text-xl">Velkommen tilbake</CardTitle>
           <CardDescription>
-            Logg inn med Google eller e-post
+            Logg inn på kontoen din
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit}>
             <FieldGroup>
-              <Field>
+              {/* App Review 4.8: iOS-appen kan ikke tilby Google uten Apple.
+                  Til Apple-provideren er satt opp skjules Google der. */}
+              <Field className={cn(!APPLE_LOGIN_ENABLED && "native-ios-hide")}>
+                {APPLE_LOGIN_ENABLED && (
+                  <AppleLoginButton label="Logg inn med Apple" disabled={loading} />
+                )}
                 <Button
                   variant="outline"
                   type="button"
@@ -103,7 +109,12 @@ function LoginFormInner({
                   Logg inn med Google
                 </Button>
               </Field>
-              <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
+              <FieldSeparator
+                className={cn(
+                  "*:data-[slot=field-separator-content]:bg-card",
+                  !APPLE_LOGIN_ENABLED && "native-ios-hide"
+                )}
+              >
                 eller med e-post
               </FieldSeparator>
               <Field>

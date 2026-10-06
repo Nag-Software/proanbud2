@@ -31,7 +31,13 @@ export function ModuleGate({ moduleName, monthlyPriceNok, description }: ModuleG
         <p className="text-sm text-muted-foreground">
           {canManageBilling ? (
             <>
-              Aktiver modulen for <strong>+{monthlyPriceNok} kr/mnd</strong> under abonnement.
+              {/* Pris og knapp skjules i appen (App Store 3.1.1). */}
+              <span className="native-hide">
+                Aktiver modulen for <strong>+{monthlyPriceNok} kr/mnd</strong> under abonnement.
+              </span>
+              <span className="hidden [html[data-native]_&]:inline">
+                Modulen er ikke med i bedriftens abonnement.
+              </span>
             </>
           ) : (
             <>
@@ -48,7 +54,7 @@ export function ModuleGate({ moduleName, monthlyPriceNok, description }: ModuleG
           )}
         </p>
         {canManageBilling && !loadingRole && (
-          <Button asChild>
+          <Button asChild className="native-hide">
             <Link href="/innstillinger/betaling">Gå til abonnement</Link>
           </Button>
         )}

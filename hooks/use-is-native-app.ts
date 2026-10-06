@@ -1,8 +1,26 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 
 import { isNativeApp } from "@/lib/native-bridge"
+
+// Flagget settes på <html> av components/native-app-flag.tsx FØR første
+// tegning, så det er lesbart synkront — i motsetning til isNativeApp(), som
+// hookene under venter med til etter hydrering.
+const subscribeNoop = () => () => {}
+const readNativeFlag = () =>
+  typeof document !== "undefined" && document.documentElement.hasAttribute("data-native")
+
+/**
+ * Samme svar som useIsNativeApp(), men uten den første «false»-rammen: på
+ * klienten leses data-native-attributtet synkront under hydrering, så en side
+ * kan velge mellom app- og web-variant uten å blinke innom feil variant først.
+ * Serveren (og dermed hydreringen) svarer false; React re-rendrer umiddelbart
+ * med klientverdien, slik useSyncExternalStore er laget for.
+ */
+export function useNativeAppFlag(): boolean {
+  return useSyncExternalStore(subscribeNoop, readNativeFlag, () => false)
+}
 
 /**
  * Hydration-safe isNativeApp(): false on the server and the first client

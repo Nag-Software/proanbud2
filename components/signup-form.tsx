@@ -6,6 +6,7 @@ import { Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { startGoogleLogin } from "@/lib/native-bridge"
+import { APPLE_LOGIN_ENABLED, AppleLoginButton } from "@/components/apple-login-button"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -186,7 +187,15 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
           <CardContent>
             <form onSubmit={handleSubmit}>
               <FieldGroup>
-                <Field>
+                {/* App Review 4.8: iOS-appen kan ikke tilby Google uten Apple.
+                    Til Apple-provideren er satt opp skjules Google der. */}
+                <Field className={cn(!APPLE_LOGIN_ENABLED && "native-ios-hide")}>
+                  {APPLE_LOGIN_ENABLED && (
+                    <AppleLoginButton
+                      label="Opprett med Apple"
+                      disabled={loading || !!inviteInvalid}
+                    />
+                  )}
                   <Button
                     variant="outline"
                     type="button"
@@ -205,7 +214,12 @@ function SignupFormInner({ className, ...props }: React.ComponentProps<"div">) {
                     Opprett med Google
                   </Button>
                 </Field>
-                <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
+                <FieldSeparator
+                  className={cn(
+                    "*:data-[slot=field-separator-content]:bg-card",
+                    !APPLE_LOGIN_ENABLED && "native-ios-hide"
+                  )}
+                >
                   eller med e-post
                 </FieldSeparator>
                 <Field>

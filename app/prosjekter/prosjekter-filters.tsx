@@ -160,8 +160,10 @@ export function ProsjekterFilters() {
                 </SelectGroup>
               </SelectContent>
             </Select>
-            {/* Kort/Kanban-bryteren bor til høyre for Sorter på alle skjermer. */}
-            <ProjectsViewToggle className="ml-auto" />
+            {/* Kort/Kanban-bryteren bor til høyre for Sorter på alle skjermer —
+                unntatt i appen: dra-og-slipp-tavla er ikke noe for en telefon,
+                og sorteringa får hele raden (native-hide). */}
+            <ProjectsViewToggle className="native-hide ml-auto" />
           </div>
         </div>
       </div>

@@ -727,3 +727,17 @@
     transform: translateX(100%) scaleX(0.35);
   }
 }
+
+/* Inne i Proanbud-appen (data-native settes av components/native-app-flag.tsx
+   før første tegning). App Store tillater ikke kjøpsknapper i appen, og krever
+   Apple-innlogging der Google tilbys — se klassene i bruk for hva som skjules. */
+html[data-native] .native-hide,
+html[data-native="ios"] .native-ios-hide {
+  display: none !important;
+}
+
+/* Uten webtopplinjen (native-hide over) starter sideinnholdet rett under
+   statuslinjen — litt luft, så overskriftene ikke klistrer seg i kanten. */
+html[data-native] .shell-scroll:not(.overflow-hidden) {
+  padding-top: 0.75rem;
+}
