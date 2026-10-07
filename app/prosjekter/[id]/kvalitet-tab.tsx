@@ -22,11 +22,11 @@ type Props = {
   projectId: string
   checklists: ChecklistSummary[]
   deviations: DeviationWithRelations[]
-  /** KS er Proff-funksjon. Håndverkere fyller ut, ledere legger også til sjekklister. */
+  /** KS er Proff-funksjon. Alle på prosjektet legger til og fyller ut sjekklister. */
   showChecklists: boolean
   /** Avvik er Proff-funksjon, men synlig for alle roller. */
   showDeviations: boolean
-  /** Kan legge til sjekklister fra malbiblioteket (ledere). */
+  /** Kan legge til sjekklister fra malbiblioteket. Standard ja — for alle roller. */
   canManageChecklists?: boolean
 }
 

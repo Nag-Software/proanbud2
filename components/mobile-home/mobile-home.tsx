@@ -2,7 +2,17 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ArrowRightIcon, CameraIcon, ClockIcon, Loader2Icon, MapPinIcon, PlusIcon, SquareIcon } from "lucide-react"
+import {
+  ArrowRightIcon,
+  CameraIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  Loader2Icon,
+  MapPinIcon,
+  PlusIcon,
+  ShieldCheckIcon,
+  SquareIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { statusConfigByValue } from "@/app/prosjekter/project-utils"
@@ -17,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { WORK_SESSION_CHANGED_EVENT } from "@/hooks/use-active-work-session"
 import { useCompanyNotifications } from "@/hooks/use-company-notifications"
 import { useUserRole } from "@/hooks/use-user-role"
+import { fetchCalendarEvents, type RawCalendarEvent } from "@/lib/calendar/client-data"
 import { reportClientError } from "@/lib/errors/client"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
@@ -275,6 +286,145 @@ function QuickActions() {
         </Link>
       ))}
     </div>
+  )
+}
+
+/* ─── Håndverkerens kalender og HMS ─────────────────────────────────────── */
+
+type AgendaItem = { id: string; title: string; start: Date; end: Date; allDay: boolean }
+
+function toAgenda(events: RawCalendarEvent[], dayStart: Date, dayEnd: Date): AgendaItem[] {
+  return events
+    .map((event) => {
+      const start = new Date(event.start)
+      const end = new Date(event.end)
+      const title = typeof event.title === "string" && event.title.trim() ? event.title : "Avtale"
+      const id = typeof event.id === "string" ? event.id : `${event.start}-${title}`
+      // Heldags: dekker hele dagen (eller mer) — tiden sier ingenting da.
+      const allDay = start <= dayStart && end >= dayEnd
+      return { id, title, start, end, allDay }
+    })
+    .filter((item) => !Number.isNaN(item.start.getTime()) && item.end > dayStart && item.start < dayEnd)
+    .sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.start.getTime() - b.start.getTime())
+}
+
+/**
+ * «I dag» — dagens avtaler fra kalenderen, med vei til hele kalenderen.
+ *
+ * Appens fanelinje har ingen Kalender-fane for håndverkere (Kjørebok tok den
+ * siste plassen, og «Mer» finnes ikke), så dette er inngangen. Henter bare i
+ * dag: det er det en håndverker trenger å vite på plassen.
+ */
+function TodayAgenda() {
+  const { hasFeature } = useUserRole()
+  const [items, setItems] = React.useState<AgendaItem[] | null>(null)
+  const [failed, setFailed] = React.useState(false)
+
+  React.useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      const now = new Date()
+      const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+      fetchCalendarEvents({ start: dayStart.toISOString(), end: dayEnd.toISOString() })
+        .then((events) => {
+          if (cancelled) return
+          setItems(toAgenda(events, dayStart, dayEnd))
+          setFailed(false)
+        })
+        .catch((error) => {
+          if (cancelled) return
+          reportClientError(error, { context: { action: "laste dagens avtaler (hjem)" }, level: "warning" })
+          setFailed(true)
+          setItems((prev) => prev ?? [])
+        })
+    }
+    void load()
+    // Avtaler legges til på kontoret mens håndverkeren er ute — hent på nytt
+    // når appen kommer frem igjen.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void load()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      cancelled = true
+      document.removeEventListener("visibilitychange", onVisible)
+    }
+  }, [])
+
+  if (!hasFeature("kalender")) return null
+
+  return (
+    <section>
+      <SectionLabel count={items?.length} action={{ href: "/kalender", label: "Kalender" }}>
+        I dag
+      </SectionLabel>
+      <ListCard>
+        {items === null ? (
+          <Skeleton className="m-3 h-10" />
+        ) : items.length === 0 ? (
+          <EmptyRow>{failed ? "Kunne ikke hente kalenderen akkurat nå." : "Ingen avtaler i dag."}</EmptyRow>
+        ) : (
+          items.map((item) => (
+            <Link
+              key={item.id}
+              href="/kalender"
+              prefetch={false}
+              className="flex min-h-14 items-center gap-3 px-3.5 py-2.5 active:bg-muted/40"
+            >
+              <span className="w-[4.25rem] shrink-0 text-[13px] font-semibold tabular-nums text-muted-foreground">
+                {item.allDay ? "Hele dagen" : `${clockLabel(item.start.toISOString())}–${clockLabel(item.end.toISOString())}`}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{item.title}</span>
+            </Link>
+          ))
+        )}
+      </ListCard>
+    </section>
+  )
+}
+
+/**
+ * HMS-håndboka og «Meld avvik» som rader nederst på hjemmet. Håndverkeren
+ * leser håndboka på /hms; avvik meldes med bilde fra /avvik/ny. Begge er
+ * Proff-funksjoner og skjules når planen mangler dem.
+ */
+function HmsShortcuts() {
+  const { hasFeature } = useUserRole()
+  const rows = [
+    hasFeature("hms")
+      ? { href: "/hms", label: "HMS-håndbok", hint: "Rutiner og sikkerhet på plassen", Icon: ShieldCheckIcon }
+      : null,
+    hasFeature("avvik")
+      ? { href: "/avvik/ny", label: "Meld avvik", hint: "Ta bilde og beskriv hva som skjedde", Icon: CameraIcon }
+      : null,
+  ].filter((row): row is NonNullable<typeof row> => row !== null)
+
+  if (rows.length === 0) return null
+
+  return (
+    <section>
+      <SectionLabel>HMS</SectionLabel>
+      <ListCard>
+        {rows.map(({ href, label, hint, Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            prefetch={false}
+            className="flex min-h-14 items-center gap-3 px-3.5 py-2.5 active:bg-muted/40"
+          >
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Icon className="size-[18px]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[15px] font-semibold">{label}</span>
+              <span className="block truncate text-[13px] text-muted-foreground">{hint}</span>
+            </span>
+            <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+          </Link>
+        ))}
+      </ListCard>
+    </section>
   )
 }
 
@@ -551,6 +701,8 @@ function WorkerHome({ userId, companyId }: { userId: string; companyId: string |
         )}
       </div>
 
+      <TodayAgenda />
+
       <div className="rounded-lg border bg-card px-4 pb-3 pt-3.5 shadow-[var(--shadow-surface)]">
         <div className="flex items-baseline justify-between">
           <span className="text-[12.5px] text-muted-foreground">Denne uka</span>
@@ -606,6 +758,8 @@ function WorkerHome({ userId, companyId }: { userId: string; companyId: string |
           )}
         </ListCard>
       </section>
+
+      <HmsShortcuts />
     </>
   )
 }

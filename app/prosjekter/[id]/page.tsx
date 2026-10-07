@@ -165,8 +165,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const hasKs = hasFeature(plan, modules, "ks")
   const hasAvvik = hasFeature(plan, modules, "avvik")
   const hasTasks = hasFeature(plan, modules, "project_tasks")
-  // KS og avvik deler én fane. Håndverkere fyller ut sjekklistene på plassen;
-  // å legge til sjekklister fra maler er forbeholdt ledere (KvalitetTab).
+  // KS og avvik deler én fane. Alle på prosjektet — også håndverkere — legger
+  // til sjekklister fra maler og fyller dem ut (KvalitetTab); bare malene
+  // selv er lederarbeid.
   const showKvalitet = hasKs || hasAvvik
 
   // Tredje bølge: lønnsomhet, timer per deltaker, avvik og sjekklister. Den
@@ -428,7 +429,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               projectId={project.id}
               showChecklists={hasKs}
               showDeviations={hasAvvik}
-              canManageChecklists={!isWorker}
             />
             </Suspense>
           </ProjectTabPanel>

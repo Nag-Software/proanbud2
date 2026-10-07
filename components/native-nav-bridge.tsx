@@ -6,14 +6,15 @@ import { usePathname, useRouter } from "next/navigation"
 import { isNativeApp, isNativeAndroid, postToNative } from "@/lib/native-bridge"
 import { useNavItems } from "@/hooks/use-nav-items"
 import { useUserRole } from "@/hooks/use-user-role"
-import { FULL_NAV_ITEMS } from "@/lib/nav-items"
+import { FULL_NAV_ITEMS, hasMoreMenu } from "@/lib/nav-items"
 import { useSidebar } from "@/components/ui/sidebar"
 import { useUnreadMessages } from "@/hooks/use-unread-messages"
 import { useActiveWorkSession } from "@/hooks/use-active-work-session"
 
 // Contract with the native tab bar (proanbud-app):
 //   web → native  nav:state  { pathname, shell }        — where we are; shell:false hides the bar
-//                 nav:config { items }                   — role/plan-filtered destinations
+//                 nav:config { items, more }             — role/plan-filtered destinations;
+//                                                          more:false = ingen «Mer»-fane (håndverker)
 //                 nav:menu   { items }                   — the whole sidebar menu, flattened
 //                 nav:badges { unreadCount, hasActiveSession }
 //   native → web  window.__paNativeNavigate(href)        — SPA navigation for tab taps
@@ -89,17 +90,20 @@ export function NativeNavBridge() {
   const itemsJson = JSON.stringify(
     appItems.map(({ href, label, icon, exact }) => ({ href, label, icon, exact }))
   )
+  // Håndverkeren har ingen «Mer»-fane — appen bytter den ut med Kjørebok, som
+  // ligger i items. Eldre app-versjoner kjenner ikke flagget og viser Mer som før.
+  const more = hasMoreMenu(isWorker)
   useEffect(() => {
     if (!isNativeApp() || !roleKnown) return
     const items = JSON.parse(itemsJson) as Array<{ href: string }>
-    postToNative({ type: "nav:config", items })
+    postToNative({ type: "nav:config", items, more })
     // Android's docked bar navigates with router.push — prefetch every
     // destination once the menu is known, so tab taps paint instantly.
     // (iOS tabs are separate WebViews; prefetching there is wasted requests.)
     if (isNativeAndroid()) {
       for (const item of items) router.prefetch(item.href)
     }
-  }, [roleKnown, itemsJson, router])
+  }, [roleKnown, itemsJson, more, router])
 
   useEffect(() => {
     if (!isNativeApp()) return
@@ -154,7 +158,7 @@ type SidebarNavItem = {
  * sidemenyen i WebViewen. Weben forblir kilden til sannhet: legger du til et
  * punkt her, dukker det opp i appen uten at appen må endres.
  */
-export function NativeMenuBridge({ items }: { items: SidebarNavItem[] }) {
+export function NativeMenuBridge({ items, ready = true }: { items: SidebarNavItem[]; ready?: boolean }) {
   // Undermenyer (HMS, Min bedrift …) flates ut med foreldrenavnet som seksjon
   // — et ark med ett nivå er raskere å lese enn ett med utslåbare grupper.
   const flat: NativeMenuItem[] = []
@@ -179,11 +183,14 @@ export function NativeMenuBridge({ items }: { items: SidebarNavItem[] }) {
 
   // Menyen får ny objektidentitet hver render (badges, aktiv økt) — sammenlign
   // på innhold, så vi bare poster faktiske endringer.
+  // Før rollen er kjent er menyen admin-settet (isWorker er false til rollen
+  // lander). Sendes den da, får håndverkeren et «Mer»-ark fullt av sider som
+  // bare sender dem tilbake til Prosjekter — til neste post retter det opp.
   const itemsJson = JSON.stringify(flat)
   useEffect(() => {
-    if (!isNativeApp()) return
+    if (!isNativeApp() || !ready) return
     postToNative({ type: "nav:menu", items: JSON.parse(itemsJson) })
-  }, [itemsJson])
+  }, [itemsJson, ready])
 
   return null
 }

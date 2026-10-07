@@ -579,7 +579,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     <Sidebar collapsible="icon" {...props}>
       {/* Appens «Mer»-ark viser denne menyen — send den over broen så de to
           aldri kan drifte fra hverandre. Rendrer ingenting. */}
-      <NativeMenuBridge items={filteredNavMain} />
+      <NativeMenuBridge items={filteredNavMain} ready={roleKnown} />
       <AppSidebarHeader
         unreadCount={bellUnreadCount}
         notifications={notifications}

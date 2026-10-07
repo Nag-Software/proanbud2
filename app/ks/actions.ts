@@ -43,9 +43,10 @@ async function getAuthContext() {
 }
 
 /**
- * Utfylling (svar, bilder, avvik fra et punkt) er for den som gjør jobben: ledere,
- * og arbeidere som er med på prosjektet. Maler og nye sjekklister er fortsatt
- * forbeholdt ledere. RLS (has_project_access) håndhever det samme i databasen.
+ * Sjekklistearbeidet (legge til fra mal, svare, bilder, avvik fra et punkt) er
+ * for den som gjør jobben: ledere, og arbeidere som er med på prosjektet — alle
+ * tilgangsnivåer. Bare MALENE (Min bedrift → KS-maler) er forbeholdt ledere.
+ * RLS (has_project_access) håndhever det samme i databasen.
  */
 async function assertCanFillChecklist(
   supabase: Awaited<ReturnType<typeof getAuthContext>>["supabase"],
@@ -334,7 +335,7 @@ export async function addChecklistToProjectAction(
 ) {
   const parsed = addChecklistToProjectSchema.parse(input)
   const { supabase, user, companyId, role } = await getAuthContext()
-  if (!canManageProjects(role)) throw new Error("Du har ikke tilgang til kvalitetssikring")
+  await assertCanFillChecklist(supabase, user.id, role, parsed.projectId)
   await assertPlanFeature(companyId, "ks", "KS")
 
   const { data: project } = await supabase

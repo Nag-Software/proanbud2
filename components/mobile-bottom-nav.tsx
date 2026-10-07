@@ -24,7 +24,7 @@ import { useNavItems } from "@/hooks/use-nav-items"
 import { useIsNativeApp } from "@/hooks/use-is-native-app"
 import { useActiveWorkSession } from "@/hooks/use-active-work-session"
 import { useUserRole } from "@/hooks/use-user-role"
-import type { NavIconKey } from "@/lib/nav-items"
+import { hasMoreMenu, type NavIconKey } from "@/lib/nav-items"
 
 // Item definitions (roles, feature gates) live in lib/nav-items — shared with
 // the native-app bridge. Here we only map the stable icon keys to lucide.
@@ -54,6 +54,10 @@ export function MobileBottomNav() {
 
   const { isWorker } = useUserRole()
   const [quickOpen, setQuickOpen] = React.useState(false)
+
+  // Håndverkeren har ingen «Mer»: fire destinasjoner + «+» er hele baren.
+  // Før rollen er kjent holdes plassen av skeletons, så baren ikke hopper.
+  const showMore = !roleKnown || hasMoreMenu(isWorker)
 
   // Meldinger ligger ikke i baren, så ulest-varselet følger med til «Mer», der
   // meldinger bor. Arbeidere har ikke meldinger – da er merket bare støy.
@@ -166,6 +170,7 @@ export function MobileBottomNav() {
         {/* «Mer» er tre prikker i en ring, ikke en hamburger: en hamburger
             lover «hovedmenyen», ••• lover «flere valg» — og det siste er det
             arket faktisk inneholder. */}
+        {showMore && (
         <button
           type="button"
           onClick={() => setMoreOpen(true)}
@@ -189,11 +194,14 @@ export function MobileBottomNav() {
           </span>
           <span>Mer</span>
         </button>
+        )}
       </nav>
 
       {/* Samme ark som sidebarens «Mer» — gruppert, søkbart og bygget av
           lib/app-nav, så en ny side dukker opp her av seg selv. */}
-      <NavMoreMenu open={moreOpen} onOpenChange={setMoreOpen} primaryHrefs={primaryHrefs} />
+      {showMore && (
+        <NavMoreMenu open={moreOpen} onOpenChange={setMoreOpen} primaryHrefs={primaryHrefs} />
+      )}
       <QuickActionSheet open={quickOpen} onOpenChange={setQuickOpen} hasActiveSession={hasActiveSession} />
     </>
   )

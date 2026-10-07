@@ -40,9 +40,22 @@ export const FULL_NAV_ITEMS: NavItem[] = [
 ]
 
 // Håndverkeren starter dagen på timeføring — den ligger derfor først.
-// Kjørebok og kalender flyttet til Mer-arket sammen med resten.
+// Kjørebok er daglig arbeid for den som kjører mellom plassene, og står derfor
+// i baren. Håndverkeren har INGEN «Mer»-fane (se hasMoreMenu): alt
+// håndverkeren har tilgang til ligger i baren, og et Mer-ark ville bare rommet
+// sider som sender dem tilbake til Prosjekter.
 export const WORKER_NAV_ITEMS: NavItem[] = [
   { href: "/timeforing", label: "Timer", icon: "hours", exact: false },
   { href: "/prosjekter", label: "Prosjekter", icon: "projects", exact: false },
   { href: "/kart", label: "Kart", icon: "map", exact: false },
+  { href: "/kjorebok", label: "Kjørebok", icon: "trips", exact: false },
 ]
+
+/**
+ * Om rollen har en «Mer»-inngang i bunnmenyen (web) / fanelinjen (app).
+ * Håndverkere har ikke det — baren deres er hele flaten. Deles med
+ * native-nav-bridge, så appen og mobilweben aldri er uenige.
+ */
+export function hasMoreMenu(isWorker: boolean): boolean {
+  return !isWorker
+}
