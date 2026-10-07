@@ -38,6 +38,10 @@ export type SjefenAnalytics = {
 const NOW_WINDOW_MS = 5 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
 
+// Egne firmaer (FORENINGEN NAG, PROFFBUD AS) holdes utenfor live-feeden, så den
+// viser kundeaktivitet. Orgnr. er stabilt selv om firmanavnet endres.
+const FEED_EXCLUDED_ORG_NUMBERS = new Set(["988196339", "933909336"])
+
 type UserRow = {
   id: string
   full_name: string | null
@@ -46,7 +50,7 @@ type UserRow = {
   last_seen_at?: string | null
   created_at: string | null
   company_id: string | null
-  companies: { name: string | null; city: string | null; postal_code: string | null } | null
+  companies: { name: string | null; org_number: string | null; city: string | null; postal_code: string | null } | null
 }
 
 export async function fetchSjefenAnalytics(): Promise<SjefenAnalytics> {
@@ -61,13 +65,13 @@ export async function fetchSjefenAnalytics(): Promise<SjefenAnalytics> {
   const withPresence = await admin
     .from("users")
     .select(
-      "id, full_name, role, is_active, last_seen_at, created_at, company_id, companies(name, city, postal_code)"
+      "id, full_name, role, is_active, last_seen_at, created_at, company_id, companies(name, org_number, city, postal_code)"
     )
   if (withPresence.error) {
     presenceEnabled = false
     const fallback = await admin
       .from("users")
-      .select("id, full_name, role, is_active, created_at, company_id, companies(name, city, postal_code)")
+      .select("id, full_name, role, is_active, created_at, company_id, companies(name, org_number, city, postal_code)")
     rows = (fallback.data as unknown as UserRow[]) ?? []
   } else {
     rows = (withPresence.data as unknown as UserRow[]) ?? []
@@ -99,6 +103,8 @@ export async function fetchSjefenAnalytics(): Promise<SjefenAnalytics> {
       if (age <= DAY_MS) active24h += 1
       if (age <= 7 * DAY_MS) active7d += 1
     }
+
+    if (FEED_EXCLUDED_ORG_NUMBERS.has(row.companies?.org_number ?? "")) continue
 
     feedCandidates.push({
       id: row.id,
