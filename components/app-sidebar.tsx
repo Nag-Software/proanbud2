@@ -576,10 +576,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const primaryHrefs = primaryNav.map((item) => item.url)
 
   return (
+    <>
+    {/* Appens «Mer»-ark viser denne menyen — send den over broen så de to
+        aldri kan drifte fra hverandre. Rendrer ingenting.
+        UTENFOR <Sidebar>: på mobil er sidebaren en skuff som bare monterer
+        barna sine når den er åpen, så broen må stå her for å leve i appen. */}
+    <NativeMenuBridge items={filteredNavMain} ready={roleKnown} />
     <Sidebar collapsible="icon" {...props}>
-      {/* Appens «Mer»-ark viser denne menyen — send den over broen så de to
-          aldri kan drifte fra hverandre. Rendrer ingenting. */}
-      <NativeMenuBridge items={filteredNavMain} ready={roleKnown} />
       <AppSidebarHeader
         unreadCount={bellUnreadCount}
         notifications={notifications}
@@ -621,5 +624,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
+    </>
   )
 }
