@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
-import { priceCohortFor } from "@/lib/billing/plans"
+import { priceCohortForCompany } from "@/lib/billing/plans"
 import {
   firstMonthBonusNok,
   isActiveBillingStatus,
@@ -127,7 +127,7 @@ async function computePartnerMetrics(
       if (isActiveBillingStatus(billing?.status)) {
         m.activeCustomers += 1
         // Provisjonen følger prisen kunden faktisk betaler.
-        const cohort = priceCohortFor(row.created_at)
+        const cohort = priceCohortForCompany({ createdAt: row.created_at, billingStatus: billing?.status })
         m.mrr += recurringCommissionNok(billing?.plan_key, billing?.billing_interval, cohort)
         m.earned += firstMonthBonusNok(billing?.plan_key, billing?.billing_interval, cohort)
       }

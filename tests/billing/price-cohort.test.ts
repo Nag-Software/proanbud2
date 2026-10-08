@@ -6,6 +6,7 @@ import {
   newSignupCohort,
   planPricingFor,
   priceCohortFor,
+  priceCohortForCompany,
   seatPriceNokFor,
 } from "@/lib/billing/plans"
 
@@ -36,6 +37,30 @@ describe("priceCohortFor", () => {
   it("nye registreringer følger tidspunktet", () => {
     expect(newSignupCohort(at("2026-10-08T12:00:00Z"))).toBe("legacy")
     expect(newSignupCohort(at("2026-10-08T14:00:00Z"))).toBe("current")
+  })
+})
+
+describe("priceCohortForCompany", () => {
+  const created = "2026-09-20T10:00:00Z"
+  const now = at("2026-11-15T10:00:00Z")
+
+  it("levende abonnement opprettet før prisøkningen beholder gammel pris", () => {
+    expect(priceCohortForCompany({ createdAt: created, billingStatus: "active" }, now)).toBe("legacy")
+    expect(priceCohortForCompany({ createdAt: created, billingStatus: "trialing" }, now)).toBe("legacy")
+    expect(priceCohortForCompany({ createdAt: created, billingStatus: "past_due" }, now)).toBe("legacy")
+  })
+
+  it("utløpt prøve eller avsluttet abonnement får dagens pris", () => {
+    expect(priceCohortForCompany({ createdAt: created, billingStatus: "canceled" }, now)).toBe("current")
+    expect(priceCohortForCompany({ createdAt: created, billingStatus: "incomplete" }, now)).toBe("current")
+    expect(priceCohortForCompany({ createdAt: created, billingStatus: "unpaid" }, now)).toBe("current")
+    expect(priceCohortForCompany({ createdAt: created, billingStatus: null }, now)).toBe("current")
+  })
+
+  it("bedrifter opprettet etter prisøkningen får dagens pris uansett", () => {
+    expect(
+      priceCohortForCompany({ createdAt: "2026-10-20T10:00:00Z", billingStatus: "active" }, now)
+    ).toBe("current")
   })
 })
 

@@ -60,9 +60,10 @@ export const LEGACY_PLAN_PRICING: PlanPricing = {
 }
 
 /**
- * Prisøkningen 8. oktober 2026 kl. 15: bedrifter opprettet før dette (kunder
- * og prøveperioder) beholder de gamle prisene til låsen går ut ett år senere.
- * Kohorten styrer både hvilken Stripe-pris som brukes og hvilket tall som vises.
+ * Prisøkningen 8. oktober 2026 kl. 15: bedrifter opprettet før dette beholder
+ * de gamle prisene til låsen går ut ett år senere — men bare så lenge
+ * abonnementet lever (se priceCohortForCompany). Kohorten styrer både hvilken
+ * Stripe-pris som brukes og hvilket tall som vises.
  */
 export type PriceCohort = "current" | "legacy"
 export const LEGACY_SIGNUP_CUTOFF_MS = Date.parse("2026-10-08T15:00:00+02:00")
@@ -79,6 +80,20 @@ export function priceCohortFor(
   const createdMs = new Date(companyCreatedAt).getTime()
   if (Number.isNaN(createdMs)) return "legacy"
   return createdMs < LEGACY_SIGNUP_CUTOFF_MS ? "legacy" : "current"
+}
+
+/**
+ * Kohorten for en konkret bedrift: prislåsen gjelder bare så lenge bedriften
+ * har et levende abonnement (prøve, aktiv eller i purring). Er prøven utløpt
+ * eller abonnementet avsluttet, betaler bedriften dagens pris når den starter
+ * på nytt — uansett når den ble opprettet.
+ */
+export function priceCohortForCompany(
+  company: { createdAt: string | Date | null | undefined; billingStatus: string | null | undefined },
+  now: Date = new Date()
+): PriceCohort {
+  if (!hasBillableAccess(company.billingStatus)) return "current"
+  return priceCohortFor(company.createdAt, now)
 }
 
 /** Kohorten en bedrift som registrerer seg akkurat nå havner i. */
