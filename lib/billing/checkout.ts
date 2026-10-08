@@ -2,6 +2,7 @@ import type Stripe from "stripe"
 
 import {
   getModulePriceId,
+  getMvaTaxRateIds,
   getSeatPriceId,
   getStripePriceId,
   isActiveSubscriptionStatus,
@@ -216,6 +217,7 @@ export async function createSubscriptionCheckoutSession(
       billing_interval: input.interval,
     },
     subscription_data: {
+      default_tax_rates: getMvaTaxRateIds(),
       metadata: {
         company_id: input.companyId,
         plan_key: input.plan,
@@ -315,6 +317,7 @@ export async function createTrialSubscription(input: {
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
     items: [{ price: getStripePriceId("proff", "month", cohort), quantity: 1 }],
+    default_tax_rates: getMvaTaxRateIds(),
     trial_period_days: TRIAL_DAYS,
     trial_settings: {
       end_behavior: { missing_payment_method: "cancel" },

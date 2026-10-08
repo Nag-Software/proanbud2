@@ -374,8 +374,8 @@ export function BillingPageClient() {
         : 0
   const planPriceLabel = summary?.pricing
     ? summary.billing_interval === "year"
-      ? `${summary.pricing.monthlyNok} kr/mnd · faktureres årlig`
-      : `${summary.pricing.monthlyNok} kr/mnd`
+      ? `${summary.pricing.monthlyNok} kr/mnd eks. mva · faktureres årlig`
+      : `${summary.pricing.monthlyNok} kr/mnd eks. mva`
     : null
 
   return (

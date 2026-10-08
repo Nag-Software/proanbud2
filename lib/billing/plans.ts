@@ -218,6 +218,17 @@ export function getMissingCorePriceEnvKeys(): string[] {
   return required.filter((key) => !process.env[key]?.trim())
 }
 
+/**
+ * 25 % MVA legges oppå alle priser (prisene er eks. mva). Satsen er et Stripe
+ * TaxRate-objekt (eksklusiv) som settes som standard på abonnementet, så den
+ * også treffer brukere, moduler og overforbruk på samme faktura. Uten
+ * variabelen opprettes abonnementet uten MVA — som før.
+ */
+export function getMvaTaxRateIds(): string[] {
+  const taxRateId = process.env.STRIPE_TAX_RATE_MVA?.trim()
+  return taxRateId ? [taxRateId] : []
+}
+
 export function getOveragePriceId(): string {
   const priceId = process.env.STRIPE_PRICE_OVERAGE?.trim()
   if (!priceId) {

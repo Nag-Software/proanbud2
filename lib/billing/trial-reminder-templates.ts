@@ -34,7 +34,7 @@ function promoBox(promoCode: string | null, priceCohort: PriceCohort = "current"
   const firstMonth = discountedFirstMonthNok(fullMonth)
   return {
     label: "Velkomstbonus",
-    title: `${WELCOME_DISCOUNT_PERCENT} % av første måned — du betaler ${firstMonth} kr i stedet for ${fullMonth} kr`,
+    title: `${WELCOME_DISCOUNT_PERCENT} % av første måned — du betaler ${firstMonth} kr i stedet for ${fullMonth} kr (eks. mva)`,
     code: promoCode,
     body: "Koden er personlig, kan brukes én gang og er allerede knyttet til bedriften din — den trekkes automatisk fra på første faktura når du legger inn betalingskort.",
   }

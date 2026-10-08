@@ -77,6 +77,22 @@ async function ensureOneTimePrice(productId, unitAmount, metadata) {
   })
 }
 
+async function ensureMvaTaxRate() {
+  const rates = await stripe.taxRates.list({ active: true, limit: 100 })
+  const match = rates.data.find(
+    (r) => r.percentage === 25 && r.inclusive === false && r.country === "NO"
+  )
+  if (match) return match
+  return stripe.taxRates.create({
+    display_name: "MVA",
+    description: "Merverdiavgift 25 %",
+    percentage: 25,
+    inclusive: false,
+    country: "NO",
+    jurisdiction: "NO",
+  })
+}
+
 async function main() {
   const miniProduct = await ensureProduct("Proanbud Mini", {
     kind: "base_product",
@@ -264,6 +280,10 @@ async function main() {
   for (const [key, price] of Object.entries(prices)) {
     console.log(`${key}=${price.id}`)
   }
+
+  // getMvaTaxRateIds in lib/billing/plans.ts — 25 % MVA oppå alle priser.
+  const mvaTaxRate = await ensureMvaTaxRate()
+  console.log(`STRIPE_TAX_RATE_MVA=${mvaTaxRate.id}`)
 
   console.log("\nCustomer Portal (Settings → Billing → Customer portal):")
   console.log("  Under 'Products', legg til begge produkter:")
