@@ -112,7 +112,7 @@ async function main() {
   const seatProduct = await ensureProduct("Proanbud Ansatt", { kind: "seat_product" })
 
   const prices = {
-    // PLAN_PRICING in lib/billing/plans.ts — prisene for nye kunder fra 1. nov 2026.
+    // PLAN_PRICING in lib/billing/plans.ts — prisene for nye kunder fra 8. okt 2026.
     STRIPE_PRICE_MINI_MONTHLY: await ensureRecurringPrice(
       miniProduct.id,
       29900,

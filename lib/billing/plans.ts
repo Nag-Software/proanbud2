@@ -35,7 +35,7 @@ type PlanPricing = Record<
   Record<BillingInterval, { monthlyNok: number; yearlyTotalNok: number }>
 >
 
-/** Prisene for nye kunder fra 1. november 2026. */
+/** Prisene for nye kunder fra 8. oktober 2026. */
 export const PLAN_PRICING: PlanPricing = {
   mini: {
     month: { monthlyNok: 299, yearlyTotalNok: 299 * 12 },
@@ -47,7 +47,7 @@ export const PLAN_PRICING: PlanPricing = {
   },
 }
 
-/** Prisene før 1. november 2026 — låst i 12 måneder for de som var med da. */
+/** Prisene før 8. oktober 2026 — låst i 12 måneder for de som var med da. */
 export const LEGACY_PLAN_PRICING: PlanPricing = {
   mini: {
     month: { monthlyNok: 229, yearlyTotalNok: 229 * 12 },
@@ -60,13 +60,13 @@ export const LEGACY_PLAN_PRICING: PlanPricing = {
 }
 
 /**
- * Prisøkningen 1. november 2026: bedrifter opprettet før denne datoen (kunder
+ * Prisøkningen 8. oktober 2026 kl. 15: bedrifter opprettet før dette (kunder
  * og prøveperioder) beholder de gamle prisene til låsen går ut ett år senere.
  * Kohorten styrer både hvilken Stripe-pris som brukes og hvilket tall som vises.
  */
 export type PriceCohort = "current" | "legacy"
-export const LEGACY_SIGNUP_CUTOFF_MS = Date.parse("2026-11-01T00:00:00+01:00")
-export const LEGACY_PRICE_LOCK_UNTIL_MS = Date.parse("2027-11-01T00:00:00+01:00")
+export const LEGACY_SIGNUP_CUTOFF_MS = Date.parse("2026-10-08T15:00:00+02:00")
+export const LEGACY_PRICE_LOCK_UNTIL_MS = Date.parse("2027-10-08T15:00:00+02:00")
 
 export function priceCohortFor(
   companyCreatedAt: string | Date | null | undefined,

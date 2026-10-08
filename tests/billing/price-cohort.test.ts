@@ -12,20 +12,20 @@ import {
 const at = (iso: string) => new Date(iso)
 
 describe("priceCohortFor", () => {
-  it("bedrifter opprettet før 1. november 2026 beholder gammel pris", () => {
-    expect(priceCohortFor("2026-10-20T10:00:00Z", at("2026-11-15T10:00:00Z"))).toBe("legacy")
-    // Siste minutt før midnatt norsk tid.
-    expect(priceCohortFor("2026-10-31T22:59:00Z", at("2026-12-01T10:00:00Z"))).toBe("legacy")
+  // Skillet går 8. oktober 2026 kl. 15:00 norsk tid (13:00 UTC).
+  it("bedrifter opprettet før prisøkningen beholder gammel pris", () => {
+    expect(priceCohortFor("2026-09-20T10:00:00Z", at("2026-11-15T10:00:00Z"))).toBe("legacy")
+    expect(priceCohortFor("2026-10-08T12:59:00Z", at("2026-12-01T10:00:00Z"))).toBe("legacy")
   })
 
-  it("bedrifter opprettet fra og med 1. november får ny pris", () => {
-    expect(priceCohortFor("2026-10-31T23:00:00Z", at("2026-11-15T10:00:00Z"))).toBe("current")
+  it("bedrifter opprettet etter prisøkningen får ny pris", () => {
+    expect(priceCohortFor("2026-10-08T13:00:00Z", at("2026-11-15T10:00:00Z"))).toBe("current")
     expect(priceCohortFor("2027-01-05T10:00:00Z", at("2027-01-06T10:00:00Z"))).toBe("current")
   })
 
   it("låsen varer i 12 måneder", () => {
-    expect(priceCohortFor("2026-10-20T10:00:00Z", at("2027-10-31T22:00:00Z"))).toBe("legacy")
-    expect(priceCohortFor("2026-10-20T10:00:00Z", at("2027-10-31T23:00:00Z"))).toBe("current")
+    expect(priceCohortFor("2026-09-20T10:00:00Z", at("2027-10-08T12:00:00Z"))).toBe("legacy")
+    expect(priceCohortFor("2026-09-20T10:00:00Z", at("2027-10-08T13:00:00Z"))).toBe("current")
   })
 
   it("ukjent opprettelsesdato gir gammel pris så lenge låsen gjelder", () => {
@@ -33,9 +33,9 @@ describe("priceCohortFor", () => {
     expect(priceCohortFor(null, at("2027-12-01T10:00:00Z"))).toBe("current")
   })
 
-  it("nye registreringer følger datoen", () => {
-    expect(newSignupCohort(at("2026-10-15T10:00:00Z"))).toBe("legacy")
-    expect(newSignupCohort(at("2026-11-01T10:00:00Z"))).toBe("current")
+  it("nye registreringer følger tidspunktet", () => {
+    expect(newSignupCohort(at("2026-10-08T12:00:00Z"))).toBe("legacy")
+    expect(newSignupCohort(at("2026-10-08T14:00:00Z"))).toBe("current")
   })
 })
 
