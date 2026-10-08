@@ -96,6 +96,37 @@ export function priceCohortForCompany(
   return priceCohortFor(company.createdAt, now)
 }
 
+/**
+ * Kohorten et LEVENDE abonnement faktisk står på, lest av grunnplanens pris-ID.
+ * Stripe er sannheten: en bedrift opprettet før prisøkningen som lot prøven
+ * utløpe og tegnet nytt abonnement til dagens pris, skal vises og endres til
+ * dagens pris — ikke flippe tilbake til gammel pris fordi statusen igjen er
+ * «active». Returnerer null når pris-ID-en ikke er en kjent grunnplan.
+ */
+export function priceCohortFromBasePriceId(priceId: string | null | undefined): PriceCohort | null {
+  if (!priceId) return null
+  for (const plan of ["mini", "proff"] as const) {
+    for (const interval of ["month", "year"] as const) {
+      const envKey = PRICE_ENV_KEYS[`${plan}-${interval}`]
+      if (process.env[`${envKey}_LEGACY`]?.trim() === priceId) return "legacy"
+      if (process.env[envKey]?.trim() === priceId) return "current"
+    }
+  }
+  return null
+}
+
+export function priceCohortFromSubscriptionItems(
+  items: Array<{ price: { id: string; metadata?: Record<string, string> | null } }>
+): PriceCohort | null {
+  for (const item of items) {
+    const kind = item.price.metadata?.kind
+    if (kind && kind !== "base") continue
+    const cohort = priceCohortFromBasePriceId(item.price.id)
+    if (cohort) return cohort
+  }
+  return null
+}
+
 /** Kohorten en bedrift som registrerer seg akkurat nå havner i. */
 export function newSignupCohort(now: Date = new Date()): PriceCohort {
   return priceCohortFor(now, now)

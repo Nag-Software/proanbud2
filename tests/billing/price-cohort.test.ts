@@ -7,6 +7,8 @@ import {
   planPricingFor,
   priceCohortFor,
   priceCohortForCompany,
+  priceCohortFromBasePriceId,
+  priceCohortFromSubscriptionItems,
   seatPriceNokFor,
 } from "@/lib/billing/plans"
 
@@ -61,6 +63,30 @@ describe("priceCohortForCompany", () => {
     expect(
       priceCohortForCompany({ createdAt: "2026-10-20T10:00:00Z", billingStatus: "active" }, now)
     ).toBe("current")
+  })
+})
+
+describe("kohort fra Stripe-abonnementet", () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it("gjenkjenner gammel og ny grunnpris på pris-ID", () => {
+    vi.stubEnv("STRIPE_PRICE_PROFF_MONTHLY", "price_proff_new")
+    vi.stubEnv("STRIPE_PRICE_PROFF_MONTHLY_LEGACY", "price_proff_old")
+    expect(priceCohortFromBasePriceId("price_proff_old")).toBe("legacy")
+    expect(priceCohortFromBasePriceId("price_proff_new")).toBe("current")
+    expect(priceCohortFromBasePriceId("price_ukjent")).toBeNull()
+    expect(priceCohortFromBasePriceId(null)).toBeNull()
+  })
+
+  it("leser grunnplanen og hopper over seter og moduler", () => {
+    vi.stubEnv("STRIPE_PRICE_MINI_YEARLY", "price_mini_y_new")
+    vi.stubEnv("STRIPE_PRICE_MINI_YEARLY_LEGACY", "price_mini_y_old")
+    const items: Array<{ price: { id: string; metadata: Record<string, string> } }> = [
+      { price: { id: "price_seat_old", metadata: { kind: "seat" } } },
+      { price: { id: "price_mini_y_old", metadata: { kind: "base", plan_key: "mini" } } },
+    ]
+    expect(priceCohortFromSubscriptionItems(items)).toBe("legacy")
+    expect(priceCohortFromSubscriptionItems([items[0]])).toBeNull()
   })
 })
 

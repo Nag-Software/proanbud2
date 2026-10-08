@@ -105,12 +105,18 @@ function planChangeDescription(choice: PlanChoice, summary: BillingSummary | nul
   if (choice.plan === "proff") {
     return `Ny pris: ${priceLabel}. Du får ${PLAN_QUOTA_LIMITS.proff} tilbud i måneden, ${INCLUDED_SEATS_BY_PLAN.proff} ansattlisenser, HMS, KS, avvik, timeføring, oppgaver, meldinger og integrasjoner. ${billingNote}`
   }
+  const used = summary?.used ?? 0
+  const overageAfterDowngrade = Math.max(0, used - PLAN_QUOTA_LIMITS.mini)
+  const overageNote =
+    !trialing && overageAfterDowngrade > 0
+      ? ` Dere har allerede brukt ${used} KI-tilbud denne perioden; ${overageAfterDowngrade} over Mini-grensen faktureres som overforbruk à ${summary?.overage_unit_nok ?? 9.5} kr på neste faktura.`
+      : ""
   const seats = summary?.billable_seats ?? 0
   const seatNote =
     seats > 0
       ? ` Dere har ${seats} ansattlisens${seats === 1 ? "" : "er"} som koster ${summary?.seat_price_nok ?? 0} kr/mnd hver i Mini.`
       : ""
-  return `Ny pris: ${priceLabel}. Mini har ${PLAN_QUOTA_LIMITS.mini} tilbud i måneden, ingen inkluderte ansattlisenser og mangler HMS, KS, avvik, timeføring, oppgaver, meldinger og integrasjoner.${seatNote} ${billingNote}`
+  return `Ny pris: ${priceLabel}. Mini har ${PLAN_QUOTA_LIMITS.mini} tilbud i måneden, ingen inkluderte ansattlisenser og mangler HMS, KS, avvik, timeføring, oppgaver, meldinger og integrasjoner.${seatNote}${overageNote} ${billingNote}`
 }
 
 /**

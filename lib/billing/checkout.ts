@@ -6,6 +6,7 @@ import {
   getSeatPriceId,
   getStripePriceId,
   isActiveSubscriptionStatus,
+  priceCohortFromSubscriptionItems,
   TRIAL_DAYS,
   type BillingInterval,
   type ModuleKey,
@@ -389,7 +390,11 @@ export async function changeSubscriptionPlan(input: {
     // Swap the base item's price. When the interval changes, also re-price every
     // add-on (seat/module) item to the new interval — Stripe rejects a
     // subscription that mixes monthly and yearly items (prices_in_different_intervals).
-    const cohort = await getCompanyPriceCohort(input.companyId)
+    // Kohorten leses av abonnementet vi allerede har hentet: en kunde på gammel
+    // pris bytter innenfor gammel prisliste, en på ny innenfor ny.
+    const cohort =
+      priceCohortFromSubscriptionItems(subscription.items.data) ??
+      (await getCompanyPriceCohort(input.companyId))
     const items: Stripe.SubscriptionUpdateParams.Item[] = [
       { id: baseItemId, price: getStripePriceId(input.plan, input.interval, cohort) },
     ]
