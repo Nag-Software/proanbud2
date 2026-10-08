@@ -112,25 +112,51 @@ async function main() {
   const seatProduct = await ensureProduct("Proanbud Ansatt", { kind: "seat_product" })
 
   const prices = {
+    // PLAN_PRICING in lib/billing/plans.ts — prisene for nye kunder fra 1. nov 2026.
     STRIPE_PRICE_MINI_MONTHLY: await ensureRecurringPrice(
       miniProduct.id,
-      22900,
+      29900,
       { interval: "month" },
       { kind: "base", plan_key: "mini", interval: "month" }
     ),
     STRIPE_PRICE_MINI_YEARLY: await ensureRecurringPrice(
       miniProduct.id,
-      226800,
+      249 * 100 * 12,
       { interval: "year" },
       { kind: "base", plan_key: "mini", interval: "year" }
     ),
     STRIPE_PRICE_PROFF_MONTHLY: await ensureRecurringPrice(
       proffProduct.id,
-      49900,
+      69000,
       { interval: "month" },
       { kind: "base", plan_key: "proff", interval: "month" }
     ),
     STRIPE_PRICE_PROFF_YEARLY: await ensureRecurringPrice(
+      proffProduct.id,
+      590 * 100 * 12,
+      { interval: "year" },
+      { kind: "base", plan_key: "proff", interval: "year" }
+    ),
+    // LEGACY_PLAN_PRICING — de gamle prisene finnes allerede i Stripe og gjenbrukes.
+    STRIPE_PRICE_MINI_MONTHLY_LEGACY: await ensureRecurringPrice(
+      miniProduct.id,
+      22900,
+      { interval: "month" },
+      { kind: "base", plan_key: "mini", interval: "month" }
+    ),
+    STRIPE_PRICE_MINI_YEARLY_LEGACY: await ensureRecurringPrice(
+      miniProduct.id,
+      226800,
+      { interval: "year" },
+      { kind: "base", plan_key: "mini", interval: "year" }
+    ),
+    STRIPE_PRICE_PROFF_MONTHLY_LEGACY: await ensureRecurringPrice(
+      proffProduct.id,
+      49900,
+      { interval: "month" },
+      { kind: "base", plan_key: "proff", interval: "month" }
+    ),
+    STRIPE_PRICE_PROFF_YEARLY_LEGACY: await ensureRecurringPrice(
       proffProduct.id,
       502800,
       { interval: "year" },
@@ -173,6 +199,12 @@ async function main() {
     ),
     STRIPE_PRICE_SEAT_EMPLOYEE: await ensureRecurringPrice(
       seatProduct.id,
+      6900,
+      { interval: "month" },
+      { kind: "seat" }
+    ),
+    STRIPE_PRICE_SEAT_EMPLOYEE_LEGACY: await ensureRecurringPrice(
+      seatProduct.id,
       3900,
       { interval: "month" },
       { kind: "seat" }
@@ -211,6 +243,12 @@ async function main() {
       { kind: "module", module_key: "kjorebok", interval: "year" }
     ),
     STRIPE_PRICE_SEAT_EMPLOYEE_YEARLY: await ensureRecurringPrice(
+      seatProduct.id,
+      6900 * 12,
+      { interval: "year" },
+      { kind: "seat", interval: "year" }
+    ),
+    STRIPE_PRICE_SEAT_EMPLOYEE_YEARLY_LEGACY: await ensureRecurringPrice(
       seatProduct.id,
       3900 * 12,
       { interval: "year" },

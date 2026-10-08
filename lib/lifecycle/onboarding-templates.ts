@@ -5,7 +5,7 @@
 // transaksjonelle domenet — aldri kald-utsendings-subdomenet.
 
 import { BILLING_PATH } from "@/lib/constants"
-import { PLAN_PRICING } from "@/lib/billing/plans"
+import { planPricingFor, type PriceCohort } from "@/lib/billing/plans"
 import { discountedFirstMonthNok, WELCOME_DISCOUNT_PERCENT } from "@/lib/billing/welcome-discount"
 import { buildSellerEmailHtml, sellerEmailAppUrl } from "@/lib/selger/seller-email-html"
 import { kr } from "@/lib/verktoy/format"
@@ -16,6 +16,8 @@ export type LifecycleTemplateInput = {
   companyName: string | null
   /** Personlig velkomstkode når den finnes. Utsending skjer uansett. */
   promoCode: string | null
+  /** Prislisten bedriften står på. Mangler = prisene for nye kunder. */
+  priceCohort?: PriceCohort
   /** Kun for «verdi»-e-posten. */
   stats?: { offerCount: number; pipelineNok: number }
   /**
@@ -49,12 +51,13 @@ const dashboardUrl = () => `${appUrl()}/`
 const billingUrl = () => `${appUrl()}${BILLING_PATH}`
 
 /** Velkomstboksen med den personlige 80 %-koden — samme som prøve-sekvensen. */
-function promoBox(promoCode: string | null) {
+function promoBox(promoCode: string | null, priceCohort: PriceCohort = "current") {
   if (!promoCode) return undefined
-  const firstMonth = discountedFirstMonthNok(PLAN_PRICING.proff.month.monthlyNok)
+  const fullMonth = planPricingFor(priceCohort).proff.month.monthlyNok
+  const firstMonth = discountedFirstMonthNok(fullMonth)
   return {
     label: "Velkomstbonus",
-    title: `${WELCOME_DISCOUNT_PERCENT} % av første måned — du betaler ${firstMonth} kr i stedet for ${PLAN_PRICING.proff.month.monthlyNok} kr`,
+    title: `${WELCOME_DISCOUNT_PERCENT} % av første måned — du betaler ${firstMonth} kr i stedet for ${fullMonth} kr`,
     code: promoCode,
     body: "Koden er personlig, kan brukes én gang og er allerede knyttet til bedriften din — den trekkes automatisk fra på første faktura når du legger inn betalingskort.",
   }
@@ -64,7 +67,7 @@ export const LIFECYCLE_TEMPLATES: Record<LifecycleStage, LifecycleTemplate> = {
   velkomst: {
     id: "lifecycle-velkomst",
     subject: "Velkommen til Proanbud — send ditt første tilbud på 5 minutter",
-    buildHtml: ({ recipientName, companyName, promoCode }) =>
+    buildHtml: ({ recipientName, companyName, promoCode, priceCohort }) =>
       buildSellerEmailHtml({
         recipientName,
         headline: "Velkommen til Proanbud",
@@ -79,7 +82,7 @@ export const LIFECYCLE_TEMPLATES: Record<LifecycleStage, LifecycleTemplate> = {
           { title: "Lag tilbudet", body: "Legg inn linjer, eller lim inn befaringsnotatene og la Proanbud sette det opp." },
           { title: "Send til signering", body: "Kunden får et pent tilbud og signerer digitalt." },
         ],
-        promo: promoBox(promoCode),
+        promo: promoBox(promoCode, priceCohort),
         ctaLabel: "Lag ditt første tilbud",
         ctaUrl: nyttTilbudUrl(),
         secondaryText: "Står du fast? Bare svar på denne e-posten, så hjelper vi deg i gang.",
@@ -143,7 +146,7 @@ export const LIFECYCLE_TEMPLATES: Record<LifecycleStage, LifecycleTemplate> = {
       hasContent
         ? "Vi har tatt vare på alt du laget i Proanbud"
         : "Rakk du aldri å teste Proanbud?",
-    buildHtml: ({ recipientName, companyName, promoCode, hasContent = true }) => {
+    buildHtml: ({ recipientName, companyName, promoCode, priceCohort, hasContent = true }) => {
       const eier = companyName ? `Prøveperioden for ${companyName}` : "Prøveperioden din"
 
       // Tom konto: ikke påstå at noe ligger lagret. Da er den ærlige vinklingen
@@ -156,7 +159,7 @@ export const LIFECYCLE_TEMPLATES: Record<LifecycleStage, LifecycleTemplate> = {
             `${eier} er over, og vi ser at du ikke rakk å komme i gang. Det skjer — som regel fordi hverdagen kom i veien, ikke fordi programmet var feil.`,
             "Vil du gi det et forsøk, tar det fem minutter å lage det første tilbudet: beskriv jobben, så setter Proanbud opp postene og prisene for deg.",
           ],
-          promo: promoBox(promoCode),
+          promo: promoBox(promoCode, priceCohort),
           ctaLabel: "Lag ditt første tilbud",
           ctaUrl: nyttTilbudUrl(),
           secondaryText: "Var det noe som stoppet deg? Svar på denne e-posten — det er nyttig for oss å vite.",
@@ -170,7 +173,7 @@ export const LIFECYCLE_TEMPLATES: Record<LifecycleStage, LifecycleTemplate> = {
           `${eier} er over, men ingenting er slettet — tilbud, kunder og prosjekter ligger akkurat som du forlot dem.`,
           "Legg inn betalingskort for å få full tilgang tilbake. Det tar under ett minutt, og du kan si opp når som helst.",
         ],
-        promo: promoBox(promoCode),
+        promo: promoBox(promoCode, priceCohort),
         ctaLabel: "Legg inn betalingskort",
         ctaUrl: billingUrl(),
         secondaryText: "Var det noe som manglet for deg? Svar på denne e-posten — vi vil gjerne høre det.",

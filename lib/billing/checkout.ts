@@ -27,6 +27,7 @@ import {
 import { getStripe } from "@/lib/stripe/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getRedeemableWelcomeDiscount } from "@/lib/billing/welcome-discount"
+import { getCompanyPriceCohort } from "@/lib/billing/price-cohort"
 
 /**
  * Verify a company's stored subscription is still live in Stripe.
@@ -179,9 +180,10 @@ export async function createSubscriptionCheckoutSession(
   })
 
   // Base plan only — seat add-ons are added later via syncSeatQuantity when employees are invited.
+  const cohort = await getCompanyPriceCohort(input.companyId)
   const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
     {
-      price: getStripePriceId(input.plan, input.interval),
+      price: getStripePriceId(input.plan, input.interval, cohort),
       quantity: 1,
     },
   ]
@@ -309,9 +311,10 @@ export async function createTrialSubscription(input: {
 
   // Base plan only — seat add-ons are added later via syncSeatQuantity when
   // employees are invited (a brand-new company has 0 billable seats).
+  const cohort = await getCompanyPriceCohort(input.companyId)
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
-    items: [{ price: getStripePriceId("proff", "month"), quantity: 1 }],
+    items: [{ price: getStripePriceId("proff", "month", cohort), quantity: 1 }],
     trial_period_days: TRIAL_DAYS,
     trial_settings: {
       end_behavior: { missing_payment_method: "cancel" },
@@ -383,15 +386,16 @@ export async function changeSubscriptionPlan(input: {
     // Swap the base item's price. When the interval changes, also re-price every
     // add-on (seat/module) item to the new interval — Stripe rejects a
     // subscription that mixes monthly and yearly items (prices_in_different_intervals).
+    const cohort = await getCompanyPriceCohort(input.companyId)
     const items: Stripe.SubscriptionUpdateParams.Item[] = [
-      { id: baseItemId, price: getStripePriceId(input.plan, input.interval) },
+      { id: baseItemId, price: getStripePriceId(input.plan, input.interval, cohort) },
     ]
     if (intervalChanged) {
       for (const item of subscription.items.data) {
         if (item.id === baseItemId) continue
         const kind = item.price.metadata?.kind
         if (kind === "seat") {
-          items.push({ id: item.id, price: getSeatPriceId(input.interval) })
+          items.push({ id: item.id, price: getSeatPriceId(input.interval, cohort) })
         } else if (kind === "module") {
           const moduleKey = item.price.metadata?.module_key
           if (moduleKey) {

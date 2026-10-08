@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
+import { priceCohortFor } from "@/lib/billing/plans"
 import {
   firstMonthBonusNok,
   isActiveBillingStatus,
@@ -90,6 +91,7 @@ type PartnerMetrics = {
 
 type AttributedCompanyRow = {
   affiliate_partner_id: string | null
+  created_at: string | null
   company_billing:
     | { status: string | null; plan_key: string | null; billing_interval: string | null }
     | { status: string | null; plan_key: string | null; billing_interval: string | null }[]
@@ -108,7 +110,7 @@ async function computePartnerMetrics(
   try {
     const { data, error } = await admin
       .from("companies")
-      .select("affiliate_partner_id, company_billing(status, plan_key, billing_interval)")
+      .select("affiliate_partner_id, created_at, company_billing(status, plan_key, billing_interval)")
       .not("affiliate_partner_id", "is", null)
 
     if (error || !data) return metrics
@@ -124,8 +126,10 @@ async function computePartnerMetrics(
       m.signups += 1
       if (isActiveBillingStatus(billing?.status)) {
         m.activeCustomers += 1
-        m.mrr += recurringCommissionNok(billing?.plan_key, billing?.billing_interval)
-        m.earned += firstMonthBonusNok(billing?.plan_key, billing?.billing_interval)
+        // Provisjonen følger prisen kunden faktisk betaler.
+        const cohort = priceCohortFor(row.created_at)
+        m.mrr += recurringCommissionNok(billing?.plan_key, billing?.billing_interval, cohort)
+        m.earned += firstMonthBonusNok(billing?.plan_key, billing?.billing_interval, cohort)
       }
       metrics.set(pid, m)
     }

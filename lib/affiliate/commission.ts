@@ -1,4 +1,9 @@
-import { PLAN_PRICING, type BillingInterval, type PlanKey } from "@/lib/billing/plans"
+import {
+  planPricingFor,
+  type BillingInterval,
+  type PlanKey,
+  type PriceCohort,
+} from "@/lib/billing/plans"
 
 /** Recurring commission share of collected subscription revenue. */
 export const COMMISSION_RATE = 0.05
@@ -13,24 +18,27 @@ export function isActiveBillingStatus(status: string | null | undefined): boolea
 export function monthlyPriceNok(
   planKey: string | null | undefined,
   interval: string | null | undefined,
+  cohort: PriceCohort = "current",
 ): number {
   if (planKey !== "mini" && planKey !== "proff") return 0
   const iv: BillingInterval = interval === "year" ? "year" : "month"
-  return PLAN_PRICING[planKey as PlanKey][iv].monthlyNok
+  return planPricingFor(cohort)[planKey as PlanKey][iv].monthlyNok
 }
 
 /** Recurring monthly commission (kr) for one active subscription = 5% of price. */
 export function recurringCommissionNok(
   planKey: string | null | undefined,
   interval: string | null | undefined,
+  cohort: PriceCohort = "current",
 ): number {
-  return Math.round(monthlyPriceNok(planKey, interval) * COMMISSION_RATE)
+  return Math.round(monthlyPriceNok(planKey, interval, cohort) * COMMISSION_RATE)
 }
 
 /** One-time engangsbonus (kr) when a referral converts = full first month. */
 export function firstMonthBonusNok(
   planKey: string | null | undefined,
   interval: string | null | undefined,
+  cohort: PriceCohort = "current",
 ): number {
-  return monthlyPriceNok(planKey, interval)
+  return monthlyPriceNok(planKey, interval, cohort)
 }

@@ -6,8 +6,14 @@
 // spør om noe. Bryter et utkast lint, sendes det aldri, uansett hvor pent det
 // er skrevet.
 
-import { MODULE_PRICING, PLAN_PRICING } from "@/lib/billing/plans"
-import { BANNED_WORDS, findBannedClaims, findBannedWords, verifiedFacts } from "@/lib/outreach/facts"
+import { MODULE_PRICING } from "@/lib/billing/plans"
+import {
+  BANNED_WORDS,
+  findBannedClaims,
+  findBannedWords,
+  SALES_PLAN_PRICING as PLAN_PRICING,
+  verifiedFacts,
+} from "@/lib/outreach/facts"
 import { numbersIn } from "@/lib/outreach/research/ground"
 import type { Hook } from "@/lib/outreach/research/synthesize"
 import { withoutSignature } from "@/lib/outreach/write/form"

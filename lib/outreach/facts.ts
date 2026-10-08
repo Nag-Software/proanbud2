@@ -11,8 +11,9 @@
 import {
   MODULE_PRICING,
   MODULES_INCLUDED_IN_PROFF,
-  PLAN_PRICING,
-  SEAT_PRICE_NOK,
+  newSignupCohort,
+  planPricingFor,
+  seatPriceNokFor,
   TRIAL_DAYS,
   INCLUDED_SEATS_BY_PLAN,
 } from "@/lib/billing/plans"
@@ -51,8 +52,12 @@ export type Fact = {
   requires?: FactId[]
 }
 
-const mini = PLAN_PRICING.mini
-const proff = PLAN_PRICING.proff
+// Salgs-e-post går til folk som ikke er kunder ennå: de får prisene som
+// gjelder for en bedrift som registrerer seg i dag.
+export const SALES_PLAN_PRICING = planPricingFor(newSignupCohort())
+const SALES_SEAT_PRICE_NOK = seatPriceNokFor(newSignupCohort())
+const mini = SALES_PLAN_PRICING.mini
+const proff = SALES_PLAN_PRICING.proff
 const nok = (value: number) => new Intl.NumberFormat("nb-NO").format(value)
 
 export const FACTS: Fact[] = [
@@ -125,9 +130,9 @@ export const FACTS: Fact[] = [
   },
   {
     id: "brukere_proff",
-    text: `Proff har ${INCLUDED_SEATS_BY_PLAN.proff} brukere inkludert, og hver ekstra bruker koster ${nok(SEAT_PRICE_NOK)} kr i måneden.`,
+    text: `Proff har ${INCLUDED_SEATS_BY_PLAN.proff} brukere inkludert, og hver ekstra bruker koster ${nok(SALES_SEAT_PRICE_NOK)} kr i måneden.`,
     verified: true,
-    source: "lib/billing/plans.ts INCLUDED_SEATS_BY_PLAN + SEAT_PRICE_NOK",
+    source: "lib/billing/plans.ts INCLUDED_SEATS_BY_PLAN + seatPriceNokFor",
   },
   {
     id: "kalender",

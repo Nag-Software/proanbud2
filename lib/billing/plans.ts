@@ -30,10 +30,25 @@ export const PLAN_LABELS: Record<PlanKey, string> = {
   proff: "Proff",
 }
 
-export const PLAN_PRICING: Record<
+type PlanPricing = Record<
   PlanKey,
   Record<BillingInterval, { monthlyNok: number; yearlyTotalNok: number }>
-> = {
+>
+
+/** Prisene for nye kunder fra 1. november 2026. */
+export const PLAN_PRICING: PlanPricing = {
+  mini: {
+    month: { monthlyNok: 299, yearlyTotalNok: 299 * 12 },
+    year: { monthlyNok: 249, yearlyTotalNok: 249 * 12 },
+  },
+  proff: {
+    month: { monthlyNok: 690, yearlyTotalNok: 690 * 12 },
+    year: { monthlyNok: 590, yearlyTotalNok: 590 * 12 },
+  },
+}
+
+/** Prisene før 1. november 2026 — låst i 12 måneder for de som var med da. */
+export const LEGACY_PLAN_PRICING: PlanPricing = {
   mini: {
     month: { monthlyNok: 229, yearlyTotalNok: 229 * 12 },
     year: { monthlyNok: 189, yearlyTotalNok: 189 * 12 },
@@ -42,6 +57,37 @@ export const PLAN_PRICING: Record<
     month: { monthlyNok: 499, yearlyTotalNok: 499 * 12 },
     year: { monthlyNok: 419, yearlyTotalNok: 419 * 12 },
   },
+}
+
+/**
+ * Prisøkningen 1. november 2026: bedrifter opprettet før denne datoen (kunder
+ * og prøveperioder) beholder de gamle prisene til låsen går ut ett år senere.
+ * Kohorten styrer både hvilken Stripe-pris som brukes og hvilket tall som vises.
+ */
+export type PriceCohort = "current" | "legacy"
+export const LEGACY_SIGNUP_CUTOFF_MS = Date.parse("2026-11-01T00:00:00+01:00")
+export const LEGACY_PRICE_LOCK_UNTIL_MS = Date.parse("2027-11-01T00:00:00+01:00")
+
+export function priceCohortFor(
+  companyCreatedAt: string | Date | null | undefined,
+  now: Date = new Date()
+): PriceCohort {
+  if (now.getTime() >= LEGACY_PRICE_LOCK_UNTIL_MS) return "current"
+  // Ukjent opprettelsesdato mens låsen gjelder: heller for lav pris til en ny
+  // kunde enn for høy pris til en vi har lovet den gamle.
+  if (!companyCreatedAt) return "legacy"
+  const createdMs = new Date(companyCreatedAt).getTime()
+  if (Number.isNaN(createdMs)) return "legacy"
+  return createdMs < LEGACY_SIGNUP_CUTOFF_MS ? "legacy" : "current"
+}
+
+/** Kohorten en bedrift som registrerer seg akkurat nå havner i. */
+export function newSignupCohort(now: Date = new Date()): PriceCohort {
+  return priceCohortFor(now, now)
+}
+
+export function planPricingFor(cohort: PriceCohort): PlanPricing {
+  return cohort === "legacy" ? LEGACY_PLAN_PRICING : PLAN_PRICING
 }
 
 export const MODULE_PRICING: Record<ModuleKey, number> = {
@@ -96,7 +142,12 @@ export const MODULE_CATALOG: Array<{
   },
 ]
 
-export const SEAT_PRICE_NOK = 39
+export const SEAT_PRICE_NOK = 69
+export const LEGACY_SEAT_PRICE_NOK = 39
+
+export function seatPriceNokFor(cohort: PriceCohort): number {
+  return cohort === "legacy" ? LEGACY_SEAT_PRICE_NOK : SEAT_PRICE_NOK
+}
 
 export const PRICE_ENV_KEYS: Record<string, string> = {
   "mini-month": "STRIPE_PRICE_MINI_MONTHLY",
@@ -122,9 +173,27 @@ export const PRICE_ENV_KEYS: Record<string, string> = {
   "seat-year": "STRIPE_PRICE_SEAT_EMPLOYEE_YEARLY",
 }
 
-export function getStripePriceId(plan: PlanKey, interval: BillingInterval): string {
+/**
+ * Legacy-kohorten leser `<NØKKEL>_LEGACY` (de gamle pris-ID-ene). Er den ikke
+ * satt, brukes hovednøkkelen — så koden er trygg å deploye før variablene er
+ * byttet i Vercel.
+ */
+function readPriceEnv(envKey: string | undefined, cohort: PriceCohort): string | undefined {
+  if (!envKey) return undefined
+  if (cohort === "legacy") {
+    const legacyId = process.env[`${envKey}_LEGACY`]?.trim()
+    if (legacyId) return legacyId
+  }
+  return process.env[envKey]?.trim() || undefined
+}
+
+export function getStripePriceId(
+  plan: PlanKey,
+  interval: BillingInterval,
+  cohort: PriceCohort = "current"
+): string {
   const envKey = PRICE_ENV_KEYS[`${plan}-${interval}`]
-  const priceId = process.env[envKey]?.trim()
+  const priceId = readPriceEnv(envKey, cohort)
   if (!priceId) {
     throw new Error(`${envKey} mangler i miljøvariabler`)
   }
@@ -163,13 +232,17 @@ export function getOveragePriceId(): string {
  * unchanged while letting yearly companies pick up interval-matched add-on prices
  * once the *_YEARLY vars are seeded.
  */
-function resolveIntervalPriceId(base: string, interval: BillingInterval): string {
+function resolveIntervalPriceId(
+  base: string,
+  interval: BillingInterval,
+  cohort: PriceCohort = "current"
+): string {
   const intervalKey = PRICE_ENV_KEYS[`${base}-${interval}`]
-  const intervalId = intervalKey ? process.env[intervalKey]?.trim() : undefined
+  const intervalId = readPriceEnv(intervalKey, cohort)
   if (intervalId) return intervalId
 
   const monthKey = PRICE_ENV_KEYS[`${base}-month`]
-  const monthId = monthKey ? process.env[monthKey]?.trim() : undefined
+  const monthId = readPriceEnv(monthKey, cohort)
   if (monthId) return monthId
 
   throw new Error(`${monthKey ?? base} mangler i miljøvariabler`)
@@ -182,8 +255,11 @@ export function getModulePriceId(
   return resolveIntervalPriceId(`module-${module}`, interval)
 }
 
-export function getSeatPriceId(interval: BillingInterval = "month"): string {
-  return resolveIntervalPriceId("seat", interval)
+export function getSeatPriceId(
+  interval: BillingInterval = "month",
+  cohort: PriceCohort = "current"
+): string {
+  return resolveIntervalPriceId("seat", interval, cohort)
 }
 
 export function quotaForPlan(planKey: PlanKey | null | undefined): number {

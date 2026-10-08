@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { PLAN_PRICING, MODULE_PRICING, TRIAL_DAYS } from "@/lib/billing/plans"
+import { MODULE_PRICING, TRIAL_DAYS } from "@/lib/billing/plans"
 import {
   FACTS,
+  SALES_PLAN_PRICING as PLAN_PRICING,
   factsForPrompt,
   findBannedClaims,
   findBannedWords,

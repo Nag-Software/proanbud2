@@ -14,6 +14,7 @@ import { Resend } from "resend"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
 import { logSellerEmail } from "@/lib/selger/activity-log"
+import { priceCohortFor } from "@/lib/billing/plans"
 import { ensureWelcomeDiscount, applyWelcomeDiscountToSubscription } from "@/lib/billing/welcome-discount"
 import { LIFECYCLE_TEMPLATES, resolveSubject, type LifecycleTemplateInput } from "./onboarding-templates"
 import {
@@ -199,6 +200,7 @@ export async function runLifecycleEmails(admin: AdminClient): Promise<LifecycleR
         recipientName: contact.name,
         companyName: presentableCompanyName(company.name as string | null),
         promoCode,
+        priceCohort: priceCohortFor(company.created_at as string),
         stats,
         hasContent: stage === "winback" ? await hasAnyContent(admin, companyId) : true,
       }

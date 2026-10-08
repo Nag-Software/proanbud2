@@ -399,6 +399,7 @@ export async function syncSeatQuantity(
     }
 
     const { getSeatPriceId } = await import("@/lib/billing/plans")
+    const { getCompanyPriceCohort } = await import("@/lib/billing/price-cohort")
     // Derive the interval from the LIVE subscription's base item, not the DB column
     // (which can be null/stale and would wrongly create a monthly seat item on a
     // yearly subscription).
@@ -428,7 +429,7 @@ export async function syncSeatQuantity(
       // deleted the item, re-linking a dead item id (seats under-billed).
       const created = await stripe.subscriptionItems.create({
         subscription: billing.stripe_subscription_id,
-        price: getSeatPriceId(seatInterval),
+        price: getSeatPriceId(seatInterval, await getCompanyPriceCohort(companyId)),
         quantity: seatsToCharge,
       })
       seatItemId = created.id

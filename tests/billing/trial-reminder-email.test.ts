@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest"
 
+import type { PriceCohort } from "@/lib/billing/plans"
 import { TRIAL_TEMPLATES } from "@/lib/billing/trial-reminder-templates"
 import { WELCOME_DISCOUNT_PERCENT } from "@/lib/billing/welcome-discount"
 
 const KINDS = ["soon", "lastDay", "expired"] as const
 
-function render(kind: (typeof KINDS)[number], promoCode: string | null) {
+function render(
+  kind: (typeof KINDS)[number],
+  promoCode: string | null,
+  priceCohort?: PriceCohort
+) {
   return TRIAL_TEMPLATES[kind].buildHtml({
     recipientName: "Ola",
     companyName: "Ola Bygg AS",
     promoCode,
+    priceCohort,
   })
 }
 
@@ -27,8 +33,17 @@ describe("trial reminder e-poster", () => {
     const html = render(kind, "VELKOMST-ABC123")
     expect(html).toContain("VELKOMST-ABC123")
     expect(html).toContain(`${WELCOME_DISCOUNT_PERCENT} %`)
+    // 80 % av 690 kr → 138 kr første måned.
+    expect(html).toContain("138 kr")
+    expect(html).toContain("690 kr")
+  })
+
+  it.each(KINDS)("%s viser gammel pris til bedrifter på låst prisliste", (kind) => {
+    const html = render(kind, "VELKOMST-ABC123", "legacy")
     // 80 % av 499 kr → 100 kr første måned.
     expect(html).toContain("100 kr")
+    expect(html).toContain("499 kr")
+    expect(html).not.toContain("690 kr")
   })
 
   it.each(KINDS)("%s sendes fortsatt ut uten kode", (kind) => {

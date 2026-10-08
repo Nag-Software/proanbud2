@@ -3,7 +3,8 @@ import { NextResponse } from "next/server"
 import { getUsageSummary, requireCompanyAdmin } from "@/lib/billing/guards"
 import { isRetentionOfferAvailable } from "@/lib/billing/cancellation"
 import { RETENTION_OFFER_PERCENT } from "@/lib/billing/cancellation-reasons"
-import { MODULE_PRICING, PLAN_LABELS, PLAN_PRICING, SEAT_PRICE_NOK } from "@/lib/billing/plans"
+import { MODULE_PRICING, PLAN_LABELS, planPricingFor, seatPriceNokFor } from "@/lib/billing/plans"
+import { getCompanyPriceCohort } from "@/lib/billing/price-cohort"
 import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getWelcomeDiscount, WELCOME_DISCOUNT_PERCENT } from "@/lib/billing/welcome-discount"
@@ -28,6 +29,7 @@ export async function GET() {
     // per firma, kun betalende på månedlig trekk.
     const retentionOfferAvailable = await isRetentionOfferAvailable(auth.context.companyId)
 
+    const cohort = await getCompanyPriceCohort(auth.context.companyId)
     const planKey = summary.plan_key
     const interval = summary.billing_interval
 
@@ -36,7 +38,7 @@ export async function GET() {
       plan_label: planKey ? PLAN_LABELS[planKey] : null,
       pricing:
         planKey && interval
-          ? PLAN_PRICING[planKey][interval]
+          ? planPricingFor(cohort)[planKey][interval]
           : null,
       modules: (modules ?? []).map((m) => ({
         ...m,
@@ -50,7 +52,7 @@ export async function GET() {
           }
         : null,
       retention_offer: retentionOfferAvailable ? { percent_off: RETENTION_OFFER_PERCENT } : null,
-      seat_price_nok: SEAT_PRICE_NOK,
+      seat_price_nok: seatPriceNokFor(cohort),
       overage_unit_nok: 9.5,
     })
   } catch (error) {

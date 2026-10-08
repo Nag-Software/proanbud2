@@ -14,6 +14,7 @@ import { Resend } from "resend"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
+import { priceCohortFor } from "@/lib/billing/plans"
 import { TRIAL_TEMPLATES, type TrialTemplate } from "@/lib/billing/trial-reminder-templates"
 import {
   applyWelcomeDiscountToSubscription,
@@ -120,7 +121,7 @@ export async function runTrialReminders(admin: AdminClient): Promise<TrialRemind
 
       const { data: company } = await admin
         .from("companies")
-        .select("name, email")
+        .select("name, email, created_at")
         .eq("id", row.company_id)
         .maybeSingle()
 
@@ -161,6 +162,7 @@ export async function runTrialReminders(admin: AdminClient): Promise<TrialRemind
         recipientName: contact.name,
         companyName: (company?.name as string | null) ?? null,
         promoCode,
+        priceCohort: priceCohortFor((company?.created_at as string | null) ?? null),
       })
 
       const { data: sendData, error: sendError } = await resend.emails.send({

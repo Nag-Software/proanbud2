@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { MODULE_PRICING, PLAN_PRICING } from "@/lib/billing/plans"
+import { MODULE_PRICING } from "@/lib/billing/plans"
+import { SALES_PLAN_PRICING as PLAN_PRICING } from "@/lib/outreach/facts"
 import type { Hook } from "@/lib/outreach/research/synthesize"
 import { SIGNATURE } from "@/lib/outreach/write/form"
 import { countWords, lintMessage, allowedNumbers } from "@/lib/outreach/write/lint"
