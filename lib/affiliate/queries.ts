@@ -93,8 +93,8 @@ type AttributedCompanyRow = {
   affiliate_partner_id: string | null
   created_at: string | null
   company_billing:
-    | { status: string | null; plan_key: string | null; billing_interval: string | null }
-    | { status: string | null; plan_key: string | null; billing_interval: string | null }[]
+    | { status: string | null; plan_key: string | null; billing_interval: string | null; price_cohort?: string | null }
+    | { status: string | null; plan_key: string | null; billing_interval: string | null; price_cohort?: string | null }[]
     | null
 }
 
@@ -110,7 +110,7 @@ async function computePartnerMetrics(
   try {
     const { data, error } = await admin
       .from("companies")
-      .select("affiliate_partner_id, created_at, company_billing(status, plan_key, billing_interval)")
+      .select("affiliate_partner_id, created_at, company_billing(status, plan_key, billing_interval, price_cohort)")
       .not("affiliate_partner_id", "is", null)
 
     if (error || !data) return metrics
@@ -127,7 +127,12 @@ async function computePartnerMetrics(
       if (isActiveBillingStatus(billing?.status)) {
         m.activeCustomers += 1
         // Provisjonen følger prisen kunden faktisk betaler.
-        const cohort = priceCohortForCompany({ createdAt: row.created_at, billingStatus: billing?.status })
+        // Lagret kohort (db/113) er prisen kunden faktisk betaler; tilnærmingen
+        // via status+dato brukes bare for rader som ikke er synket ennå.
+        const cohort =
+          billing?.price_cohort === "legacy" || billing?.price_cohort === "current"
+            ? billing.price_cohort
+            : priceCohortForCompany({ createdAt: row.created_at, billingStatus: billing?.status })
         m.mrr += recurringCommissionNok(billing?.plan_key, billing?.billing_interval, cohort)
         m.earned += firstMonthBonusNok(billing?.plan_key, billing?.billing_interval, cohort)
       }

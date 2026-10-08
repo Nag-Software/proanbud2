@@ -7,6 +7,7 @@ import {
 import {
   chargeableSeats,
   includedSeatsForPlan,
+  priceCohortFromSubscriptionItems,
   intervalFromPriceMetadata,
   planKeyFromPriceMetadata,
   quotaForPlan,
@@ -163,9 +164,23 @@ export async function upsertCompanyBillingFromSubscription(input: {
     updated_at: new Date().toISOString(),
   }
 
-  const { error } = await admin.from("company_billing").upsert(payload, {
+  // Prislisten grunnplanen faktisk står på (db/113). Ukjent pris-ID → la
+  // kolonnen stå som den er i stedet for å nulle en kjent verdi.
+  const priceCohort = priceCohortFromSubscriptionItems(input.subscription.items.data)
+  const row = priceCohort ? { ...payload, price_cohort: priceCohort } : payload
+
+  let { error } = await admin.from("company_billing").upsert(row, {
     onConflict: "company_id",
   })
+
+  // 42703 = kolonnen finnes ikke: db/113 er ikke kjørt i denne databasen ennå.
+  // Synken skal aldri stoppe på det — skriv uten kohorten og si fra.
+  if (error?.code === "42703" && row !== payload) {
+    console.error("[billing-sync] company_billing.price_cohort mangler — kjør db/113")
+    ;({ error } = await admin.from("company_billing").upsert(payload, {
+      onConflict: "company_id",
+    }))
+  }
 
   if (error) {
     // 23503 = FK-brudd på company_id: bedriften er slettet, abonnementet er foreldreløst.
