@@ -59,6 +59,12 @@ const nextConfig: NextConfig = {
         // landingsfanen for «Min bedrift» endres senere.
         permanent: false,
       },
+      {
+        // Gammel adresse for abonnementssiden — folk (og gamle lenker) husker den.
+        source: "/innstillinger/abonnement",
+        destination: "/innstillinger/betaling",
+        permanent: false,
+      },
     ]
   },
   experimental: {

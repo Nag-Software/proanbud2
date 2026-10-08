@@ -7,6 +7,7 @@ import { CheckIcon, Loader2Icon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CancelSubscriptionDialog } from "@/components/billing/cancel-subscription-dialog"
+import { PlanPicker, type PlanChoice } from "@/components/billing/plan-picker"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { useIsNativeApp } from "@/hooks/use-is-native-app"
 import { Progress } from "@/components/ui/progress"
@@ -15,12 +16,17 @@ import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { track } from "@/lib/analytics/track"
 import { measureAdEvent } from "@/lib/analytics/openai-ads"
 import {
+  INCLUDED_SEATS_BY_PLAN,
   MODULE_CATALOG,
   MODULES_INCLUDED_IN_PROFF,
+  PLAN_LABELS,
+  PLAN_QUOTA_LIMITS,
+  planPricingFor,
   PROFF_INCLUDED_FEATURES,
   type BillingInterval,
   type ModuleKey,
   type PlanKey,
+  type PriceCohort,
 } from "@/lib/billing/plans"
 
 type BillingSummary = {
@@ -46,6 +52,7 @@ type BillingSummary = {
   seat_price_nok: number
   overage_unit_nok: number
   pricing: { monthlyNok: number; yearlyTotalNok: number } | null
+  price_cohort: PriceCohort
   modules: Array<{ module_key: string; enabled_at: string; monthly_nok: number | null }>
 }
 
@@ -71,6 +78,39 @@ function intervalLabel(interval: BillingInterval | null) {
   if (interval === "year") return "Årlig"
   if (interval === "month") return "Månedlig"
   return null
+}
+
+function planChangeTitle(choice: PlanChoice, summary: BillingSummary | null) {
+  if (summary?.plan_key === choice.plan) {
+    return choice.interval === "year" ? "Bytte til årlig betaling?" : "Bytte til månedlig betaling?"
+  }
+  return choice.plan === "proff" ? "Oppgradere til Proff?" : "Nedgradere til Mini?"
+}
+
+function planChangeDescription(choice: PlanChoice, summary: BillingSummary | null) {
+  const cohort = summary?.price_cohort ?? "current"
+  const price = planPricingFor(cohort)[choice.plan][choice.interval]
+  const priceLabel =
+    choice.interval === "year"
+      ? `${price.monthlyNok} kr/mnd eks. mva, fakturert ${price.yearlyTotalNok.toLocaleString("nb-NO")} kr/år`
+      : `${price.monthlyNok} kr/mnd eks. mva`
+  const trialing = summary?.status === "trialing"
+  const billingNote = trialing
+    ? "Endringen gjelder med en gang, og prøveperioden fortsetter som før."
+    : "Endringen gjelder med en gang. Differansen for resten av perioden avregnes på neste faktura."
+
+  if (summary?.plan_key === choice.plan) {
+    return `Ny pris: ${priceLabel}. ${billingNote}`
+  }
+  if (choice.plan === "proff") {
+    return `Ny pris: ${priceLabel}. Du får ${PLAN_QUOTA_LIMITS.proff} tilbud i måneden, ${INCLUDED_SEATS_BY_PLAN.proff} ansattlisenser, HMS, KS, avvik, timeføring, oppgaver, meldinger og integrasjoner. ${billingNote}`
+  }
+  const seats = summary?.billable_seats ?? 0
+  const seatNote =
+    seats > 0
+      ? ` Dere har ${seats} ansattlisens${seats === 1 ? "" : "er"} som koster ${summary?.seat_price_nok ?? 0} kr/mnd hver i Mini.`
+      : ""
+  return `Ny pris: ${priceLabel}. Mini har ${PLAN_QUOTA_LIMITS.mini} tilbud i måneden, ingen inkluderte ansattlisenser og mangler HMS, KS, avvik, timeføring, oppgaver, meldinger og integrasjoner.${seatNote} ${billingNote}`
 }
 
 /**
@@ -150,20 +190,28 @@ export function BillingPageClient() {
     loadSummary()
   }, [loadSummary])
 
-  // Trial → opens Stripe checkout (no subscription yet). Upgrade → the server
-  // changes the plan in place on the existing subscription and returns
-  // { changed: true } (no redirect), avoiding a second/double-charged sub.
-  async function submitPlanChange(opts: { trial?: boolean }) {
-    setActionLoading("checkout")
-    track("betaling_startet", { kilde: "betaling" })
+  // Uten abonnement → Stripe Checkout for valgt plan. Med et aktivt abonnement
+  // bytter serveren plan/intervall på plass med proratering og svarer
+  // { changed: true } (ingen redirect) — aldri et nytt abonnement ved siden av.
+  async function submitPlanChange(choice: PlanChoice) {
+    const hasLiveSub = summary?.status === "active" || summary?.status === "trialing"
+    if (hasLiveSub) {
+      const ok = await confirm({
+        title: planChangeTitle(choice, summary),
+        description: planChangeDescription(choice, summary),
+        confirmText: "Bekreft",
+      })
+      if (!ok) return
+    }
+    setActionLoading(`checkout:${choice.plan}`)
+    track("betaling_startet", { kilde: "betaling", plan: choice.plan, intervall: choice.interval })
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          plan: "proff",
-          interval: "month",
-          ...(opts.trial ? { trial: true } : {}),
+          plan: choice.plan,
+          interval: choice.interval,
           successPath: "/innstillinger/betaling?checkout=success",
           cancelPath: "/innstillinger/betaling",
         }),
@@ -174,10 +222,13 @@ export function BillingPageClient() {
         window.location.href = data.url
         return
       }
-      if (data.changed) toast.success("Abonnementet er oppgradert til Proff.")
+      if (data.changed) {
+        track("plan_byttet", { plan: choice.plan, intervall: choice.interval })
+        toast.success(`Abonnementet er endret til ${PLAN_LABELS[choice.plan]}.`)
+      }
       await loadSummary()
     } catch (error) {
-      reportClientError(error, { context: { action: "start checkout / planbytte" } })
+      reportClientError(error, { context: { action: "start checkout / planbytte", plan: choice.plan } })
       toast.error(actionErrorMessage(error, "Noe gikk galt"))
     } finally {
       setActionLoading(null)
@@ -330,25 +381,47 @@ export function BillingPageClient() {
     // Den kortfrie prøven er ikke et kjøp og kan startes i appen; betalt
     // abonnement kan ikke.
     if (isNative && trialUsed) return <NativeBillingStatus summary={summary} />
+    if (trialUsed) {
+      const pendingPlan = actionLoading?.startsWith("checkout:")
+        ? (actionLoading.slice("checkout:".length) as PlanKey)
+        : null
+      return (
+        <div className="mx-auto w-full max-w-2xl space-y-6 px-4 py-10 md:px-6">
+          <div className="space-y-2 text-center">
+            <h1 className="text-xl font-semibold tracking-tight">Velg abonnement</h1>
+            <p className="text-sm text-muted-foreground">
+              Prøveperioden er brukt — velg planen som passer dere for å fortsette der du slapp.
+            </p>
+          </div>
+          <PlanPicker
+            cohort={summary?.price_cohort ?? "current"}
+            onSelect={submitPlanChange}
+            disabled={actionLoading !== null}
+            pendingPlan={pendingPlan}
+          />
+          <p className="text-center text-sm text-muted-foreground">
+            Ingen binding — du kan bytte plan eller si opp når som helst.
+          </p>
+        </div>
+      )
+    }
     return (
       <div className="mx-auto w-full max-w-md px-4 py-10 md:px-6">
         <div className="space-y-2 text-center">
           <h1 className="text-xl font-semibold tracking-tight">Betaling</h1>
           <p className="text-sm text-muted-foreground">
-            {trialUsed
-              ? "Prøveperioden er brukt — velg Proff for å fortsette der du slapp."
-              : "14 dager Proff gratis · uten kort · ingen belastning"}
+            14 dager Proff gratis · uten kort · ingen belastning
           </p>
         </div>
         <Button size="lg"
           className="mt-8 w-full"
-          onClick={() => (trialUsed ? submitPlanChange({}) : startCardFreeTrial())}
+          onClick={startCardFreeTrial}
           disabled={actionLoading !== null}
         >
-          {(actionLoading === "checkout" || actionLoading === "start-trial") && (
+          {actionLoading === "start-trial" && (
             <Loader2Icon className="mr-2 size-4 animate-spin" />
           )}
-          {trialUsed ? "Start abonnement" : "Start gratis prøveperiode"}
+          Start gratis prøveperiode
         </Button>
       </div>
     )
@@ -501,6 +574,31 @@ export function BillingPageClient() {
         </div>
       </section>
 
+      {/* Planbytte: opp, ned eller annet intervall — alltid på plass på samme abonnement */}
+      <section className="rounded-xl border">
+        <div className="space-y-1 border-b p-5">
+          <p className="font-semibold">Bytt plan</p>
+          <p className="text-sm text-muted-foreground">
+            Oppgrader, nedgrader eller bytt mellom månedlig og årlig betaling. Endringen gjelder
+            med en gang.
+          </p>
+        </div>
+        <div className="p-5">
+          <PlanPicker
+            cohort={summary?.price_cohort ?? "current"}
+            currentPlan={summary?.plan_key ?? null}
+            currentInterval={summary?.billing_interval ?? null}
+            onSelect={submitPlanChange}
+            disabled={actionLoading !== null}
+            pendingPlan={
+              actionLoading?.startsWith("checkout:")
+                ? (actionLoading.slice("checkout:".length) as PlanKey)
+                : null
+            }
+          />
+        </div>
+      </section>
+
       {/* Details: what Proff includes + à-la-carte modules, side by side on desktop */}
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="h-fit rounded-xl border">
@@ -526,10 +624,12 @@ export function BillingPageClient() {
               <Button
                 type="button"
                 className="w-full"
-                onClick={() => submitPlanChange({})}
+                onClick={() =>
+                  submitPlanChange({ plan: "proff", interval: summary?.billing_interval ?? "month" })
+                }
                 disabled={actionLoading !== null}
               >
-                {actionLoading === "checkout" && (
+                {actionLoading === "checkout:proff" && (
                   <Loader2Icon className="mr-2 size-4 animate-spin" />
                 )}
                 Oppgrader til Proff

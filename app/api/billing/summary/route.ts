@@ -36,6 +36,8 @@ export async function GET() {
     return NextResponse.json({
       ...summary,
       plan_label: planKey ? PLAN_LABELS[planKey] : null,
+      // Planvelgeren viser prisene for bedriftens kohort (gammel/ny prisliste).
+      price_cohort: cohort,
       pricing:
         planKey && interval
           ? planPricingFor(cohort)[planKey][interval]

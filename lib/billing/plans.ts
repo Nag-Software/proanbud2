@@ -418,6 +418,40 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
  * "dette følger med"-panels in the billing page, onboarding and (mirrored)
  * the marketing site. Compliance keys are bundled into one display line.
  */
+/**
+ * Kortversjonen av hver plan slik den vises i planvelgeren (betalingssiden og
+ * onboarding). Proff-punktene speiler PROFF_INCLUDED_FEATURES; Mini-punktene er
+ * «vinn jobben»-kjernen som alle planer har.
+ */
+export const PLAN_SUMMARIES: Record<
+  PlanKey,
+  { tagline: string; bullets: string[]; recommended: boolean }
+> = {
+  mini: {
+    tagline: "Vinn jobben — tilbud, kunder og prosjekter.",
+    bullets: [
+      `${PLAN_QUOTA_LIMITS.mini} tilbud i måneden`,
+      "Tilbud med KI-utkast og e-signering",
+      "Kunder, prosjekter og prisfiler",
+      "Kalender med Google og Outlook",
+      "Ansatte koster ekstra per lisens",
+    ],
+    recommended: false,
+  },
+  proff: {
+    tagline: "Lever jobben — alt i Mini pluss drift og dokumentasjon.",
+    bullets: [
+      `${PLAN_QUOTA_LIMITS.proff} tilbud i måneden`,
+      `${INCLUDED_SEATS_BY_PLAN.proff} ansattlisenser inkludert`,
+      "HMS, KS og avvik",
+      "Timeføring og oppgaver i prosjekter",
+      "Meldinger med KI-svar",
+      "Tripletex og Fiken inkludert",
+    ],
+    recommended: true,
+  },
+}
+
 export const PROFF_INCLUDED_FEATURES: Array<{
   key: FeatureKey
   label: string
