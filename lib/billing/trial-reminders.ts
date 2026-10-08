@@ -14,7 +14,7 @@ import { Resend } from "resend"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
-import { priceCohortForCompany } from "@/lib/billing/plans"
+import { getCompanyPriceCohort } from "@/lib/billing/price-cohort"
 import { TRIAL_TEMPLATES, type TrialTemplate } from "@/lib/billing/trial-reminder-templates"
 import {
   applyWelcomeDiscountToSubscription,
@@ -162,10 +162,8 @@ export async function runTrialReminders(admin: AdminClient): Promise<TrialRemind
         recipientName: contact.name,
         companyName: (company?.name as string | null) ?? null,
         promoCode,
-        priceCohort: priceCohortForCompany({
-          createdAt: (company?.created_at as string | null) ?? null,
-          billingStatus: row.status as string | null,
-        }),
+        // Samme kilde som betalingen: prisen abonnementet faktisk har i Stripe.
+        priceCohort: await getCompanyPriceCohort(row.company_id as string),
       })
 
       const { data: sendData, error: sendError } = await resend.emails.send({

@@ -83,10 +83,12 @@ export function priceCohortFor(
 }
 
 /**
- * Kohorten for en konkret bedrift: prislåsen gjelder bare så lenge bedriften
- * har et levende abonnement (prøve, aktiv eller i purring). Er prøven utløpt
- * eller abonnementet avsluttet, betaler bedriften dagens pris når den starter
- * på nytt — uansett når den ble opprettet.
+ * Tilnærmet kohort uten Stripe-oppslag: prislåsen gjelder bare så lenge
+ * bedriften har et levende abonnement (prøve, aktiv eller i purring). Brukes
+ * der et Stripe-kall per bedrift er for dyrt (affiliate-metrikker). Alt som
+ * viser eller setter en pris skal bruke getCompanyPriceCohort, som leser
+ * abonnementets faktiske grunnpris — de to kan avvike for en bedrift opprettet
+ * før prisøkningen som tegnet nytt abonnement til dagens pris.
  */
 export function priceCohortForCompany(
   company: { createdAt: string | Date | null | undefined; billingStatus: string | null | undefined },

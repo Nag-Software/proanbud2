@@ -52,7 +52,18 @@ export function PlanPicker({
   disabled = false,
   pendingPlan = null,
 }: PlanPickerProps) {
-  const [interval, setInterval] = useState<BillingInterval>(currentInterval ?? "month")
+  // Rader uten kjent intervall (eldre abonnement) behandles som månedlige — det
+  // er det eneste intervallet de kan ha fått uten at synken fant årspris.
+  const effectiveInterval: BillingInterval | null = currentPlan ? (currentInterval ?? "month") : null
+  const [interval, setInterval] = useState<BillingInterval>(effectiveInterval ?? "month")
+  // Følg abonnementet når det endres utenfra (summary lastes på nytt etter
+  // portal- eller planbytte) så «Nåværende plan» alltid peker riktig. Justeres
+  // under render (Reacts anbefalte mønster), ikke i en effekt.
+  const [syncedInterval, setSyncedInterval] = useState(effectiveInterval)
+  if (effectiveInterval !== syncedInterval) {
+    setSyncedInterval(effectiveInterval)
+    if (effectiveInterval) setInterval(effectiveInterval)
+  }
   const pricing = planPricingFor(cohort)
   const hasSubscription = currentPlan !== null
 
@@ -102,7 +113,7 @@ export function PlanPicker({
         {PLAN_ORDER.map((plan) => {
           const summary = PLAN_SUMMARIES[plan]
           const price = pricing[plan][interval]
-          const isCurrent = currentPlan === plan && currentInterval === interval
+          const isCurrent = currentPlan === plan && effectiveInterval === interval
           const samePlanOtherInterval = currentPlan === plan && !isCurrent
           const isPending = pendingPlan === plan
 

@@ -16,6 +16,7 @@ import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
 import { track } from "@/lib/analytics/track"
 import { measureAdEvent } from "@/lib/analytics/openai-ads"
 import {
+  hasBillableAccess,
   INCLUDED_SEATS_BY_PLAN,
   MODULE_CATALOG,
   MODULES_INCLUDED_IN_PROFF,
@@ -80,8 +81,15 @@ function intervalLabel(interval: BillingInterval | null) {
   return null
 }
 
+/** Planen som behandles akkurat nå, lest av actionLoading («checkout:<plan>»). */
+function pendingPlanFrom(actionLoading: string | null): PlanKey | null {
+  return actionLoading?.startsWith("checkout:")
+    ? (actionLoading.slice("checkout:".length) as PlanKey)
+    : null
+}
+
 function planChangeTitle(choice: PlanChoice, summary: BillingSummary | null) {
-  if (summary?.plan_key === choice.plan) {
+  if (summary?.plan_key === choice.plan && summary.billing_interval) {
     return choice.interval === "year" ? "Bytte til årlig betaling?" : "Bytte til månedlig betaling?"
   }
   return choice.plan === "proff" ? "Oppgradere til Proff?" : "Nedgradere til Mini?"
@@ -99,7 +107,7 @@ function planChangeDescription(choice: PlanChoice, summary: BillingSummary | nul
     ? "Endringen gjelder med en gang, og prøveperioden fortsetter som før."
     : "Endringen gjelder med en gang. Differansen for resten av perioden avregnes på neste faktura."
 
-  if (summary?.plan_key === choice.plan) {
+  if (summary?.plan_key === choice.plan && summary.billing_interval) {
     return `Ny pris: ${priceLabel}. ${billingNote}`
   }
   if (choice.plan === "proff") {
@@ -125,7 +133,7 @@ function planChangeDescription(choice: PlanChoice, summary: BillingSummary | nul
  * finnes verken knapper, beløp eller henvisning til hvor man kjøper.
  */
 function NativeBillingStatus({ summary }: { summary: BillingSummary | null }) {
-  const isActive = summary?.status === "active" || summary?.status === "trialing"
+  const isActive = hasBillableAccess(summary?.status)
   const trialEnd = formatDate(summary?.trial_ends_at ?? null)
   const cancelDate = summary?.cancel_at_period_end
     ? formatDate(summary?.cancel_at ?? summary?.period_end ?? null)
@@ -200,7 +208,7 @@ export function BillingPageClient() {
   // bytter serveren plan/intervall på plass med proratering og svarer
   // { changed: true } (ingen redirect) — aldri et nytt abonnement ved siden av.
   async function submitPlanChange(choice: PlanChoice) {
-    const hasLiveSub = summary?.status === "active" || summary?.status === "trialing"
+    const hasLiveSub = hasBillableAccess(summary?.status)
     if (hasLiveSub) {
       const ok = await confirm({
         title: planChangeTitle(choice, summary),
@@ -374,7 +382,10 @@ export function BillingPageClient() {
     )
   }
 
-  const isActive = summary?.status === "active" || summary?.status === "trialing"
+  // Samme «levende»-sett som serveren (hasBillableAccess): past_due har fortsatt
+  // et abonnement og skal se status + «Administrer betaling», ikke planvelgeren
+  // for nye abonnement.
+  const isActive = hasBillableAccess(summary?.status)
   const usagePercent =
     summary && summary.quota_limit > 0
       ? Math.min(100, Math.round((summary.used / summary.quota_limit) * 100))
@@ -388,9 +399,7 @@ export function BillingPageClient() {
     // abonnement kan ikke.
     if (isNative && trialUsed) return <NativeBillingStatus summary={summary} />
     if (trialUsed) {
-      const pendingPlan = actionLoading?.startsWith("checkout:")
-        ? (actionLoading.slice("checkout:".length) as PlanKey)
-        : null
+      const pendingPlan = pendingPlanFrom(actionLoading)
       return (
         <div className="mx-auto w-full max-w-2xl space-y-6 px-4 py-10 md:px-6">
           <div className="space-y-2 text-center">
@@ -596,11 +605,7 @@ export function BillingPageClient() {
             currentInterval={summary?.billing_interval ?? null}
             onSelect={submitPlanChange}
             disabled={actionLoading !== null}
-            pendingPlan={
-              actionLoading?.startsWith("checkout:")
-                ? (actionLoading.slice("checkout:".length) as PlanKey)
-                : null
-            }
+            pendingPlan={pendingPlanFrom(actionLoading)}
           />
         </div>
       </section>

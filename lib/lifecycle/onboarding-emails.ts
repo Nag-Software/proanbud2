@@ -14,7 +14,7 @@ import { Resend } from "resend"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
 import { logSellerEmail } from "@/lib/selger/activity-log"
-import { priceCohortForCompany } from "@/lib/billing/plans"
+import { getCompanyPriceCohort } from "@/lib/billing/price-cohort"
 import { ensureWelcomeDiscount, applyWelcomeDiscountToSubscription } from "@/lib/billing/welcome-discount"
 import { LIFECYCLE_TEMPLATES, resolveSubject, type LifecycleTemplateInput } from "./onboarding-templates"
 import {
@@ -200,8 +200,9 @@ export async function runLifecycleEmails(admin: AdminClient): Promise<LifecycleR
         recipientName: contact.name,
         companyName: presentableCompanyName(company.name as string | null),
         promoCode,
-        // Win-back til utløpte prøver viser dagens pris — låsen gjelder bare levende abonnement.
-        priceCohort: priceCohortForCompany({ createdAt: company.created_at as string, billingStatus: status }),
+        // Samme kilde som betalingen: utløpt prøve (win-back) → dagens pris,
+        // levende prøve → prisen abonnementet faktisk har i Stripe.
+        priceCohort: await getCompanyPriceCohort(companyId),
         stats,
         hasContent: stage === "winback" ? await hasAnyContent(admin, companyId) : true,
       }
