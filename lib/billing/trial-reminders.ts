@@ -88,6 +88,10 @@ async function alreadySent(admin: AdminClient, companyId: string, templateId: st
 export async function runTrialReminders(admin: AdminClient): Promise<TrialReminderResult> {
   const result: TrialReminderResult = { considered: 0, sent: 0, skipped: 0, failed: 0 }
 
+  // Av-bryter: TRIAL_REMINDER_EMAILS=off når påminnelsene i stedet sendes fra
+  // en automatisering i Resend (lib/resend-crm/). Standard er på, som før.
+  if (process.env.TRIAL_REMINDER_EMAILS?.trim().toLowerCase() === "off") return result
+
   // Trialing companies whose trial ends within the next 4 days or expired in the last 3.
   const windowStart = new Date(Date.now() - 3 * DAY_MS).toISOString()
   const windowEnd = new Date(Date.now() + 4 * DAY_MS).toISOString()

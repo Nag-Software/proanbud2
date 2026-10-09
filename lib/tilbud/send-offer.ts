@@ -1,5 +1,6 @@
 import { Resend } from "resend"
 
+import { scheduleResendSync } from "@/lib/resend-crm/sync"
 import { fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
 import { buildOfferSentCustomerEmail } from "@/lib/tilbud/customer-emails"
 import { ensureOfferPublicSlug } from "@/lib/tilbud/public-offer"
@@ -200,6 +201,9 @@ export async function sendOfferToCustomer(input: SendOfferInput) {
   if (updateError) {
     throw new Error(updateError.message)
   }
+
+  // Resend: antall tilbud på kontakten, og «tilbud.forste_sendt» første gang.
+  scheduleResendSync(input.companyId)
 
   await logOfferActivity({
     offerId: input.offerId,

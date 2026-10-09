@@ -22,6 +22,7 @@ import { monthlyAmountNok } from "@/lib/sjefen/subscription-metrics"
 import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getStripe } from "@/lib/stripe/server"
+import { scheduleResendSync } from "@/lib/resend-crm/sync"
 
 function toIso(unix: number | null | undefined): string | null {
   if (!unix) return null
@@ -63,6 +64,8 @@ export async function markCompanyBillingCanceled(companyId: string) {
     .eq("company_id", companyId)
   // À-la-carte modules are subscription items — they die with the subscription.
   await admin.from("company_modules").delete().eq("company_id", companyId)
+  // Resend-kontakten flyttes til «Utløpt prøve»/«Avsluttet» (best-effort, etter svaret).
+  scheduleResendSync(companyId)
 }
 
 export function resolveBasePlanFromSubscription(
@@ -226,6 +229,10 @@ export async function upsertCompanyBillingFromSubscription(input: {
       fromTrial: Boolean(input.subscription.trial_end),
     })
   }
+
+  // Resend: oppdater kontakt/segment og send event ved overgang (prøve startet,
+  // betalt, utløpt, avsluttet). Samme ene sted som over — best-effort, etter svaret.
+  scheduleResendSync(input.companyId)
 
   return payload
 }
