@@ -4,14 +4,25 @@
 
 export type Bucket = "proeve" | "utlopt" | "betalende" | "avsluttet"
 
-/** Segmentnavnene i Resend. Endres de her, må de endres i scripts/resend-crm-setup.mjs også. */
+/**
+ * Segmentnavnene i Resend. Gratisplanen tillater 3 segmenter, så utløpt prøve
+ * og avsluttede kunder deler «Ikke betalende», og de som er midt i prøven
+ * har ikke eget segment (sekvensene i Resend håndterer dem).
+ * Endres de her, må de endres i scripts/resend-crm-setup.mjs også.
+ */
 export const SEGMENT_ALL = "Alle prøvebrukere"
-export const SEGMENT_BY_BUCKET: Record<Bucket, string> = {
-  proeve: "I prøveperiode",
-  utlopt: "Utløpt prøve",
+export const SEGMENT_BY_BUCKET: Record<Bucket, string | null> = {
+  proeve: null,
+  utlopt: "Ikke betalende",
   betalende: "Betalende",
-  avsluttet: "Avsluttet",
+  avsluttet: "Ikke betalende",
 }
+
+/** Alle segmentnavn synken eier (uten duplikater). */
+export const ALL_SEGMENTS: string[] = [
+  SEGMENT_ALL,
+  ...new Set(Object.values(SEGMENT_BY_BUCKET).filter((n): n is string => Boolean(n))),
+]
 
 /** Event-navnene automatiseringene i Resend lytter på. */
 export const EVENTS = {
@@ -87,14 +98,14 @@ export function eventsForTransition(
 
 /** Segmentene en kontakt i denne bøtta skal være med i. */
 export function segmentsFor(bucket: Bucket): string[] {
-  return [SEGMENT_ALL, SEGMENT_BY_BUCKET[bucket]]
+  const own = SEGMENT_BY_BUCKET[bucket]
+  return own ? [SEGMENT_ALL, own] : [SEGMENT_ALL]
 }
 
-/** Bøtte-segmentene kontakten skal fjernes fra (alle bøtter unntatt den nåværende). */
+/** Segmentene kontakten skal fjernes fra (alle synk-segmenter den ikke skal være i). */
 export function segmentsToLeave(bucket: Bucket): string[] {
-  return (Object.keys(SEGMENT_BY_BUCKET) as Bucket[])
-    .filter((b) => b !== bucket)
-    .map((b) => SEGMENT_BY_BUCKET[b])
+  const keep = new Set(segmentsFor(bucket))
+  return ALL_SEGMENTS.filter((name) => !keep.has(name))
 }
 
 /** «Ola Nordmann» → «Ola». Tomt/manglende → null (Resend bruker da fallback). */

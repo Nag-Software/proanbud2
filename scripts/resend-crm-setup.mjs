@@ -23,7 +23,10 @@ const PROPERTIES = [
   { key: "rabattkode", type: "string", fallback_value: "" },
 ]
 
-const SEGMENTS = ["Alle prøvebrukere", "I prøveperiode", "Utløpt prøve", "Betalende", "Avsluttet"]
+// Gratisplanen tillater 3 segmenter. Se lib/resend-crm/model.ts.
+const SEGMENTS = ["Alle prøvebrukere", "Ikke betalende", "Betalende"]
+// Segmenter fra første versjon av scriptet. Slettes hvis de finnes (kontaktene beholdes).
+const OBSOLETE_SEGMENTS = ["I prøveperiode", "Utløpt prøve", "Avsluttet"]
 
 const EVENT_SCHEMA = { fornavn: "string", firmanavn: "string", plan: "string", antall_tilbud: "number" }
 const EVENTS = [
@@ -61,7 +64,13 @@ for (const p of PROPERTIES) {
   console.log(`felt     ${p.key} opprettet`)
 }
 
-const existingSegments = names(await api("GET", "/segments?limit=100"), "name")
+const segmentList = await api("GET", "/segments?limit=100")
+for (const seg of segmentList?.data ?? []) {
+  if (!OBSOLETE_SEGMENTS.includes(seg.name)) continue
+  await api("DELETE", `/segments/${seg.id}`)
+  console.log(`segment  ${seg.name} slettet (utgått)`)
+}
+const existingSegments = names(segmentList, "name")
 for (const name of SEGMENTS) {
   if (existingSegments.has(name)) {
     console.log(`segment  ${name} finnes`)

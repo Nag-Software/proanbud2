@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  ALL_SEGMENTS,
   bucketFor,
   EVENTS,
   eventsForTransition,
@@ -65,9 +66,19 @@ describe("eventsForTransition", () => {
 })
 
 describe("segmenter", () => {
-  it("er alltid i «Alle prøvebrukere» pluss sin egen bøtte", () => {
-    expect(segmentsFor("utlopt")).toEqual(["Alle prøvebrukere", "Utløpt prøve"])
-    expect(segmentsToLeave("utlopt")).toEqual(["I prøveperiode", "Betalende", "Avsluttet"])
+  it("bruker maks 3 segmenter totalt", () => {
+    expect(ALL_SEGMENTS).toEqual(["Alle prøvebrukere", "Ikke betalende", "Betalende"])
+  })
+
+  it("prøvebrukere er bare i «Alle prøvebrukere»", () => {
+    expect(segmentsFor("proeve")).toEqual(["Alle prøvebrukere"])
+    expect(segmentsToLeave("proeve")).toEqual(["Ikke betalende", "Betalende"])
+  })
+
+  it("utløpt og avsluttet deler «Ikke betalende»", () => {
+    expect(segmentsFor("utlopt")).toEqual(["Alle prøvebrukere", "Ikke betalende"])
+    expect(segmentsFor("avsluttet")).toEqual(["Alle prøvebrukere", "Ikke betalende"])
+    expect(segmentsToLeave("avsluttet")).toEqual(["Betalende"])
   })
 })
 

@@ -21,15 +21,15 @@ Kode: `lib/resend-crm/` · tabell: `db/114_resend_crm_sync.sql` · cron: `/api/c
 | `sum_tilbud` | Sum sendte tilbud i kr (uten avslåtte) |
 | `rabattkode` | Velkomstkoden (80 % første måned). Lages automatisk når det er 4 dager igjen av prøven |
 
-**Segmenter** (for kampanjer):
+**Segmenter** (for kampanjer). Gratisplanen gir 3 segmenter:
 
 | Segment | Hvem |
 | --- | --- |
-| Alle prøvebrukere | Alle som noen gang har hatt prøveperiode |
-| I prøveperiode | Prøve pågår |
-| Utløpt prøve | Prøven gikk ut uten betaling |
+| Alle prøvebrukere | Alle som noen gang har hatt prøveperiode, også de som er i prøve nå |
+| Ikke betalende | Prøven gikk ut uten betaling, eller har betalt og sagt opp |
 | Betalende | Aktivt abonnement (også `past_due`) |
-| Avsluttet | Har betalt, men sagt opp |
+
+Feltet `status` skiller fortsatt `utlopt` fra `avsluttet` hvis du trenger det i en mal.
 
 **Events** (starter automatiseringer). Payload: `fornavn`, `firmanavn`, `plan`, `antall_tilbud`.
 
@@ -78,7 +78,7 @@ Synken kjører når billing endres (webhook, checkout, reconcile), når et tilbu
 
 **D. Betalende** — trigger `abonnement.betalt`: vent 7 d → D1 → vent 23 d → D2.
 
-**C. Kampanjer:** Broadcasts → velg segment (vanligvis «Alle prøvebrukere» eller «Utløpt prøve») → skriv → send.
+**C. Kampanjer:** Broadcasts → velg segment (vanligvis «Alle prøvebrukere» eller «Ikke betalende») → skriv → send.
 
 ## Av/på
 

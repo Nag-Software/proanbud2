@@ -35,8 +35,7 @@ import {
   firstNameOf,
   segmentsFor,
   segmentsToLeave,
-  SEGMENT_ALL,
-  SEGMENT_BY_BUCKET,
+  ALL_SEGMENTS,
   type Bucket,
   type SyncState,
 } from "./model"
@@ -198,7 +197,7 @@ export async function syncCompanyToResend(
 
   // Ny e-postadresse: ta den gamle ut av alle våre segmenter, så kampanjer ikke går til feil person.
   if (emailChanged && prevRow) {
-    for (const name of [SEGMENT_ALL, ...Object.values(SEGMENT_BY_BUCKET)]) {
+    for (const name of ALL_SEGMENTS) {
       await removeFromSegment(prevRow.email, idOf(name))
     }
   }
