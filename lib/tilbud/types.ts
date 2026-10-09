@@ -61,6 +61,18 @@ export type OfferLineItem = {
    * «ikke valgt» — da gjettes kategorien fra linja, se lib/tilbud/income-accounts.ts.
    */
   incomeAccountCategory?: "vare_videresalg" | "vare_egenprodusert" | "tjeneste" | "annet"
+  /**
+   * Timeprisen (Mine priser → Timepriser) en timelinje ble laget fra. Intern —
+   * vises aldri i kundens dokument. Udefinert på linjer laget før feltet fantes,
+   * på standardsatsen og på alt som ikke er timer.
+   */
+  hourlyRateId?: string
+  /**
+   * Kostpris per time, kopiert fra timeprisen da linja ble laget. Gjør at
+   * tilbudets kalkyle (dekningsgrad) står fast selv om timeprisen endres senere,
+   * og at regnskapet får riktig enhetskost. Intern. Bare på timelinjer.
+   */
+  costRateNok?: number
 }
 
 export type OfferAnalysisResult = {

@@ -50,6 +50,7 @@ import { OfferDocumentViewer } from "@/components/tilbud/offer-document-viewer"
 import { OfferDeliveryStatus, type OfferTrackingState } from "@/components/tilbud/offer-delivery-status"
 import { OfferTermsFields } from "@/components/tilbud/offer-terms-fields"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
+import { OfferCalcStrip } from "@/components/tilbud/offer-calc-strip"
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
 import {
   formatOfferReference,
@@ -938,6 +939,8 @@ export function OfferDetailClient({
             supplierSuggestions={[]}
             onCategoryChange={handleCategoryChange}
           />
+          {/* Intern dekningsgrad — /tilbud er bare for leder/admin, og kunden ser aldri denne. */}
+          <OfferCalcStrip lineItems={lineItems} className="mx-4 mt-4 sm:mx-5" />
           <div className="bg-muted/5 p-4 sm:p-5">
             <div className="ml-auto flex w-full max-w-sm flex-col gap-3">
               {totals.discountNok > 0 ? (

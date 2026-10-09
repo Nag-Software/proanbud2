@@ -33,6 +33,7 @@ import {
   searchMaterialPricesForOffer,
 } from "@/lib/tilbud/material-web-search"
 import { calculateOfferTotals, type OfferAnalysisResult, type OfferLineItem } from "@/lib/tilbud/types"
+import { fetchCompanyHourlyRates, formatHourlyRatesForPrompt, type CompanyHourlyRate } from "@/lib/tilbud/labor"
 
 const analysisRequestSchema = z.object({
   title: z.string().trim().min(2),
@@ -142,7 +143,8 @@ async function runOpenAiAnalysis(
   normalPriceIndicator: ReturnType<typeof formatNormalPriceForPrompt> | null,
   savedJobs: SavedJobRow[],
   relevantSavedJobs: SavedJobRow[],
-  externalPrices: ReturnType<typeof formatMaterialSearchHitsForPrompt>
+  externalPrices: ReturnType<typeof formatMaterialSearchHitsForPrompt>,
+  hourlyRates: CompanyHourlyRate[]
 ) {
   if (!process.env.OPENAI_API_KEY) {
     return null
@@ -177,6 +179,8 @@ async function runOpenAiAnalysis(
       normalPrisIndikator: normalPriceIndicator,
       lagredeJobber: formatSavedJobsForPrompt(savedJobs.slice(0, 200)),
       relevanteLagredeJobber: relevantSavedJobs.map((job) => formatMatchedSavedJobForPrompt(job)),
+      // Arbeid skal prises med bedriftens egne timepriser — se systemprompten.
+      timepriser: formatHourlyRatesForPrompt(hourlyRates),
       outputRequirements: {
         minLineItems: 6,
         maxLineItems: 30,
@@ -294,9 +298,10 @@ export async function POST(request: Request) {
     let priceFileAttachments: CompanyPricePromptAttachment[] = []
     let companyName: string | null = null
     let savedJobs: SavedJobRow[] = []
+    let hourlyRates: CompanyHourlyRate[] = []
 
     if (companyId) {
-      const [{ data: fileRows }, { data: companyRow }] = await Promise.all([
+      const [{ data: fileRows }, { data: companyRow }, companyHourlyRates] = await Promise.all([
         supabase
           .from("supplier_price_files")
           .select("id, supplier_name, original_filename, row_count")
@@ -306,7 +311,11 @@ export async function POST(request: Request) {
           .order("created_at", { ascending: false })
           .limit(20),
         supabase.from("companies").select("name").eq("id", companyId).maybeSingle(),
+        // Bedriftens timepriser: uten dem ble alt arbeid priset med standardsatsen
+        // (795 kr/t) selv om bedriften hadde egne satser.
+        fetchCompanyHourlyRates(supabase, companyId),
       ])
+      hourlyRates = companyHourlyRates
 
       const fileIds = ((fileRows ?? []) as Array<{ id: string }>).map((row) => row.id)
       const expectedRowCount = ((fileRows ?? []) as Array<{ row_count?: number | null }>).reduce(
@@ -391,7 +400,8 @@ export async function POST(request: Request) {
         normalPriceIndicator,
         savedJobs,
         relevantSavedJobs,
-        externalPrices
+        externalPrices,
+        hourlyRates
       )
       if (aiResult) {
         model = aiResult.model
@@ -433,6 +443,7 @@ export async function POST(request: Request) {
       subprojects: input.subprojects,
       companyName,
       preserveAiMaterialSelections: true,
+      hourlyRates,
     })
     const savedJobResult = applySavedJobsToOfferLineItems({
       lineItems: finalized.lineItems,

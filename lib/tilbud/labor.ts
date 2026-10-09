@@ -18,6 +18,8 @@ export const DEFAULT_HOURLY_RATE_NOK = 795
 export const DEFAULT_TRANSPORT_RATE_NOK = 950
 
 export type CompanyHourlyRate = {
+  /** hourly_rates.id — følger med på tilbudslinja så kalkylen vet hvilken sats den kom fra. */
+  id: string
   jobType: string
   /** Salgspris per time eks. mva — det kunden betaler. */
   hourlyRateNok: number
@@ -30,9 +32,14 @@ export type ResolvedHourlyRate = {
   jobType: string | null
   source: "company" | "default"
   kind?: "labor" | "transport"
+  /** Timeprisen satsen kom fra. Null for standardsatsen. */
+  id: string | null
+  /** Kostprisen på timeprisen, når den er satt. */
+  costRateNok: number | null
 }
 
 type HourlyRateRow = {
+  id?: string | null
   job_type: string | null
   hourly_rate_nok: number | string | null
   cost_rate_nok?: number | string | null
@@ -43,12 +50,13 @@ export function mapHourlyRateRows(rows: HourlyRateRow[] | null | undefined): Com
     .map((row) => {
       const cost = row.cost_rate_nok === null || row.cost_rate_nok === undefined ? null : Number(row.cost_rate_nok)
       return {
+        id: String(row.id ?? "").trim(),
         jobType: String(row.job_type ?? "").trim(),
         hourlyRateNok: Number(row.hourly_rate_nok),
         costRateNok: cost !== null && Number.isFinite(cost) && cost > 0 ? cost : null,
       }
     })
-    .filter((rate) => rate.jobType && Number.isFinite(rate.hourlyRateNok) && rate.hourlyRateNok > 0)
+    .filter((rate) => rate.id && rate.jobType && Number.isFinite(rate.hourlyRateNok) && rate.hourlyRateNok > 0)
 }
 
 /** Bedriftens timepriser i sorteringsrekkefølge. Første rad er bedriftens standardsats. */
@@ -58,7 +66,7 @@ export async function fetchCompanyHourlyRates(
 ): Promise<CompanyHourlyRate[]> {
   const { data, error } = await supabase
     .from("hourly_rates")
-    .select("job_type, hourly_rate_nok, cost_rate_nok")
+    .select("id, job_type, hourly_rate_nok, cost_rate_nok")
     .eq("company_id", companyId)
     .order("sort_order", { ascending: true })
     .order("job_type", { ascending: true })
@@ -109,12 +117,21 @@ export function matchHourlyRate(rates: CompanyHourlyRate[], text: string): Compa
  * Timeprisen en arbeidslinje skal ha: jobbtypen som matcher linjen, ellers
  * bedriftens første timepris, ellers standardsatsen.
  */
+function fromCompanyRate(rate: CompanyHourlyRate, kind?: "labor" | "transport"): ResolvedHourlyRate {
+  return {
+    rateNok: rate.hourlyRateNok,
+    jobType: rate.jobType,
+    source: "company",
+    id: rate.id,
+    costRateNok: rate.costRateNok,
+    ...(kind ? { kind } : {}),
+  }
+}
+
 export function resolveHourlyRate(rates: CompanyHourlyRate[], text: string): ResolvedHourlyRate {
   const matched = matchHourlyRate(rates, text) ?? rates[0] ?? null
-  if (matched) {
-    return { rateNok: matched.hourlyRateNok, jobType: matched.jobType, source: "company" }
-  }
-  return { rateNok: DEFAULT_HOURLY_RATE_NOK, jobType: null, source: "default" }
+  if (matched) return fromCompanyRate(matched)
+  return { rateNok: DEFAULT_HOURLY_RATE_NOK, jobType: null, source: "default", id: null, costRateNok: null }
 }
 
 /**
@@ -125,10 +142,15 @@ export function resolveHourlyRate(rates: CompanyHourlyRate[], text: string): Res
 export function resolveTransportRate(rates: CompanyHourlyRate[], text: string): ResolvedHourlyRate {
   // «Kjøring til byggeplass» skal treffe en sats som heter «Transport», og omvendt.
   const matched = matchHourlyRate(rates, `${text} transport kjøring`)
-  if (matched) {
-    return { rateNok: matched.hourlyRateNok, jobType: matched.jobType, source: "company", kind: "transport" }
+  if (matched) return fromCompanyRate(matched, "transport")
+  return {
+    rateNok: DEFAULT_TRANSPORT_RATE_NOK,
+    jobType: null,
+    source: "default",
+    kind: "transport",
+    id: null,
+    costRateNok: null,
   }
-  return { rateNok: DEFAULT_TRANSPORT_RATE_NOK, jobType: null, source: "default", kind: "transport" }
 }
 
 function roundToHalfHour(hours: number) {
@@ -184,7 +206,32 @@ export function normalizeLaborLineItem(
     reasoning,
     // Prisen kommer fra bedriftens timepriser (eller standardsatsen), ikke fra KI-en.
     priceSource: undefined,
+    // Hvilken timepris linja kom fra, og kostprisen på den akkurat nå — så
+    // tilbudets kalkyle står fast og regnskapet får riktig enhetskost.
+    hourlyRateId: rate.id ?? undefined,
+    costRateNok: rate.costRateNok ?? undefined,
   }
+}
+
+/**
+ * Kostpris-snapshotet gjelder bare timelinjer. Bytter noen enheten fra «time»
+ * til m² eller stk, er linja en vare, og snapshotet ville bare forvirret
+ * kalkylen. Fjernes derfor på alt som ikke er timer.
+ */
+export function sanitizeLaborSnapshot(item: OfferLineItem): OfferLineItem {
+  if (isHourUnit(item.unit)) return item
+  if (item.hourlyRateId === undefined && item.costRateNok === undefined) return item
+  const rest: OfferLineItem = { ...item }
+  delete rest.hourlyRateId
+  delete rest.costRateNok
+  return rest
+}
+
+/** Dekningsgraden på én timelinje — hvor mye av timeprisen som er igjen etter kostpris. */
+export function laborLineMarginPct(item: Pick<OfferLineItem, "unitPriceNok" | "costRateNok">): number | null {
+  const cost = Number(item.costRateNok)
+  if (!Number.isFinite(cost) || cost <= 0 || !Number.isFinite(item.unitPriceNok) || item.unitPriceNok <= 0) return null
+  return Math.round(((item.unitPriceNok - cost) / item.unitPriceNok) * 100)
 }
 
 /** Transport/kjøring føres også i timer, med transportsatsen. */

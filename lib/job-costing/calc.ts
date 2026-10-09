@@ -72,21 +72,30 @@ export function averageCostRate(rates: Array<{ cost_rate_nok: unknown }>): numbe
   return values.length ? round(values.reduce((a, b) => a + b, 0) / values.length) : 0
 }
 
+/** Kostprisen linja fikk fra timeprisen da den ble laget, når den finnes og er > 0. */
+export function lineCostRate(item: Pick<OfferLineItem, "costRateNok">): number | null {
+  const snapshot = Number(item.costRateNok)
+  return Number.isFinite(snapshot) && snapshot > 0 ? round(snapshot) : null
+}
+
 /**
  * Kostpris per enhet på en tilbudslinje, eks. mva — det regnskapet trenger for å
  * regne dekningsgrad. `null` betyr «ukjent», og skal sendes som ingenting, ikke 0.
  *
  * - Material: innprisen (`unitPriceNok`, før påslag).
- * - Timer: bedriftens kostpris per time. Timelinjens `unitPriceNok` er SALGSprisen,
- *   så den kan ikke brukes som kost. Uten kostpris i Timepriser er kosten ukjent.
+ * - Timer: kostprisen linja fikk fra timeprisen (`costRateNok`), ellers bedriftens
+ *   snitt. Timelinjens `unitPriceNok` er SALGSprisen, så den kan ikke brukes som
+ *   kost. Uten kostpris noe sted er kosten ukjent.
  * - Fastpris/RS: bare salgspris, ingen kostnadsdeling — ukjent.
  */
 export function lineUnitCost(
-  item: Pick<OfferLineItem, "unit" | "unitPriceNok">,
+  item: Pick<OfferLineItem, "unit" | "unitPriceNok" | "costRateNok">,
   laborCostRateNok: number | null | undefined
 ): number | null {
   if (isSalesPriceUnit(item.unit)) return null
   if (isHourUnit(item.unit)) {
+    const snapshot = lineCostRate(item)
+    if (snapshot !== null) return snapshot
     const rate = Number(laborCostRateNok)
     return Number.isFinite(rate) && rate > 0 ? round(rate) : null
   }
@@ -95,8 +104,17 @@ export function lineUnitCost(
 }
 
 export type PlannedCosts = {
-  /** Kalkulert lønnskost = timelinjenes mengde × kostpris i tilbudet (før påslag). */
+  /**
+   * Kalkulert lønnskost = timelinjenes timer × kostpris. Kostprisen er den linja
+   * fikk fra timeprisen da den ble laget (`costRateNok`), ellers
+   * `fallbackLaborCostRateNok` (bedriftssnittet). Timer uten noen kostpris
+   * koster 0 her — se `laborSalesNok` for salgsverdien.
+   */
   laborCostNok: number
+  /** Salgsverdien av timelinjene (timer × timepris til kunde). Det kunden betaler for arbeidet. */
+  laborSalesNok: number
+  /** Timer på timelinjene som har fått kostpris (egen eller fallback). */
+  laborCostCoveredHours: number
   /** Kalkulert materialkost = øvrige linjers mengde × innkjøpspris (før påslag). */
   materialCostNok: number
   /**
@@ -119,12 +137,22 @@ export type PlannedCosts = {
 /**
  * Splitter tilbudets linjer i kalkulert lønnskost og kalkulert materialkost.
  *
- * Grunnlaget er `unitPriceNok` — altså SELVKOST før påslag og rabatt. Det er den
- * eneste tolkningen som lar «kalkyle mot faktisk» bli en ekte sammenligning:
- * begge sider er da hva jobben koster bedriften, ikke hva kunden betaler.
+ * Materiallinjer: `unitPriceNok` er innkjøpspris før påslag og rabatt, altså
+ * selvkost. Timelinjer: `unitPriceNok` er SALGSprisen til kunden, så kosten må
+ * komme fra `costRateNok` (kostprisen på timeprisen linja ble laget fra) eller
+ * fra `fallbackLaborCostRateNok`. Først da blir «kalkyle mot faktisk» en ekte
+ * sammenligning: begge sider er hva jobben koster bedriften.
  */
-export function computePlannedCosts(lineItems: OfferLineItem[]): PlannedCosts {
+export function computePlannedCosts(
+  lineItems: OfferLineItem[],
+  options: { fallbackLaborCostRateNok?: number | null } = {}
+): PlannedCosts {
+  const fallbackRate = Number(options.fallbackLaborCostRateNok)
+  const fallback = Number.isFinite(fallbackRate) && fallbackRate > 0 ? fallbackRate : 0
+
   let laborCostNok = 0
+  let laborSalesNok = 0
+  let laborCostCoveredHours = 0
   let materialCostNok = 0
   let hours = 0
   let costBasisHours = 0
@@ -134,7 +162,6 @@ export function computePlannedCosts(lineItems: OfferLineItem[]): PlannedCosts {
   for (const item of lineItems) {
     const qty = Number.isFinite(item.quantity) ? item.quantity : 0
     const unitPrice = Number.isFinite(item.unitPriceNok) ? item.unitPriceNok : 0
-    const cost = qty * unitPrice
     const lineRevenue = calculateLineItemTotal(item)
     const unit = (item.unit ?? "").trim().toLowerCase()
 
@@ -149,16 +176,21 @@ export function computePlannedCosts(lineItems: OfferLineItem[]): PlannedCosts {
 
     costBasisRevenueNok += lineRevenue
     if (isHourUnit(unit)) {
-      laborCostNok += cost
+      const costRate = lineCostRate(item) ?? fallback
+      laborCostNok += qty * costRate
+      laborSalesNok += qty * unitPrice
+      if (costRate > 0) laborCostCoveredHours += qty
       hours += qty
       costBasisHours += qty
     } else {
-      materialCostNok += cost
+      materialCostNok += qty * unitPrice
     }
   }
 
   return {
     laborCostNok: round(laborCostNok),
+    laborSalesNok: round(laborSalesNok),
+    laborCostCoveredHours: round(laborCostCoveredHours),
     materialCostNok: round(materialCostNok),
     hours: round(hours),
     costBasisHours: round(costBasisHours),

@@ -140,6 +140,11 @@ function normalizeOfferLineItems(input: unknown): OfferLineItem[] {
         unitPriceNok: Number(item.unitPriceNok || 0),
         markupPercent: Number(item.markupPercent || 0),
         discountPercent: Number(item.discountPercent || 0),
+        // Kostprisen linja fikk fra timeprisen — blir enhetskost på timelinjer.
+        costRateNok:
+          Number.isFinite(Number(item.costRateNok)) && Number(item.costRateNok) > 0
+            ? Number(item.costRateNok)
+            : undefined,
       } satisfies OfferLineItem
     })
     .filter((item) => item.title.trim().length > 0 && item.quantity > 0)
@@ -169,7 +174,10 @@ function applyLineUnitCost(line: Record<string, unknown>, item: OfferLineItem, l
 type OfferLineOptions = {
   defaultVatTypeId?: number | null
   defaultAccountId?: number | null
-  /** Bedriftens kostpris per time (averageCostRate). Brukes som kost på timelinjer. */
+  /**
+   * Bedriftens snitt-kostpris per time (averageCostRate). Fallback for timelinjer
+   * som ikke har egen kostpris fra timeprisen (`costRateNok` på linja).
+   */
   laborCostRateNok?: number | null
 }
 

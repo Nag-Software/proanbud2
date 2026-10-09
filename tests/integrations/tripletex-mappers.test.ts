@@ -106,6 +106,27 @@ describe("mapOrderFromOffer", () => {
     expect(material).not.toHaveProperty("markup")
   })
 
+  it("bruker kostprisen linja fikk fra timeprisen framfor bedriftssnittet", () => {
+    const payload = mapOrderFromOffer(
+      {
+        id: "offer-4b",
+        title: "Bad",
+        description: null,
+        amount_nok: 0,
+        line_items: [
+          { id: "1", subproject: "Bad", title: "Bas", description: "", quantity: 8, unit: "time", supplier: "", unitPriceNok: 950, markupPercent: 0, discountPercent: 0, costRateNok: 640 },
+          { id: "2", subproject: "Bad", title: "Lærling", description: "", quantity: 8, unit: "time", supplier: "", unitPriceNok: 650, markupPercent: 0, discountPercent: 0 },
+        ],
+      },
+      1,
+      2,
+      { laborCostRateNok: 450 }
+    )
+    const [bas, apprentice] = payload.orderLines as Record<string, unknown>[]
+    expect(bas.unitCostCurrency).toBe(640)
+    expect(apprentice.unitCostCurrency).toBe(450)
+  })
+
   it("leaves labor cost out when the company has no cost rate", () => {
     const payload = mapOrderFromOffer(
       {

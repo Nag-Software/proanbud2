@@ -4,6 +4,8 @@
  * `server-only`; en klientkomponent kan ikke importere typer derfra.
  */
 
+import type { LaborRateCoverage, LaborRateSource } from "@/lib/job-costing/labor-rates"
+
 /**
  * Én materialkostnad på prosjektet — lagt inn for hånd (`source: "manual"`) eller
  * bokført i regnskapet (`fiken`/`tripletex`, hentes av synk-jobben og kan ikke
@@ -79,6 +81,12 @@ export type LaborByUser = {
   name: string
   hours: number
   costNok: number
+  /** Kr/t denne ansattes timer er regnet med. */
+  costRateNok: number
+  /** `ansatt` = egen koblet timepris, `snitt` = bedriftssnittet, `null` = ingen kostpris finnes. */
+  rateSource: LaborRateSource
+  /** Jobbtypen på den koblede timeprisen, når den ansatte er koblet. */
+  jobType: string | null
 }
 
 /**
@@ -135,8 +143,13 @@ export type ProjectProfitability = {
     /** Timepris til kunde, kr/t eks. mva. `null` = ikke satt. */
     rateNok: number | null
   }
-  /** Snitt kostpris (kr/t) fra bedriftens timepriser. 0 = ikke satt noe sted. */
+  /**
+   * Snitt kostpris (kr/t) fra bedriftens timepriser — satsen ansatte uten egen
+   * kobling regnes med. 0 = ingen kostpris satt noe sted (da er lønnskosten 0 for alle).
+   */
   costRateNok: number
+  /** Hvor mange av dem som har ført timer som regnes med egen kostpris, og hvem som mangler. */
+  laborRates: LaborRateCoverage
   materialCosts: MaterialCost[]
   materialSummary: MaterialCostSummary
   costSync: MaterialCostSync | null

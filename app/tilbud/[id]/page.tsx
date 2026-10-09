@@ -161,6 +161,11 @@ function toLineItems(input: unknown): OfferLineItem[] {
           Number.isFinite(Number(item.plannedHours)) && Number(item.plannedHours) > 0
           ? Number(item.plannedHours)
           : undefined,
+        hourlyRateId: item.hourlyRateId ? String(item.hourlyRateId) : undefined,
+        costRateNok:
+          Number.isFinite(Number(item.costRateNok)) && Number(item.costRateNok) > 0
+          ? Number(item.costRateNok)
+          : undefined,
       } satisfies OfferLineItem
     })
     .filter((item) => item.title.trim().length > 0)

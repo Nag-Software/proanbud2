@@ -29,6 +29,7 @@ import {
 
 import { saveOfferDraftAction } from "@/app/nytt-tilbud/actions"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
+import { OfferCalcStrip } from "@/components/tilbud/offer-calc-strip"
 import { OfferTermsFields } from "@/components/tilbud/offer-terms-fields"
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table-lazy"
 import { Button } from "@/components/ui/button"
@@ -888,6 +889,9 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                   <span className="text-base font-bold text-primary">{formatNok(totals.totalNok)}</span>
                 </div>
               </div>
+
+              {/* Intern dekningsgrad — /nytt-tilbud er bare for leder/admin, og kunden ser aldri denne. */}
+              <OfferCalcStrip lineItems={lineItems} />
 
               <div className="flex flex-wrap justify-between gap-3">
                 <Button type="button" variant="outline" onClick={() => setStep(1)}>

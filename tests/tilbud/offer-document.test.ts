@@ -127,6 +127,21 @@ describe("buildOfferDocumentSheet", () => {
     expect(html).not.toContain("<b>fet</b>")
   })
 
+  it("viser aldri kostpris-snapshotet fra timeprisen i kundens dokument", () => {
+    const html = buildOfferDocumentSheet(
+      makeData({
+        lineItems: [
+          makeItem({ title: "Tømrerarbeid", unit: "time", quantity: 10, unitPriceNok: 850, hourlyRateId: "rate-1", costRateNok: 517 }),
+        ],
+      })
+    )
+    expect(html).toContain("Tømrerarbeid")
+    expect(html).not.toContain("517")
+    expect(html).not.toContain("rate-1")
+    expect(html.toLowerCase()).not.toContain("kostpris")
+    expect(html.toLowerCase()).not.toContain("dekningsgrad")
+  })
+
   it("shows the offer reference and explicit expiry date", () => {
     const html = buildOfferDocumentSheet(makeData({ offerReference: "8F3A21D4", quoteValidUntil: "2026-07-31" }))
     expect(html).toContain("Tilbudsnr. 8F3A21D4")

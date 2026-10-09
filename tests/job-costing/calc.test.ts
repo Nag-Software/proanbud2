@@ -55,14 +55,34 @@ describe("job-costing calc", () => {
     expect(isHourUnit(undefined)).toBe(false)
   })
 
-  it("kalkylen splittes i lønn og material på selvkost, ikke salgspris", () => {
-    // Linje 1: 10 m2 × 800 = 8000 material. Linje 2: 8 timer × 950 = 7600 lønn.
+  it("kalkylen splittes i lønn og material: material på innpris, timer på kostpris", () => {
+    // Linje 1: 10 m2 × 800 = 8000 material. Linje 2: 8 timer à 950 kr/t er SALGSpris —
+    // uten kostpris noe sted blir lønnskosten 0, og salgsverdien ligger i laborSalesNok.
     const planned = computePlannedCosts(lineItems)
     expect(planned.materialCostNok).toBe(8000)
-    expect(planned.laborCostNok).toBe(7600)
+    expect(planned.laborCostNok).toBe(0)
+    expect(planned.laborSalesNok).toBe(7600)
+    expect(planned.laborCostCoveredHours).toBe(0)
     expect(planned.hours).toBe(8)
     expect(planned.fixedPriceRevenueNok).toBe(0)
     expect(planned.costBasisRevenueNok).toBe(16020)
+  })
+
+  it("timelinjer med kostpris fra timeprisen bruker den; linjer uten bruker snittet", () => {
+    const withSnapshot: OfferLineItem = { ...lineItems[1], id: "2b", costRateNok: 520 }
+    const planned = computePlannedCosts([lineItems[0], withSnapshot, lineItems[1]], {
+      fallbackLaborCostRateNok: 450,
+    })
+    // 8 × 520 (snapshot) + 8 × 450 (snitt)
+    expect(planned.laborCostNok).toBe(7760)
+    expect(planned.laborCostCoveredHours).toBe(16)
+    expect(planned.laborSalesNok).toBe(15200)
+    expect(planned.hours).toBe(16)
+  })
+
+  it("kostpris 0 på linja teller som «ikke satt» og faller tilbake på snittet", () => {
+    const planned = computePlannedCosts([{ ...lineItems[1], costRateNok: 0 }], { fallbackLaborCostRateNok: 400 })
+    expect(planned.laborCostNok).toBe(3200)
   })
 
   it("fastprislinjer er salgspris, ikke kostnad — de holdes utenfor kalkylen", () => {
@@ -94,12 +114,14 @@ describe("job-costing calc", () => {
     expect(planned.hours).toBe(15)
     expect(planned.costBasisHours).toBe(8)
     expect(planned.fixedPriceRevenueNok).toBe(12000)
-    expect(planned.laborCostNok).toBe(7600)
+    expect(planned.laborSalesNok).toBe(7600)
   })
 
     it("kalkylen tåler tomme og ugyldige linjer", () => {
     const empty = {
       laborCostNok: 0,
+      laborSalesNok: 0,
+      laborCostCoveredHours: 0,
       materialCostNok: 0,
       hours: 0,
       costBasisHours: 0,
@@ -143,5 +165,13 @@ describe("lineUnitCost", () => {
     expect(lineUnitCost({ unit: "Time", unitPriceNok: 950 }, 450)).toBe(450)
     expect(lineUnitCost({ unit: "time", unitPriceNok: 950 }, 0)).toBeNull()
     expect(lineUnitCost({ unit: "RS", unitPriceNok: 5000 }, 450)).toBeNull()
+  })
+
+  it("foretrekker kostprisen linja fikk fra timeprisen framfor snittet", () => {
+    expect(lineUnitCost({ unit: "time", unitPriceNok: 950, costRateNok: 500 }, 450)).toBe(500)
+    expect(lineUnitCost({ unit: "time", unitPriceNok: 950, costRateNok: 0 }, 450)).toBe(450)
+    expect(lineUnitCost({ unit: "time", unitPriceNok: 950, costRateNok: 500 }, null)).toBe(500)
+    // Snapshot på en materiallinje er støy og skal ikke brukes.
+    expect(lineUnitCost({ unit: "stk", unitPriceNok: 120, costRateNok: 500 }, 450)).toBe(120)
   })
 })

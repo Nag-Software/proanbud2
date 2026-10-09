@@ -32,6 +32,7 @@ import {
   fetchCompanyHourlyRates,
   formatHourlyRatesForPrompt,
   normalizeLaborLineItem,
+  sanitizeLaborSnapshot,
   type CompanyHourlyRate,
 } from "@/lib/tilbud/labor"
 
@@ -67,10 +68,11 @@ function toOfferLineItems(
         item.incomeAccountCategory ?? previous?.incomeAccountCategory,
     }
     // Nye arbeidslinjer får bedriftens timepris. Eksisterende linjer røres ikke —
-    // der kan håndverkeren ha satt prisen selv.
+    // der kan håndverkeren ha satt prisen selv. Bytter modellen enhet fra timer
+    // til noe annet, skal kostpris-snapshotet fra timeprisen ikke bli med.
     return !previous && isHourUnit(merged.unit)
       ? normalizeLaborLineItem(merged, hourlyRates)
-      : merged
+      : sanitizeLaborSnapshot(merged)
   })
 }
 

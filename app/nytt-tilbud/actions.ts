@@ -44,6 +44,10 @@ const lineItemSchema = z.object({
   priceSource: z.enum(["prisfil", "lagret-jobb", "anslag"]).optional(),
   // Timer på fastprislinjer fra lagrede jobber — teller i timekalkylen.
   plannedHours: z.number().min(0).optional(),
+  // Timeprisen en timelinje kom fra, og kostprisen på den da linja ble laget.
+  // Interne kalkylefelt; uten dem her ville zod strippet dem ved lagring.
+  hourlyRateId: z.string().uuid().optional(),
+  costRateNok: z.number().min(0).optional(),
 })
 
 const analysisSchema = z

@@ -202,7 +202,7 @@ export function LonnsomhetTab({
             <>
               <p>Alt som er påløpt på jobben så langt:</p>
               <p>
-                <strong>Lønnskost</strong> = førte timer × kostprisen din.{" "}
+                <strong>Lønnskost</strong> = førte timer × kostprisen på timeprisen hver ansatt er koblet til.{" "}
                 <strong>Materialkost</strong> = det som er bokført på prosjektet i regnskapet, pluss
                 innkjøp lagt inn her som ikke er bokført ennå.{" "}
                 <strong>Kjøring</strong> = kjøregodtgjørelse etter statens satser fra kjøreboka.
@@ -281,6 +281,18 @@ export function LonnsomhetTab({
             Sett kostpris på timeprisene
           </Link>{" "}
           for å få et ekte dekningsbidrag.
+        </p>
+      ) : data.laborRates.missing.length > 0 ? (
+        // Mildere enn varselet over: tallet er ekte, men grovere enn det kunne vært.
+        <p className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
+          {data.laborRates.missing.length === 1
+            ? `${data.laborRates.missing[0].name} er ikke koblet til en timepris og regnes med snittet (${formatNok(data.costRateNok)}/t).`
+            : `${data.laborRates.missing.length} ansatte er ikke koblet til en timepris og regnes med snittet (${formatNok(data.costRateNok)}/t).`}{" "}
+          {canManage ? (
+            <Link href="/mine-priser/timepriser" className="font-medium underline underline-offset-2">
+              Koble ansatte til timepriser
+            </Link>
+          ) : null}
         </p>
       ) : null}
 

@@ -5,18 +5,20 @@ import { finalizeGeneratedOfferLineItems } from "@/lib/tilbud/company-price-util
 import {
   DEFAULT_HOURLY_RATE_NOK,
   DEFAULT_TRANSPORT_RATE_NOK,
+  laborLineMarginPct,
   mapHourlyRateRows,
   matchHourlyRate,
   normalizeLaborLineItem,
   resolveHourlyRate,
+  sanitizeLaborSnapshot,
   type CompanyHourlyRate,
 } from "@/lib/tilbud/labor"
 import type { OfferLineItem } from "@/lib/tilbud/types"
 
 const RATES: CompanyHourlyRate[] = [
-  { jobType: "Tømrerarbeid", hourlyRateNok: 850, costRateNok: 520 },
-  { jobType: "Flislegger", hourlyRateNok: 950, costRateNok: 600 },
-  { jobType: "Elektriker", hourlyRateNok: 1100, costRateNok: null },
+  { id: "r-tomrer", jobType: "Tømrerarbeid", hourlyRateNok: 850, costRateNok: 520 },
+  { id: "r-flis", jobType: "Flislegger", hourlyRateNok: 950, costRateNok: 600 },
+  { id: "r-el", jobType: "Elektriker", hourlyRateNok: 1100, costRateNok: null },
 ]
 
 function item(overrides: Partial<OfferLineItem>): OfferLineItem {
@@ -47,6 +49,8 @@ describe("matchHourlyRate / resolveHourlyRate", () => {
       rateNok: 850,
       jobType: "Tømrerarbeid",
       source: "company",
+      id: "r-tomrer",
+      costRateNok: 520,
     })
   })
 
@@ -55,17 +59,20 @@ describe("matchHourlyRate / resolveHourlyRate", () => {
       rateNok: DEFAULT_HOURLY_RATE_NOK,
       jobType: null,
       source: "default",
+      id: null,
+      costRateNok: null,
     })
   })
 
-  it("mapHourlyRateRows forkaster tomme og ugyldige rader", () => {
+  it("mapHourlyRateRows forkaster tomme og ugyldige rader, og beholder id", () => {
     expect(
       mapHourlyRateRows([
-        { job_type: "Maler", hourly_rate_nok: "780.00", cost_rate_nok: null },
-        { job_type: "", hourly_rate_nok: 900 },
-        { job_type: "Null", hourly_rate_nok: 0 },
+        { id: "r1", job_type: "Maler", hourly_rate_nok: "780.00", cost_rate_nok: null },
+        { id: "r2", job_type: "", hourly_rate_nok: 900 },
+        { id: "r3", job_type: "Null", hourly_rate_nok: 0 },
+        { job_type: "Uten id", hourly_rate_nok: 900 },
       ])
-    ).toEqual([{ jobType: "Maler", hourlyRateNok: 780, costRateNok: null }])
+    ).toEqual([{ id: "r1", jobType: "Maler", hourlyRateNok: 780, costRateNok: null }])
   })
 })
 
@@ -75,8 +82,41 @@ describe("normalizeLaborLineItem", () => {
       item({ title: "Flislegging", unit: "timer", quantity: 14, unitPriceNok: 890, markupPercent: 10 }),
       RATES
     )
-    expect(result).toMatchObject({ unit: "time", quantity: 14, unitPriceNok: 950, markupPercent: 0 })
+    expect(result).toMatchObject({
+      unit: "time",
+      quantity: 14,
+      unitPriceNok: 950,
+      markupPercent: 0,
+      hourlyRateId: "r-flis",
+      costRateNok: 600,
+    })
     expect(result.reasoning).toContain("Flislegger")
+  })
+
+  it("timepris uten kostpris gir linje uten kostpris-snapshot, standardsatsen gir ingen av delene", () => {
+    const noCost = normalizeLaborLineItem(item({ title: "Elektrikerarbeid", unit: "time", quantity: 3 }), RATES)
+    expect(noCost.hourlyRateId).toBe("r-el")
+    expect(noCost.costRateNok).toBeUndefined()
+
+    const fallback = normalizeLaborLineItem(item({ title: "Arbeid", unit: "time", quantity: 3 }), [])
+    expect(fallback.unitPriceNok).toBe(DEFAULT_HOURLY_RATE_NOK)
+    expect(fallback.hourlyRateId).toBeUndefined()
+    expect(fallback.costRateNok).toBeUndefined()
+  })
+
+  it("sanitizeLaborSnapshot fjerner snapshotet når linja ikke lenger er timer", () => {
+    const labor = normalizeLaborLineItem(item({ title: "Flislegging", unit: "time", quantity: 4 }), RATES)
+    expect(sanitizeLaborSnapshot(labor)).toBe(labor)
+    const asMaterial = sanitizeLaborSnapshot({ ...labor, unit: "m2" })
+    expect(asMaterial).not.toHaveProperty("hourlyRateId")
+    expect(asMaterial).not.toHaveProperty("costRateNok")
+    expect(asMaterial.unitPriceNok).toBe(950)
+  })
+
+  it("laborLineMarginPct er dekningsgraden på timen", () => {
+    expect(laborLineMarginPct({ unitPriceNok: 950, costRateNok: 600 })).toBe(37)
+    expect(laborLineMarginPct({ unitPriceNok: 950, costRateNok: undefined })).toBeNull()
+    expect(laborLineMarginPct({ unitPriceNok: 0, costRateNok: 600 })).toBeNull()
   })
 
   it("regner arbeid i m2 om til timer med samme sum, ikke 22 m2 → 22 timer", () => {
@@ -141,7 +181,7 @@ describe("finalizeGeneratedOfferLineItems — arbeid og transport", () => {
   it("bruker bedriftens egen transportsats når den finnes", () => {
     const { lineItems } = finalizeGeneratedOfferLineItems({
       ...base,
-      hourlyRates: [...RATES, { jobType: "Transport", hourlyRateNok: 700, costRateNok: null }],
+      hourlyRates: [...RATES, { id: "r-transport", jobType: "Transport", hourlyRateNok: 700, costRateNok: null }],
       generatedItems: [
         item({ subproject: "Arbeid", title: "Montering", unit: "time", quantity: 10, unitPriceNok: 0 }),
         item({ title: "Kjøring til byggeplass", unit: "time", quantity: 3, unitPriceNok: 0 }),

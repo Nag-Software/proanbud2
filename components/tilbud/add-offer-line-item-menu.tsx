@@ -29,7 +29,13 @@ import {
   type SearchMaterial,
 } from "@/lib/tilbud/company-price-utils"
 import { buildOfferLineItemFromSavedJob } from "@/lib/tilbud/saved-jobs"
-import { DEFAULT_HOURLY_RATE_NOK, LABOR_UNIT, mapHourlyRateRows, type CompanyHourlyRate } from "@/lib/tilbud/labor"
+import {
+  DEFAULT_HOURLY_RATE_NOK,
+  LABOR_UNIT,
+  laborLineMarginPct,
+  mapHourlyRateRows,
+  type CompanyHourlyRate,
+} from "@/lib/tilbud/labor"
 import { formatNok, type OfferLineItem } from "@/lib/tilbud/types"
 
 type SearchJob = {
@@ -139,20 +145,26 @@ export function AddOfferLineItemMenu({
 
   // Arbeid legges alltid inn som timer med bedriftens timepris — da stemmer
   // timekalkylen og dekningsgraden på prosjektet.
+  // `null` = standardsatsen når bedriften ikke har egne timepriser: da finnes
+  // det verken timepris-id eller kostpris å ta med.
   const addLaborHours = useCallback(
-    (jobType: string, rateNok: number) => {
+    (rate: CompanyHourlyRate | null) => {
       onAddItems([
         {
           id: generateLocalId(),
           subproject: defaultSubproject,
-          title: jobType,
+          title: rate?.jobType ?? "Arbeid",
           description: "",
           quantity: 1,
           unit: LABOR_UNIT,
           supplier: companyName?.trim() || "Eget arbeid",
-          unitPriceNok: rateNok,
+          unitPriceNok: rate?.hourlyRateNok ?? DEFAULT_HOURLY_RATE_NOK,
           markupPercent: 0,
           discountPercent: 0,
+          // Kostprisen følger med fra timeprisen, så kalkylen i tilbudet og
+          // enhetskosten til regnskapet blir riktig — uten at kunden ser den.
+          hourlyRateId: rate?.id,
+          costRateNok: rate?.costRateNok ?? undefined,
         },
       ])
       setLaborDialogOpen(false)
@@ -443,23 +455,26 @@ export function AddOfferLineItemMenu({
               </div>
             ) : (
               <div className="space-y-1">
-                {(hourlyRates.length > 0
-                  ? hourlyRates.map((rate) => ({ jobType: rate.jobType, rateNok: rate.hourlyRateNok }))
-                  : [{ jobType: "Arbeid", rateNok: DEFAULT_HOURLY_RATE_NOK }]
-                ).map((rate) => (
+                {(hourlyRates.length > 0 ? hourlyRates : [null]).map((rate) => (
                   <button
-                    key={rate.jobType}
+                    key={rate?.id ?? "standard"}
                     type="button"
-                    onClick={() => addLaborHours(rate.jobType, rate.rateNok)}
+                    onClick={() => addLaborHours(rate)}
                     className="flex w-full items-start justify-between gap-3 rounded-lg border border-transparent px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-muted/50"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">{rate.jobType}</p>
+                      <p className="truncate text-sm font-medium text-foreground">{rate?.jobType ?? "Arbeid"}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {hourlyRates.length > 0 ? "Bedriftens timepris" : "Standard timepris"}
+                        {rate === null
+                          ? "Standard timepris"
+                          : rate.costRateNok !== null
+                            ? `Bedriftens timepris · kost ${formatNok(rate.costRateNok)}/t · DG ${laborLineMarginPct({ unitPriceNok: rate.hourlyRateNok, costRateNok: rate.costRateNok })} %`
+                            : "Bedriftens timepris · uten kostpris"}
                       </p>
                     </div>
-                    <p className="shrink-0 text-sm font-semibold tabular-nums">{formatNok(rate.rateNok)}/t</p>
+                    <p className="shrink-0 text-sm font-semibold tabular-nums">
+                      {formatNok(rate?.hourlyRateNok ?? DEFAULT_HOURLY_RATE_NOK)}/t
+                    </p>
                   </button>
                 ))}
                 {hourlyRates.length === 0 ? (

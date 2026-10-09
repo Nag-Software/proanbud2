@@ -11,6 +11,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { reportClientError, actionErrorMessage } from "@/lib/errors/client";
+import { InfoHint } from "@/components/ui/info-hint";
+import { setEmployeeHourlyRate } from "@/app/mine-priser/timepriser/actions";
 import { updateUserRole, resendInvitation, revokeInvitation, setEmployeeActiveState } from "./actions";
 
 type Employee = {
@@ -20,7 +22,29 @@ type Employee = {
   role: string;
   /** "Aktiv" | "Invitert" | "Deaktivert" */
   status: string;
+  /** Timeprisen den ansatte er koblet til (db/115). `null` = regnes med snittet. Ikke satt på inviterte. */
+  hourlyRateId?: string | null;
 };
+
+export type EmployeeRateOption = {
+  id: string;
+  jobType: string;
+  hourlyRateNok: number;
+  costRateNok: number | null;
+};
+
+const NO_RATE = "__ingen__";
+
+function formatRate(value: number) {
+  return `${Math.round(value).toLocaleString("no-NO")} kr/t`;
+}
+
+/** «Tømrerarbeid · kost 520 kr/t» — det admin trenger for å velge riktig sats. */
+function describeRate(rate: EmployeeRateOption) {
+  return rate.costRateNok === null
+    ? `${rate.jobType} · uten kostpris`
+    : `${rate.jobType} · kost ${formatRate(rate.costRateNok)}`;
+}
 
 const fallbackEmployees: Employee[] = [];
 
@@ -46,9 +70,20 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export function AnsatteClient({ initialEmployees }: { initialEmployees?: Employee[] }) {
+export function AnsatteClient({
+  initialEmployees,
+  rates = [],
+  assignmentsAvailable = false,
+}: {
+  initialEmployees?: Employee[];
+  rates?: EmployeeRateOption[];
+  /** false når db/115 ikke er kjørt — kolonnen «Timepris» skjules. */
+  assignmentsAvailable?: boolean;
+}) {
   const confirm = useConfirm();
   const [employees, setEmployees] = useState(initialEmployees ?? fallbackEmployees);
+  const [savingRateFor, setSavingRateFor] = useState<string | null>(null);
+  const showRates = assignmentsAvailable;
 
   // Ny rendering fra serveren (router.refresh(), f.eks. tilbake til fanen).
   useEffect(() => {
@@ -118,6 +153,58 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: Employe
       toast.error("Kunne ikke endre rolle.");
     }
   };
+
+  const handleRateChange = async (employee: Employee, value: string) => {
+    const hourlyRateId = value === NO_RATE ? null : value;
+    if ((employee.hourlyRateId ?? null) === hourlyRateId) return;
+    setSavingRateFor(employee.id);
+    try {
+      const result = await setEmployeeHourlyRate({ userId: employee.id, hourlyRateId });
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      setEmployees((prev) => prev.map((e) => (e.id === employee.id ? { ...e, hourlyRateId } : e)));
+      const rate = rates.find((r) => r.id === hourlyRateId);
+      toast.success(
+        rate
+          ? `${employee.name} regnes nå med timeprisen «${rate.jobType}».`
+          : `${employee.name} regnes nå med snittet av kostprisene.`
+      );
+    } catch (error) {
+      console.error(error);
+      reportClientError(error, { context: { action: "set employee hourly rate" } });
+      toast.error("Kunne ikke lagre timeprisen.");
+    } finally {
+      setSavingRateFor(null);
+    }
+  };
+
+  // Samme velger i tabellen og i mobillisten.
+  const renderRateSelect = (e: Employee, className?: string) =>
+    e.status === "Invitert" ? (
+      <span className="text-muted-foreground">—</span>
+    ) : (
+      <Select
+        value={e.hourlyRateId ?? NO_RATE}
+        onValueChange={(value) => handleRateChange(e, value)}
+        disabled={savingRateFor === e.id}
+      >
+        <SelectTrigger className={className ?? "h-8 w-full max-w-[16rem] text-sm"} aria-label={`Timepris for ${e.name}`}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NO_RATE}>
+            <span className="text-muted-foreground">Ingen (snitt)</span>
+          </SelectItem>
+          {rates.map((rate) => (
+            <SelectItem key={rate.id} value={rate.id}>
+              {describeRate(rate)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
 
   const handleResendInvitation = async (employee: Employee) => {
     try {
@@ -275,6 +362,20 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: Employe
                 <th className="px-3 py-2 font-medium">Navn</th>
                 <th className="px-3 py-2 font-medium">E-post</th>
                 <th className="px-3 py-2 font-medium">Rolle</th>
+                {showRates ? (
+                  <th className="px-3 py-2 font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      Timepris
+                      <InfoHint title="Timepris">
+                        <p>
+                          Timeprisen den ansatte jobber til (Mine priser → Timepriser). Kostprisen på den brukes når
+                          lønnskosten på prosjektene regnes ut.
+                        </p>
+                        <p>Uten kobling regnes den ansatte med snittet av kostprisene dine.</p>
+                      </InfoHint>
+                    </span>
+                  </th>
+                ) : null}
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium text-right">Handlinger</th>
               </tr>
@@ -282,7 +383,7 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: Employe
             <tbody>
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center p-8 text-muted-foreground">Ingen ansatte funnet.</td>
+                  <td colSpan={showRates ? 6 : 5} className="text-center p-8 text-muted-foreground">Ingen ansatte funnet.</td>
                 </tr>
               ) : (
                 filteredEmployees.map((e) => (
@@ -290,6 +391,7 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: Employe
                     <td className="px-3 py-2 font-medium">{e.name}</td>
                     <td className="px-3 py-2 text-muted-foreground">{e.email}</td>
                     <td className="px-3 py-2">{e.role}</td>
+                    {showRates ? <td className="px-3 py-2">{renderRateSelect(e)}</td> : null}
                     <td className="px-3 py-2">
                       <StatusBadge status={e.status} />
                     </td>
@@ -325,6 +427,9 @@ export function AnsatteClient({ initialEmployees }: { initialEmployees?: Employe
                   <span>{e.role}</span>
                   <StatusBadge status={e.status} />
                 </div>
+                {showRates && e.status !== "Invitert" ? (
+                  <div className="mt-2">{renderRateSelect(e, "h-9 w-full text-sm")}</div>
+                ) : null}
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
