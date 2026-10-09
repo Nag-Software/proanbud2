@@ -289,7 +289,7 @@ export function LonnsomhetTab({
             ? `${data.laborRates.missing[0].name} er ikke koblet til en timepris og regnes med snittet (${formatNok(data.costRateNok)}/t).`
             : `${data.laborRates.missing.length} ansatte er ikke koblet til en timepris og regnes med snittet (${formatNok(data.costRateNok)}/t).`}{" "}
           {canManage ? (
-            <Link href="/mine-priser/timepriser" className="font-medium underline underline-offset-2">
+            <Link href="/min-bedrift/ansatte-og-roller" className="font-medium underline underline-offset-2">
               Koble ansatte til timepriser
             </Link>
           ) : null}
