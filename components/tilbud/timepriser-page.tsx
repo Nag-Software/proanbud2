@@ -388,10 +388,8 @@ export function TimepriserPage({ canAssign = false }: { canAssign?: boolean }) {
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Mine priser</p>
           <h1 className="text-2xl font-semibold tracking-tight">Timepriser</h1>
           <p className="max-w-prose text-sm text-muted-foreground">
-            En timepris er en sats: hva kunden betaler per time, hva timen koster deg, og hvem som
-            jobber til den. Timeprisen foreslås når du legger til arbeidstimer i tilbud. Hver ansatt
-            kobles til én timepris – da brukes riktig kostpris på timene de fører, og dekningsgraden
-            på prosjektene blir riktig.
+            Hva kunden betaler per time, og hva timen koster deg. Brukes i tilbud, og per ansatt
+            for riktig lønnskost på prosjektene.
           </p>
         </div>
         <Button onClick={openCreateDialog} className="w-full gap-2 sm:w-auto">
