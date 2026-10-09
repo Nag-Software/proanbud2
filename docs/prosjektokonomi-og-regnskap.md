@@ -72,10 +72,19 @@ gjør tallet nyttig underveis.
 ### 4a. Timer — ProAnbud eier dem, og her er dagens svakeste ledd
 
 Timene er vår sterkeste kort: vi har dem samme dag, regnskapet har dem tidligst
-ved lønnskjøring. Men kostprisen er for grov i dag: profitability-koden tar
+ved lønnskjøring. Kostprisen var lenge for grov: profitability-koden tok
 **snittet av alle `hourly_rates.cost_rate_nok`** i bedriften. En lærling og en
-basmann koster ikke det samme, og et prosjekt med bare lærlinger får da for høy
+basmann koster ikke det samme, og et prosjekt med bare lærlinger fikk da for høy
 kostnad (og motsatt).
+
+_Status 2026-10: gjort._ Hver ansatt kobles til én timepris
+(`employee_hourly_rates`, db/114; Mine priser → Timepriser «Koble ansatte» og
+Ansatte og roller «Timepris»). Førte timer regnes med kostprisen på den satsen
+(`lib/job-costing/labor-rates.ts`); ansatte uten kobling regnes fortsatt med
+snittet, og fanen sier det per person. Tilbudslinjer husker kostprisen fra
+timeprisen (`costRateNok`), så kalkylen i tilbudet og enhetskosten til
+regnskapet står fast. Gyldig-fra-dato og sosialt påslag (under) er fortsatt
+ikke bygget.
 
 Retning:
 
