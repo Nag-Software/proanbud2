@@ -1,5 +1,5 @@
 import { AppPageShell } from "@/components/app-page-shell"
-import { AnsatteClient } from "./ansatte-client"
+import { AnsatteClient, type EmployeeRateOption } from "./ansatte-client"
 import { createClient } from "@/lib/supabase/server"
 import { getRoleDisplayName } from "@/lib/roles"
 import { getServerAuthContext } from "@/lib/auth/server-context"
@@ -14,7 +14,7 @@ export default async function Page() {
   
   // Ansatte (med roller via user_roles) og ventende invitasjoner er
   // uavhengige oppslag — hentes i samme runde, ikke etter hverandre.
-  const [{ data: usersData }, { data: invData }] = await Promise.all([
+  const [{ data: usersData }, { data: invData }, ratesResult, assignmentsResult] = await Promise.all([
     supabase
       .from('users')
       .select(`
@@ -41,7 +41,35 @@ export default async function Page() {
       `)
       .eq('company_id', companyId)
       .eq('status', 'pending'),
+    // Timeprisene og hvem som er koblet til hvilken (db/114). Siden er admin-only,
+    // så RLS slipper koblingene gjennom. Mangler tabellen, skjules kolonnen.
+    supabase
+      .from('hourly_rates')
+      .select('id, job_type, hourly_rate_nok, cost_rate_nok')
+      .eq('company_id', companyId)
+      .order('sort_order', { ascending: true })
+      .order('job_type', { ascending: true }),
+    supabase
+      .from('employee_hourly_rates')
+      .select('user_id, hourly_rate_id')
+      .eq('company_id', companyId),
   ]);
+
+  const assignmentsAvailable = !assignmentsResult.error
+  const rateByUser = new Map(
+    (assignmentsResult.data ?? []).map((row: { user_id: string; hourly_rate_id: string }) => [row.user_id, row.hourly_rate_id])
+  )
+  const rates: EmployeeRateOption[] = ((ratesResult.data ?? []) as Array<{
+    id: string
+    job_type: string
+    hourly_rate_nok: number | string
+    cost_rate_nok: number | string | null
+  }>).map((rate) => ({
+    id: rate.id,
+    jobType: rate.job_type,
+    hourlyRateNok: Number(rate.hourly_rate_nok),
+    costRateNok: rate.cost_rate_nok === null ? null : Number(rate.cost_rate_nok),
+  }))
 
   const employees: any[] | undefined = [];
 
@@ -58,7 +86,8 @@ export default async function Page() {
         name: u.full_name || "Ukjent",
         email: u.email,
         role: roleName,
-        status: u.is_active === false ? "Deaktivert" : "Aktiv"
+        status: u.is_active === false ? "Deaktivert" : "Aktiv",
+        hourlyRateId: rateByUser.get(u.id) ?? null,
       });
     });
   }
@@ -89,7 +118,11 @@ export default async function Page() {
             </h1>
           </div>
         </div>
-        <AnsatteClient initialEmployees={employees} />
+        <AnsatteClient
+          initialEmployees={employees}
+          rates={rates}
+          assignmentsAvailable={assignmentsAvailable}
+        />
       </div>
     </AppPageShell>
   )
