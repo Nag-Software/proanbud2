@@ -39,11 +39,9 @@ function formatRate(value: number) {
   return `${Math.round(value).toLocaleString("no-NO")} kr/t`;
 }
 
-/** «Tømrerarbeid · kost 520 kr/t» — det admin trenger for å velge riktig sats. */
+/** «Tømrerarbeid · 890 kr/t» — timeprisen kunden betaler; kostprisen står på timepris-siden. */
 function describeRate(rate: EmployeeRateOption) {
-  return rate.costRateNok === null
-    ? `${rate.jobType} · uten kostpris`
-    : `${rate.jobType} · kost ${formatRate(rate.costRateNok)}`;
+  return `${rate.jobType} · ${formatRate(rate.hourlyRateNok)}`;
 }
 
 const fallbackEmployees: Employee[] = [];
