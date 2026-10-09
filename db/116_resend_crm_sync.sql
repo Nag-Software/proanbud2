@@ -1,4 +1,4 @@
--- 114_resend_crm_sync.sql
+-- 116_resend_crm_sync.sql
 -- Siste tilstand vi har speilet til Resend (kontakter, segmenter, events).
 --
 -- lib/resend-crm/sync.ts sammenligner bedriftens nåværende tilstand med raden

@@ -2,7 +2,7 @@
 
 Proanbud speiler alle bedrifter som har hatt prøveperiode til Resend som kontakter. Sekvenser og kampanjer lages og skrives i Resend-dashbordet. Koden sørger bare for at hver kontakt er i riktig segment, har ferske felt og at automatiseringene får beskjed når noe skjer.
 
-Kode: `lib/resend-crm/` · tabell: `db/114_resend_crm_sync.sql` · cron: `/api/cron/resend-crm-sync` (06:00 daglig) · oppsett: `scripts/resend-crm-setup.mjs`.
+Kode: `lib/resend-crm/` · tabell: `db/116_resend_crm_sync.sql` · cron: `/api/cron/resend-crm-sync` (06:00 daglig) · oppsett: `scripts/resend-crm-setup.mjs`.
 
 ## Hva som synkes
 
@@ -45,7 +45,7 @@ Synken kjører når billing endres (webhook, checkout, reconcile), når et tilbu
 
 ## Sette det opp (én gang)
 
-1. Kjør migreringen: `pnpm db:migrate` (db/114).
+1. Kjør migreringen: `pnpm db:migrate` (db/116).
 2. Legg til avsenderdomenet `mail.proanbud.no` i Resend og verifiser DNS.
 3. Kjør `node --env-file=.env.local scripts/resend-crm-setup.mjs`. Det lager feltene, segmentene og eventene.
 4. Sett `RESEND_CRM=on` i Vercel og deploy.
