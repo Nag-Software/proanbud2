@@ -278,7 +278,7 @@ export function CostBudgetSection({
               <p>Førte timer × kostpris. Avviste timer er ikke med.</p>
               <p>
                 {data.costRateNok > 0
-                  ? `Kostprisen er ${formatNok(data.costRateNok)}/t — snittet av kostprisene på timeprisene dine.`
+                  ? `Kostprisen hentes fra timeprisen hver ansatt er koblet til (Mine priser → Timepriser). Ansatte uten kobling regnes med snittet av kostprisene, ${formatNok(data.costRateNok)}/t.`
                   : "Ingen av timeprisene dine har kostpris ennå, så lønnskosten blir 0 kr."}
               </p>
               <p>
@@ -327,7 +327,28 @@ export function CostBudgetSection({
             <ul className="space-y-1.5 border-t pt-3 text-sm">
               {data.laborByUser.map((entry) => (
                 <li key={entry.userId} className="flex justify-between gap-3">
-                  <span className="truncate">{entry.name}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate">{entry.name}</span>
+                    {/* Satsen hver person er regnet med, og hvor den kommer fra —
+                        så et rart tall kan spores til riktig timepris. */}
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {entry.rateSource === "ansatt"
+                        ? `${formatNok(entry.costRateNok)}/t${entry.jobType ? ` · ${entry.jobType}` : ""}`
+                        : entry.rateSource === "snitt"
+                          ? entry.jobType
+                            ? `${formatNok(entry.costRateNok)}/t · snitt (${entry.jobType} mangler kostpris)`
+                            : `${formatNok(entry.costRateNok)}/t · snitt – ikke koblet til timepris`
+                          : "ingen kostpris"}
+                      {entry.rateSource !== "ansatt" && canManage ? (
+                        <>
+                          {" · "}
+                          <Link href="/mine-priser/timepriser" className="underline underline-offset-2 hover:text-foreground">
+                            Koble
+                          </Link>
+                        </>
+                      ) : null}
+                    </span>
+                  </span>
                   <span className="shrink-0 tabular-nums text-muted-foreground">
                     {formatHours(entry.hours)} · {formatNok(entry.costNok)}
                   </span>

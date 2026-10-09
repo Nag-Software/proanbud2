@@ -14,12 +14,17 @@ import type { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
 import {
-  averageCostRate,
   computeJobCosting,
   computeLaborCost,
   computePlannedCosts,
   resolveApprovedHours,
 } from "@/lib/job-costing/calc"
+import {
+  buildLaborRateResolver,
+  sumLaborCost,
+  type EmployeeRateAssignment,
+  type LaborRateRow,
+} from "@/lib/job-costing/labor-rates"
 import type {
   LaborByUser,
   MaterialCost,
@@ -90,6 +95,7 @@ export async function fetchProjectProfitability(
     materialsResult,
     tripsResult,
     ratesResult,
+    assignmentsResult,
     accountingSyncsResult,
     revenuesResult,
     invoicesResult,
@@ -136,11 +142,19 @@ export async function fetchProjectProfitability(
       .eq("company_id", input.companyId)
       .eq("project_id", input.projectId)
       .eq("classification", "business"),
+    // Alle timeprisene, også de uten kostpris: en ansatt kan være koblet til en
+    // sats uten kostpris, og da skal UI-et kunne si hvilken.
     supabase
       .from("hourly_rates")
-      .select("cost_rate_nok")
-      .eq("company_id", input.companyId)
-      .not("cost_rate_nok", "is", null),
+      .select("id, job_type, hourly_rate_nok, cost_rate_nok")
+      .eq("company_id", input.companyId),
+    // Hvem som er koblet til hvilken timepris (db/114). Leses med kallerens
+    // klient: RLS slipper bare leder/admin gjennom, og det er også de som får se
+    // lønnsomheten. Mangler tabellen, regnes alle med snittet som før.
+    supabase
+      .from("employee_hourly_rates")
+      .select("user_id, hourly_rate_id")
+      .eq("company_id", input.companyId),
     supabase
       .from("project_accounting_cost_syncs")
       .select("provider, pulled_at")
@@ -168,6 +182,7 @@ export async function fetchProjectProfitability(
     ["materialkostnader", materialsResult],
     ["kjørebok", tripsResult],
     ["timepriser", ratesResult],
+    ["ansattes timepriser", assignmentsResult],
     ["hentestatus fra regnskapet", accountingSyncsResult],
     ["inntekter fra regnskapet", revenuesResult],
     ["fakturaer", invoicesResult],
@@ -193,11 +208,20 @@ export async function fetchProjectProfitability(
     changeOrders.reduce((sum, row) => sum + Number(row.amount_nok || 0), 0)
   )
 
-  // Fanen sier eksplisitt hvilken sats den har regnet med.
-  const costRateNok = averageCostRate(ratesResult.data ?? [])
+  // Hver ansatts timer regnes med kostprisen på timeprisen hen er koblet til;
+  // ansatte uten kobling med snittet. Fanen sier eksplisitt hvilken sats hver
+  // person har fått.
+  const laborRates = buildLaborRateResolver(
+    (ratesResult.data ?? []) as LaborRateRow[],
+    (assignmentsResult.data ?? []) as EmployeeRateAssignment[]
+  )
+  const costRateNok = laborRates.averageCostRateNok
 
   const loggedHours = round(participantHours.reduce((sum, entry) => sum + entry.totalHours, 0))
-  const laborCostNok = computeLaborCost(loggedHours, costRateNok)
+  const laborCostNok = sumLaborCost(
+    participantHours.map((entry) => ({ userId: entry.userId, hours: entry.totalHours })),
+    laborRates.resolve
+  )
 
   // Løpende regning: jobben faktureres etter medgåtte timer, så omsetningen
   // vokser med timene i stedet for å stå fast på en tilbudssum. Lagt til de
@@ -315,7 +339,12 @@ export async function fetchProjectProfitability(
   }
 
   const allLineItems = offers.flatMap((offer) => readLineItems(offer.line_items))
-  const rawPlanned = allLineItems.length > 0 ? computePlannedCosts(allLineItems) : null
+  // Timelinjer med egen kostpris (fra timeprisen da tilbudet ble laget) bruker
+  // den; eldre linjer uten faller tilbake på snittet.
+  const rawPlanned =
+    allLineItems.length > 0
+      ? computePlannedCosts(allLineItems, { fallbackLaborCostRateNok: costRateNok })
+      : null
 
   // Fastprislinjer har salgspris, ikke kostpris. Dekker de mesteparten av
   // tilbudet, finnes det ingen ekte kalkyle i tilbudet — da faller vi tilbake
@@ -366,17 +395,24 @@ export async function fetchProjectProfitability(
         ? "tilbud"
         : null
 
-  // Timene regnes om med kostprisen — samme sats som førte timer, så budsjett og
-  // faktisk er sammenlignbare. Uten kostpris faller vi tilbake på tilbudets
-  // timelinjer (salgspris), slik kalkylen alltid har gjort.
-  const plannedLaborCostNok =
-    plannedHours === null
-      ? 0
-      : costRateNok > 0
-        ? computeLaborCost(plannedHours, costRateNok)
-        : budgetedHours === null && hasOfferCostBasis && rawPlanned
-          ? rawPlanned.laborCostNok
-          : 0
+  // Kalkulert lønnskost:
+  //  - Eget timebudsjett på prosjektet: timene × snittet (budsjettet sier ikke hvem
+  //    som skal jobbe).
+  //  - Ellers tilbudets timelinjer med kostprisen de fikk fra timeprisen, pluss
+  //    timer utenfor timelinjene (fastprisjobber, tilleggsarbeid) × snittet — samme
+  //    sats som førte timer uten kobling, så budsjett og faktisk er sammenlignbare.
+  //  - Uten kostpris noe sted faller vi tilbake på timelinjenes salgsverdi, slik
+  //    kalkylen alltid har gjort, så fanen ikke viser 0 i lønn.
+  const plannedLaborCostNok = (() => {
+    if (plannedHours === null) return 0
+    if (budgetedHours !== null) return computeLaborCost(plannedHours, costRateNok)
+    if (rawPlanned && (rawPlanned.laborCostNok > 0 || costRateNok > 0)) {
+      const hoursOutsideLines = Math.max(0, plannedHours - rawPlanned.costBasisHours)
+      return round(rawPlanned.laborCostNok + computeLaborCost(hoursOutsideLines, costRateNok))
+    }
+    if (costRateNok > 0) return computeLaborCost(plannedHours, costRateNok)
+    return hasOfferCostBasis && rawPlanned ? rawPlanned.laborSalesNok : 0
+  })()
   const plannedMaterialCostNok = plannedMaterialNok ?? 0
 
   const planned = plannedSource
@@ -406,12 +442,18 @@ export async function fetchProjectProfitability(
         : "fixed_price"
 
   const laborByUser: LaborByUser[] = participantHours
-    .map((entry) => ({
-      userId: entry.userId,
-      name: entry.name,
-      hours: round(entry.totalHours),
-      costNok: computeLaborCost(entry.totalHours, costRateNok),
-    }))
+    .map((entry) => {
+      const rate = laborRates.resolve(entry.userId)
+      return {
+        userId: entry.userId,
+        name: entry.name,
+        hours: round(entry.totalHours),
+        costNok: computeLaborCost(entry.totalHours, rate.costRateNok),
+        costRateNok: rate.costRateNok,
+        rateSource: rate.source,
+        jobType: rate.assignedJobType,
+      }
+    })
     .sort((a, b) => b.hours - a.hours)
 
   return {
@@ -440,6 +482,9 @@ export async function fetchProjectProfitability(
       planned: plannedHours,
     },
     costRateNok,
+    laborRates: laborRates.coverage(
+      participantHours.map((entry) => ({ userId: entry.userId, name: entry.name }))
+    ),
     materialCosts,
     materialSummary,
     costSync,
