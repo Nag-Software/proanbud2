@@ -13,9 +13,12 @@ import {
   quotaForPlan,
   type BillingInterval,
   type PlanKey,
+  type PriceCohort,
 } from "@/lib/billing/plans"
 import type { BillingStatus } from "@/lib/billing/types"
 import { reportTrialStarted } from "@/lib/analytics/openai-ads-server"
+import { reportPaymentCompleted } from "@/lib/analytics/payment-completed"
+import { monthlyAmountNok } from "@/lib/sjefen/subscription-metrics"
 import { logServerError } from "@/lib/errors/log"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getStripe } from "@/lib/stripe/server"
@@ -206,7 +209,94 @@ export async function upsertCompanyBillingFromSubscription(input: {
     })
   }
 
+  // Fullført betaling: første gang abonnementet er `active` OG koster noe.
+  // Stemplingen av first_paid_at (db/114) er betinget på at den er NULL og
+  // returnerer raden bare til den som vant — det er idempotensporten mot
+  // webhook-retry og kappløpet webhook ↔ confirm-checkout. past_due → active
+  // stempler ikke på nytt, så dunning-gjenoppretting gir ikke nytt event.
+  // 100 %-rabatterte abonnement (egne, komp, test) betaler ingenting og får
+  // hverken stempel eller event.
+  if (payload.status === "active" && (await subscriptionChargesSomething(input.subscription))) {
+    await stampFirstPaidAndReport({
+      companyId: input.companyId,
+      subscriptionId: input.subscription.id,
+      planKey: resolvedPlan,
+      interval: resolvedInterval,
+      cohort: priceCohort,
+      fromTrial: Boolean(input.subscription.trial_end),
+    })
+  }
+
   return payload
+}
+
+/**
+ * Månedsbeløp etter rabatt > 0. Rabattene på abonnementet er som regel ikke
+ * utvidet (bare ID-er) — da hentes de, men kun når det finnes rabatter og
+ * abonnementet nettopp ble aktivt, så det koster ingenting i normal drift.
+ */
+async function subscriptionChargesSomething(subscription: Stripe.Subscription): Promise<boolean> {
+  try {
+    let discounts = subscription.discounts ?? []
+    if (discounts.some((d) => typeof d === "string")) {
+      const stripe = getStripe()
+      const expanded = await stripe.subscriptions.retrieve(subscription.id, {
+        expand: ["discounts", "items.data.price"],
+      })
+      discounts = expanded.discounts ?? []
+    }
+    return (
+      monthlyAmountNok(
+        subscription.items.data,
+        discounts as Array<string | { end: number | null; coupon: { percent_off: number | null; amount_off: number | null } | null }>
+      ) > 0
+    )
+  } catch (error) {
+    // Får vi ikke avgjort det, antar vi betaling: et ekstra event er bedre
+    // enn et tapt, og stempelet er fortsatt bare settbart én gang.
+    console.warn("[billing-sync] kunne ikke lese rabatter for betaling-sjekk", error)
+    return true
+  }
+}
+
+async function stampFirstPaidAndReport(input: {
+  companyId: string
+  subscriptionId: string
+  planKey: PlanKey | null
+  interval: BillingInterval | null
+  cohort: PriceCohort | null
+  fromTrial: boolean
+}) {
+  const admin = createAdminClient()
+  const { data: won, error } = await admin
+    .from("company_billing")
+    .update({ first_paid_at: new Date().toISOString() })
+    .eq("company_id", input.companyId)
+    .is("first_paid_at", null)
+    .select("company_id")
+    .maybeSingle()
+
+  if (error) {
+    // 42703 = first_paid_at finnes ikke: db/114 er ikke kjørt. Synken skal
+    // aldri stoppe på måling — si fra og gå videre.
+    if (error.code === "42703") {
+      console.error("[billing-sync] company_billing.first_paid_at mangler — kjør db/114")
+    } else {
+      void logServerError({
+        message: "Billing-sync: kunne ikke stemple first_paid_at",
+        error,
+        level: "warning",
+        source: "server",
+        route: "stampFirstPaidAndReport",
+        companyId: input.companyId,
+        context: { subscriptionId: input.subscriptionId },
+      })
+    }
+    return
+  }
+
+  if (!won) return
+  await reportPaymentCompleted(input)
 }
 
 export async function syncModulesFromSubscription(

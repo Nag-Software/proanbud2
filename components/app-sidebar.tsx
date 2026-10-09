@@ -64,14 +64,15 @@ type NavMainItem = {
 
 // This is sample data.
 /**
- * De fem destinasjonene som brukes hver dag. Alt annet ligger bak «Mer» —
+ * De seks destinasjonene som brukes hver dag. Alt annet ligger bak «Mer» —
  * menyen skal beskrive arbeidsdagen, ikke katalogisere appen. Utvides denne
- * lista, må «Mer» bli tilsvarende kortere, ikke motsatt.
+ * lista, må «Mer» bli tilsvarende kortere, ikke motsatt. Rekkefølgen følger
+ * navMain, så Kart lander rett under Kunder.
  *
  * Håndverkere har allerede et bevisst lite sett (Prosjekter, Timeføring,
  * Kart, Kjørebok, Kalender) og får derfor ingen «Mer»-inngang.
  */
-const PRIMARY_NAV_TITLES = ["Dashbord", "Prosjekter", "Tilbud", "Timeføring", "Kunder"] as const
+const PRIMARY_NAV_TITLES = ["Dashbord", "Prosjekter", "Tilbud", "Timeføring", "Kunder", "Kart"] as const
 
 const data: {
   user: {

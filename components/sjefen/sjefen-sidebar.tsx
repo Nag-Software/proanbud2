@@ -6,6 +6,7 @@ import Image from "next/image"
 import { useRouter } from "next/navigation"
 import {
   Building2Icon,
+  CreditCardIcon,
   ChevronRightIcon,
   FileTextIcon,
   HandshakeIcon,
@@ -77,6 +78,11 @@ const navItems = [
     title: "Selgere",
     url: "/sjefen/selgere",
     icon: <HandshakeIcon className="size-4" />,
+  },
+  {
+    title: "Abonnement",
+    url: "/sjefen/abonnement",
+    icon: <CreditCardIcon className="size-4" />,
   },
   {
     title: "Tilbud",

@@ -39,7 +39,8 @@ export async function fetchPlatformOverview(): Promise<SjefenOverviewStats> {
     invoicesRes,
     messagesRes,
     unreadRes,
-    billingRes,
+    payingRes,
+    trialingRes,
     recentCompaniesRes,
     recentOffersRes,
     recentMessagesRes,
@@ -61,7 +62,11 @@ export async function fetchPlatformOverview(): Promise<SjefenOverviewStats> {
     admin
       .from("company_billing")
       .select("status", { count: "exact", head: true })
-      .in("status", ["active", "trialing"]),
+      .in("status", ["active", "past_due"]),
+    admin
+      .from("company_billing")
+      .select("status", { count: "exact", head: true })
+      .eq("status", "trialing"),
     admin
       .from("companies")
       .select(
@@ -97,7 +102,8 @@ export async function fetchPlatformOverview(): Promise<SjefenOverviewStats> {
     invoices: invoicesRes.count ?? 0,
     messages: messagesRes.count ?? 0,
     unreadMessages: unreadRes.count ?? 0,
-    activeSubscriptions: billingRes.count ?? 0,
+    payingSubscriptions: payingRes.count ?? 0,
+    trialingSubscriptions: trialingRes.count ?? 0,
     recentCompanies: mapCompanies(recentCompaniesRes.data ?? []),
     recentOffers: mapOffers(recentOffersRes.data ?? []),
     recentMessages: mapMessages(recentMessagesRes.data ?? []),
@@ -354,44 +360,6 @@ export async function fetchPlatformBilling(): Promise<PlatformBillingRow[]> {
       created_at: company?.created_at ?? String(row.created_at),
     }
   })
-}
-
-export async function fetchPlatformOverviewSalesStats() {
-  const admin = getAdmin()
-  const now = new Date()
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
-
-  const [
-    companies7d,
-    companies30d,
-    sentOffers,
-    acceptedOffers,
-    trialing,
-    active,
-  ] = await Promise.all([
-    admin
-      .from("companies")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", sevenDaysAgo),
-    admin
-      .from("companies")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", thirtyDaysAgo),
-    admin.from("offers").select("id", { count: "exact", head: true }).eq("status", "sent"),
-    admin.from("offers").select("id", { count: "exact", head: true }).eq("status", "accepted"),
-    admin.from("company_billing").select("id", { count: "exact", head: true }).eq("status", "trialing"),
-    admin.from("company_billing").select("id", { count: "exact", head: true }).eq("status", "active"),
-  ])
-
-  return {
-    newCompanies7d: companies7d.count ?? 0,
-    newCompanies30d: companies30d.count ?? 0,
-    sentOffers: sentOffers.count ?? 0,
-    acceptedOffers: acceptedOffers.count ?? 0,
-    trialingSubscriptions: trialing.count ?? 0,
-    activeSubscriptions: active.count ?? 0,
-  }
 }
 
 function latestTimestamp(values: Array<string | null>): string | null {

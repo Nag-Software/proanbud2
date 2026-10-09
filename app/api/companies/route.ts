@@ -12,6 +12,11 @@ import {
   OBREF_COOKIE,
   OPPREF_COOKIE,
 } from '@/lib/analytics/ad-attribution'
+import {
+  UTM_COOKIE,
+  firstTouchToCompanyColumns,
+  parseFirstTouchCookie,
+} from '@/lib/analytics/utm'
 import { logServerError } from '@/lib/errors/log'
 import { fetchBrregCompanyProfile } from '@/lib/brreg/company-profile'
 import { stopSequence } from '@/lib/outreach/sequence'
@@ -130,6 +135,26 @@ export async function POST(request: Request) {
       })
     } catch (adAttributionError) {
       console.warn('Ad attribution skipped:', adAttributionError)
+    }
+
+    // Første berøring (UTM/klikk-ID) fra pa_utm-cookien → bedriften (db/114).
+    // Første berøring vinner: skriver aldri over en kilde som står. Best-effort
+    // og stille når kolonnene mangler (42703 = db/114 ikke kjørt).
+    try {
+      const touch = parseFirstTouchCookie((await cookies()).get(UTM_COOKIE)?.value)
+      if (touch) {
+        const { error: utmError } = await supabaseAdmin
+          .from('companies')
+          .update(firstTouchToCompanyColumns(touch))
+          .eq('id', companyData.id)
+          .is('utm_source', null)
+          .is('acquisition_first_touch_at', null)
+        if (utmError && utmError.code !== '42703') {
+          console.warn('UTM attribution skipped:', utmError)
+        }
+      }
+    } catch (utmAttributionError) {
+      console.warn('UTM attribution skipped:', utmAttributionError)
     }
 
     // Lagre brukertilknytning

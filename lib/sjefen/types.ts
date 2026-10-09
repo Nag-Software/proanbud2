@@ -86,7 +86,9 @@ export type SjefenOverviewStats = {
   invoices: number
   messages: number
   unreadMessages: number
-  activeSubscriptions: number
+  /** active + past_due */
+  payingSubscriptions: number
+  trialingSubscriptions: number
   recentCompanies: SjefenCompanyRow[]
   recentOffers: SjefenOfferRow[]
   recentMessages: SjefenMessageRow[]

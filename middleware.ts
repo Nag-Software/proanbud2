@@ -1,9 +1,45 @@
 import { NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
+import {
+  UTM_COOKIE,
+  UTM_COOKIE_MAX_AGE_SECONDS,
+  hasAttributionParams,
+  parseFirstTouch,
+  serializeFirstTouch,
+} from '@/lib/analytics/utm'
 
 export async function middleware(request: NextRequest) {
   // Delegate to supabase session updater which may return a redirect
   const res = await updateSession(request)
+
+  // Første berøring (utm_*/gclid/fbclid …) → pa_utm-cookie, lest i
+  // POST /api/companies når bedriften opprettes. Settes KUN når den mangler:
+  // markedssiden setter den på .proanbud.no før hoppet hit, og den skal vinne
+  // over `utm_source=landing` som signup-URL-en alltid bærer. Settes på
+  // responsen uansett om den er en redirect (login-gate) eller siden selv.
+  try {
+    if (
+      !request.cookies.has(UTM_COOKIE) &&
+      hasAttributionParams(request.nextUrl.searchParams)
+    ) {
+      const touch = parseFirstTouch({
+        searchParams: request.nextUrl.searchParams,
+        pathname: request.nextUrl.pathname,
+        referrer: request.headers.get('referer'),
+      })
+      if (touch) {
+        res.cookies.set(UTM_COOKIE, serializeFirstTouch(touch), {
+          path: '/',
+          maxAge: UTM_COOKIE_MAX_AGE_SECONDS,
+          sameSite: 'lax',
+          secure: request.nextUrl.protocol === 'https:',
+        })
+      }
+    }
+  } catch {
+    // Måling skal aldri velte en forespørsel.
+  }
+
   return res
 }
 

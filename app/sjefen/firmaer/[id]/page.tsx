@@ -33,6 +33,31 @@ function lastSignInLabel(user: SjefenCompanyUserRow): string {
   return formatRelative(user.last_sign_in_at)
 }
 
+/**
+ * «Kilde»-raden: UTM/klikk-ID fra første berøring (db/114). Tom når bedriften
+ * ble opprettet før målingen fantes, eller kom uten sporbar lenke.
+ */
+function describeAcquisition(company: Record<string, unknown>): {
+  label: string
+  firstTouchAt: string | null
+} | null {
+  const text = (key: string) => {
+    const value = company[key]
+    return typeof value === "string" && value.trim() ? value.trim() : null
+  }
+  const source = text("utm_source")
+  const medium = text("utm_medium")
+  const campaign = text("utm_campaign")
+  const network = text("acquisition_click_network")
+  const referrer = text("acquisition_referrer_host")
+
+  const head = [source, medium].filter(Boolean).join(" / ")
+  const parts = [head || (network ? `${network}-annonse` : null) || referrer, campaign]
+    .filter(Boolean)
+  if (parts.length === 0) return null
+  return { label: parts.join(" · "), firstTouchAt: text("acquisition_first_touch_at") }
+}
+
 export const dynamic = "force-dynamic"
 
 export default async function SjefenFirmaDetailPage({
@@ -57,6 +82,7 @@ export default async function SjefenFirmaDetailPage({
   const adminNeverSignedIn =
     !adminLastSignIn && admins.some((user) => user.last_sign_in_at === null)
   const lastActiveAt = latest(users.map((user) => user.last_seen_at))
+  const acquisition = describeAcquisition(company)
 
   const contentCards: Array<{
     label: string
@@ -148,6 +174,23 @@ export default async function SjefenFirmaDetailPage({
             <div className="flex justify-between gap-4">
               <span className="text-muted-foreground">Sist aktiv i firmaet</span>
               <span>{lastActiveAt ? formatRelative(lastActiveAt) : "Aldri"}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Kilde</span>
+              <span className="text-right">
+                {acquisition ? (
+                  <>
+                    {acquisition.label}
+                    {acquisition.firstTouchAt && (
+                      <span className="block text-xs text-muted-foreground">
+                        første besøk {formatRelative(acquisition.firstTouchAt)}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  "—"
+                )}
+              </span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-muted-foreground">Stripe-kunde</span>

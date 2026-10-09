@@ -1,9 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import type { ReactNode } from "react"
 import {
   Building2Icon,
+  CreditCardIcon,
   FileTextIcon,
   InboxIcon,
 } from "lucide-react"
@@ -11,6 +11,7 @@ import { ColumnDef } from "@tanstack/react-table"
 
 import { ActiveUsersMap } from "@/components/sjefen/active-users-map"
 import { AdminDataTable } from "@/components/sjefen/admin-data-table"
+import { KpiCard } from "@/components/sjefen/kpi-card"
 import { SjefenPageShell } from "@/components/sjefen/sjefen-page-shell"
 import {
   billingStatusVariant,
@@ -32,33 +33,6 @@ import type {
   SjefenOfferRow,
   SjefenOverviewStats,
 } from "@/lib/sjefen/types"
-
-function KpiCard({
-  title,
-  value,
-  hint,
-  icon,
-}: {
-  title: string
-  value: number | string
-  hint?: string
-  icon: ReactNode
-}) {
-  return (
-    <Card className="theme-surface-hero border-0 shadow-none">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-          {title}
-        </CardTitle>
-        <div className="text-muted-foreground">{icon}</div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-3xl font-semibold tracking-tight">{value}</div>
-        {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
-      </CardContent>
-    </Card>
-  )
-}
 
 const companyColumns: ColumnDef<SjefenCompanyRow>[] = [
   {
@@ -186,9 +160,17 @@ export function OverviewClient({
               icon={<InboxIcon className="size-4" />}
             />
             <KpiCard
-              title="Aktive abonnement"
-              value={stats.activeSubscriptions}
-              icon={<Building2Icon className="size-4" />}
+              title="Betalende"
+              value={stats.payingSubscriptions}
+              hint={
+                <>
+                  {stats.trialingSubscriptions} i prøve ·{" "}
+                  <Link href="/sjefen/abonnement" className="underline-offset-4 hover:underline">
+                    MRR og churn
+                  </Link>
+                </>
+              }
+              icon={<CreditCardIcon className="size-4" />}
             />
           </div>
 

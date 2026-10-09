@@ -17,6 +17,9 @@ function VelkommenContent() {
   const sessionId = searchParams.get("session_id")
   const [ready, setReady] = useState(false)
   const [activating, setActivating] = useState(true)
+  // Samme side tar imot både kortfri prøve og betalt Checkout — teksten må
+  // følge statusen confirm-checkout faktisk fant, ikke anta prøve.
+  const [resultStatus, setResultStatus] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -31,14 +34,17 @@ function VelkommenContent() {
           })
           const data = await res.json()
           if (!res.ok) {
-            throw new Error(data.error || "Kunne ikke aktivere prøven")
+            throw new Error(data.error || "Kunne ikke aktivere abonnementet")
           }
+          if (!cancelled && typeof data.status === "string") setResultStatus(data.status)
         } else {
-          await fetch("/api/stripe/confirm-checkout", {
+          const res = await fetch("/api/stripe/confirm-checkout", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ reconcile: true }),
           })
+          const data = await res.json().catch(() => null)
+          if (!cancelled && typeof data?.status === "string") setResultStatus(data.status)
         }
       } catch (error) {
         reportClientError(error, { context: { action: "activate subscription after checkout", sessionId } })
@@ -67,7 +73,7 @@ function VelkommenContent() {
     return (
       <div className="flex min-h-svh flex-col items-center justify-center gap-4 bg-background px-6">
         <Loader2Icon className="size-7 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Aktiverer prøveperioden …</p>
+        <p className="text-sm text-muted-foreground">Aktiverer abonnementet …</p>
       </div>
     )
   }
@@ -90,7 +96,11 @@ function VelkommenContent() {
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight">Du er klar</h1>
           <p className="text-sm text-muted-foreground">
-            Proff-prøven er aktivert.
+            {resultStatus === "active"
+              ? "Abonnementet er aktivt."
+              : resultStatus === "trialing"
+                ? "Proff-prøven er aktivert."
+                : "Abonnementet er klart."}
           </p>
         </div>
 
