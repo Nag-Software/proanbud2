@@ -22,7 +22,7 @@ type Employee = {
   role: string;
   /** "Aktiv" | "Invitert" | "Deaktivert" */
   status: string;
-  /** Timeprisen den ansatte er koblet til (db/114). `null` = regnes med snittet. Ikke satt på inviterte. */
+  /** Timeprisen den ansatte er koblet til (db/115). `null` = regnes med snittet. Ikke satt på inviterte. */
   hourlyRateId?: string | null;
 };
 
@@ -77,7 +77,7 @@ export function AnsatteClient({
 }: {
   initialEmployees?: Employee[];
   rates?: EmployeeRateOption[];
-  /** false når db/114 ikke er kjørt — kolonnen «Timepris» skjules. */
+  /** false når db/115 ikke er kjørt — kolonnen «Timepris» skjules. */
   assignmentsAvailable?: boolean;
 }) {
   const confirm = useConfirm();

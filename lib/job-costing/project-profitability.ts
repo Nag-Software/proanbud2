@@ -148,7 +148,7 @@ export async function fetchProjectProfitability(
       .from("hourly_rates")
       .select("id, job_type, hourly_rate_nok, cost_rate_nok")
       .eq("company_id", input.companyId),
-    // Hvem som er koblet til hvilken timepris (db/114). Leses med kallerens
+    // Hvem som er koblet til hvilken timepris (db/115). Leses med kallerens
     // klient: RLS slipper bare leder/admin gjennom, og det er også de som får se
     // lønnsomheten. Mangler tabellen, regnes alle med snittet som før.
     supabase

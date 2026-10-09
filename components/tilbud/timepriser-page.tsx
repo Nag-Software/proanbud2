@@ -117,7 +117,7 @@ export function TimepriserPage({ canAssign = false }: { canAssign?: boolean }) {
   const [rateInput, setRateInput] = useState("")
   const [costInput, setCostInput] = useState("")
 
-  // Hvem som jobber til hvilken sats (db/114). `null` til det er hentet;
+  // Hvem som jobber til hvilken sats (db/115). `null` til det er hentet;
   // `available: false` når migrasjonen ikke er kjørt — da vises ingen koblinger.
   const [assignments, setAssignments] = useState<EmployeeRateAssignments | null>(null)
   const [assignDialogRate, setAssignDialogRate] = useState<HourlyRate | null>(null)

@@ -8,7 +8,7 @@ import { isAdmin, isManagerOrAdmin } from "@/lib/roles"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 /**
- * Koblingen ansatt ↔ timepris (db/114 employee_hourly_rates).
+ * Koblingen ansatt ↔ timepris (db/115 employee_hourly_rates).
  *
  * Brukes fra både Mine priser → Timepriser («Koble ansatte») og Min bedrift →
  * Ansatte og roller («Timepris»-kolonnen), så det er én sannhet om hvem som
@@ -30,7 +30,7 @@ export type EmployeeRateAssignmentRow = {
 }
 
 export type EmployeeRateAssignments = {
-  /** false når db/114 ikke er kjørt — UI skjuler da koblingskontrollene. */
+  /** false når db/115 ikke er kjørt — UI skjuler da koblingskontrollene. */
   available: boolean
   employees: EmployeeRateAssignmentRow[]
 }
@@ -103,7 +103,7 @@ export async function setEmployeeHourlyRate(input: {
 
   const admin = createAdminClient()
 
-  // Begge må tilhøre kallerens bedrift. Den sammensatte fremmednøkkelen i db/114
+  // Begge må tilhøre kallerens bedrift. Den sammensatte fremmednøkkelen i db/115
   // stopper det samme, men da som en kryptisk databasefeil.
   const [{ data: targetUser }, rateResult] = await Promise.all([
     admin.from("users").select("id, company_id").eq("id", input.userId).maybeSingle(),
@@ -137,7 +137,7 @@ export async function setEmployeeHourlyRate(input: {
 
   if (error) {
     if (isMissingTable(error)) {
-      return { error: "Databasen er ikke oppdatert ennå – kjør migrasjonene (db/114) først." }
+      return { error: "Databasen er ikke oppdatert ennå – kjør migrasjonene (db/115) først." }
     }
     await logServerError({
       message: "Kunne ikke lagre ansattens timepris",

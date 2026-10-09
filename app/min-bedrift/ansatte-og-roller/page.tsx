@@ -41,7 +41,7 @@ export default async function Page() {
       `)
       .eq('company_id', companyId)
       .eq('status', 'pending'),
-    // Timeprisene og hvem som er koblet til hvilken (db/114). Siden er admin-only,
+    // Timeprisene og hvem som er koblet til hvilken (db/115). Siden er admin-only,
     // så RLS slipper koblingene gjennom. Mangler tabellen, skjules kolonnen.
     supabase
       .from('hourly_rates')

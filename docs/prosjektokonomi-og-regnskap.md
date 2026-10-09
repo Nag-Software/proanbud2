@@ -78,7 +78,7 @@ basmann koster ikke det samme, og et prosjekt med bare lærlinger fikk da for h�
 kostnad (og motsatt).
 
 _Status 2026-10: gjort._ Hver ansatt kobles til én timepris
-(`employee_hourly_rates`, db/114; Mine priser → Timepriser «Koble ansatte» og
+(`employee_hourly_rates`, db/115; Mine priser → Timepriser «Koble ansatte» og
 Ansatte og roller «Timepris»). Førte timer regnes med kostprisen på den satsen
 (`lib/job-costing/labor-rates.ts`); ansatte uten kobling regnes fortsatt med
 snittet, og fanen sier det per person. Tilbudslinjer husker kostprisen fra

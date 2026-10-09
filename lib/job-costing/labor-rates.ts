@@ -1,7 +1,7 @@
 /**
  * Kostpris per ansatt: hvilken kr/t timene en ansatt fører skal regnes med.
  *
- * Hver ansatt kan være koblet til én timepris (db/114 employee_hourly_rates).
+ * Hver ansatt kan være koblet til én timepris (db/115 employee_hourly_rates).
  * Kostprisen på den timeprisen gjelder alle timer den ansatte fører. Ansatte
  * uten kobling — eller koblet til en timepris uten kostpris — regnes med
  * snittet av bedriftens kostpriser, slik alle ble før koblingen fantes.

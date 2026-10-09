@@ -1,4 +1,4 @@
--- 114_employee_hourly_rates.sql
+-- 115_employee_hourly_rates.sql
 -- Kobler hver ansatt til én timepris (Mine priser → Timepriser), og dermed til
 -- en kostpris per time.
 --
