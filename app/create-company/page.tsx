@@ -1,13 +1,19 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { completeClientLogin } from "@/lib/auth/client-login"
 import { reportClientError } from "@/lib/errors/client"
 import { track } from "@/lib/analytics/track"
 import { measureAdEvent } from "@/lib/analytics/openai-ads"
 import { trackMetaRegistration } from "@/lib/analytics/meta-pixel"
+import { cn } from "@/lib/utils"
+import { startGoogleLogin } from "@/lib/native-bridge"
+import { APPLE_LOGIN_ENABLED, AppleLoginButton } from "@/components/apple-login-button"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Field, FieldDescription, FieldGroup, FieldSeparator } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoaderCircleIcon, Search } from "lucide-react"
@@ -30,6 +36,30 @@ export default function CreateCompanyClient() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+
+  // Ruten er offentlig (middleware slipper den gjennom uten sesjon), så siden
+  // må selv sjekke at nettleseren faktisk har en sesjon FØR skjemaet vises.
+  // Ellers fyller brukeren ut alt og får «Ikke innlogget» på knappen — en
+  // blindvei. Sett 2026-10-09: Apple-signup fra en Facebook-annonse gikk fint
+  // i Facebooks innebygde nettleser, men siden ble så åpnet i Safari, som ikke
+  // deler kaker med den. Der fantes ingen sesjon.
+  const [authState, setAuthState] = useState<"checking" | "ok" | "missing">("checking")
+  useEffect(() => {
+    let cancelled = false
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (!cancelled) setAuthState(data.user ? "ok" : "missing")
+      })
+      .catch(() => {
+        if (!cancelled) setAuthState("missing")
+      })
+    return () => {
+      cancelled = true
+    }
+    // supabase-klienten lages på nytt per render; sjekken skal bare kjøre én gang.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const [companyName, setCompanyName] = useState("")
   const [orgNumber, setOrgNumber] = useState("")
@@ -163,10 +193,80 @@ export default function CreateCompanyClient() {
       completeClientLogin(router, created?.trialStarted ? "/onboarding/velkommen" : "/onboarding/abonnement")
     } catch (e: any) {
       console.error(e)
+      if (e?.message === "Ikke innlogget") {
+        // Sesjonen forsvant (eller fantes aldri) i denne nettleseren. Vis
+        // innloggingskortet i stedet for en rød feil uten vei videre.
+        reportClientError(e, { level: "warning", context: { action: "create company" } })
+        setAuthState("missing")
+        setLoading(false)
+        return
+      }
       reportClientError(e, { context: { action: "create company" } })
       setError(e.message || "En ukjent feil oppsto under opprettelsen av bedriften. Kontakt support hvis problemet vedvarer.")
       setLoading(false)
     }
+  }
+
+  if (authState !== "ok") {
+    // Samme ramme og kort som /login og /signup, så dette ikke føles som en
+    // feilside. Apple/Google rett i kortet: brukeren som registrerte seg med
+    // Apple i sted kommer inn igjen med ett trykk.
+    return (
+      <div className="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted p-6 md:p-10">
+        <div className="flex w-full max-w-sm flex-col gap-6">
+          <Image src="/logo/light/logo-primary.svg" alt="Proanbud" width={150} height={40} className="mx-auto" />
+          <Card>
+            <CardHeader className="text-center">
+              <CardTitle className="text-xl">Logg inn for å fortsette</CardTitle>
+              <CardDescription>
+                {authState === "checking"
+                  ? "Henter kontoen din …"
+                  : "Vi fant ingen innlogget konto i denne nettleseren."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {authState === "checking" ? (
+                <div className="flex justify-center py-6 text-muted-foreground">
+                  <LoaderCircleIcon className="size-5 animate-spin" />
+                </div>
+              ) : (
+                <FieldGroup>
+                  <Field className={cn(!APPLE_LOGIN_ENABLED && "native-ios-hide")}>
+                    {APPLE_LOGIN_ENABLED && <AppleLoginButton label="Logg inn med Apple" />}
+                    <Button variant="outline" type="button" onClick={() => startGoogleLogin()}>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <title>Google</title>
+                        <path
+                          d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                      Logg inn med Google
+                    </Button>
+                  </Field>
+                  <FieldSeparator
+                    className={cn(
+                      "*:data-[slot=field-separator-content]:bg-card",
+                      !APPLE_LOGIN_ENABLED && "native-ios-hide"
+                    )}
+                  >
+                    eller
+                  </FieldSeparator>
+                  <Field>
+                    <Button asChild>
+                      <Link href="/login">Logg inn med e-post</Link>
+                    </Button>
+                    <FieldDescription className="text-center">
+                      Har du ikke en konto? <Link href="/signup">Registrer deg</Link>
+                    </FieldDescription>
+                  </Field>
+                </FieldGroup>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
   }
 
   return (
