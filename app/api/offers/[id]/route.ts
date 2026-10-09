@@ -63,6 +63,12 @@ function normalizeLineItems(input: unknown): OfferLineItem[] {
         Number.isFinite(Number(item.plannedHours)) && Number(item.plannedHours) > 0
         ? Number(item.plannedHours)
         : undefined,
+      // Kostpris-snapshot fra timeprisen (interne kalkylefelt, bare timelinjer).
+      hourlyRateId: item.hourlyRateId ? String(item.hourlyRateId) : undefined,
+      costRateNok:
+        Number.isFinite(Number(item.costRateNok)) && Number(item.costRateNok) > 0
+        ? Number(item.costRateNok)
+        : undefined,
     }
   })
 }

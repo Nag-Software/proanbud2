@@ -43,6 +43,7 @@ import {
   type OfferLineItem,
 } from "@/lib/tilbud/types"
 import { isHourUnit } from "@/lib/job-costing/calc"
+import { laborLineMarginPct, sanitizeLaborSnapshot } from "@/lib/tilbud/labor"
 import { formatDocumentQuantity, formatDocumentUnit } from "@/lib/tilbud/offer-document"
 import { toast } from "sonner"
 import {
@@ -304,6 +305,29 @@ function PriceSourceBadge({ item }: { item: OfferLineItem }) {
   )
 }
 
+/**
+ * «kost 520 kr/t · DG 39 %» på timelinjer som har kostpris fra timeprisen. Intern
+ * kalkyleinfo for den som lager tilbudet — står ikke i kundens dokument.
+ */
+function LaborCostHint({ item }: { item: OfferLineItem }) {
+  if (!isHourUnit(item.unit)) return null
+  const cost = Number(item.costRateNok)
+  if (!Number.isFinite(cost) || cost <= 0) return null
+  const margin = laborLineMarginPct(item)
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="shrink-0 cursor-default tabular-nums">
+          kost {formatUnitPrice(cost)}/t{margin === null ? "" : ` · DG ${margin} %`}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">
+        Kostprisen på timeprisen linja ble laget fra. Brukes i kalkylen og som enhetskost i regnskapet — kunden ser den ikke.
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function LineItemInfoButton({ item }: { item: OfferLineItem }) {
   const reasoning = item.reasoning?.trim()
   const description = item.description?.trim()
@@ -486,7 +510,8 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
           ) {
             next.priceSource = undefined
           }
-          return next
+          // Byttes enheten bort fra timer, er kostpris-snapshotet fra timeprisen irrelevant.
+          return sanitizeLaborSnapshot(next)
         })
       )
     },
@@ -791,6 +816,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                                             />
                                           </div>
                                           <PriceSourceBadge item={item} />
+                                          <LaborCostHint item={item} />
                                           <LineItemInfoButton item={item} />
                                           {resolveNobb(item) ? (
                                             <Button
@@ -984,6 +1010,7 @@ export const NewOfferItemsTable = forwardRef<NewOfferItemsTableHandle, NewOfferI
                           <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                             <span>{describeLineItemPrice(item)}</span>
                             <PriceSourceBadge item={item} />
+                            <LaborCostHint item={item} />
                             <Pencil className="size-3 opacity-60" aria-hidden="true" />
                           </span>
                         </button>
