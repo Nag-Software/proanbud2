@@ -12,11 +12,11 @@ Kode: `lib/resend-crm/` · tabell: `db/116_resend_crm_sync.sql` · cron: `/api/c
 
 | Felt | Innhold |
 | --- | --- |
-| `firmanavn` | Firmanavnet |
+| `firmanavn` | Firmanavnet. Navn i bare store bokstaver skrives pent («Byggmester Marius Thorsen AS») |
 | `fag` | `companies.industry` |
 | `plan` | `mini` / `proff` / tom |
 | `status` | `proeve` / `utlopt` / `betalende` / `avsluttet` |
-| `proeve_slutt` | Dato prøven slutter (YYYY-MM-DD) |
+| `proeve_slutt` | Dato prøven slutter, klar for tekst («15. oktober», norsk tid) |
 | `antall_tilbud` | Antall sendte tilbud |
 | `sum_tilbud` | Sum sendte tilbud i kr (uten avslåtte) |
 | `rabattkode` | Velkomstkoden (80 % første måned). Lages automatisk når det er 4 dager igjen av prøven |

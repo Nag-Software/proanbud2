@@ -29,6 +29,7 @@ import {
   upsertContact,
   type ContactProperties,
 } from "./api"
+import { formatTrialEnd, prettyCompanyName } from "./format"
 import {
   bucketFor,
   eventsForTransition,
@@ -171,11 +172,11 @@ export async function syncCompanyToResend(
     : null
 
   const properties: ContactProperties = {
-    firmanavn: presentableCompanyName(company.name as string | null) ?? "",
+    firmanavn: prettyCompanyName(presentableCompanyName(company.name as string | null) ?? ""),
     fag: ((company.industry as string | null) ?? "").trim(),
     plan: (billing?.plan_key as string | null) ?? "",
     status: bucket,
-    proeve_slutt: billing?.trial_ends_at ? String(billing.trial_ends_at).slice(0, 10) : "",
+    proeve_slutt: formatTrialEnd(billing?.trial_ends_at as string | null | undefined),
     antall_tilbud: stats.sentCount,
     sum_tilbud: stats.sentSumNok,
     rabattkode: promoCode ?? "",
