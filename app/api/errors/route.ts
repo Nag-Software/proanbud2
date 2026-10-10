@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { createClient } from "@/lib/supabase/server"
+import { isBotUserAgent } from "@/lib/errors/bots"
 import { logServerError } from "@/lib/errors/log"
 
 // Client-side error reporting endpoint. Intentionally allows unauthenticated calls so
@@ -18,6 +19,12 @@ const bodySchema = z.object({
 })
 
 export async function POST(request: Request) {
+  // Søkeroboter kjører klientkoden og rapporterer feil ingen bruker ser (se
+  // lib/errors/bots.ts). Svar ok så de ikke prøver igjen, men logg ingenting.
+  if (isBotUserAgent(request.headers.get("user-agent"))) {
+    return NextResponse.json({ ok: true })
+  }
+
   let parsed: z.infer<typeof bodySchema>
   try {
     parsed = bodySchema.parse(await request.json())
