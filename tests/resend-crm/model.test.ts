@@ -6,6 +6,7 @@ import {
   EVENTS,
   eventsForTransition,
   firstNameOf,
+  isContactableUser,
   segmentsFor,
   segmentsToLeave,
   type SyncState,
@@ -87,5 +88,19 @@ describe("firstNameOf", () => {
     expect(firstNameOf("  Ola Nordmann ")).toBe("Ola")
     expect(firstNameOf("")).toBeNull()
     expect(firstNameOf(null)).toBeNull()
+  })
+})
+
+describe("isContactableUser", () => {
+  it("godtar en aktiv bruker med e-post", () => {
+    expect(isContactableUser({ email: "ola@firma.no", is_active: true })).toBe(true)
+    expect(isContactableUser({ email: "ola@firma.no" })).toBe(true)
+  })
+
+  it("avviser slettede kontoer (anonymisert eller deaktivert)", () => {
+    expect(isContactableUser({ email: "slettet-abc@slettet.proanbud.no", is_active: true })).toBe(false)
+    expect(isContactableUser({ email: "ola@firma.no", is_active: false })).toBe(false)
+    expect(isContactableUser({ email: null })).toBe(false)
+    expect(isContactableUser({ email: "  " })).toBe(false)
   })
 })

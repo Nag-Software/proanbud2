@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { isStripeResourceMissing } from "@/lib/billing/stripe-helpers"
 import { getStripe } from "@/lib/stripe/server"
+import { forgetResendContact } from "@/lib/resend-crm/sync"
 import { isAdmin } from "@/lib/roles"
 import { logServerError } from "@/lib/errors/log"
 
@@ -81,8 +82,9 @@ export async function deleteCompanyAccountAction(input: { confirmName: string })
   }
 
   // Collect member auth ids before the company (and its public.users) is deleted.
-  const { data: members } = await admin.from("users").select("id").eq("company_id", companyId)
+  const { data: members } = await admin.from("users").select("id, email").eq("company_id", companyId)
   const memberIds = (members ?? []).map((m) => m.id as string)
+  const memberEmails = (members ?? []).map((m) => m.email as string | null)
 
   // 1. Stop billing AND remove personal data from Stripe (GDPR). Deleting the
   //    customer also cancels any live subscription and removes stored payment
@@ -137,6 +139,10 @@ export async function deleteCompanyAccountAction(input: { confirmName: string })
   if (deleteError) {
     throw new Error(`Kunne ikke slette bedriften: ${deleteError.message}`)
   }
+
+  // 4. Resend: sperr medlemmenes adresser og ta dem ut av segmentene, så
+  //    e-postsekvenser som er i gang stopper (best-effort, kaster aldri).
+  await forgetResendContact(memberEmails, { companyId, userId: user.id })
 
   // 4. Delete auth identities (removes personal data from auth.users) — GDPR.
   for (const uid of memberIds) {

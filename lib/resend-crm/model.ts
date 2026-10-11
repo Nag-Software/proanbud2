@@ -59,6 +59,20 @@ export function bucketFor(status: string | null | undefined, everPaid: boolean):
   }
 }
 
+/** Domenet kontosletting flytter e-postadressen til (app/api/account/delete). */
+export const TOMBSTONE_EMAIL_DOMAIN = "slettet.proanbud.no"
+
+/**
+ * Kan denne brukeren være bedriftens kontakt i Resend? Slettede kontoer er
+ * anonymisert (is_active=false + tombstone-adresse) og skal aldri få e-post.
+ */
+export function isContactableUser(user: { email: string | null; is_active?: boolean | null }): boolean {
+  const email = user.email?.trim().toLowerCase()
+  if (!email) return false
+  if (user.is_active === false) return false
+  return !email.endsWith(`@${TOMBSTONE_EMAIL_DOMAIN}`)
+}
+
 export type SyncState = {
   bucket: Bucket
   hasSentOffer: boolean

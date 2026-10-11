@@ -108,6 +108,20 @@ export async function sendEvent(event: string, email: string, payload: Record<st
   await request("POST", "/events/send", { event, email, payload })
 }
 
+/**
+ * Legger adressen på Resends suppression-liste: ingen e-post når fram, heller
+ * ikke fra automatiseringer som allerede er i gang. Brukes når noen sletter
+ * kontoen sin. Idempotent — «finnes allerede» regnes som suksess.
+ */
+export async function addSuppression(email: string): Promise<void> {
+  try {
+    await request("POST", "/suppressions", { email })
+  } catch (err) {
+    if (err instanceof ResendApiError && err.status === 409) return
+    throw err
+  }
+}
+
 type SegmentList = { data?: { id: string; name: string }[] }
 
 let segmentCache: { at: number; byName: Map<string, string> } | null = null

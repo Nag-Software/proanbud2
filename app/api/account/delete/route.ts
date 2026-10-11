@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server"
+import { NextResponse, after } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logServerError } from "@/lib/errors/log"
+import { forgetResendContact } from "@/lib/resend-crm/sync"
 
 /**
  * Slett egen konto (App Review 5.1.1(v): apper med registrering MÅ tilby
@@ -23,6 +24,8 @@ import { logServerError } from "@/lib/errors/log"
  *   4. auth-brukeren gjøres ubrukelig: e-post → tombstone (frigjør adressen
  *      for ny registrering), nytt tilfeldig passord, metadata tømmes, og
  *      kontoen bannes i 100 år (banned_until blokkerer token-refresh).
+ *   5. Resend: adressen sperres og tas ut av segmentene, så løpende
+ *      e-postsekvenser stopper (best-effort, etter svaret).
  */
 export async function POST() {
   try {
@@ -99,6 +102,10 @@ export async function POST() {
     // Rydd innloggingskakene i denne nettleseren. Banningen over har allerede
     // stengt refresh for alle andre enheter.
     await supabase.auth.signOut()
+
+    // Ingen e-post fra oss etter dette — heller ikke fra automatiseringer som
+    // allerede er i gang i Resend. Kaster aldri; slettingen er ferdig uansett.
+    after(() => forgetResendContact([user.email], { companyId: userRow?.company_id ?? undefined, userId: user.id }))
 
     return NextResponse.json({ ok: true })
   } catch (e) {

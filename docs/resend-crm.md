@@ -87,3 +87,19 @@ Synken kjører når billing endres (webhook, checkout, reconcile), når et tilbu
 | `RESEND_CRM=on` | Synk på. Alt annet = av (ingen API-kall) |
 | `LIFECYCLE_EMAILS=off` | Gamle velkomst/aktivering/verdi/win-back av |
 | `TRIAL_REMINDER_EMAILS=off` | Gamle prøvepåminnelser av |
+
+## Samtidighet og sletting
+
+- **Én event per overgang, uansett hvor mange som synker samtidig.** Ved prøvestart kaller
+  appen og tre Stripe-webhooks billing-synken innen samme sekund, hver i sin egen
+  serverless-instans. Derfor skriver `syncCompanyToResend` tilstanden i `resend_contact_sync`
+  *før* den sender events, som et betinget krav (`claimSyncState`: insert-if-absent for nye,
+  update-where-synced_at-uendret for kjente). Bare instansen som vinner skrivingen sender
+  events; de andre returnerer `unchanged`. (11. okt 2026: tre «Hei fra Casper» til samme
+  person før dette kom på plass.)
+- **Kontosletting sperrer adressen.** `forgetResendContact` (kalles fra
+  `/api/account/delete` og `deleteCompanyAccountAction`) legger adressen på Resends
+  suppression-liste og tar den ut av segmentene. Suppression stopper også automatiseringer
+  som allerede er i gang — det finnes ikke noe API for å avbryte en kjøring.
+- Anonymiserte brukere (`is_active=false` / `@slettet.proanbud.no`) kan aldri være
+  bedriftens kontakt. Har bedriften bare slike, hoppes den over (`no_contact`).

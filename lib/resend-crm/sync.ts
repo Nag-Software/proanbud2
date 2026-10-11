@@ -9,6 +9,13 @@
 //   • tilbudsutsending (lib/tilbud/send-offer.ts) — første sendte tilbud
 //   • daglig cron (/api/cron/resend-crm-sync) — sikkerhetsnett + backfill
 //
+// SAMTIDIGHET: ved prøvestart kaller appen og tre Stripe-webhooks billing-
+// synken innen samme sekund, hver i sin egen serverless-instans. Alle leser
+// «aldri synket før» og ville sendt proeve.startet hver for seg (2026-10-11:
+// tre velkomst-e-poster til samme person). Derfor SKRIVES tilstanden før
+// eventene sendes, som et betinget krav (insert-if-absent / update-if-unchanged):
+// bare instansen som vinner skrivingen sender events, resten gir seg stille.
+//
 // KILL-SWITCH: gjør ingenting før RESEND_CRM === "on".
 // Best-effort: kaster aldri ut av scheduleResendSync, så en Resend-feil kan
 // aldri velte en betaling eller en tilbudsutsending.
@@ -22,6 +29,7 @@ import { logServerError } from "@/lib/errors/log"
 import { presentableCompanyName } from "@/lib/lifecycle/schedule"
 import { applyWelcomeDiscountToSubscription, ensureWelcomeDiscount } from "@/lib/billing/welcome-discount"
 import {
+  addSuppression,
   addToSegment,
   getSegmentIdsByName,
   removeFromSegment,
@@ -34,6 +42,7 @@ import {
   bucketFor,
   eventsForTransition,
   firstNameOf,
+  isContactableUser,
   segmentsFor,
   segmentsToLeave,
   ALL_SEGMENTS,
@@ -90,18 +99,25 @@ type StateRow = {
   has_sent_offer: boolean
   ever_paid: boolean
   props_hash: string | null
+  /** Versjonsstempel for det betingede kravet — se claimSyncState. */
+  synced_at: string
 }
 
 async function resolveContact(admin: AdminClient, companyId: string, companyEmail: string | null) {
   const { data: users } = await admin
     .from("users")
-    .select("full_name, email, role, created_at")
+    .select("full_name, email, role, is_active, created_at")
     .eq("company_id", companyId)
     .order("created_at", { ascending: true })
 
-  const admins = (users ?? []).filter((u) => u.role === "admin" && u.email)
-  const pick = admins[0] ?? (users ?? []).find((u) => u.email)
+  // Slettede kontoer (anonymisert, is_active=false) teller ikke — og har
+  // bedriften BARE slike, skal den ikke ha noen kontakt i det hele tatt.
+  const rows = users ?? []
+  const contactable = rows.filter((u) => isContactableUser(u))
+  const admins = contactable.filter((u) => u.role === "admin")
+  const pick = admins[0] ?? contactable[0]
   if (pick?.email) return { email: (pick.email as string).toLowerCase(), firstName: firstNameOf(pick.full_name) }
+  if (rows.length > 0) return null
   if (companyEmail) return { email: companyEmail.toLowerCase(), firstName: null }
   return null
 }
@@ -146,7 +162,7 @@ export async function syncCompanyToResend(
       .maybeSingle(),
     admin
       .from("resend_contact_sync")
-      .select("email, bucket, has_sent_offer, ever_paid, props_hash")
+      .select("email, bucket, has_sent_offer, ever_paid, props_hash, synced_at")
       .eq("company_id", companyId)
       .maybeSingle(),
   ])
@@ -213,6 +229,17 @@ export async function syncCompanyToResend(
     for (const name of segmentsToLeave(bucket)) await removeFromSegment(contact.email, idOf(name))
   }
 
+  // Krev overgangen FØR eventene går: taper vi mot en parallell instans,
+  // har den (eller vil den) sende dem — vi må ikke sende én gang til.
+  const claimed = await claimSyncState(admin, companyId, prevRow, {
+    email: contact.email,
+    bucket,
+    has_sent_offer: next.hasSentOffer,
+    ever_paid: everPaid,
+    props_hash: propsHash,
+  })
+  if (!claimed) return { status: "unchanged" }
+
   const isFreshSignup =
     Boolean(company.created_at) && Date.now() - new Date(company.created_at as string).getTime() < FRESH_SIGNUP_MS
   const events = allowEvents ? eventsForTransition(prev, next, { isFreshSignup }) : []
@@ -225,21 +252,73 @@ export async function syncCompanyToResend(
     })
   }
 
-  const { error } = await admin.from("resend_contact_sync").upsert(
-    {
-      company_id: companyId,
-      email: contact.email,
-      bucket,
-      has_sent_offer: next.hasSentOffer,
-      ever_paid: everPaid,
-      props_hash: propsHash,
-      synced_at: new Date().toISOString(),
-    },
-    { onConflict: "company_id" }
-  )
-  if (error) throw new Error(`Kunne ikke lagre Resend-synkstatus: ${error.message}`)
-
   return { status: "synced", bucket, created, events }
+}
+
+type ClaimValues = Pick<StateRow, "email" | "bucket" | "has_sent_offer" | "ever_paid" | "props_hash">
+
+/**
+ * Skriver ny synktilstand som et betinget krav og sier om VI fikk den:
+ *   • aldri synket før → INSERT; finnes raden likevel, vant en annen instans.
+ *   • synket før → UPDATE … WHERE synced_at = det vi leste; 0 rader = en annen
+ *     instans rakk å skrive først (og regnet ut overgangen selv).
+ * synced_at skrives med ms-presisjon fra JS, så likhetstesten er eksakt.
+ */
+async function claimSyncState(
+  admin: AdminClient,
+  companyId: string,
+  prevRow: StateRow | null,
+  values: ClaimValues
+): Promise<boolean> {
+  const synced_at = new Date().toISOString()
+  if (!prevRow) {
+    const { data, error } = await admin
+      .from("resend_contact_sync")
+      .upsert({ company_id: companyId, ...values, synced_at }, { onConflict: "company_id", ignoreDuplicates: true })
+      .select("company_id")
+    if (error) throw new Error(`Kunne ikke lagre Resend-synkstatus: ${error.message}`)
+    return (data?.length ?? 0) > 0
+  }
+  const { data, error } = await admin
+    .from("resend_contact_sync")
+    .update({ ...values, synced_at })
+    .eq("company_id", companyId)
+    .eq("synced_at", prevRow.synced_at)
+    .select("company_id")
+  if (error) throw new Error(`Kunne ikke lagre Resend-synkstatus: ${error.message}`)
+  return (data?.length ?? 0) > 0
+}
+
+/**
+ * Når noen sletter kontoen sin: adressen skal aldri få mer e-post fra oss.
+ * Sperrer den i Resend (stopper også automatiseringer som allerede er i gang)
+ * og tar den ut av segmentene våre. Best-effort og kaster aldri — slettingen
+ * skal gå gjennom selv om Resend er nede. Uavhengig av RESEND_CRM-flagget:
+ * kontakten kan ha kommet inn via eldre utsendinger også.
+ */
+export async function forgetResendContact(emails: Array<string | null | undefined>, context?: { companyId?: string; userId?: string }) {
+  const unique = [...new Set(emails.map((e) => e?.trim().toLowerCase()).filter((e): e is string => Boolean(e)))]
+  if (unique.length === 0 || !process.env.RESEND_API_KEY) return
+  for (const email of unique) {
+    try {
+      await addSuppression(email)
+      const segmentIds = await getSegmentIdsByName()
+      for (const name of ALL_SEGMENTS) {
+        const id = segmentIds.get(name)
+        if (id) await removeFromSegment(email, id)
+      }
+    } catch (error) {
+      await logServerError({
+        message: "Resend: kunne ikke sperre adressen etter kontosletting",
+        error,
+        level: "warning",
+        source: "server",
+        route: "forgetResendContact",
+        companyId: context?.companyId,
+        userId: context?.userId,
+      })
+    }
+  }
 }
 
 /**
