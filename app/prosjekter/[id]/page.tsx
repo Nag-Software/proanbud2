@@ -14,9 +14,11 @@ import { getDeviationsAction } from "@/app/avvik/actions"
 import { getProjectChecklistsAction } from "@/app/ks/actions"
 import { getProjectCustomer, getProjectSiteAddress } from "@/app/prosjekter/project-utils"
 import { fetchProjectProfitability, readProjectBudget } from "@/lib/job-costing/project-profitability"
+import { KALKYLE_ENABLED } from "@/lib/kalkyle/flag"
 import type { ProjectProfitability } from "@/lib/job-costing/types"
 
 import FilerTab from "./filer-tab"
+import { KalkyleTab } from "./kalkyle-tab"
 import OppgaverTab from "./oppgaver-tab"
 import { ProjectHeader } from "./project-header"
 import type { OverviewTask } from "./project-overview-tab"
@@ -286,6 +288,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         tabs={[
           { value: "idag", label: "I dag", hidden: !isWorker },
           { value: "oversikt", label: "Oversikt", hidden: isWorker },
+          { value: "kalkyle", label: "Kalkyle", hidden: isWorker || !KALKYLE_ENABLED },
           { value: "okonomi", label: "Økonomi", hidden: isWorker },
           { value: "oppgaver", label: "Oppgaver", count: hasTasks ? openTasks : 0 },
           {
@@ -369,6 +372,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               />
               </Suspense>
             </ProjectTabPanel>
+
+            {KALKYLE_ENABLED && (
+              <ProjectTabPanel value="kalkyle">
+                <KalkyleTab />
+              </ProjectTabPanel>
+            )}
 
             <ProjectTabPanel value="okonomi">
               <Suspense fallback={<StreamedTabSkeleton />}>

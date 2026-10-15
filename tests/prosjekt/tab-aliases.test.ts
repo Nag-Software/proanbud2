@@ -13,6 +13,7 @@ const ENKLE_LENKER: Array<[string, { tab: string; del?: string }]> = [
   // Dagens faner
   ["oversikt", { tab: "oversikt" }],
   ["idag", { tab: "idag" }],
+  ["kalkyle", { tab: "kalkyle" }],
   ["okonomi", { tab: "okonomi" }],
   ["oppgaver", { tab: "oppgaver" }],
   ["timer", { tab: "timer" }],
