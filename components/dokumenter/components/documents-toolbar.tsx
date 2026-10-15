@@ -2,13 +2,14 @@
 
 import { useRef } from "react"
 import Image from "next/image"
+
+import { CLOUD_NAVN, CloudMerke } from "../cloud-merke"
 import {
   ArrowDownUp,
   Check,
   Download,
   FolderInput,
   FolderPlus,
-  HardDrive,
   LayoutGrid,
   List,
   Loader2,
@@ -72,9 +73,9 @@ export function DocumentsToolbar(props: Props) {
             onClick={() => props.setProvider("supabase")}
             size="sm"
             className="h-8 gap-2 rounded-md"
+            aria-label={CLOUD_NAVN}
           >
-            <HardDrive className="h-4 w-4" />
-            Proanbud Cloud
+            <CloudMerke />
           </Button>
           <Button variant="ghost" disabled size="sm" className="h-8 gap-2 rounded-md" title="Kommer seinere…">
             <Image src="/google-drive.svg" alt="" width={14} height={14} />
