@@ -5,6 +5,7 @@ export const LINJE_TYPE: Record<LinjeType, { navn: string; leggTil: string; prik
   arbeid: { navn: "Timer", leggTil: "Timer", prikk: "bg-[color:var(--tone-info-strong)]" },
   materiell: { navn: "Materiell", leggTil: "Materiell", prikk: "bg-[color:var(--tone-violet-strong)]" },
   ue: { navn: "Underentreprenør", leggTil: "Underentreprenør", prikk: "bg-[color:var(--tone-warning)]" },
+  jobb: { navn: "Fast jobb", leggTil: "Fast jobb", prikk: "bg-[color:var(--tone-success-strong)]" },
 }
 
 export const ENHETER: Array<{ verdi: Enhet; navn: string; kort: string }> = [

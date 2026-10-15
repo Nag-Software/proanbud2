@@ -22,6 +22,9 @@ export type BrukteEndringer = {
   berort: string[]
 }
 
+/** Arbeid og fast jobb prises uten innpris (timepris eller fastpris). */
+const utenInnpris = (type: Linje["type"]) => type === "arbeid" || type === "jobb"
+
 const gyldigTall = (verdi: unknown): verdi is number =>
   typeof verdi === "number" && Number.isFinite(verdi) && verdi >= 0
 
@@ -54,7 +57,7 @@ export function brukEndringer(
         post.linjer.push({
           ...endring.linje,
           id,
-          innpris: endring.linje.type === "arbeid" ? null : (endring.linje.innpris ?? 0),
+          innpris: utenInnpris(endring.linje.type) ? null : (endring.linje.innpris ?? 0),
         })
         berort.push(id)
         break
@@ -68,7 +71,8 @@ export function brukEndringer(
           break
         }
         const endret = { ...post.linjer[index], ...endring.patch }
-        if (endret.type === "arbeid") endret.innpris = null
+        if (utenInnpris(endret.type)) endret.innpris = null
+        if (endret.type !== "arbeid") endret.timepris = null
         post.linjer[index] = endret
         berort.push(endret.id)
         break

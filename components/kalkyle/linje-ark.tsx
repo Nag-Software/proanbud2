@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { MinusIcon, PlusIcon, SearchIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -15,6 +16,7 @@ import type { Enhet } from "@/lib/kalkyle/types"
 import { cn } from "@/lib/utils"
 import { useKalkyle } from "./kalkyle-provider"
 import { ENHETER, LINJE_TYPE, enhetKort } from "./linje-type"
+import { useMinePriser } from "./mine-priser-kontekst"
 
 type LinjeArkProps = {
   valgt: { postId: string; linjeId: string } | null
@@ -40,12 +42,16 @@ export function LinjeArk({ valgt, onLukk }: LinjeArkProps) {
   // Tekstfeltene holder det brukeren skriver («2,»), tallet lagres fortløpende.
   const [antallTekst, setAntallTekst] = React.useState("")
   const [prisTekst, setPrisTekst] = React.useState("")
+  const [timerTekst, setTimerTekst] = React.useState("")
+  const { timepriser, kilde } = useMinePriser()
   const linjeId = linje?.id
 
   React.useEffect(() => {
     if (!linje) return
     setAntallTekst(formatAntall(linje.antall))
-    setPrisTekst(linje.innpris == null ? "" : formatAntall(linje.innpris))
+    const pris = linje.type === "jobb" ? linje.fastpris : linje.innpris
+    setPrisTekst(pris == null ? "" : formatAntall(pris))
+    setTimerTekst(linje.timerPerEnhet == null ? "" : formatAntall(linje.timerPerEnhet))
     setSok("")
     // Bare når en ny linje åpnes, ikke ved hver tastetrykk.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -194,11 +200,96 @@ export function LinjeArk({ valgt, onLukk }: LinjeArkProps) {
             </div>
           </div>
 
-          {linje.type === "arbeid" ? (
-            <p className="rounded-lg bg-[color:var(--surface-info)] px-3.5 py-3 text-sm text-[#2f3f66] tabular-nums">
-              Timepris {formatKr(kalkyle.timesats)}/t fra prisingen øverst.
-            </p>
-          ) : (
+          {linje.type === "arbeid" && (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-2 text-xs font-medium text-muted-foreground">Timepris</legend>
+              <div className="flex flex-col gap-1.5">
+                {[null, ...timepriser].map((tp) => {
+                  const valgt = (linje.timepris?.id ?? null) === (tp?.id ?? null)
+                  return (
+                    <button
+                      key={tp?.id ?? "standard"}
+                      type="button"
+                      aria-pressed={valgt}
+                      onClick={() => oppdater({ timepris: tp })}
+                      className={cn(
+                        "flex min-h-11 items-center justify-between gap-3 rounded-[10px] border px-3.5 py-2 text-left transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring",
+                        valgt ? "border-foreground" : "border-border"
+                      )}
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium">{tp ? tp.navn : "Standard"}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {tp
+                            ? tp.internKost != null
+                              ? `Kost ${formatKr(tp.internKost)}/t`
+                              : "Kostpris ikke satt, intern kost brukes"
+                            : "Fra prisingen øverst"}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums">
+                        {formatKr(tp ? tp.timesats : kalkyle.timesats)}/t
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              {kilde.timepriser === "eksempel" && (
+                <p className="text-xs text-muted-foreground">
+                  Eksempler. Legg inn bedriftens egne under{" "}
+                  <Link href="/mine-priser/timepriser" className="font-medium text-foreground underline underline-offset-2">
+                    Mine priser → Timepriser
+                  </Link>
+                  .
+                </p>
+              )}
+            </fieldset>
+          )}
+
+          {linje.type === "jobb" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-2">
+                <label htmlFor="linje-fastpris" className="text-xs font-medium text-muted-foreground">
+                  Fastpris per {enhetKort(linje.enhet)}
+                </label>
+                <div className="relative">
+                  <Input
+                    id="linje-fastpris"
+                    inputMode="decimal"
+                    value={prisTekst}
+                    onChange={(e) => {
+                      setPrisTekst(e.target.value)
+                      oppdater({ fastpris: lesTall(e.target.value) })
+                    }}
+                    className="h-11 pr-11 text-base tabular-nums"
+                  />
+                  <span aria-hidden className="absolute top-1/2 right-3.5 -translate-y-1/2 text-muted-foreground">
+                    kr
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label htmlFor="linje-timer" className="text-xs font-medium text-muted-foreground">
+                  Timer per {enhetKort(linje.enhet)}
+                </label>
+                <Input
+                  id="linje-timer"
+                  inputMode="decimal"
+                  value={timerTekst}
+                  onChange={(e) => {
+                    setTimerTekst(e.target.value)
+                    oppdater({ timerPerEnhet: lesTall(e.target.value) || null })
+                  }}
+                  className="h-11 text-base tabular-nums"
+                />
+              </div>
+              <p className="col-span-2 text-[13px] text-muted-foreground">
+                Fast jobb fra Lagrede jobber. Kunden betaler fastprisen; kostnaden anslås som timer × intern kost.
+              </p>
+            </div>
+          )}
+
+          {(linje.type === "materiell" || linje.type === "ue") && (
             <div className="flex flex-col gap-2">
               <label htmlFor="linje-innpris" className="text-xs font-medium text-muted-foreground">
                 {linje.type === "ue"

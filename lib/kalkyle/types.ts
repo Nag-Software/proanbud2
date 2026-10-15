@@ -8,7 +8,12 @@
  * (påslag → paslag, rekkefølge → rekkefolge, detaljnivå → detaljniva).
  */
 
-export type LinjeType = "arbeid" | "materiell" | "ue"
+/**
+ * - arbeid: timer priset med en timepris (eller kalkylens standard)
+ * - materiell / ue: innpris + påslag
+ * - jobb: fast jobb fra Lagrede jobber – fastpris til kunden, kost anslått som timer × intern kost
+ */
+export type LinjeType = "arbeid" | "materiell" | "ue" | "jobb"
 
 export type Enhet = "t" | "stk" | "m²" | "lm" | "sett" | "rs"
 
@@ -18,8 +23,39 @@ export type Linje = {
   type: LinjeType
   antall: number
   enhet: Enhet
-  /** Innkjøpspris per enhet eks. mva. Alltid null for arbeid (timesatsen gjelder). */
+  /** Innkjøpspris per enhet eks. mva. Alltid null for arbeid og fast jobb. */
   innpris: number | null
+  /**
+   * Arbeid: timeprisen linja er priset med, slik den var da den ble valgt
+   * (salgs- og kostpris kopieres, som på tilbudslinjer). Null = kalkylens standard.
+   */
+  timepris?: TimeprisValg | null
+  /** Fast jobb: pris per enhet eks. mva til kunden. Ingen påslag. */
+  fastpris?: number | null
+  /** Fast jobb: anslåtte arbeidstimer per enhet (fra Lagrede jobber). */
+  timerPerEnhet?: number | null
+  /** Fast jobb: id-en i Lagrede jobber den kom fra. */
+  lagretJobbId?: string | null
+}
+
+/** En timepris fra Mine priser → Timepriser. */
+export type TimeprisValg = {
+  id: string
+  navn: string
+  /** Salgspris per time eks. mva. */
+  timesats: number
+  /** Kostpris per time. Null = ikke satt (da brukes kalkylens intern kost). */
+  internKost: number | null
+}
+
+/** En jobb fra Mine priser → Lagrede jobber. Har ingen kostpris. */
+export type LagretJobb = {
+  id: string
+  navn: string
+  /** Fastpris eks. mva. */
+  pris: number
+  /** Anslåtte arbeidstimer. Null = ikke satt. */
+  timer: number | null
 }
 
 export type Post = {

@@ -40,10 +40,22 @@ function paslagFor(linje: Pick<Linje, "type">, prising: Prising): number {
   return 0
 }
 
+/** Timesats og kost per time for en timelinje: linjas timepris, ellers kalkylens standard. */
+export function satsFor(linje: Pick<Linje, "timepris">, prising: Prising): { timesats: number; kostPerTime: number } {
+  const tp = linje.timepris
+  return {
+    timesats: tp ? tall(tp.timesats) : tall(prising.timesats),
+    kostPerTime: tp?.internKost != null && tp.internKost > 0 ? tp.internKost : tall(prising.internKostPerTime),
+  }
+}
+
 /**
  * Én linje:
- * - Arbeid: salg = antall × timesats, kost = antall × intern kost per time.
+ * - Arbeid: salg = antall × timesats, kost = antall × kost per time. Timesats og
+ *   kost kommer fra linjas timepris, ellers fra kalkylens standard.
  * - Materiell/UE: kost = antall × innpris, salg = kost × (1 + påslag/100).
+ * - Fast jobb: salg = antall × fastpris, kost = anslåtte timer × intern kost
+ *   (lagrede jobber har ingen kostpris, så timene er det beste anslaget).
  *
  * Tallene avrundes ikke her – bare i visningen – så summene stemmer.
  */
@@ -51,12 +63,23 @@ export function beregnLinje(linje: Linje, prising: Prising): LinjeResultat {
   const antall = tall(linje.antall)
 
   if (linje.type === "arbeid") {
-    const timesats = tall(prising.timesats)
+    const { timesats, kostPerTime } = satsFor(linje, prising)
     return {
-      ...belop(antall * tall(prising.internKostPerTime), antall * timesats),
+      ...belop(antall * kostPerTime, antall * timesats),
       linjeId: linje.id,
       timer: antall,
       enhetsprisSalg: timesats,
+    }
+  }
+
+  if (linje.type === "jobb") {
+    const fastpris = tall(linje.fastpris)
+    const timer = antall * tall(linje.timerPerEnhet)
+    return {
+      ...belop(timer * tall(prising.internKostPerTime), antall * fastpris),
+      linjeId: linje.id,
+      timer,
+      enhetsprisSalg: fastpris,
     }
   }
 
@@ -124,7 +147,7 @@ export function instansierMal(
       rekkefolge: post.rekkefolge,
       linjer: post.linjer.map(({ mengde, ...linje }) => ({
         ...linje,
-        innpris: linje.type === "arbeid" ? null : linje.innpris,
+        innpris: linje.type === "arbeid" || linje.type === "jobb" ? null : linje.innpris,
         antall: tall(mengde.fast) + tall(mengde.perEnhet) * x,
       })),
     })),
@@ -216,9 +239,10 @@ export function beregnEtterkalkyle(
 
   const poster = sorterte(kalkyle.poster).map((post, i) => {
     const kalk = resultat.poster[i]
-    const kalkulertMateriell = kalk.linjer
-      .filter((l) => l.timer === 0)
-      .reduce((sum, l) => sum + l.kost, 0)
+    const kalkulertMateriell = post.linjer.reduce(
+      (sum, linje, j) => (linje.type === "materiell" || linje.type === "ue" ? sum + kalk.linjer[j].kost : sum),
+      0
+    )
     const f = faktiskPerPost.get(post.id)
     const faktiskTimer = tall(f?.timer)
     const faktiskMateriell = tall(f?.materiell) + tall(f?.ue)

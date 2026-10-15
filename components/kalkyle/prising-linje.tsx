@@ -3,13 +3,18 @@
 import * as React from "react"
 
 import { Button } from "@/components/ui/button"
+import Link from "next/link"
+
 import { formatKr } from "@/lib/kalkyle/format"
+import { snittKost } from "@/lib/kalkyle/mine-priser"
 import { TallStepper } from "./tall-stepper"
 import { useKalkyle } from "./kalkyle-provider"
+import { useMinePriser } from "./mine-priser-kontekst"
 
 /** Prisingen på én linje. De fleste endrer den aldri, så stepperne ligger bak «Endre». */
 export function PrisingLinje() {
-  const { kalkyle, oppdaterPrising } = useKalkyle()
+  const { kalkyle, oppdaterPrising, endre } = useKalkyle()
+  const { timepriser, kilde } = useMinePriser()
   const [apen, setApen] = React.useState(false)
   const panelId = React.useId()
   if (!kalkyle) return null
@@ -36,6 +41,28 @@ export function PrisingLinje() {
       </div>
       {apen && (
         <div id={panelId} className="mt-2 border-t pt-1">
+          <StepperRad label="Hent standard fra Timepriser">
+            <select
+              aria-label="Hent standard timepris fra Timepriser"
+              value=""
+              onChange={(e) => {
+                const tp = timepriser.find((t) => t.id === e.target.value)
+                if (!tp) return
+                endre([
+                  { type: "prising", felt: "timesats", verdi: tp.timesats },
+                  { type: "prising", felt: "internKostPerTime", verdi: tp.internKost ?? snittKost(timepriser) ?? kalkyle.internKostPerTime },
+                ])
+              }}
+              className="h-9 rounded-[var(--radius-control)] border bg-background px-2 text-sm pointer-coarse:h-11"
+            >
+              <option value="">Velg timepris …</option>
+              {timepriser.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.navn} · {formatKr(t.timesats)}/t
+                </option>
+              ))}
+            </select>
+          </StepperRad>
           <StepperRad label="Timepris">
             <TallStepper
               label="Timepris"
@@ -66,8 +93,18 @@ export function PrisingLinje() {
             />
           </StepperRad>
           <p className="pb-1 pt-2 text-[13px] text-muted-foreground">
-            Intern kost {formatKr(kalkyle.internKostPerTime)}/t. Standardverdiene kommer fra Timepriser, og endringer her
-            gjelder bare denne kalkylen.
+            Intern kost {formatKr(kalkyle.internKostPerTime)}/t. Gjelder timelinjer uten egen timepris, og bare denne
+            kalkylen. Hver timelinje kan også få sin egen timepris.
+            {kilde.timepriser === "eksempel" && (
+              <>
+                {" "}
+                Timeprisene er eksempler – legg inn bedriftens egne under{" "}
+                <Link href="/mine-priser/timepriser" className="font-medium text-foreground underline underline-offset-2">
+                  Mine priser → Timepriser
+                </Link>
+                .
+              </>
+            )}
           </p>
         </div>
       )}

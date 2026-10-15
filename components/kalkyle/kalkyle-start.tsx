@@ -16,10 +16,12 @@ import { Button } from "@/components/ui/button"
 import { beregnKalkyle, instansierMal, klemParameter } from "@/lib/kalkyle/beregn"
 import { formatAntall, formatKr } from "@/lib/kalkyle/format"
 import { MOCK_MALER, MOCK_PRISING } from "@/lib/kalkyle/mock"
-import type { Kalkyle, KalkyleMal } from "@/lib/kalkyle/types"
+import { standardPrising } from "@/lib/kalkyle/mine-priser"
+import type { Kalkyle, KalkyleMal, Prising } from "@/lib/kalkyle/types"
 import { cn } from "@/lib/utils"
 import { TallStepper } from "./tall-stepper"
 import { enhetKort } from "./linje-type"
+import { useMinePriser } from "./mine-priser-kontekst"
 
 const IKON: Record<string, LucideIcon> = {
   "bad-komplett": BathIcon,
@@ -50,13 +52,13 @@ function gjettMal(tekst: string): KalkyleMal {
   return MOCK_MALER.find((m) => m.id === id) ?? MOCK_MALER[0]
 }
 
-function lagKalkyle(mal: KalkyleMal, verdi: number, prosjektId: string): Kalkyle {
-  return instansierMal(mal, verdi, MOCK_PRISING, { kalkyleId: `kalkyle-${mal.id}`, prosjektId })
+function lagKalkyle(mal: KalkyleMal, verdi: number, prosjektId: string, prising: Prising): Kalkyle {
+  return instansierMal(mal, verdi, prising, { kalkyleId: `kalkyle-${mal.id}`, prosjektId })
 }
 
-function lagBlank(prosjektId: string): Kalkyle {
+function lagBlank(prosjektId: string, prising: Prising): Kalkyle {
   return {
-    ...MOCK_PRISING,
+    ...prising,
     id: "kalkyle-blank",
     prosjektId,
     poster: [{ id: "post-1", navn: "Post 1", rekkefolge: 1, linjer: [] }],
@@ -78,9 +80,12 @@ export function KalkyleStart({ prosjektId, onFerdig, onBeskriv, onAvbryt }: Kalk
     Object.fromEntries(MOCK_MALER.map((m) => [m.id, m.parameter.standard]))
   )
   const [beskrivelse, setBeskrivelse] = React.useState("")
+  // Ny kalkyle prises med bedriftens standard timepris (første i Timepriser).
+  const { timepriser } = useMinePriser()
+  const prising = standardPrising(timepriser, MOCK_PRISING)
   const mal = MOCK_MALER.find((m) => m.id === valgt)
   const verdi = mal ? klemParameter(mal, verdier[mal.id]) : 0
-  const forhand = mal ? beregnKalkyle(lagKalkyle(mal, verdi, prosjektId)).totalt : null
+  const forhand = mal ? beregnKalkyle(lagKalkyle(mal, verdi, prosjektId, prising)).totalt : null
 
   const flis = (aktiv: boolean) =>
     cn(
@@ -147,7 +152,7 @@ export function KalkyleStart({ prosjektId, onFerdig, onBeskriv, onAvbryt }: Kalk
             disabled={beskrivelse.trim().length < 3}
             onClick={() => {
               const m = gjettMal(beskrivelse)
-              onBeskriv(lagKalkyle(m, m.parameter.standard, prosjektId), beskrivelse.trim())
+              onBeskriv(lagKalkyle(m, m.parameter.standard, prosjektId, prising), beskrivelse.trim())
             }}
           >
             Lag forslag
@@ -192,7 +197,7 @@ export function KalkyleStart({ prosjektId, onFerdig, onBeskriv, onAvbryt }: Kalk
               type="button"
               size="xl"
               className="rounded-[10px] bg-accent text-accent-foreground hover:bg-accent/90"
-              onClick={() => onFerdig(lagKalkyle(mal, verdi, prosjektId))}
+              onClick={() => onFerdig(lagKalkyle(mal, verdi, prosjektId, prising))}
             >
               Lag kalkylen
               <ArrowRightIcon aria-hidden />
@@ -204,7 +209,7 @@ export function KalkyleStart({ prosjektId, onFerdig, onBeskriv, onAvbryt }: Kalk
       {valgt === "blank" && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-lg border p-5">
           <p className="text-[15px]">Du starter med én tom post og legger til timer og materiell selv.</p>
-          <Button type="button" size="xl" onClick={() => onFerdig(lagBlank(prosjektId))}>
+          <Button type="button" size="xl" onClick={() => onFerdig(lagBlank(prosjektId, prising))}>
             Start blankt
             <ArrowRightIcon aria-hidden />
           </Button>

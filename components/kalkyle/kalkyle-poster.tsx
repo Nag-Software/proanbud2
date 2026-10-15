@@ -8,10 +8,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatAntall, formatKr } from "@/lib/kalkyle/format"
-import type { Enhet, Kalkyle, Linje, LinjeType, Post, PostResultat } from "@/lib/kalkyle/types"
+import { linjeFraLagretJobb } from "@/lib/kalkyle/mine-priser"
+import type { Enhet, Kalkyle, Linje, LinjeResultat, LinjeType, Post, PostResultat, TimeprisValg } from "@/lib/kalkyle/types"
 import { cn } from "@/lib/utils"
 import { useKalkyle } from "./kalkyle-provider"
+import { LagretJobbVelger } from "./lagret-jobb-velger"
 import { ENHETER, LINJE_TYPE, enhetKort } from "./linje-type"
+import { useMinePriser } from "./mine-priser-kontekst"
 
 type KalkylePosterProps = {
   onAapneLinje: (postId: string, linjeId: string) => void
@@ -87,6 +90,50 @@ function CelleTall({
   )
 }
 
+/** Patch når typen på en linje byttes, så prisen følger med på en fornuftig måte. */
+export function patchForType(linje: Linje, type: LinjeType, r: LinjeResultat): Partial<Omit<Linje, "id">> {
+  if (type === "arbeid") return { type, enhet: "t", timepris: null }
+  if (type === "jobb") {
+    return { type, fastpris: Math.round(r.enhetsprisSalg), timerPerEnhet: linje.type === "arbeid" ? 1 : null }
+  }
+  return { type, innpris: linje.innpris ?? 0 }
+}
+
+/** Timeprisen på en timelinje: kalkylens standard eller en av bedriftens timepriser. */
+export function TimeprisVelger({
+  linje,
+  standardTimesats,
+  onVelg,
+  label,
+  className,
+}: {
+  linje: Linje
+  standardTimesats: number
+  onVelg: (timepris: TimeprisValg | null) => void
+  label: string
+  className?: string
+}) {
+  const { timepriser } = useMinePriser()
+  const valgt = linje.timepris
+  // En timepris som er slettet i Mine priser beholdes på linja, med navnet den hadde.
+  const valg = valgt && !timepriser.some((t) => t.id === valgt.id) ? [valgt, ...timepriser] : timepriser
+  return (
+    <select
+      aria-label={label}
+      value={valgt?.id ?? ""}
+      onChange={(e) => onVelg(valg.find((t) => t.id === e.target.value) ?? null)}
+      className={className}
+    >
+      <option value="">Standard · {formatKr(standardTimesats)}/t</option>
+      {valg.map((t) => (
+        <option key={t.id} value={t.id}>
+          {t.navn} · {formatKr(t.timesats)}/t{t.internKost == null ? " (kostpris ikke satt)" : ""}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 function useSlettMedAngre() {
   const { kalkyle, settKalkyle } = useKalkyle()
   return (melding: string, slett: () => void) => {
@@ -136,7 +183,7 @@ export function KalkylePoster({ onAapneLinje }: KalkylePosterProps) {
                 </TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Enhet</TableHead>
                 <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Innpris
+                  Pris
                 </TableHead>
                 <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Påslag
@@ -208,14 +255,19 @@ type PostProps = {
   onAapneLinje: (postId: string, linjeId: string) => void
 }
 
-/** På PC dukker den nye linjen opp i tabellen; på mobil åpnes arket med en gang. */
+/**
+ * «+ Timer / Materiell / Underentreprenør / Fast jobb». På PC dukker den nye
+ * linja opp i tabellen; på mobil åpnes arket med en gang. «Fast jobb» henter
+ * fra Lagrede jobber.
+ */
 function LeggTilKnapper({
   post,
   onAapneLinje,
   apneArk,
   className,
 }: Pick<PostProps, "post" | "onAapneLinje"> & { apneArk: boolean; className?: string }) {
-  const { leggTilLinje } = useKalkyle()
+  const { leggTilLinje, endre, merk } = useKalkyle()
+  const [velgJobb, setVelgJobb] = React.useState(false)
   return (
     <div className={cn("flex flex-wrap items-center gap-1", className)}>
       {TYPER.map((t) => (
@@ -226,6 +278,10 @@ function LeggTilKnapper({
           size="sm"
           className="text-muted-foreground"
           onClick={() => {
+            if (t === "jobb") {
+              setVelgJobb(true)
+              return
+            }
             const id = leggTilLinje(post.id, t)
             if (id && apneArk) onAapneLinje(post.id, id)
           }}
@@ -234,6 +290,12 @@ function LeggTilKnapper({
           {LINJE_TYPE[t].leggTil}
         </Button>
       ))}
+      <LagretJobbVelger
+        open={velgJobb}
+        onOpenChange={setVelgJobb}
+        postNavn={post.navn}
+        onVelg={(jobb) => merk(endre([{ type: "leggTil", postId: post.id, linje: linjeFraLagretJobb(jobb) }]))}
+      />
     </div>
   )
 }
@@ -292,7 +354,7 @@ function PostRaderPc({ post, nr, resultat, apen, onBytt, onAapneLinje }: PostPro
       {apen &&
         post.linjer.map((linje, i) => {
           const r = resultat.linjer[i]
-          const erArbeid = linje.type === "arbeid"
+          const harPaslag = linje.type === "materiell" || linje.type === "ue"
           const paslag = linje.type === "materiell" ? kalkyle.paslagMateriell : kalkyle.paslagUe
           const navn = linje.beskrivelse || "linje uten navn"
           return (
@@ -320,8 +382,7 @@ function PostRaderPc({ post, nr, resultat, apen, onBytt, onAapneLinje }: PostPro
                     aria-label={`Type for ${navn}`}
                     value={linje.type}
                     onChange={(e) => {
-                      const type = e.target.value as LinjeType
-                      endre(linje, type === "arbeid" ? { type, enhet: "t" } : { type, innpris: linje.innpris ?? 0 })
+                      endre(linje, patchForType(linje, e.target.value as LinjeType, r))
                     }}
                     className={cn(celle, "w-auto pr-1 text-muted-foreground")}
                   >
@@ -351,8 +412,22 @@ function PostRaderPc({ post, nr, resultat, apen, onBytt, onAapneLinje }: PostPro
                 </select>
               </TableCell>
               <TableCell className="p-1.5 text-right">
-                {erArbeid ? (
-                  <span className="px-1.5 text-sm tabular-nums text-muted-foreground">{formatKr(kalkyle.timesats)}/t</span>
+                {linje.type === "arbeid" ? (
+                  <TimeprisVelger
+                    linje={linje}
+                    standardTimesats={kalkyle.timesats}
+                    label={`Timepris for ${navn}`}
+                    onVelg={(timepris) => endre(linje, { timepris })}
+                    className={cn(celle, "ml-auto w-auto max-w-44 text-right text-muted-foreground")}
+                  />
+                ) : linje.type === "jobb" ? (
+                  <CelleTall
+                    label={`Fastpris for ${navn}`}
+                    value={linje.fastpris ?? 0}
+                    suffix=" kr"
+                    onChange={(v) => endre(linje, { fastpris: v })}
+                    className="ml-auto w-28"
+                  />
                 ) : (
                   <CelleTall
                     label={`Innpris for ${navn}`}
@@ -364,7 +439,7 @@ function PostRaderPc({ post, nr, resultat, apen, onBytt, onAapneLinje }: PostPro
                 )}
               </TableCell>
               <TableCell className="p-1.5 text-right text-sm tabular-nums text-muted-foreground">
-                {erArbeid ? "—" : `${paslag} %`}
+                {harPaslag ? `${paslag} %` : "—"}
               </TableCell>
               <TableCell className="p-1.5 text-right text-sm font-semibold tabular-nums">{formatKr(r.salgEksMva)}</TableCell>
               <TableCell className="p-1.5 pr-2">

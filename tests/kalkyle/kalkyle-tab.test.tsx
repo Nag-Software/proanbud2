@@ -96,6 +96,29 @@ describe("Kalkyle-fanen", () => {
     expect(sammendrag().getByText("113 437 kr")).toBeTruthy()
   })
 
+  it("en timelinje kan få sin egen timepris fra Timepriser", () => {
+    render(<KalkyleTab />)
+    const velger = screen.getByLabelText("Timepris for Riving") as HTMLSelectElement
+    expect(velger.value).toBe("")
+    // Eksempel-timeprisene brukes når bedriften ikke har egne (henting feiler i testen).
+    fireEvent.change(velger, { target: { value: "eksempel-flislegger" } })
+    // 12 t × (820 − 750) × 1,25 = 1 050 kr mer
+    expect(sammendrag().getByText("114 487 kr")).toBeTruthy()
+  })
+
+  it("«+ Fast jobb» henter fra Lagrede jobber og legger jobben inn i posten", () => {
+    render(<KalkyleTab />)
+    const tabellRad = screen.getAllByRole("button", { name: "Skjul Innredning" })[0].closest("tbody") as HTMLElement
+    fireEvent.click(within(tabellRad).getByRole("button", { name: "Fast jobb" }))
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).getByText("Legg til fast jobb")).toBeTruthy()
+    fireEvent.change(within(dialog).getByLabelText("Søk i lagrede jobber"), { target: { value: "toalett" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: /Montering av toalett/ }))
+    expect(screen.getByLabelText("Fastpris for Montering av toalett")).toBeTruthy()
+    // 3 500 kr × 1,25 = 4 375 kr mer
+    expect(sammendrag().getByText("117 812 kr")).toBeTruthy()
+  })
+
   it("«Hent fra mal» viser startskjermen, og «Lag kalkylen» bruker valgt størrelse", () => {
     render(<KalkyleTab />)
     fireEvent.click(screen.getByRole("button", { name: "Hent fra mal" }))

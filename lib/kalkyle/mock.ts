@@ -8,9 +8,11 @@ import type {
   EtterkalkyleFaktisk,
   Kalkyle,
   KalkyleMal,
+  LagretJobb,
   MalLinje,
   Prising,
   TilbudSnapshot,
+  TimeprisValg,
 } from "./types"
 
 export const MOCK_PRISING: Prising = {
@@ -275,3 +277,18 @@ export const MOCK_PRISFIL = [
   { id: "pf-6", beskrivelse: "Fugemasse, 5 kg", enhet: "stk", innpris: 219, kilde: "Flis AS" },
   { id: "pf-7", beskrivelse: "Varmekabelmatte, 6 m²", enhet: "sett", innpris: 2490, kilde: "Elektrogrossist AS" },
 ] as const satisfies ReadonlyArray<{ id: string; beskrivelse: string; enhet: Enhet; innpris: number; kilde: string }>
+
+/** Reserve når bedriften ikke har lagt inn timepriser i Mine priser. Første er standard. */
+export const MOCK_TIMEPRISER: TimeprisValg[] = [
+  { id: "eksempel-tomrer", navn: "Tømrer", timesats: 750, internKost: 480 },
+  { id: "eksempel-flislegger", navn: "Flislegger", timesats: 820, internKost: 520 },
+  { id: "eksempel-laerling", navn: "Lærling", timesats: 550, internKost: 320 },
+]
+
+/** Reserve når bedriften ikke har lagrede jobber i Mine priser. */
+export const MOCK_LAGREDE_JOBBER: LagretJobb[] = [
+  { id: "eksempel-toalett", navn: "Montering av toalett", pris: 3500, timer: 3 },
+  { id: "eksempel-servant", navn: "Montering av servant", pris: 2900, timer: 2.5 },
+  { id: "eksempel-sluk", navn: "Bytte sluk", pris: 4800, timer: 4 },
+  { id: "eksempel-silikon", navn: "Silikonfuging bad", pris: 1800, timer: 2 },
+]

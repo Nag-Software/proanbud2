@@ -10,6 +10,7 @@ import { KalkyleSammendrag } from "@/components/kalkyle/kalkyle-sammendrag"
 import { KalkyleStart } from "@/components/kalkyle/kalkyle-start"
 import { KalkylePoster } from "@/components/kalkyle/kalkyle-poster"
 import { LinjeArk } from "@/components/kalkyle/linje-ark"
+import { MinePriserProvider } from "@/components/kalkyle/mine-priser-kontekst"
 import { SmartKIIkon } from "@/components/kalkyle/smartki-merke"
 import { PrisingLinje } from "@/components/kalkyle/prising-linje"
 import { MOCK_KALKYLE } from "@/lib/kalkyle/mock"
@@ -23,9 +24,11 @@ import { useProjectFocus, useProjectShell } from "./project-tabs-shell"
  */
 export function KalkyleTab() {
   return (
-    <KalkyleProvider initial={MOCK_KALKYLE}>
-      <KalkyleInnhold />
-    </KalkyleProvider>
+    <MinePriserProvider>
+      <KalkyleProvider initial={MOCK_KALKYLE}>
+        <KalkyleInnhold />
+      </KalkyleProvider>
+    </MinePriserProvider>
   )
 }
 

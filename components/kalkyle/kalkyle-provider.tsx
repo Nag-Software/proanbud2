@@ -27,7 +27,7 @@ type KalkyleContextValue = {
 
 const KalkyleContext = React.createContext<KalkyleContextValue | null>(null)
 
-const STANDARD_ENHET: Record<LinjeType, Linje["enhet"]> = { arbeid: "t", materiell: "stk", ue: "rs" }
+const STANDARD_ENHET: Record<LinjeType, Linje["enhet"]> = { arbeid: "t", materiell: "stk", ue: "rs", jobb: "stk" }
 
 /**
  * Holder kalkylen i minnet mens den redigeres (mock-runden: ingen lagring).
