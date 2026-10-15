@@ -199,3 +199,91 @@ export function beskrivEndringer(kalkyle: Kalkyle, endringer: KalkyleEndring[]):
     }
   })
 }
+
+// ── Angre én endring ─────────────────────────────────────────────────────
+
+const PRISING_FELT = ["timesats", "internKostPerTime", "paslagMateriell", "paslagUe"] as const
+
+const lik = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b)
+
+function finnLinje(kalkyle: Kalkyle, linjeId: string) {
+  for (const post of kalkyle.poster) {
+    const indeks = post.linjer.findIndex((l) => l.id === linjeId)
+    if (indeks >= 0) return { post, indeks, linje: post.linjer[indeks] }
+  }
+  return null
+}
+
+/**
+ * Angrer én endring – fra `foer` til `etter` – på kalkylen slik den er `naa`,
+ * uten å røre det som er endret etterpå. Bare det endringen faktisk gjorde,
+ * reverseres: nye linjer og poster fjernes, slettede legges tilbake på plassen
+ * sin, og endrede felt (bare de) får verdien de hadde. Å legge tilbake en hel
+ * gammel kopi ville slettet alt brukeren har gjort siden.
+ */
+export function angreEndring(foer: Kalkyle, etter: Kalkyle, naa: Kalkyle): Kalkyle {
+  let neste: Kalkyle = { ...naa, poster: naa.poster.map((p) => ({ ...p, linjer: [...p.linjer] })) }
+
+  for (const felt of PRISING_FELT) {
+    if (!lik(foer[felt], etter[felt])) neste = { ...neste, [felt]: foer[felt] }
+  }
+  if (foer.navn !== etter.navn) neste.navn = foer.navn
+
+  const foerLinjer = new Set(foer.poster.flatMap((p) => p.linjer.map((l) => l.id)))
+  const etterLinjer = new Set(etter.poster.flatMap((p) => p.linjer.map((l) => l.id)))
+  const foerPoster = new Set(foer.poster.map((p) => p.id))
+  const etterPoster = new Set(etter.poster.map((p) => p.id))
+
+  // Linjer endringen la til: ut igjen, uansett hvor de er nå.
+  for (const post of neste.poster) {
+    post.linjer = post.linjer.filter((l) => foerLinjer.has(l.id) || !etterLinjer.has(l.id))
+  }
+  // Poster endringen la til: ut igjen hvis de er tomme (har brukeren lagt noe i dem siden, blir de stående).
+  neste.poster = neste.poster.filter((p) => foerPoster.has(p.id) || !etterPoster.has(p.id) || p.linjer.length > 0)
+
+  // Poster endringen slettet: tilbake, med linjene sine.
+  for (const post of foer.poster) {
+    if (!etterPoster.has(post.id) && !neste.poster.some((p) => p.id === post.id)) {
+      neste.poster.push({ ...post, linjer: [...post.linjer] })
+    }
+  }
+  // Postnavn endringen byttet.
+  for (const post of foer.poster) {
+    const forEtter = etter.poster.find((p) => p.id === post.id)
+    const iNaa = neste.poster.find((p) => p.id === post.id)
+    if (forEtter && iNaa && forEtter.navn !== post.navn) iNaa.navn = post.navn
+  }
+
+  for (const post of foer.poster) {
+    if (!etterPoster.has(post.id)) continue // hele posten er lagt tilbake over
+    post.linjer.forEach((linje, indeks) => {
+      const iEtter = finnLinje(etter, linje.id)
+      const iNaa = finnLinje(neste, linje.id)
+      if (!iEtter) {
+        // Linja ble slettet: tilbake på plassen sin, hvis posten finnes og linja ikke alt er der.
+        const maal = neste.poster.find((p) => p.id === post.id)
+        if (maal && !iNaa) maal.linjer.splice(Math.min(indeks, maal.linjer.length), 0, linje)
+        return
+      }
+      if (!iNaa) return // slettet etterpå: la den være slettet
+      // Bare feltene endringen rørte, får tilbake verdien de hadde.
+      const patch: Record<string, unknown> = {}
+      for (const felt of new Set([...Object.keys(linje), ...Object.keys(iEtter.linje)])) {
+        const k = felt as keyof Linje
+        if (!lik(linje[k], iEtter.linje[k])) patch[felt] = linje[k]
+      }
+      const linjeNaa = Object.keys(patch).length ? ({ ...iNaa.linje, ...patch } as Linje) : iNaa.linje
+      // Flyttet til en annen post: tilbake dit den var.
+      if (iEtter.post.id !== post.id) {
+        const maal = neste.poster.find((p) => p.id === post.id)
+        if (maal) {
+          iNaa.post.linjer.splice(iNaa.indeks, 1)
+          maal.linjer.splice(Math.min(indeks, maal.linjer.length), 0, linjeNaa)
+          return
+        }
+      }
+      iNaa.post.linjer[iNaa.indeks] = linjeNaa
+    })
+  }
+  return neste
+}

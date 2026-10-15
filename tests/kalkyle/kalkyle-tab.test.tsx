@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { KalkyleTab } from "../../app/prosjekter/[id]/kalkyle-tab"
+import { Prosjektside } from "./oppsett"
 
 // Beløpene skrives med hardt mellomrom; Testing Library normaliserer det.
 beforeEach(() => {
@@ -32,7 +33,7 @@ function postITabell(navn: string) {
 
 describe("Kalkyle-fanen", () => {
   it("viser ett hovedtall: kunden betaler 113 437 kr, du sitter igjen med 19 459 kr", () => {
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     expect(sammendrag().getByText("113 437 kr")).toBeTruthy()
     expect(sammendrag().getByText("19 459 kr")).toBeTruthy()
     expect(sammendrag().getByText("21,4 % margin")).toBeTruthy()
@@ -44,7 +45,7 @@ describe("Kalkyle-fanen", () => {
   })
 
   it("prisingen ligger bak «Endre», og timeprisen slår ut live", () => {
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     expect(screen.queryByRole("button", { name: "Øk timepris" })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Endre" }))
     fireEvent.click(screen.getByRole("button", { name: "Øk timepris" }))
@@ -53,7 +54,7 @@ describe("Kalkyle-fanen", () => {
   })
 
   it("postene vises som i tilbudsgeneratoren, og kan skjules", () => {
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     // PC-tabellen og mobilkortene ligger begge i DOM-en (CSS bytter mellom dem).
     expect(screen.getAllByLabelText("Beskrivelse for Rigg og drift").length).toBe(1)
     const skjul = screen.getAllByRole("button", { name: "Skjul Riving og rigg" })
@@ -64,7 +65,7 @@ describe("Kalkyle-fanen", () => {
   })
 
   it("redigering rett i cellen slår ut i sammendraget", () => {
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     const antall = screen.getByLabelText("Antall for Riving")
     fireEvent.focus(antall)
     fireEvent.change(antall, { target: { value: "13" } })
@@ -73,7 +74,7 @@ describe("Kalkyle-fanen", () => {
   })
 
   it("«+ Timer» på mobil åpner arket for den nye linjen", () => {
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     const mobilKort = screen.getAllByRole("button", { name: "Skjul Riving og rigg" })[1].parentElement as HTMLElement
     fireEvent.click(within(mobilKort).getByRole("button", { name: "Timer" }))
     const ark = screen.getByRole("dialog")
@@ -101,7 +102,7 @@ describe("Kalkyle-fanen", () => {
       )
     })
     vi.stubGlobal("fetch", fetchMock)
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     expect(screen.queryByRole("complementary", { name: "Proanbud SmartKI" })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Endre med SmartKI" }))
     const panel = screen.getByRole("complementary", { name: "Proanbud SmartKI" })
@@ -130,7 +131,7 @@ describe("Kalkyle-fanen", () => {
         return new Response(JSON.stringify({ error: "Du har nådd maksgrensen for KI denne perioden." }), { status: 429 })
       })
     )
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     fireEvent.click(screen.getByRole("button", { name: "Endre med SmartKI" }))
     const panel = screen.getByRole("complementary", { name: "Proanbud SmartKI" })
     const felt = within(panel).getByLabelText("Skriv hva du vil endre i kalkylen")
@@ -142,7 +143,7 @@ describe("Kalkyle-fanen", () => {
   })
 
   it("typen kan endres både i tabellen og i arket", () => {
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     expect((screen.getByLabelText("Type for Veggfliser") as HTMLSelectElement).value).toBe("materiell")
     fireEvent.click(screen.getByRole("button", { name: "Åpne Veggfliser" }))
     const ark = screen.getByRole("dialog")
@@ -153,7 +154,7 @@ describe("Kalkyle-fanen", () => {
   })
 
   it("påslaget kan endres per linje i tabellen", () => {
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     const paslag = screen.getByLabelText("Påslag for Veggfliser")
     fireEvent.focus(paslag)
     fireEvent.change(paslag, { target: { value: "25" } })
@@ -177,7 +178,7 @@ describe("Kalkyle-fanen", () => {
         )
       })
     )
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     fireEvent.click(postITabell("Membran og fliser").leggTil.getByRole("button", { name: "Materiell" }))
     const dialog = screen.getByRole("dialog")
     fireEvent.click(await within(dialog).findByRole("button", { name: /Trinnlydplate 3 mm/ }))
@@ -189,7 +190,7 @@ describe("Kalkyle-fanen", () => {
   })
 
   it("+ Blank legger inn en tom linje", () => {
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     const for_ = postITabell("Rør").linjer.getAllByLabelText(/^Beskrivelse for/).length
     fireEvent.click(postITabell("Rør").leggTil.getByRole("button", { name: "Blank" }))
     expect(postITabell("Rør").linjer.getAllByLabelText(/^Beskrivelse for/).length).toBe(for_ + 1)
@@ -197,7 +198,7 @@ describe("Kalkyle-fanen", () => {
   })
 
   it("en timelinje kan få sin egen timepris fra Timepriser", () => {
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     const velger = screen.getByLabelText("Timepris for Riving") as HTMLSelectElement
     expect(velger.value).toBe("")
     // Eksempel-timeprisene brukes når bedriften ikke har egne (henting feiler i testen).
@@ -207,7 +208,7 @@ describe("Kalkyle-fanen", () => {
   })
 
   it("«+ Fast jobb» henter fra Lagrede jobber og legger jobben inn i posten", () => {
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     fireEvent.click(postITabell("Innredning").leggTil.getByRole("button", { name: "Fast jobb" }))
     const dialog = screen.getByRole("dialog")
     expect(within(dialog).getByText("Legg til fast jobb")).toBeTruthy()
@@ -219,7 +220,7 @@ describe("Kalkyle-fanen", () => {
   })
 
   it("«Hent fra mal» viser startskjermen, og «Lag kalkylen» bruker valgt størrelse", () => {
-    render(<KalkyleTab />)
+    render(<Prosjektside><KalkyleTab /></Prosjektside>)
     fireEvent.click(screen.getByRole("button", { name: "Hent fra mal" }))
     expect(screen.getByText("Hva skal du lage kalkyle for?")).toBeTruthy()
     expect(screen.getByText("Hvor stort er badet?")).toBeTruthy()

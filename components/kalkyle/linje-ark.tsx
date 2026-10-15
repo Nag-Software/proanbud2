@@ -30,7 +30,9 @@ const TYPE_VALG = (Object.keys(LINJE_TYPE) as LinjeType[]).map((t) => ({ verdi: 
  * mengde og pris på få linjer, og «Kunden betaler / Din kostnad» nederst.
  */
 export function LinjeArk({ valgt, onLukk }: LinjeArkProps) {
-  const { kalkyle, oppdaterLinje, fjernLinje, settKalkyle } = useKalkyle()
+  const { kalkyle, oppdaterLinje, fjernLinje, medAngre, tilbakestill } = useKalkyle()
+  // Kalkylen da arket ble åpnet, for «Avbryt». Arket monteres på nytt per linje (key i kalkyle-tab).
+  const [vedApning] = React.useState(() => kalkyle)
   const post = valgt ? kalkyle?.poster.find((p) => p.id === valgt.postId) : undefined
   const linje = valgt ? post?.linjer.find((l) => l.id === valgt.linjeId) : undefined
   const [sok, setSok] = React.useState("")
@@ -68,12 +70,9 @@ export function LinjeArk({ valgt, onLukk }: LinjeArkProps) {
   const enhet = enhetKort(linje.enhet)
 
   const slett = () => {
-    const forrige = kalkyle
-    fjernLinje(post.id, linje.id)
+    const angre = medAngre(() => fjernLinje(post.id, linje.id))
     onLukk()
-    toast(`«${linje.beskrivelse || "Linjen"}» er slettet`, {
-      action: { label: "Angre", onClick: () => settKalkyle(forrige) },
-    })
+    toast(`«${linje.beskrivelse || "Linjen"}» er slettet`, { action: { label: "Angre", onClick: angre } })
   }
 
   return (
@@ -85,6 +84,10 @@ export function LinjeArk({ valgt, onLukk }: LinjeArkProps) {
       undertittel={post.navn}
       sum={{ kunden: formatKr(r.salgEksMva), kost: formatKr(r.kost) }}
       onSlett={slett}
+      onAvbryt={() => {
+        if (vedApning) tilbakestill(vedApning.id, vedApning)
+        onLukk()
+      }}
     >
       <ArkValg label="Type" valg={TYPE_VALG} value={linje.type} onChange={(t) => oppdater(patchForType(linje, t, r))} />
 

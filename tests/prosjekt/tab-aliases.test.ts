@@ -130,6 +130,7 @@ const MED_KALKYLE: Array<[string, string | null, { tab: string; del?: string }]>
   ["tilleggsarbeid", null, { tab: "faktura", del: "tilleggsarbeid" }],
   ["etterfakturering", null, { tab: "faktura", del: "tilleggsarbeid" }],
   ["oppgaver", null, { tab: "oppgaver" }],
+  ["okonomi", "personer", { tab: "etterkalkyle", del: "personer" }],
 ]
 
 describe("prosjektfane-lenker med kalkylemodulen", () => {

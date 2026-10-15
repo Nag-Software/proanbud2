@@ -104,6 +104,61 @@ describe("Tilbudsgeneratoren i den felles linjetabellen", () => {
     expect(within(rad).queryByText(/rabatt/)).toBeNull()
   })
 
+  it("Esc i kategorinavnet forkaster det som er skrevet", () => {
+    const onCategoryChange = vi.fn()
+    render(<Oppsett onCategoryChange={onCategoryChange} />)
+    const felt = screen.getAllByLabelText("Navn på kategorien")[1] as HTMLInputElement
+    fireEvent.focus(felt)
+    fireEvent.change(felt, { target: { value: "Rør" } })
+    fireEvent.keyDown(felt, { key: "Escape" })
+    fireEvent.blur(felt)
+    expect(onCategoryChange).not.toHaveBeenCalled()
+    expect(screen.getByTestId("titler").textContent).toContain("Rørlegger og elektro:Rørlegger")
+  })
+
+  it("enheten lagres når feltet forlates: «tim» underveis sletter ikke kostprisen fra timeprisen", () => {
+    const med = [{ ...LINJER[0], hourlyRateId: "tp-1", costRateNok: 480 }, ...LINJER.slice(1)]
+    const sett: OfferLineItem[][] = []
+    function Spion() {
+      const [items, setItems] = React.useState(med)
+      return (
+        <ConfirmProvider>
+          <TooltipProvider>
+            <TilbudLinjetabell
+              items={items}
+              onItemsChange={(n) => {
+                sett.push(n)
+                setItems(n)
+              }}
+              supplierSuggestions={[]}
+            />
+          </TooltipProvider>
+        </ConfirmProvider>
+      )
+    }
+    render(<Spion />)
+    const enhet = screen.getByLabelText("Enhet for Riving av eksisterende bad") as HTMLInputElement
+    fireEvent.focus(enhet)
+    fireEvent.change(enhet, { target: { value: "tim" } })
+    fireEvent.change(enhet, { target: { value: "timer" } })
+    expect(sett).toHaveLength(0)
+    fireEvent.blur(enhet)
+    // Samme enhet som før: ingenting å lagre, og kostprisen står.
+    expect(sett).toHaveLength(0)
+    expect((screen.getByLabelText("Type for Riving av eksisterende bad") as HTMLSelectElement).value).toBe("timer")
+  })
+
+  it("Avbryt i arket legger linja tilbake slik den var", () => {
+    render(<Oppsett />)
+    fireEvent.click(screen.getByRole("button", { name: "Åpne Montering av toalett" }))
+    const ark = within(screen.getByRole("dialog"))
+    fireEvent.change(ark.getByLabelText("Rabatt til kunden"), { target: { value: "0" } })
+    fireEvent.change(ark.getByLabelText("Beskrivelse"), { target: { value: "Noe annet" } })
+    fireEvent.click(ark.getByRole("button", { name: "Avbryt" }))
+    const rad = screen.getByLabelText("Beskrivelse for Montering av toalett").closest("tr") as HTMLElement
+    expect(within(rad).getByText("−10 % rabatt")).toBeTruthy()
+  })
+
   it("tilbudLinjeType: timer fra enheten, fast jobb fra Lagrede jobber, ellers materiell", () => {
     expect(tilbudLinjeType(LINJER[0])).toBe("timer")
     expect(tilbudLinjeType(LINJER[1])).toBe("materiell")

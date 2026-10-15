@@ -196,8 +196,11 @@ export function ProjectTabsShell({ tabs, defaultTab, header, children }: Project
 
   const navigate = React.useCallback(
     (target: string, del?: string | null) => {
-      const resolved = resolveProjectTabParam(target, null, null, null, { kalkyle: KALKYLE_ENABLED }) ?? { tab: target }
-      const nextDel = del !== undefined ? del : (resolved.del ?? null)
+      // Stedet sendes med inn: med kalkylemodulen avgjør det hvilken fane gamle
+      // Økonomi-mål havner i («okonomi» + «tilleggsarbeid» → Faktura).
+      const resolved =
+        resolveProjectTabParam(target, null, null, del ?? null, { kalkyle: KALKYLE_ENABLED }) ?? { tab: target }
+      const nextDel = del === undefined ? (resolved.del ?? null) : del === null ? null : (resolved.del ?? null)
       if (nextDel === PEOPLE_DEL) {
         setPeopleOpen(true)
         return

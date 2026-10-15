@@ -255,3 +255,106 @@ describe("proposeWithRepair", () => {
     expect(m.kall).toHaveLength(1)
   })
 })
+
+describe("SmartKI: nye poster får egne id-er", () => {
+  const nyPostMedLinje = (navn: string, linje: string) =>
+    parseSmartkiSvar(
+      JSON.stringify({
+        svar: `Legger til ${navn}.`,
+        endringer: [
+          { type: "nyPost", id: "ny-1", navn },
+          { type: "leggTil", postId: "ny-1", linje: { beskrivelse: linje, type: "materiell", antall: 1, enhet: "stk", innpris: 1000 } },
+        ],
+      })
+    )
+
+  it("to forslag på rad med «ny-1»: den andre posten får linja si, ikke den første", () => {
+    const forste = nyPostMedLinje("Varmekabler", "Varmekabelmatte")
+    if (!forste.ok) throw new Error("parse")
+    const k1 = brukEndringer(MOCK_KALKYLE, tilKalkyleEndringer(forste.value.endringer, MOCK_KALKYLE, kontekst).endringer).kalkyle
+
+    const andre = nyPostMedLinje("Ventilasjon", "Vifte")
+    if (!andre.ok) throw new Error("parse")
+    const { endringer, avvist } = tilKalkyleEndringer(andre.value.endringer, k1, kontekst)
+    expect(avvist).toBe(0)
+    const k2 = brukEndringer(k1, endringer).kalkyle
+
+    const post = (navn: string) => k2.poster.find((p) => p.navn === navn)!
+    expect(post("Varmekabler").linjer.map((l) => l.beskrivelse)).toEqual(["Varmekabelmatte"])
+    expect(post("Ventilasjon").linjer.map((l) => l.beskrivelse)).toEqual(["Vifte"])
+    expect(new Set(k2.poster.map((p) => p.id)).size).toBe(k2.poster.length)
+  })
+
+  it("linjer som står før den nye posten i svaret, havner likevel i den", () => {
+    const r = parseSmartkiSvar(
+      JSON.stringify({
+        svar: "Ok.",
+        endringer: [
+          { type: "leggTil", postId: "riving", linje: { beskrivelse: "Vifte", type: "materiell", antall: 1, enhet: "stk", innpris: 900 } },
+          { type: "nyPost", id: "riving", navn: "Ventilasjon" },
+        ],
+      })
+    )
+    if (!r.ok) throw new Error("parse")
+    const k = brukEndringer(MOCK_KALKYLE, tilKalkyleEndringer(r.value.endringer, MOCK_KALKYLE, kontekst).endringer).kalkyle
+    // «riving» finnes fra før: den nye posten får en annen id, og linja følger den nye posten.
+    expect(k.poster.find((p) => p.navn === "Ventilasjon")!.linjer.map((l) => l.beskrivelse)).toEqual(["Vifte"])
+    expect(k.poster.find((p) => p.id === "riving")!.linjer.some((l) => l.beskrivelse === "Vifte")).toBe(false)
+  })
+})
+
+describe("SmartKI: grensene følger editoren", () => {
+  it("lange prosjektnavn og varenavn forkortes i stedet for å avvise forespørselen", () => {
+    const langtNavn = "ROBUST VÅTROMSMEMBRAN 15KG – ".repeat(10)
+    const kalkyle: Kalkyle = {
+      ...MOCK_KALKYLE,
+      poster: MOCK_KALKYLE.poster.map((p, i) => (i === 0 ? { ...p, linjer: [{ ...p.linjer[0], beskrivelse: langtNavn }] } : p)),
+    }
+    const r = smartkiForesporselSkjema.safeParse({
+      generationId: crypto.randomUUID(),
+      sporsmal: "Hva koster dette?",
+      prosjektNavn: "Totalrenovering av bad og vaskerom i underetasjen, Fjellveien 12, 0123 Oslo – ".repeat(3),
+      kalkyle,
+    })
+    expect(r.success).toBe(true)
+    if (!r.success) return
+    expect(r.data.kalkyle.poster[0].linjer[0].beskrivelse.length).toBeLessThanOrEqual(SMARTKI_GRENSER.tekst)
+    expect(r.data.prosjektNavn!.length).toBeLessThanOrEqual(SMARTKI_GRENSER.tekst)
+  })
+
+  it("en kalkyle på 40 poster med 100 linjer i én post er innenfor", () => {
+    const kalkyle: Kalkyle = {
+      ...MOCK_KALKYLE,
+      poster: Array.from({ length: 40 }, (_, p) => ({
+        id: `p${p}`,
+        navn: `Post ${p}`,
+        rekkefolge: p,
+        linjer: Array.from({ length: p === 0 ? 100 : 2 }, (_, l) => ({
+          id: `p${p}-l${l}`,
+          beskrivelse: `Linje ${l}`,
+          type: "materiell" as const,
+          antall: 1,
+          enhet: "stk" as const,
+          innpris: 100,
+        })),
+      })),
+    }
+    expect(smartkiForesporselSkjema.safeParse({ generationId: crypto.randomUUID(), sporsmal: "Sjekk", kalkyle }).success).toBe(true)
+  })
+
+  it("tall over taket fra modellen droppes, så neste forespørsel ikke avvises", () => {
+    const r = parseSmartkiSvar(
+      JSON.stringify({
+        svar: "Ok.",
+        endringer: [
+          { type: "endre", postId: "membran", linjeId: "membran-veggfliser", patch: { paslag: 2500 } },
+          { type: "prising", felt: "timesats", verdi: 5e9 },
+          { type: "endre", postId: "membran", linjeId: "membran-veggfliser", patch: { paslag: 20 } },
+        ],
+      })
+    )
+    if (!r.ok) throw new Error("parse")
+    expect(r.value.endringer).toHaveLength(1)
+    expect(r.value.forkastet).toBe(2)
+  })
+})

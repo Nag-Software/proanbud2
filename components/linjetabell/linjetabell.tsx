@@ -55,6 +55,9 @@ export function CelleTekst({
   lagreVedBlur?: boolean
 }) {
   const [utkast, setUtkast] = React.useState<string | null>(null)
+  // Esc: blur kjører med det gamle utkastet i samme tikk, så avbrytelsen må
+  // ligge i en ref – ellers ble det man skrev lagret i stedet for forkastet.
+  const avbryt = React.useRef(false)
   const vist = lagreVedBlur ? (utkast ?? value) : value
   return (
     <input
@@ -64,15 +67,17 @@ export function CelleTekst({
       onFocus={() => lagreVedBlur && setUtkast(value)}
       onChange={(e) => (lagreVedBlur ? setUtkast(e.target.value) : onChange(e.target.value))}
       onBlur={() => {
-        if (!lagreVedBlur || utkast === null) return
-        if (utkast !== value) onChange(utkast)
+        if (!lagreVedBlur) return
+        const forkast = avbryt.current
+        avbryt.current = false
+        if (!forkast && utkast !== null && utkast !== value) onChange(utkast)
         setUtkast(null)
       }}
       onKeyDown={(e) => {
         if (!lagreVedBlur) return
         if (e.key === "Enter") e.currentTarget.blur()
         if (e.key === "Escape") {
-          setUtkast(value)
+          avbryt.current = true
           e.currentTarget.blur()
         }
       }}

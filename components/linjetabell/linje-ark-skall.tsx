@@ -20,6 +20,7 @@ export function LinjeArkSkall({
   undertittel,
   sum,
   onSlett,
+  onAvbryt,
   children,
   onOpenAutoFocus,
 }: {
@@ -31,6 +32,8 @@ export function LinjeArkSkall({
   /** «Kunden betaler» og (valgfritt) «Din kostnad», ferdig formatert. */
   sum: { kunden: string; kost?: string; merknad?: string }
   onSlett: () => void
+  /** Forkaster alt som er endret siden arket ble åpnet, og lukker. */
+  onAvbryt?: () => void
   children: React.ReactNode
   onOpenAutoFocus?: (e: Event) => void
 }) {
@@ -70,6 +73,11 @@ export function LinjeArkSkall({
           <Button type="button" variant="ghost" className="text-destructive pointer-coarse:h-11" onClick={onSlett}>
             Slett linje
           </Button>
+          {onAvbryt && (
+            <Button type="button" variant="outline" className="ml-auto pointer-coarse:h-11" onClick={onAvbryt}>
+              Avbryt
+            </Button>
+          )}
           <Button type="button" className="flex-1 pointer-coarse:h-11" onClick={onLukk}>
             Ferdig
           </Button>

@@ -14,12 +14,13 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+import { toast } from "sonner"
+
 import { Button } from "@/components/ui/button"
 import { beregnKalkyle } from "@/lib/kalkyle/beregn"
 import { SMARTKI_EKSEMPLER } from "@/lib/kalkyle/smartki"
 import { beskrivEndringer, brukEndringer, type EndringBeskrivelse, type KalkyleEndring } from "@/lib/kalkyle/endringer"
 import { formatKr, formatKrMedFortegn } from "@/lib/kalkyle/format"
-import type { Kalkyle } from "@/lib/kalkyle/types"
 import { cn } from "@/lib/utils"
 import { useKalkyle } from "./kalkyle-provider"
 import { SMARTKI_NAVN, SmartKIFlis, SmartKIMerke } from "./smartki-merke"
@@ -36,8 +37,10 @@ type Melding =
       etter: number
       eksempler: string[]
       status: "venter" | "lagtInn" | "avvist"
-      /** Kalkylen før «Legg inn», så «Angre» bare er å sette den tilbake. */
-      forrige: Kalkyle | null
+      /** Kalkylen forslaget ble laget for. «Legg inn» endrer den, også etter bytte av kalkyle. */
+      kalkyleId: string
+      /** Etter «Legg inn»: reverserer akkurat dette forslaget, ikke senere endringer. */
+      angre: (() => void) | null
       /** Svaret er en feilmelding (nett, kvote, tilgang), ikke fra modellen. */
       feil?: boolean
     }
@@ -84,7 +87,7 @@ async function spørSmartki(body: unknown): Promise<Required<Pick<SmartkiRespons
  * er et forslag med sum før og etter, og først «Legg inn» endrer kalkylen.
  */
 export function KalkyleChat({ apen, onApenChange, foresporsel, prosjektNavn }: KalkyleChatProps) {
-  const { kalkyle, settKalkyle, endre, merk } = useKalkyle()
+  const { kalkyle, endrePaa, merk } = useKalkyle()
   const [meldinger, setMeldinger] = React.useState<Melding[]>([])
   const [utkast, setUtkast] = React.useState("")
   const [skriver, setSkriver] = React.useState(false)
@@ -117,10 +120,12 @@ export function KalkyleChat({ apen, onApenChange, foresporsel, prosjektNavn }: K
       setSkriver(true)
       onApenChange(true)
 
-      const nyMelding = (felt: Omit<Extract<Melding, { fra: "proanbud" }>, "id" | "fra" | "status" | "forrige">) => {
+      const nyMelding = (
+        felt: Omit<Extract<Melding, { fra: "proanbud" }>, "id" | "fra" | "status" | "kalkyleId" | "angre">
+      ) => {
         teller.current += 1
         const id = teller.current
-        setMeldinger((m) => [...m, { id, fra: "proanbud", status: "venter", forrige: null, ...felt }])
+        setMeldinger((m) => [...m, { id, fra: "proanbud", status: "venter", kalkyleId: naa.id, angre: null, ...felt }])
       }
 
       try {
@@ -179,15 +184,18 @@ export function KalkyleChat({ apen, onApenChange, foresporsel, prosjektNavn }: K
     setMeldinger((m) => m.map((x) => (x.id === id && x.fra === "proanbud" ? { ...x, ...patch } : x)))
 
   const leggInn = (m: Extract<Melding, { fra: "proanbud" }>) => {
-    const forrige = kalkyleRef.current
-    const berort = endre(m.endringer)
-    merk(berort)
-    settStatus(m.id, { status: "lagtInn", forrige })
+    const r = endrePaa(m.kalkyleId, m.endringer)
+    if (!r) {
+      toast.error("Kalkylen forslaget gjaldt, finnes ikke lenger.")
+      return
+    }
+    merk(r.berort)
+    settStatus(m.id, { status: "lagtInn", angre: r.angre })
   }
 
   const angre = (m: Extract<Melding, { fra: "proanbud" }>) => {
-    if (m.forrige) settKalkyle(m.forrige)
-    settStatus(m.id, { status: "avvist", forrige: null })
+    m.angre?.()
+    settStatus(m.id, { status: "avvist", angre: null })
   }
 
   return (
@@ -397,7 +405,7 @@ function Forslag({
             <CheckIcon aria-hidden className="size-4" />
             Lagt inn
           </span>
-          {melding.forrige && (
+          {melding.angre && (
             <Button type="button" variant="ghost" className="h-10 rounded-full" onClick={onAngre}>
               Angre
             </Button>

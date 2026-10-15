@@ -15,6 +15,7 @@ import { LinjeArk } from "@/components/kalkyle/linje-ark"
 import { KalkyleVelger } from "@/components/kalkyle/kalkyle-velger"
 import { SmartKIIkon } from "@/components/kalkyle/smartki-merke"
 import {
+  TilbudPaProsjektet,
   TilbudVisning,
   type ProsjektTilbud,
   type TilbudProsjekt,
@@ -82,32 +83,40 @@ function KalkyleInnhold({ prosjekt, tilbud, firma }: Required<KalkyleTabProps>) 
 
   if (!kalkyle || visStart) {
     return (
-      <KalkyleStart
-        prosjektId={kalkyle?.prosjektId ?? MOCK_KALKYLE.prosjektId}
-        startMalId={fraMal?.malId}
-        startVerdi={fraMal?.verdi}
-        onAvbryt={
-          kalkyle
-            ? () => {
-                ryddMalParam()
-                setVisStart(null)
-              }
-            : undefined
-        }
-        onFerdig={(k) => {
-          ryddMalParam()
-          if (visStart === "erstatt" && kalkyle) settKalkyle({ ...k, id: kalkyle.id })
-          else leggTilKalkyle(k)
-          setVisStart(null)
-        }}
-        onBeskriv={(k, tekst) => {
-          ryddMalParam()
-          if (visStart === "erstatt" && kalkyle) settKalkyle({ ...k, id: kalkyle.id })
-          else leggTilKalkyle(k)
-          setVisStart(null)
-          setForesporsel({ tekst, id: Date.now() })
-        }}
-      />
+      <div className="flex flex-col gap-6">
+        <KalkyleStart
+          prosjektId={prosjekt.id}
+          startMalId={fraMal?.malId}
+          startVerdi={fraMal?.verdi}
+          onAvbryt={
+            kalkyle
+              ? () => {
+                  ryddMalParam()
+                  setVisStart(null)
+                }
+              : undefined
+          }
+          onFerdig={(k) => {
+            ryddMalParam()
+            if (visStart === "erstatt" && kalkyle) settKalkyle({ ...k, id: kalkyle.id })
+            else leggTilKalkyle(k)
+            setVisStart(null)
+          }}
+          onBeskriv={(k, tekst) => {
+            ryddMalParam()
+            if (visStart === "erstatt" && kalkyle) settKalkyle({ ...k, id: kalkyle.id })
+            else leggTilKalkyle(k)
+            setVisStart(null)
+            setForesporsel({ tekst, id: Date.now() })
+          }}
+        />
+        {/* Uten kalkyle vises tilbudene på prosjektet her (Økonomi er borte bak flagget). */}
+        {!kalkyle && (
+          <div className="mx-auto w-full max-w-2xl">
+            <TilbudPaProsjektet prosjektId={prosjekt.id} tilbud={tilbud} />
+          </div>
+        )}
+      </div>
     )
   }
 
@@ -184,7 +193,7 @@ function KalkyleInnhold({ prosjekt, tilbud, firma }: Required<KalkyleTabProps>) 
         </div>
       )}
 
-      <LinjeArk valgt={ark} onLukk={() => setArk(null)} />
+      <LinjeArk key={ark?.linjeId ?? "lukket"} valgt={ark} onLukk={() => setArk(null)} />
       <KalkyleChat apen={chatApen} onApenChange={setChatApen} foresporsel={foresporsel} prosjektNavn={prosjekt.navn} />
     </div>
   )

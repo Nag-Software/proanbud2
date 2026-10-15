@@ -326,11 +326,16 @@ export const TilbudLinjetabell = React.forwardRef<NewOfferItemsTableHandle, Tilb
 
       {apen && (
         <TilbudLinjeArk
+          key={apen.id}
           item={apen}
           leverandorer={supplierSuggestions}
           fokusNavn={apnet?.ny ?? false}
           onEndre={(patch) => oppdater(apen.id, patch)}
           onLukk={() => setApnet(null)}
+          onAvbryt={(original) => {
+            onItemsChange(sist.current.items.map((i) => (i.id === original.id ? original : i)))
+            setApnet(null)
+          }}
           onSlett={() => slett(apen)}
         />
       )}
@@ -405,12 +410,15 @@ function TilbudRad({
       }
       antall={<CelleTall label={`Antall for ${navn}`} value={item.quantity} onChange={(v) => onEndre({ quantity: v })} className="w-16" />}
       enhet={
+        // Typen og timeprisens kostpris følger enheten: lagres først når feltet
+        // forlates, ellers slettet «tim» (på vei fra «timer») kostprisen for godt.
         <CelleTekst
           label={`Enhet for ${navn}`}
           value={item.unit}
           onChange={(v) => onEndre({ unit: v })}
           placeholder="stk"
           size={Math.max(3, item.unit.length + 1)}
+          lagreVedBlur
           className="w-auto text-muted-foreground"
         />
       }
@@ -452,6 +460,7 @@ function TilbudLinjeArk({
   onEndre,
   onLukk,
   onSlett,
+  onAvbryt,
 }: {
   item: OfferLineItem
   leverandorer: string[]
@@ -459,8 +468,13 @@ function TilbudLinjeArk({
   onEndre: (patch: Partial<OfferLineItem>) => void
   onLukk: () => void
   onSlett: () => void
+  /** Legger tilbake linja slik den var da arket ble åpnet. */
+  onAvbryt: (original: OfferLineItem) => void
 }) {
   const type = tilbudLinjeType(item)
+  const [original] = React.useState(item)
+  // Enheten styrer typen og kostprisen fra timeprisen: lagres når feltet forlates.
+  const [enhet, setEnhet] = React.useState<string | null>(null)
   // Tallfeltene holder det brukeren skriver («2,»); tallet lagres fortløpende.
   const [tekst, setTekst] = React.useState(() => ({
     antall: formatTall(item.quantity),
@@ -486,6 +500,7 @@ function TilbudLinjeArk({
         merknad: `Eks. mva · ${formatNok(calculateLineItemUnitPriceWithMarkupBeforeDiscount(item))} per ${per} før rabatt`,
       }}
       onSlett={onSlett}
+      onAvbryt={() => onAvbryt(original)}
       onOpenAutoFocus={(e) => {
         if (fokusNavn) return
         // Fokus på arket, ikke i et felt: tastaturet på mobil blir nede.
@@ -513,8 +528,16 @@ function TilbudLinjeArk({
           <input
             id="tilbudslinje-enhet"
             list="tilbudslinje-enheter"
-            value={item.unit}
-            onChange={(e) => onEndre({ unit: e.target.value })}
+            value={enhet ?? item.unit}
+            onFocus={() => setEnhet(item.unit)}
+            onChange={(e) => setEnhet(e.target.value)}
+            onBlur={() => {
+              if (enhet !== null && enhet !== item.unit) onEndre({ unit: enhet })
+              setEnhet(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur()
+            }}
             placeholder="stk"
             className={arkInput}
           />

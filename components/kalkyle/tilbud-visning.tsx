@@ -323,7 +323,7 @@ function Dokument({
   )
 }
 
-function TilbudPaProsjektet({ prosjektId, tilbud }: { prosjektId: string; tilbud: ProsjektTilbud[] }) {
+export function TilbudPaProsjektet({ prosjektId, tilbud }: { prosjektId: string; tilbud: ProsjektTilbud[] }) {
   return (
     <section aria-label="Tilbud på prosjektet" className="rounded-lg border bg-card p-3.5 shadow-[var(--shadow-surface)]">
       <div className="mb-1.5 flex items-center justify-between gap-2">

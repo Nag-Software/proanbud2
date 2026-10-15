@@ -76,14 +76,35 @@ describe("POST /api/kalkyle/smartki", () => {
     expect(bruker.timepriser[0]).toMatchObject({ timeprisId: "tp-1", navn: "Tømrer" })
     expect(bruker.lagredeJobber[0]).toMatchObject({ lagretJobbId: "j-1", fastpris: 3500 })
     expect(recordUsageEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ eventType: "ai_tilbud", idempotencyKey: `ai_tilbud_kalkyle:${gyldig.generationId}` })
+      expect.objectContaining({
+        eventType: "ai_tilbud",
+        idempotencyKey: expect.stringMatching(/^ai_tilbud_kalkyle:[0-9a-f-]{36}$/),
+        metadata: expect.objectContaining({ generation_id: gyldig.generationId }),
+      })
     )
+  })
+
+  it("samme generationId to ganger teller to ganger mot kvoten", async () => {
+    openaiFetch.mockImplementation(async () => modellSvar({ svar: "Ok." }))
+    await post(gyldig)
+    await post(gyldig)
+    const nokler = recordUsageEvent.mock.calls.map(([arg]) => (arg as { idempotencyKey: string }).idempotencyKey)
+    expect(nokler).toHaveLength(2)
+    expect(new Set(nokler).size).toBe(2)
   })
 
   it("spørsmål uten endringer er et gyldig svar", async () => {
     openaiFetch.mockResolvedValue(modellSvar({ svar: "Anslagsvis i nedre del av vanlig spenn for et bad på 6 m²." }))
     const data = await (await post({ ...gyldig, sporsmal: "Er prisen markedsdyktig?" })).json()
     expect(data.endringer).toEqual([])
+  })
+
+  it("en for stor kalkyle får en melding som sier det, ikke «skriv kort»", async () => {
+    const stor = { ...MOCK_KALKYLE, poster: Array.from({ length: 61 }, (_, i) => ({ id: `p${i}`, navn: "P", rekkefolge: i, linjer: [] })) }
+    const res = await post({ ...gyldig, kalkyle: stor })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain("for stor")
+    expect(openaiFetch).not.toHaveBeenCalled()
   })
 
   it("ugyldig forespørsel gir 400 uten KI-kall", async () => {

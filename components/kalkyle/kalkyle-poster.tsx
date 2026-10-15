@@ -20,7 +20,7 @@ import {
 import { paslagFor } from "@/lib/kalkyle/beregn"
 import { formatAntall, formatKr } from "@/lib/kalkyle/format"
 import { linjeFraLagretJobb, linjeFraPrisliste } from "@/lib/kalkyle/mine-priser"
-import type { Enhet, Kalkyle, Linje, LinjeType, Post, PostResultat, TimeprisValg } from "@/lib/kalkyle/types"
+import type { Enhet, Linje, LinjeType, Post, PostResultat, TimeprisValg } from "@/lib/kalkyle/types"
 import { cn } from "@/lib/utils"
 import { useKalkyle } from "./kalkyle-provider"
 import { LagretJobbVelger } from "./lagret-jobb-velger"
@@ -68,11 +68,11 @@ export function TimeprisVelger({
 }
 
 function useSlettMedAngre() {
-  const { kalkyle, settKalkyle } = useKalkyle()
+  const { medAngre } = useKalkyle()
+  // «Angre» reverserer bare slettingen, på kalkylen den skjedde i.
   return (melding: string, slett: () => void) => {
-    const forrige: Kalkyle | null = kalkyle
-    slett()
-    toast(melding, { action: { label: "Angre", onClick: () => settKalkyle(forrige) } })
+    const angre = medAngre(slett)
+    toast(melding, { action: { label: "Angre", onClick: angre } })
   }
 }
 

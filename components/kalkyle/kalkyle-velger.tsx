@@ -5,6 +5,7 @@ import { CheckIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { beregnKalkyle } from "@/lib/kalkyle/beregn"
 import { formatKr } from "@/lib/kalkyle/format"
 import { cn } from "@/lib/utils"
@@ -22,7 +23,8 @@ type KalkyleVelgerProps = {
  * er signert.
  */
 export function KalkyleVelger({ onNyKalkyle, className }: KalkyleVelgerProps) {
-  const { kalkyler, kalkyle, velgKalkyle, endreKalkyleNavn, fjernKalkyle, tilstand, settTilstand } = useKalkyle()
+  const { kalkyler, kalkyle, velgKalkyle, endreKalkyleNavn, fjernKalkyle, tilstand } = useKalkyle()
+  const confirm = useConfirm()
   const [redigerer, setRedigerer] = React.useState(false)
   const [utkast, setUtkast] = React.useState("")
 
@@ -32,12 +34,23 @@ export function KalkyleVelger({ onNyKalkyle, className }: KalkyleVelgerProps) {
     if (navn) endreKalkyleNavn(navn)
     setRedigerer(false)
   }
-  const slett = () => {
+  const slett = async () => {
     if (!kalkyle) return
-    const forrige = tilstand
-    fjernKalkyle(kalkyle.id)
+    const k = kalkyle
+    // Et signert tilbud er grunnlaget for etterkalkylen: spør før det forsvinner.
+    if (signert(k.id)) {
+      const ok = await confirm({
+        title: `Slette «${k.navn}»?`,
+        description: "Kalkylen har et signert tilbud. Tilbudet og etterkalkylen for denne kalkylen slettes også.",
+        confirmText: "Slett kalkylen",
+        cancelText: "Avbryt",
+        variant: "destructive",
+      })
+      if (!ok) return
+    }
+    const angre = fjernKalkyle(k.id)
     setRedigerer(false)
-    toast(`«${kalkyle.navn}» er slettet`, { action: { label: "Angre", onClick: () => settTilstand(forrige) } })
+    toast(`«${k.navn}» er slettet`, { action: { label: "Angre", onClick: angre } })
   }
 
   return (
@@ -71,7 +84,7 @@ export function KalkyleVelger({ onNyKalkyle, className }: KalkyleVelgerProps) {
                   size="icon"
                   className="size-8 text-muted-foreground hover:text-destructive"
                   aria-label={`Slett kalkylen ${k.navn}`}
-                  onClick={slett}
+                  onClick={() => void slett()}
                 >
                   <Trash2Icon className="size-4" />
                 </Button>

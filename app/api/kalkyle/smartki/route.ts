@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { NextResponse } from "next/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
@@ -94,7 +95,16 @@ export async function POST(request: Request) {
 
   const body = smartkiForesporselSkjema.safeParse(await request.json().catch(() => null))
   if (!body.success) {
-    return NextResponse.json({ error: "Skriv kort hva du lurer på eller vil endre." }, { status: 400 })
+    // Si hva som er galt: før fikk en for stor kalkyle «Skriv kort …», som ikke hjalp.
+    const forStor = body.error.issues.some((i) => i.path[0] === "kalkyle")
+    return NextResponse.json(
+      {
+        error: forStor
+          ? `Kalkylen er for stor for SmartKI (over ${SMARTKI_GRENSER.poster} poster eller ${SMARTKI_GRENSER.linjerPerPost} linjer i én post).`
+          : "Skriv kort hva du lurer på eller vil endre.",
+      },
+      { status: 400 }
+    )
   }
   const foresporsel = body.data
 
@@ -174,8 +184,12 @@ export async function POST(request: Request) {
     const metering = await recordUsageEvent({
       companyId,
       eventType: "ai_tilbud",
-      idempotencyKey: `ai_tilbud_kalkyle:${foresporsel.generationId}`,
+      // Nøkkelen lages her, ikke i nettleseren: en id klienten velger kunne
+      // gjenbrukes, og da telte bare første kall mot kvoten (ON CONFLICT DO NOTHING).
+      // Vi tar betalt etter at svaret er klart, så et nytt forsøk etter en feil koster ikke.
+      idempotencyKey: `ai_tilbud_kalkyle:${randomUUID()}`,
       metadata: {
+        generation_id: foresporsel.generationId,
         user_id: userId,
         mode: "kalkyle_smartki",
         model: result.reply.model || model,

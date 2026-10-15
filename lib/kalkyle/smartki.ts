@@ -25,8 +25,11 @@ export const SMARTKI_GRENSER = {
   sporsmal: 2_000,
   meldinger: 12,
   meldingTegn: 2_000,
-  poster: 30,
-  linjerPerPost: 60,
+  // Romslig nok for ekte kalkyler: over dette svarer SmartKI med en tydelig
+  // melding i stedet for å feile. Meldingen komprimeres uansett under taket.
+  poster: 60,
+  linjerPerPost: 150,
+  /** Tekster (navn, beskrivelser) forkortes til dette, de avvises ikke. */
   tekst: 160,
   /** Tak på hele brukermeldingen. Over dette komprimeres linjene. */
   meldingTegn_totalt: 120_000,
@@ -43,7 +46,12 @@ export const SMARTKI_GRENSER = {
 const tall = z.number().finite().min(0).max(100_000_000)
 const enhet = z.enum(["t", "stk", "m²", "lm", "sett", "rull", "pall", "rs"])
 const linjeType = z.enum(["arbeid", "materiell", "ue", "jobb"])
-const tekst = z.string().max(SMARTKI_GRENSER.tekst)
+// Lange navn og beskrivelser (prisfil-varer, prosjektnavn) forkortes i stedet
+// for å avvise hele forespørselen; modellen trenger ikke mer enn starten.
+const tekst = z
+  .string()
+  .max(10_000)
+  .transform((t) => kort(t, SMARTKI_GRENSER.tekst))
 
 const timeprisSkjema = z.object({
   id: z.string().max(100),
@@ -361,10 +369,11 @@ const TYPE_ALIAS: Record<string, LinjeType> = {
 }
 
 const valgfriTekst = z.preprocess((v) => (v === null || v === "" ? undefined : v), z.string().optional())
-const valgfrittTall = z.preprocess(
-  (v) => (v === null || v === "" ? undefined : typeof v === "string" ? Number(v.replace(",", ".")) : v),
-  z.number().finite().min(0).optional()
-)
+// Samme tak som forespørselen (`tall`, påslag ≤ 1000 %): et tall over taket fra
+// modellen ville ellers gjort at alle senere SmartKI-forespørsler ble avvist.
+const tilTall = (v: unknown) => (v === null || v === "" ? undefined : typeof v === "string" ? Number(v.replace(",", ".")) : v)
+const valgfrittTall = z.preprocess(tilTall, z.number().finite().min(0).max(100_000_000).optional())
+const valgfrittPaslag = z.preprocess(tilTall, z.number().finite().min(0).max(1000).optional())
 const tolerantEnhet = z.preprocess(
   (v) => (typeof v === "string" ? ENHET_ALIAS[v.trim().toLowerCase()] : v),
   enhet.optional()
@@ -380,7 +389,7 @@ const linjeFelt = {
   antall: valgfrittTall,
   enhet: tolerantEnhet,
   innpris: valgfrittTall,
-  paslag: valgfrittTall,
+  paslag: valgfrittPaslag,
   fastpris: valgfrittTall,
   timerPerEnhet: valgfrittTall,
   timeprisId: valgfriTekst,
@@ -395,7 +404,7 @@ const modellEndring = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("prising"),
     felt: z.enum(["timesats", "internKostPerTime", "paslagMateriell", "paslagUe"]),
-    verdi: z.preprocess((v) => (typeof v === "string" ? Number(v.replace(",", ".")) : v), z.number().finite().min(0)),
+    verdi: z.preprocess((v) => (typeof v === "string" ? Number(v.replace(",", ".")) : v), z.number().finite().min(0).max(100_000_000)),
   }),
 ])
 export type ModellEndring = z.infer<typeof modellEndring>
@@ -528,11 +537,41 @@ export function tilKalkyleEndringer(
     }
   })
 
-  // Prøv én og én i rekkefølge, så en ny post finnes før linjene som skal inn i den.
+  // Nye poster får alltid en id som ikke finnes fra før. Modellen gjenbruker
+  // eksempel-id-en «ny-1» og id-er fra tidligere forslag; uten dette havnet
+  // linjene «til den nye posten» i den gamle posten med samme id.
+  const brukteIder = new Set(kalkyle.poster.map((p) => p.id))
+  const nyeIder = new Map<string, string>()
+  let teller = 0
+  const unikPostId = (onsket: string | undefined) => {
+    let id = onsket && !brukteIder.has(onsket) ? onsket : undefined
+    while (!id) {
+      teller += 1
+      if (!brukteIder.has(`ny-post-${teller}`)) id = `ny-post-${teller}`
+    }
+    brukteIder.add(id)
+    return id
+  }
+  const nyePoster: KalkyleEndring[] = []
+  for (const e of kandidater) {
+    if (e.type !== "nyPost") continue
+    const id = unikPostId(e.id?.trim() || undefined)
+    if (e.id?.trim() && !nyeIder.has(e.id.trim())) nyeIder.set(e.id.trim(), id)
+    nyePoster.push({ ...e, id })
+  }
+  const ordnet: KalkyleEndring[] = [
+    // Postene først, så linjene til dem kan legges inn uansett rekkefølge i svaret.
+    ...nyePoster,
+    ...kandidater
+      .filter((e) => e.type !== "nyPost")
+      .map((e) => (e.type === "leggTil" && nyeIder.has(e.postId) ? { ...e, postId: nyeIder.get(e.postId)! } : e)),
+  ]
+
+  // Prøv én og én, så en ny post finnes før linjene som skal inn i den.
   const godkjent: KalkyleEndring[] = []
   let avvist = 0
   let naa = kalkyle
-  for (const endring of kandidater) {
+  for (const endring of ordnet) {
     const r = brukEndringer(naa, [endring])
     if (r.avvist.length) {
       avvist += 1

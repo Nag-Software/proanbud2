@@ -3,7 +3,7 @@
 import * as React from "react"
 
 import { beregnKalkyle } from "@/lib/kalkyle/beregn"
-import { brukEndringer, type KalkyleEndring } from "@/lib/kalkyle/endringer"
+import { angreEndring, brukEndringer, type KalkyleEndring } from "@/lib/kalkyle/endringer"
 import type {
   Detaljniva,
   Kalkyle,
@@ -30,6 +30,19 @@ type KalkyleContextValue = {
   settKalkyle: (kalkyle: Kalkyle | null) => void
   /** Bruker endringer (samme vei som chatten) og returnerer id-ene som ble berørt. */
   endre: (endringer: KalkyleEndring[]) => string[]
+  /**
+   * Som `endre`, men på en bestemt kalkyle (SmartKI-forslaget gjelder kalkylen det
+   * ble laget for, selv om brukeren har byttet siden). Null hvis den ikke finnes.
+   */
+  endrePaa: (kalkyleId: string, endringer: KalkyleEndring[]) => { berort: string[]; angre: () => void } | null
+  /**
+   * Kjører `gjor` på valgt kalkyle og returnerer en «Angre» som reverserer akkurat
+   * det `gjor` endret, på den samme kalkylen – ikke det som er endret etterpå, og
+   * aldri en annen kalkyle som er valgt når man trykker.
+   */
+  medAngre: (gjor: () => void) => () => void
+  /** Setter kalkylen tilbake til `foer` (f.eks. «Avbryt» i linje-arket), men bare det som er endret siden. */
+  tilbakestill: (kalkyleId: string, foer: Kalkyle) => void
   oppdaterPrising: (felt: keyof Prising, verdi: number) => void
   oppdaterLinje: (postId: string, linjeId: string, patch: Partial<Omit<Linje, "id">>) => void
   leggTilLinje: (postId: string, type: LinjeType) => string | null
@@ -49,7 +62,8 @@ type KalkyleContextValue = {
   /** Legger til en ny kalkyle på prosjektet og velger den. */
   leggTilKalkyle: (kalkyle: Kalkyle) => void
   endreKalkyleNavn: (navn: string) => void
-  fjernKalkyle: (id: string) => void
+  /** Sletter kalkylen og tilbudene dens. Returnerer en «Angre» som legger begge tilbake. */
+  fjernKalkyle: (id: string) => () => void
   tilstand: KalkyleTilstand
   settTilstand: (tilstand: KalkyleTilstand) => void
 
@@ -118,6 +132,21 @@ export function KalkyleProvider({
     [sett]
   )
 
+  /** Bytter ut kalkylen med `id` (ikke nødvendigvis den valgte). */
+  const oppdaterKalkyle = React.useCallback(
+    (id: string, fn: (k: Kalkyle) => Kalkyle) => {
+      const t = ref.current
+      if (!t.kalkyler.some((k) => k.id === id)) return
+      sett({ ...t, kalkyler: t.kalkyler.map((k) => (k.id === id ? fn(k) : k)) })
+    },
+    [sett]
+  )
+
+  const angreFor = React.useCallback(
+    (id: string, foer: Kalkyle, etter: Kalkyle) => () => oppdaterKalkyle(id, (naa) => angreEndring(foer, etter, naa)),
+    [oppdaterKalkyle]
+  )
+
   const endre = React.useCallback(
     (endringer: KalkyleEndring[]) => {
       const k = aktiv()
@@ -140,6 +169,20 @@ export function KalkyleProvider({
         setMerket(new Set())
       },
       endre,
+      endrePaa: (kalkyleId, endringer) => {
+        const foer = ref.current.kalkyler.find((k) => k.id === kalkyleId)
+        if (!foer) return null
+        const r = brukEndringer(foer, endringer)
+        oppdaterKalkyle(kalkyleId, () => r.kalkyle)
+        return { berort: r.berort, angre: angreFor(kalkyleId, foer, r.kalkyle) }
+      },
+      medAngre: (gjor) => {
+        const foer = aktiv()
+        gjor()
+        const etter = foer ? ref.current.kalkyler.find((k) => k.id === foer.id) : undefined
+        return foer && etter ? angreFor(foer.id, foer, etter) : () => {}
+      },
+      tilbakestill: (kalkyleId, foer) => oppdaterKalkyle(kalkyleId, (naa) => angreEndring(foer, naa, naa)),
       oppdaterPrising: (felt, verdi) => endre([{ type: "prising", felt, verdi }]),
       oppdaterLinje: (postId, linjeId, patch) => endre([{ type: "endre", postId, linjeId, patch }]),
       leggTilLinje: (postId, type) =>
@@ -200,12 +243,24 @@ export function KalkyleProvider({
       },
       fjernKalkyle: (id) => {
         const t = ref.current
+        const indeks = t.kalkyler.findIndex((k) => k.id === id)
+        const kalkyle = t.kalkyler[indeks]
+        const tilbud = t.tilbud.filter((o) => o.kalkyle.id === id)
         const kalkyler = t.kalkyler.filter((k) => k.id !== id)
         sett({
           kalkyler,
           aktivId: t.aktivId === id ? (kalkyler[0]?.id ?? null) : t.aktivId,
           tilbud: t.tilbud.filter((o) => o.kalkyle.id !== id),
         })
+        // Angre legger tilbake bare denne kalkylen og tilbudene dens – det som er
+        // gjort med de andre kalkylene i mellomtiden, blir stående.
+        return () => {
+          const naa = ref.current
+          if (!kalkyle || naa.kalkyler.some((k) => k.id === id)) return
+          const neste = [...naa.kalkyler]
+          neste.splice(Math.min(indeks, neste.length), 0, kalkyle)
+          sett({ kalkyler: neste, aktivId: id, tilbud: [...naa.tilbud, ...tilbud] })
+        }
       },
       tilstand,
       settTilstand: sett,
@@ -251,7 +306,7 @@ export function KalkyleProvider({
         })
       },
     }
-  }, [tilstand, merket, endre, settAktiv, sett])
+  }, [tilstand, merket, endre, settAktiv, sett, oppdaterKalkyle, angreFor])
 
   return <KalkyleContext.Provider value={value}>{children}</KalkyleContext.Provider>
 }

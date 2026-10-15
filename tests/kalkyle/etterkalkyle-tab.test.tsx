@@ -10,12 +10,13 @@ vi.mock("../../app/prosjekter/[id]/lonnsomhet-tab", () => ({
 import { EtterkalkyleTab, forklarAvvik } from "../../app/prosjekter/[id]/etterkalkyle-tab"
 import { beregnEtterkalkyle } from "../../lib/kalkyle/beregn"
 import { MOCK_FAKTISK, MOCK_SIGNERT_SNAPSHOT } from "../../lib/kalkyle/mock"
+import { Prosjektside } from "./oppsett"
 
 afterEach(cleanup)
 
 describe("Etterkalkyle-fanen", () => {
   it("nøkkeltallene: fastpris, faktisk kostnad med avvik, timer og dekningsgrad", () => {
-    render(<EtterkalkyleTab projectId="p-1" canManage profitability={null} />)
+    render(<Prosjektside><EtterkalkyleTab projectId="p-1" canManage profitability={null} /></Prosjektside>)
     expect(screen.getByText("90 750 kr")).toBeTruthy()
     expect(screen.getByText("76 360 kr")).toBeTruthy()
     expect(screen.getByText("+5 069 kr mot kalkyle (71 291 kr)")).toBeTruthy()
@@ -26,7 +27,7 @@ describe("Etterkalkyle-fanen", () => {
   })
 
   it("«Det som skjedde» viser største avvik først, med forklaring", () => {
-    render(<EtterkalkyleTab projectId="p-1" canManage profitability={null} />)
+    render(<Prosjektside><EtterkalkyleTab projectId="p-1" canManage profitability={null} /></Prosjektside>)
     const liste = within(screen.getByRole("region", { name: "Det som skjedde" }))
     const rader = liste.getAllByRole("listitem")
     expect(rader[0].textContent).toContain("Membran og fliser")
@@ -35,14 +36,14 @@ describe("Etterkalkyle-fanen", () => {
   })
 
   it("«Neste jobb blir riktigere» peker på posten med flest ekstra timer", () => {
-    render(<EtterkalkyleTab projectId="p-1" canManage profitability={null} />)
+    render(<Prosjektside><EtterkalkyleTab projectId="p-1" canManage profitability={null} /></Prosjektside>)
     const kort = within(screen.getByRole("region", { name: "Neste jobb blir riktigere" }))
     expect(kort.getByText(/«Membran og fliser» tok 37 t, ikke 28 t/)).toBeTruthy()
     expect(kort.getByRole("button", { name: /Oppdater malen/ })).toBeTruthy()
   })
 
   it("per post og de ekte kostnadene fra Økonomi er med", () => {
-    render(<EtterkalkyleTab projectId="p-1" canManage profitability={null} />)
+    render(<Prosjektside><EtterkalkyleTab projectId="p-1" canManage profitability={null} /></Prosjektside>)
     const perPost = within(screen.getByRole("region", { name: "Per post" }))
     expect(perPost.getByText("Riving og rigg")).toBeTruthy()
     expect(perPost.getByText("−480 kr")).toBeTruthy()

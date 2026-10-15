@@ -104,6 +104,9 @@ export function medKalkylemodul(resolved: ResolvedProjectTab): ResolvedProjectTa
       return { tab: "faktura", del: resolved.del }
     case "kostnader":
       return { tab: "etterkalkyle", del: "kostnader" }
+    case PEOPLE_DEL:
+      // Personpanelet åpnes uansett fane.
+      return { tab: "etterkalkyle", del: PEOPLE_DEL }
     default:
       return { tab: "etterkalkyle" }
   }
