@@ -175,6 +175,76 @@ export type BuildingModelMeta = {
   assumptions?: string[]
 }
 
+/** Filformater som kan importeres (se lib/cad/import/formats.ts). */
+export type ImportFormat =
+  | "ifc"
+  | "glb"
+  | "gltf"
+  | "obj"
+  | "fbx"
+  | "dae"
+  | "kmz"
+  | "stl"
+  | "3ds"
+  | "3mf"
+  | "ply"
+  | "wrl"
+  | "dxf"
+  | "pdf"
+  | "png"
+  | "jpg"
+
+/**
+ * En importert fil. Den gjøres IKKE om til parametriske vegger: 3D-filer vises
+ * som et eget lag i 3D (som du kan måle på), og tegninger (DXF/PDF/bilde) legges
+ * under plantegningen i riktig målestokk. Selve fila ligger i storage-bøtta
+ * `project_models`; modellen lagrer bare hvor og hvordan den vises.
+ */
+export type ModelImport = {
+  id: string
+  /** Filnavnet slik brukeren lastet det opp. */
+  name: string
+  format: ImportFormat
+  kind: "model" | "drawing"
+  storagePath: string
+  sizeBytes: number
+  visible: boolean
+  /** 0.1–1. */
+  opacity: number
+  /**
+   * Meter per enhet i fila. Modeller uten fast enhet (OBJ, STL, FBX …) kan være
+   * i mm, cm eller m. For PDF/bilde: meter per piksel i den renderte siden,
+   * satt ved kalibrering.
+   */
+  scale: number
+  /** Plassering i planet (meter) og rotasjon om loddlinjen (grader). */
+  offset: Point
+  rotationDeg: number
+  /** Høyde over etasje 0 (meter), for 3D-filer. */
+  elevation: number
+  /**
+   * Hvilken akse som er «opp» i fila. glTF, IFC, FBX og Collada er Y-opp (eller
+   * rettes av leseren); STL, 3MF og PLY fra CAD er som regel Z-opp.
+   */
+  upAxis: "y" | "z"
+  /** Tegninger hører til en etasje (vises under den). Null = første etasje. */
+  storeyId: string | null
+  /** PDF: siden som vises (1-basert). */
+  page: number
+  createdAt: string
+}
+
+/** Et punkt i 3D, i planets koordinater: x mot øst, y mot nord, z opp. Meter. */
+export type Point3 = { x: number; y: number; z: number }
+
+/** En oppmåling i 3D (to punkter). Lagres, så hele laget ser den samme. */
+export type Measurement = {
+  id: string
+  a: Point3
+  b: Point3
+  label?: string | null
+}
+
 export type BuildingModel = {
   schemaVersion: 1
   name: string
@@ -182,6 +252,10 @@ export type BuildingModel = {
   storeys: Storey[]
   materials: CadMaterial[]
   meta: BuildingModelMeta
+  /** Importerte filer (3D-modeller og tegninger). */
+  imports?: ModelImport[]
+  /** Oppmålinger i 3D. */
+  measurements?: Measurement[]
 }
 
 // ---------------------------------------------------------------------------

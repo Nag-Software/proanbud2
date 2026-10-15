@@ -2,7 +2,10 @@
 
 // MIDLERTIDIG verifiseringsside — slettes etter test.
 
+import * as React from "react"
+
 import { CadEditor } from "@/components/cad/cad-editor"
+import type { CadImportAdapter } from "@/lib/cad/import/use-import"
 import { createEmptyModel } from "@/lib/cad/schema"
 import { syncSpaces } from "@/lib/cad/rooms"
 import type { BuildingModel, Wall } from "@/lib/cad/types"
@@ -85,7 +88,32 @@ function demoModel(): BuildingModel {
   return model
 }
 
+// Importerte filer holdes i minnet (ingen storage her). `?les` viser
+// modellen slik en håndverker ser den.
+const filer = new Map<string, string>()
+const minneAdapter: CadImportAdapter = {
+  lastOpp: async (file) => {
+    const storagePath = `demo/demo/importer/${crypto.randomUUID()}-${file.name}`
+    filer.set(storagePath, URL.createObjectURL(file))
+    return { storagePath }
+  },
+  hentUrl: async (storagePath) => {
+    const url = filer.get(storagePath)
+    if (!url) throw new Error("Fant ikke fila. Den kan være slettet.")
+    return url
+  },
+  slett: async (storagePath) => {
+    const url = filer.get(storagePath)
+    if (url) URL.revokeObjectURL(url)
+    filer.delete(storagePath)
+  },
+}
+
 export default function Page() {
+  const [lesemodus, setLesemodus] = React.useState(false)
+  React.useEffect(() => {
+    setLesemodus(new URLSearchParams(window.location.search).has("les"))
+  }, [])
   return (
     <div className="p-4">
       <CadEditor
@@ -94,8 +122,10 @@ export default function Page() {
         projectName="Demohus"
         initialModel={demoModel()}
         initialRevision={1}
-        canEdit
+        key={lesemodus ? "les" : "rediger"}
+        canEdit={!lesemodus}
         referenceImageCount={0}
+        importAdapter={minneAdapter}
         onSave={async () => ({ ok: true as const, data: { revision: 2 } })}
       />
     </div>

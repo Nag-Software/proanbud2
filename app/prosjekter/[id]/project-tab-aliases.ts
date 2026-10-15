@@ -5,8 +5,9 @@
  *
  * Håndverkeren starter på «I dag» i stedet for Oversikt og ser ikke Økonomi.
  * Fanen ligger i `?tab=`, og et eventuelt sted inne i fanen i `?del=`
- * (en seksjon på Økonomi, et filter på KS og avvik eller Timer og kjøring,
- * 3D-modellen under Filer).
+ * (en seksjon på Økonomi, et filter på KS og avvik eller Timer og kjøring).
+ * 3D-modellen har egen fane (`?tab=modell`); før lå den under Filer
+ * (`?tab=filer&del=modell`), og de lenkene lander fortsatt riktig.
  *
  * Denne fila er det ENESTE stedet gamle adresser oversettes. Siden har hatt
  * tre oppsett: elleve faner på rad, så tre grupper med underfaner
@@ -34,6 +35,7 @@ export const PROJECT_TABS = [
   "oppgaver",
   "timer",
   "kvalitet",
+  "modell",
   "filer",
 ] as const
 export type ProjectTab = (typeof PROJECT_TABS)[number]
@@ -56,6 +58,7 @@ export const PROJECT_TAB_ALIASES: Record<string, ResolvedProjectTab> = {
   timer: { tab: "timer" },
   kvalitet: { tab: "kvalitet" },
   filer: { tab: "filer" },
+  modell: { tab: "modell" },
 
   // Gruppene fra oppsett nummer to. Arbeid åpnet den første underfanen.
   arbeid: { tab: "oppgaver" },
@@ -71,8 +74,6 @@ export const PROJECT_TAB_ALIASES: Record<string, ResolvedProjectTab> = {
   timeforing: { tab: "timer", del: "timer" },
   kjorebok: { tab: "timer", del: "kjoring" },
 
-  // 3D-modellen ligger festet øverst i Filer
-  modell: { tab: "filer", del: "modell" },
 
   // Deltakere er et panel i prosjekttoppen
   deltakere: { tab: "oversikt", del: PEOPLE_DEL },
@@ -148,6 +149,10 @@ export function resolveProjectTabParam(
   }
 
   if (delParam) base.del = delParam
+
+  // 3D-modellen lå festet øverst i Filer (`?tab=filer&del=modell`) før den
+  // fikk egen fane.
+  if (base.tab === "filer" && base.del === "modell") base = { tab: "modell" }
 
   return options?.kalkyle ? medKalkylemodul(base) : base
 }

@@ -48,6 +48,9 @@ import type {
   Storey,
   Wall,
   WallType,
+  Measurement,
+  ModelImport,
+  Point3,
 } from "./types"
 
 export type CadTool =
@@ -968,6 +971,54 @@ export class CadStore {
   // -------------------------------------------------------------------------
   // Materialer
   // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // Importerte filer og oppmålinger
+  // -------------------------------------------------------------------------
+
+  addImport(entry: ModelImport) {
+    this.update((model) => ({ ...model, imports: [...(model.imports ?? []), entry] }), { skipRooms: true })
+  }
+
+  updateImport(importId: string, patch: Partial<Omit<ModelImport, "id">>, options: { transient?: boolean } = {}) {
+    this.update(
+      (model) => ({
+        ...model,
+        imports: (model.imports ?? []).map((entry) => (entry.id === importId ? { ...entry, ...patch } : entry)),
+      }),
+      { skipRooms: true, transient: options.transient }
+    )
+  }
+
+  removeImport(importId: string) {
+    this.update(
+      (model) => ({ ...model, imports: (model.imports ?? []).filter((entry) => entry.id !== importId) }),
+      { skipRooms: true }
+    )
+  }
+
+  addMeasurement(a: Point3, b: Point3) {
+    const created: Measurement = { id: newId("mal"), a, b, label: null }
+    this.update((model) => ({ ...model, measurements: [...(model.measurements ?? []), created] }), {
+      skipRooms: true,
+    })
+    return created.id
+  }
+
+  removeMeasurement(measurementId: string) {
+    this.update(
+      (model) => ({
+        ...model,
+        measurements: (model.measurements ?? []).filter((item) => item.id !== measurementId),
+      }),
+      { skipRooms: true }
+    )
+  }
+
+  clearMeasurements() {
+    if (!(this.state.model.measurements ?? []).length) return
+    this.update((model) => ({ ...model, measurements: [] }), { skipRooms: true })
+  }
 
   addMaterial(material: Omit<CadMaterial, "id">) {
     const created: CadMaterial = { ...material, id: newId("mat") }

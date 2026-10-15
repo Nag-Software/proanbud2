@@ -19,6 +19,7 @@ import { canManageProjects } from "@/lib/roles"
 import { buildingModelSchema, createEmptyModel, parseBuildingModel, sanitizeModel } from "@/lib/cad/schema"
 import type { BuildingModel } from "@/lib/cad/types"
 import { getVerifiedUser } from "@/lib/auth/server-context"
+import { fileExtension, sjekkFil } from "@/lib/cad/import/formats"
 
 export type ProjectModelRecord = {
   id: string
@@ -277,6 +278,11 @@ export async function saveProjectModelAction(input: {
       return { ok: false, error: "Modellen kunne ikke lagres fordi den er ugyldig." }
     }
     const clean = sanitizeModel(parsed.data as BuildingModel)
+    // En import kan bare peke på filer i dette prosjektets mappe. Klienten
+    // skriver stien, så den kontrolleres her før den lagres.
+    clean.imports = (clean.imports ?? []).filter((entry) =>
+      entry.storagePath.startsWith(importFolder(companyId, input.projectId))
+    )
 
     const [{ data: current }, { data: latestVersion }] = await Promise.all([
       supabase
@@ -453,3 +459,122 @@ export async function restoreModelVersionAction(input: {
     return { ok: false, error: GENERIC_ERROR_MESSAGE }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Importerte filer (IFC, GLB, DXF, PDF …)
+//
+// Fila lastes opp RETT fra nettleseren til storage med en signert lenke. Via en
+// server action eller API-rute ville den stoppet på Vercels grense for
+// forespørselsstørrelse (4,5 MB) — IFC-filer er ofte mange titalls MB.
+// ---------------------------------------------------------------------------
+
+const MODEL_BUCKET = "project_models"
+
+function importFolder(companyId: string, projectId: string) {
+  return `${companyId}/${projectId}/importer/`
+}
+
+/** Gir en signert opplastingslenke for én fil. Bare de som kan endre modellen. */
+export async function createModelImportUploadAction(input: {
+  projectId: string
+  fileName: string
+  sizeBytes: number
+}): Promise<ActionResult<{ path: string; token: string }>> {
+  try {
+    const context = await resolveContext(input.projectId)
+    if (!context.ok) return { ok: false, error: context.error }
+    if (!context.canEdit) {
+      return { ok: false, error: "Du har ikke tilgang til å importere filer på dette prosjektet." }
+    }
+    const sjekk = sjekkFil(input.fileName, input.sizeBytes)
+    if (!sjekk.ok) return { ok: false, error: sjekk.error }
+
+    const path = `${importFolder(context.companyId, input.projectId)}${crypto.randomUUID()}.${fileExtension(input.fileName)}`
+    const { data, error } = await context.supabase.storage.from(MODEL_BUCKET).createSignedUploadUrl(path)
+    if (error || !data) {
+      await logServerError({
+        message: "Kunne ikke lage opplastingslenke for modellimport",
+        error: error ?? new Error("Ingen opplastingslenke"),
+        source: "action",
+        route: "modell_import_opplasting",
+        context: { projectId: input.projectId },
+      })
+      return { ok: false, error: "Kunne ikke starte opplastingen. Prøv igjen." }
+    }
+    return { ok: true, data: { path: data.path, token: data.token } }
+  } catch (error) {
+    await logServerError({
+      message: "Kunne ikke lage opplastingslenke for modellimport",
+      error,
+      source: "action",
+      route: "modell_import_opplasting",
+      context: { projectId: input.projectId },
+    })
+    return { ok: false, error: GENERIC_ERROR_MESSAGE }
+  }
+}
+
+/** Signert lenke for å lese en importert fil. Alle i bedriften med tilgang til prosjektet. */
+export async function getModelImportUrlAction(input: {
+  projectId: string
+  path: string
+}): Promise<ActionResult<{ url: string }>> {
+  try {
+    const context = await resolveContext(input.projectId)
+    if (!context.ok) return { ok: false, error: context.error }
+    if (!input.path.startsWith(importFolder(context.companyId, input.projectId))) {
+      return { ok: false, error: "Fant ikke fila." }
+    }
+    const { data, error } = await context.supabase.storage
+      .from(MODEL_BUCKET)
+      .createSignedUrl(input.path, 60 * 60)
+    if (error || !data) return { ok: false, error: "Fant ikke fila. Den kan være slettet." }
+    return { ok: true, data: { url: data.signedUrl } }
+  } catch (error) {
+    await logServerError({
+      message: "Kunne ikke lage lenke til importert modellfil",
+      error,
+      source: "action",
+      route: "modell_import_les",
+      context: { projectId: input.projectId },
+    })
+    return { ok: false, error: GENERIC_ERROR_MESSAGE }
+  }
+}
+
+/** Sletter fila i storage når importen fjernes fra modellen. */
+export async function deleteModelImportFileAction(input: {
+  projectId: string
+  path: string
+}): Promise<ActionResult<null>> {
+  try {
+    const context = await resolveContext(input.projectId)
+    if (!context.ok) return { ok: false, error: context.error }
+    if (!context.canEdit) return { ok: false, error: "Du har ikke tilgang til å slette filer her." }
+    if (!input.path.startsWith(importFolder(context.companyId, input.projectId))) {
+      return { ok: false, error: "Fant ikke fila." }
+    }
+    const { error } = await context.supabase.storage.from(MODEL_BUCKET).remove([input.path])
+    if (error) {
+      await logServerError({
+        message: "Kunne ikke slette importert modellfil",
+        error,
+        source: "action",
+        route: "modell_import_slett",
+        context: { projectId: input.projectId },
+      })
+      return { ok: false, error: "Kunne ikke slette fila." }
+    }
+    return { ok: true, data: null }
+  } catch (error) {
+    await logServerError({
+      message: "Kunne ikke slette importert modellfil",
+      error,
+      source: "action",
+      route: "modell_import_slett",
+      context: { projectId: input.projectId },
+    })
+    return { ok: false, error: GENERIC_ERROR_MESSAGE }
+  }
+}
+

@@ -520,7 +520,7 @@ export function ProjectOverviewTab({
 
           <button
             type="button"
-            onClick={() => navigateToTab("filer", "modell")}
+            onClick={() => navigateToTab("modell")}
             className="flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
           >
             <Box className="size-4 shrink-0 text-muted-foreground" />

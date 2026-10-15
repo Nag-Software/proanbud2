@@ -16,8 +16,13 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CadEditor } from "@/components/cad/cad-editor"
+import type { CadImportAdapter } from "@/lib/cad/import/use-import"
 import type { BuildingModel } from "@/lib/cad/types"
+import { createClient } from "@/lib/supabase/client"
 import {
+  createModelImportUploadAction,
+  deleteModelImportFileAction,
+  getModelImportUrlAction,
   getOrCreateProjectModelAction,
   saveProjectModelAction,
   type ProjectModelRecord,
@@ -67,6 +72,40 @@ export default function ModellTab({
     const timer = setInterval(() => void load(), 5000)
     return () => clearInterval(timer)
   }, [load, state])
+
+  // Importerte filer går rett fra nettleseren til storage med en signert lenke
+  // (Vercel tar ikke imot store filer gjennom en server action).
+  const importAdapter = React.useMemo(
+    (): CadImportAdapter => ({
+      lastOpp: async (file) => {
+        const lenke = await createModelImportUploadAction({ projectId, fileName: file.name, sizeBytes: file.size })
+        if (!lenke.ok) throw new Error(lenke.error)
+        const { error } = await createClient()
+          .storage.from("project_models")
+          .uploadToSignedUrl(lenke.data.path, lenke.data.token, file, {
+            contentType: file.type || "application/octet-stream",
+          })
+        if (error) {
+          throw new Error(
+            /exceeded|too large|maximum/i.test(error.message)
+              ? "Fila er større enn lagringen tillater."
+              : "Opplastingen feilet. Sjekk nettet og prøv igjen."
+          )
+        }
+        return { storagePath: lenke.data.path }
+      },
+      hentUrl: async (storagePath) => {
+        const result = await getModelImportUrlAction({ projectId, path: storagePath })
+        if (!result.ok) throw new Error(result.error)
+        return result.data.url
+      },
+      slett: async (storagePath) => {
+        const result = await deleteModelImportFileAction({ projectId, path: storagePath })
+        if (!result.ok) throw new Error(result.error)
+      },
+    }),
+    [projectId]
+  )
 
   const handleSave = React.useCallback(
     async (input: { modelId: string; data: BuildingModel; revision: number }) =>
@@ -163,6 +202,7 @@ export default function ModellTab({
         initialRevision={state.model.revision}
         canEdit={state.canEdit}
         referenceImageCount={state.referenceImageCount}
+        importAdapter={importAdapter}
         onSave={handleSave}
       />
     </div>

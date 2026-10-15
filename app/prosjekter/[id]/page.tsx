@@ -20,6 +20,7 @@ import type { ProjectProfitability } from "@/lib/job-costing/types"
 import { KalkyleOmrade } from "@/components/kalkyle/kalkyle-omrade"
 
 import FilerTab from "./filer-tab"
+import ModellTab from "./modell-tab"
 import { KalkyleTab } from "./kalkyle-tab"
 import OppgaverTab from "./oppgaver-tab"
 import { ProjectHeader } from "./project-header"
@@ -337,6 +338,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             count: kvalitetWaiting,
             countTone: "warning",
           },
+          { value: "modell", label: "3D-modell" },
           { value: "filer", label: "Filer" },
         ]}
         header={
@@ -507,6 +509,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             </Suspense>
           </ProjectTabPanel>
         )}
+
+        <ProjectTabPanel value="modell">
+          <ModellTab projectId={project.id} projectName={project.name} />
+        </ProjectTabPanel>
 
         <ProjectTabPanel value="filer">
           <FilerTab projectId={project.id} projectName={project.name} showChecklistPhotos={hasKs} />

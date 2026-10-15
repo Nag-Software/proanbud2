@@ -30,7 +30,7 @@ const ENKLE_LENKER: Array<[string, { tab: string; del?: string }]> = [
   ["lonnsomhet", { tab: "okonomi", del: "kostnader" }],
   ["timeforing", { tab: "timer", del: "timer" }],
   ["kjorebok", { tab: "timer", del: "kjoring" }],
-  ["modell", { tab: "filer", del: "modell" }],
+  ["modell", { tab: "modell" }],
   ["deltakere", { tab: "oversikt", del: "personer" }],
   ["ks", { tab: "kvalitet", del: "sjekklister" }],
   ["avvik", { tab: "kvalitet", del: "avvik" }],
@@ -59,7 +59,7 @@ describe("prosjektfane-lenker", () => {
     [["arbeid", "oppgaver"], { tab: "oppgaver" }],
     [["arbeid", "timeforing"], { tab: "timer", del: "timer" }],
     [["arbeid", "filer"], { tab: "filer" }],
-    [["arbeid", "modell"], { tab: "filer", del: "modell" }],
+    [["arbeid", "modell"], { tab: "modell" }],
     [["arbeid", "deltakere"], { tab: "oversikt", del: "personer" }],
     [["arbeid", "kvalitet"], { tab: "kvalitet" }],
     [["okonomi", "tilbud"], { tab: "okonomi", del: "tilbud" }],
@@ -147,5 +147,13 @@ describe("prosjektfane-lenker med kalkylemodulen", () => {
 
   it("uten flagget er alt som før", () => {
     expect(resolveProjectTabParam("okonomi", null, null, "tilbud")).toEqual({ tab: "okonomi", del: "tilbud" })
+  })
+})
+
+describe("3D-modellen har egen fane", () => {
+  it("gamle lenker til modellen under Filer lander i 3D-modell", () => {
+    expect(resolveProjectTabParam("filer", null, null, "modell")).toEqual({ tab: "modell" })
+    expect(resolveProjectTabParam("modell")).toEqual({ tab: "modell" })
+    expect(resolveProjectTabParam("filer")).toEqual({ tab: "filer" })
   })
 })

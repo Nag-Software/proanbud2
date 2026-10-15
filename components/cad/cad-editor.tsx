@@ -27,6 +27,7 @@ import {
   ChevronDown,
   DoorOpen,
   Download,
+  FileUp,
   Layers,
   Loader2,
   Map,
@@ -66,18 +67,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useConfirm } from "@/components/ui/confirm-dialog"
+import { ImportPanel, useImportOpplasting, type ImportValg } from "@/components/cad/import-panel"
 import { InspectorPanel } from "@/components/cad/inspector-panel"
 import { MaterialsPanel } from "@/components/cad/materials-panel"
 import { PlanCanvas } from "@/components/cad/plan-canvas"
+import type { ImportModus } from "@/components/cad/plan-underlag"
 import { TakeoffPanel } from "@/components/cad/takeoff-panel"
 import { GenerateModelDialog } from "@/components/cad/generate-model-dialog"
 import { buildOutlineFromWalls } from "@/lib/cad/outline"
 import { exportModelToDxf } from "@/lib/cad/export/dxf"
 import { exportModelToIfc } from "@/lib/cad/export/ifc"
 import { exportModelToObj } from "@/lib/cad/export/obj"
+import { IMPORT_ACCEPT } from "@/lib/cad/import/formats"
+import { CadImportContext, type CadImportAdapter } from "@/lib/cad/import/use-import"
 import { CadStore, useCadState, type CadTool, type CadViewMode } from "@/lib/cad/store"
 import { parseBuildingModel } from "@/lib/cad/schema"
 import type { BuildingModel } from "@/lib/cad/types"
@@ -102,6 +108,8 @@ export type CadEditorProps = {
   initialRevision: number
   canEdit: boolean
   referenceImageCount: number
+  /** Opplasting og henting av importerte filer. Uten den kan filer ikke importeres. */
+  importAdapter?: CadImportAdapter | null
   onSave: (input: {
     modelId: string
     data: BuildingModel
@@ -137,7 +145,7 @@ const MORE_TOOLS: ToolDef[] = [
 
 const ALL_TOOLS = [...PRIMARY_TOOLS, ...MORE_TOOLS]
 
-type PanelTab = "egenskaper" | "materialer" | "mengder"
+type PanelTab = "egenskaper" | "materialer" | "mengder" | "import"
 
 /** Så lenge etter siste endring lagres modellen automatisk. */
 const AUTOSAVE_DELAY_MS = 1_500
@@ -152,11 +160,13 @@ export function CadEditor({
   initialRevision,
   canEdit,
   referenceImageCount,
+  importAdapter = null,
   onSave,
 }: CadEditorProps) {
   const [store] = React.useState(() => new CadStore(initialModel))
   const state = useCadState(store)
   const [generateOpen, setGenerateOpen] = React.useState(false)
+  const [rektangelOpen, setRektangelOpen] = React.useState(false)
   const confirm = useConfirm()
 
   const activeStorey =
@@ -227,14 +237,15 @@ export function CadEditor({
 
   // Advar før fanen lukkes mens noe ikke er lagret ennå.
   React.useEffect(() => {
-    if (!state.dirty && !saving) return
+    // Den som bare ser på (håndverkere), lagrer aldri — da er det ingenting å miste.
+    if (!canEdit || (!state.dirty && !saving)) return
     const handler = (event: BeforeUnloadEvent) => {
       event.preventDefault()
       event.returnValue = ""
     }
     window.addEventListener("beforeunload", handler)
     return () => window.removeEventListener("beforeunload", handler)
-  }, [saving, state.dirty])
+  }, [canEdit, saving, state.dirty])
 
   // --- Fullskjerm -------------------------------------------------------------
   // Editoren legges over hele vinduet (fungerer overalt, også i appen og på
@@ -282,7 +293,8 @@ export function CadEditor({
   const [previousSelectionKey, setPreviousSelectionKey] = React.useState<string | null>(null)
   if (selectionKey !== previousSelectionKey) {
     setPreviousSelectionKey(selectionKey)
-    if (selectionKey) {
+    // Den som bare ser på, får målene i et kort i 3D i stedet for redigeringspanelet.
+    if (selectionKey && canEdit) {
       setPanel("egenskaper")
       setPanelFromSelection(true)
     } else if (panelFromSelection) {
@@ -295,6 +307,46 @@ export function CadEditor({
     setPanelFromSelection(false)
     setPanel(tab)
   }
+
+  // --- Import -----------------------------------------------------------------
+  const { opplastinger, importer } = useImportOpplasting(store, importAdapter)
+  const kanImportere = canEdit && importAdapter !== null
+  const filRef = React.useRef<HTMLInputElement>(null)
+  const velgFil = React.useCallback(() => filRef.current?.click(), [])
+  // iOS gråer ut filer med endelser systemet ikke kjenner (.ifc, .dxf) når
+  // `accept` er satt. Der sjekker vi heller fila etter at den er valgt.
+  const [accept, setAccept] = React.useState<string | undefined>(IMPORT_ACCEPT)
+  React.useEffect(() => {
+    if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent))) {
+      setAccept(undefined)
+    }
+  }, [])
+  const importerFiler = (filer: File[]) => {
+    if (filer.length === 0) return
+    openPanel("import")
+    void importer(filer)
+  }
+  const [slippSone, setSlippSone] = React.useState(false)
+
+  // Kalibrering og flytting av en importert fil. Begge trenger plantegningen og
+  // panelet (der avstanden skrives inn), så de avbrytes hvis noe av det lukkes.
+  const [importValg, setImportValg] = React.useState<ImportValg>(null)
+  if (importValg && (panel !== "import" || state.view === "3d" || !state.model.imports?.some((item) => item.id === importValg.importId))) {
+    setImportValg(null)
+  }
+  const importModus = React.useMemo((): ImportModus | null => {
+    if (!importValg) return null
+    if (importValg.type === "flytt") return importValg
+    return {
+      ...importValg,
+      onPunkt: (punkt) =>
+        setImportValg((naa) =>
+          naa?.type === "kalibrer"
+            ? { ...naa, punkter: naa.punkter.length >= 2 ? [punkt] : [...naa.punkter, punkt] }
+            : naa
+        ),
+    }
+  }, [importValg])
 
   // --- Hurtigtaster -----------------------------------------------------------
   React.useEffect(() => {
@@ -331,6 +383,10 @@ export function CadEditor({
       // Esc lukker fullskjerm når det ikke er noe annet å avbryte: en åpen
       // meny/dialog, et verktøy i bruk eller et valgt element går først. (Menyen
       // lukker seg selv på samme tastetrykk, men står fortsatt i DOM-en her.)
+      if (event.key === "Escape" && importValg) {
+        setImportValg(null)
+        return
+      }
       if (event.key === "Escape") {
         const layerOpen = document.querySelector(
           '[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]'
@@ -358,7 +414,7 @@ export function CadEditor({
 
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [canEdit, exitFullscreen, fullscreen, save, state.selection, state.tool, store])
+  }, [canEdit, exitFullscreen, fullscreen, importValg, save, state.selection, state.tool, store])
 
   // --- Eksport ----------------------------------------------------------------
   const download = React.useCallback((content: BlobPart, filename: string, type: string) => {
@@ -489,6 +545,10 @@ export function CadEditor({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-60">
                 <DropdownMenuLabel>Ett klikk</DropdownMenuLabel>
+                <DropdownMenuItem onSelect={() => setRektangelOpen(true)}>
+                  <Square className="size-4" />
+                  Rektangel (B × D)…
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={addRoofFromWalls}>
                   <Triangle className="size-4" />
                   Saltak over hele bygget
@@ -523,6 +583,31 @@ export function CadEditor({
         )}
 
         <ViewSwitch view={state.view} onChange={(view) => store.setView(view)} />
+
+        {kanImportere && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant={panel === "import" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-8 gap-1.5 px-2"
+                onClick={() => (panel === "import" ? setPanel(null) : openPanel("import"))}
+                aria-label="Importerte filer"
+                aria-pressed={panel === "import"}
+              >
+                <FileUp className="size-4" />
+                <span className="hidden text-xs sm:inline">Importer</span>
+                {(state.model.imports?.length ?? 0) > 0 && (
+                  <span className="rounded-full bg-muted px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                    {state.model.imports?.length}
+                  </span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>IFC, DXF, PDF og andre 3D-filer</TooltipContent>
+          </Tooltip>
+        )}
 
         {state.model.storeys.length > 1 && (
           <Select value={activeStorey?.id ?? ""} onValueChange={(value) => store.setActiveStorey(value)}>
@@ -567,6 +652,9 @@ export function CadEditor({
                 Mengder (til tilbud)
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => openPanel("materialer")}>Materialer</DropdownMenuItem>
+              {(state.model.imports?.length ?? 0) > 0 && (
+                <DropdownMenuItem onSelect={() => openPanel("import")}>Importerte filer</DropdownMenuItem>
+              )}
 
               {canEdit && (
                 <>
@@ -671,7 +759,7 @@ export function CadEditor({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={() => setGenerateOpen(true)}>
                     <Sparkles className="size-4" />
-                    Lag modellen på nytt fra bilder
+                    Lag modell fra beskrivelse og bilder
                   </DropdownMenuItem>
                 </>
               )}
@@ -692,8 +780,30 @@ export function CadEditor({
         </div>
       )}
 
-      {/* Arbeidsflate */}
-      <div className="relative flex min-h-0 flex-1">
+      {/* Arbeidsflate. Filer kan slippes rett på den. */}
+      <div
+        className="relative flex min-h-0 flex-1"
+        onDragOver={(event) => {
+          if (!kanImportere || !event.dataTransfer.types.includes("Files")) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = "copy"
+          if (!slippSone) setSlippSone(true)
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setSlippSone(false)
+        }}
+        onDrop={(event) => {
+          if (!kanImportere) return
+          event.preventDefault()
+          setSlippSone(false)
+          importerFiler(Array.from(event.dataTransfer.files))
+        }}
+      >
+        {slippSone && (
+          <div className="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-[12px] border-2 border-dashed border-primary bg-primary/5 text-sm font-medium text-primary">
+            Slipp fila for å legge den inn
+          </div>
+        )}
         {/* Delt visning gir to ubrukelige halvdeler på en telefon. Den løses i
             CSS, ikke ved å måle vinduet: `window.innerWidth` er 0 i det
             komponenten monteres i enkelte nettlesere og innebygde visninger,
@@ -708,16 +818,12 @@ export function CadEditor({
             >
               <PlanCanvas
                 store={store}
+                canEdit={canEdit}
                 onShowProperties={() => openPanel("egenskaper")}
                 onAddFloorFromWalls={addFloorFromWalls}
                 onAddRoofFromWalls={addRoofFromWalls}
-                emptyState={
-                  <EmptyPlanState
-                    store={store}
-                    canEdit={canEdit}
-                    onGenerate={() => setGenerateOpen(true)}
-                  />
-                }
+                emptyState={<EmptyPlanState canEdit={canEdit} onImport={kanImportere ? velgFil : undefined} />}
+                importModus={importModus}
               />
             </div>
           )}
@@ -728,7 +834,7 @@ export function CadEditor({
                 state.view === "split" ? "hidden w-1/2 lg:block" : "w-full"
               )}
             >
-              <Scene3D store={store} />
+              <Scene3D store={store} canEdit={canEdit} visElementKort={!canEdit || panel === null} />
             </div>
           )}
         </div>
@@ -742,10 +848,11 @@ export function CadEditor({
               className="flex min-h-0 flex-1 flex-col gap-0"
             >
               <div className="flex items-center gap-1 p-2">
-                <TabsList className="grid flex-1 grid-cols-3">
-                  <TabsTrigger value="egenskaper">Egenskaper</TabsTrigger>
-                  <TabsTrigger value="mengder">Mengder</TabsTrigger>
-                  <TabsTrigger value="materialer">Materialer</TabsTrigger>
+                <TabsList className="grid flex-1 grid-cols-4">
+                  <TabsTrigger value="egenskaper" className="px-1 text-xs">Egenskaper</TabsTrigger>
+                  <TabsTrigger value="mengder" className="px-1 text-xs">Mengder</TabsTrigger>
+                  <TabsTrigger value="materialer" className="px-1 text-xs">Materialer</TabsTrigger>
+                  <TabsTrigger value="import" className="px-1 text-xs">Filer</TabsTrigger>
                 </TabsList>
                 <IconButton label="Lukk panelet" onClick={() => setPanel(null)}>
                   <X className="size-4" />
@@ -760,10 +867,43 @@ export function CadEditor({
               <TabsContent value="materialer" className="m-0 min-h-0 flex-1 overflow-y-auto">
                 <MaterialsPanel store={store} />
               </TabsContent>
+              <TabsContent value="import" className="m-0 min-h-0 flex-1 overflow-y-auto">
+                <ImportPanel
+                  store={store}
+                  canEdit={kanImportere}
+                  opplastinger={opplastinger}
+                  onVelgFil={velgFil}
+                  valg={importValg}
+                  onValg={setImportValg}
+                />
+              </TabsContent>
             </Tabs>
           </div>
         )}
       </div>
+
+      {kanImportere && (
+        <input
+          ref={filRef}
+          type="file"
+          multiple
+          accept={accept}
+          className="hidden"
+          onChange={(event) => {
+            importerFiler(Array.from(event.target.files ?? []))
+            event.target.value = ""
+          }}
+        />
+      )}
+
+      <RektangelDialog
+        open={rektangelOpen}
+        onOpenChange={setRektangelOpen}
+        onCreate={(width, depth) => {
+          store.addRectangle(width, depth, { withFloor: true })
+          toast.success("Yttervegger og gulv lagt inn")
+        }}
+      />
 
       <GenerateModelDialog
         open={generateOpen}
@@ -776,10 +916,10 @@ export function CadEditor({
     </div>
   )
 
-  if (!fullscreen) return editor
+  if (!fullscreen) return <CadImportContext.Provider value={importAdapter}>{editor}</CadImportContext.Provider>
 
   return (
-    <>
+    <CadImportContext.Provider value={importAdapter}>
       {/* Plassholder på siden, så resten av innholdet ikke hopper opp. */}
       <div className="flex h-[min(80vh,900px)] min-h-[560px] items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
         Modellen er åpen i fullskjerm.
@@ -787,7 +927,7 @@ export function CadEditor({
       {/* Lagt rett i <body>: fixed-posisjonering inne i app-skallet kan
           fanges av sidebarens transformasjoner. */}
       {createPortal(editor, document.body)}
-    </>
+    </CadImportContext.Provider>
   )
 }
 
@@ -926,95 +1066,86 @@ function SaveStatus({
 }
 
 /**
- * Det brukeren møter på et prosjekt uten modell.
- *
- * Et blankt rutenett med åtte ikoner forteller ingen hva de skal gjøre. Her
- * står de tre reelle veiene inn: la ProAnbud lage utkastet, start fra en boks
- * med målene du har, eller tegn selv.
+ * Tom tegning: blank flate, så brukeren selv velger hvordan hen vil begynne.
+ * Bare en diskré linje nederst som sier hvor man starter. Rektangel og
+ * generering fra bilder ligger i menyene.
  */
-function EmptyPlanState({
-  store,
-  canEdit,
-  onGenerate,
+function EmptyPlanState({ canEdit, onImport }: { canEdit: boolean; onImport?: () => void }) {
+  return (
+    <p className="max-w-full rounded-full border bg-background/90 px-3.5 py-1.5 text-center text-[12px] text-muted-foreground shadow-sm backdrop-blur">
+      {canEdit ? (
+        <>
+          Tom tegning. Velg <span className="font-medium text-foreground">Vegg</span> for å tegne
+          {onImport ? (
+            <>
+              , eller{" "}
+              <button
+                type="button"
+                onClick={onImport}
+                className="pointer-events-auto font-medium text-foreground underline underline-offset-2"
+              >
+                importer en fil
+              </button>
+            </>
+          ) : null}
+          .
+        </>
+      ) : (
+        "Det er ikke tegnet noe på denne etasjen ennå."
+      )}
+    </p>
+  )
+}
+
+/** «Rektangel»: fire yttervegger og gulv på B × D meter, i ett klikk. */
+function RektangelDialog({
+  open,
+  onOpenChange,
+  onCreate,
 }: {
-  store: CadStore
-  canEdit: boolean
-  onGenerate: () => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onCreate: (width: number, depth: number) => void
 }) {
   const [width, setWidth] = React.useState("8")
   const [depth, setDepth] = React.useState("6")
-
-  if (!canEdit) {
-    return (
-      <div className="rounded-xl border bg-background/95 p-5 text-center shadow-lg backdrop-blur">
-        <p className="text-sm text-muted-foreground">
-          Det er ikke tegnet noe på denne etasjen ennå.
-        </p>
-      </div>
-    )
-  }
-
   const parse = (value: string) => Number(value.replace(",", ".")) || 0
-
+  const submit = () => {
+    const w = parse(width)
+    const d = parse(depth)
+    if (w < 0.5 || d < 0.5) {
+      toast.error("Oppgi bredde og dybde i meter.")
+      return
+    }
+    onCreate(w, d)
+    onOpenChange(false)
+  }
   return (
-    <div className="space-y-4 rounded-xl border bg-background/95 p-5 shadow-lg backdrop-blur">
-      <div>
-        <p className="text-sm font-semibold text-foreground">Kom i gang med modellen</p>
-        <p className="text-sm text-muted-foreground">
-          Velg den raskeste veien inn. Alt kan endres etterpå.
-        </p>
-      </div>
-
-      <Button className="w-full" onClick={onGenerate}>
-        <Sparkles className="size-4" />
-        Lag modell fra beskrivelse og bilder
-      </Button>
-
-      <div className="space-y-2 rounded-lg border p-3">
-        <p className="text-xs font-medium text-foreground">Start fra et rektangel</p>
-        <div className="flex items-end gap-2">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Rektangel</DialogTitle>
+          <DialogDescription>Fire yttervegger og gulv. Alt kan endres etterpå.</DialogDescription>
+        </DialogHeader>
+        <form
+          className="flex items-end gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            submit()
+          }}
+        >
           <label className="flex-1 space-y-1">
-            <span className="text-[11px] text-muted-foreground">Bredde (m)</span>
-            <Input
-              value={width}
-              inputMode="decimal"
-              onChange={(event) => setWidth(event.target.value)}
-              className="h-8"
-            />
+            <span className="text-xs text-muted-foreground">Bredde (m)</span>
+            <Input value={width} inputMode="decimal" autoFocus onChange={(event) => setWidth(event.target.value)} />
           </label>
           <span className="pb-2 text-muted-foreground">×</span>
           <label className="flex-1 space-y-1">
-            <span className="text-[11px] text-muted-foreground">Dybde (m)</span>
-            <Input
-              value={depth}
-              inputMode="decimal"
-              onChange={(event) => setDepth(event.target.value)}
-              className="h-8"
-            />
+            <span className="text-xs text-muted-foreground">Dybde (m)</span>
+            <Input value={depth} inputMode="decimal" onChange={(event) => setDepth(event.target.value)} />
           </label>
-          <Button
-            variant="secondary"
-            className="h-8"
-            onClick={() => {
-              const w = parse(width)
-              const d = parse(depth)
-              if (w < 0.5 || d < 0.5) {
-                toast.error("Oppgi bredde og dybde i meter.")
-                return
-              }
-              store.addRectangle(w, d, { withFloor: true })
-              toast.success("Yttervegger og gulv lagt inn")
-            }}
-          >
-            Lag
-          </Button>
-        </div>
-      </div>
-
-      <Button variant="outline" className="w-full" onClick={() => store.setTool("wall")}>
-        <PanelsTopLeft className="size-4" />
-        Tegn ytterveggene selv
-      </Button>
-    </div>
+          <Button type="submit">Lag</Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

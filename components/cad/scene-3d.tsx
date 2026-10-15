@@ -11,25 +11,70 @@
  *    Det brukeren ser er det mottakeren får.
  *  - Du kan dra en vegg rett i 3D: den glir langs sin egen normal, med
  *    rutenettsnapp, akkurat som i plantegningen.
+ *  - Importerte filer vises som eget lag (scene-import.tsx), og alt kan måles
+ *    med to trykk (scene-maling.tsx).
+ *
+ * Ytelse (telefon på byggeplassen):
+ *  - Scenen tegnes bare når noe endrer seg (frameloop="demand"), ikke 60
+ *    ganger i sekundet mens den står stille.
+ *  - Skyggekartet og kontaktskyggen regnes ut når modellen endres, ikke når
+ *    kameraet flyttes (lyset står fast i verden).
+ *  - Dører og vinduer er slått sammen til få mesher, og glasset er vanlig
+ *    gjennomsiktig materiale (transmisjon krever et eget tegnepass).
+ *  - Store importerte modeller får lavere oppløsning MENS man snur dem, og
+ *    trykk testes mot et BVH-tre i stedet for hver trekant.
  */
 
 import * as React from "react"
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber"
-import { ContactShadows, Edges, Grid, OrbitControls } from "@react-three/drei"
-import { Maximize } from "lucide-react"
+import { AdaptiveDpr, Bvh, ContactShadows, Edges, Grid, OrbitControls } from "@react-three/drei"
+import { Maximize, MousePointer2, Ruler, Trash2 } from "lucide-react"
 import * as THREE from "three"
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js"
 
+import { ImportertModell, ImportertTegning } from "@/components/cad/scene-import"
+import {
+  ElementKort,
+  ImportElementKort,
+  MalingKort,
+  MalingLag,
+  Plukker,
+  VeggMal3D,
+  type PlukkFn,
+} from "@/components/cad/scene-maling"
 import { buildStoreySolids, modelBounds, pointOnWall, worldFromPlan } from "@/lib/cad/geometry"
+import { useCadImportAdapter, useLastedeImporter } from "@/lib/cad/import/use-import"
+import type { LastetModell } from "@/lib/cad/import/last-modell"
+import type { LastetTegning } from "@/lib/cad/import/last-tegning"
+import { tilPlanPunkt, type Snapp } from "@/lib/cad/maling"
 import { normalize, perpendicular, sub } from "@/lib/cad/math"
 import { ELEMENT_COLORS } from "@/lib/cad/presets"
 import type { CadStore } from "@/lib/cad/store"
 import { useCadState } from "@/lib/cad/store"
-import type { BuildingModel, ElementSolid, SelectionRef, Storey } from "@/lib/cad/types"
+import type { BuildingModel, ElementSolid, ModelImport, SelectionRef, Storey } from "@/lib/cad/types"
 import { cn } from "@/lib/utils"
 
 type SolidEntry = { storey: Storey; solid: ElementSolid }
+type Modus = "velg" | "mal"
+type LastetModellLag = { entry: ModelImport; modell: LastetModell }
+type LastetTegningLag = { entry: ModelImport; tegning: LastetTegning }
 
-export function Scene3D({ store, className }: { store: CadStore; className?: string }) {
+/** Over dette regnes en importert modell som tung (lavere oppløsning mens man snur). */
+const TUNG_MODELL_TREKANTER = 400_000
+
+export function Scene3D({
+  store,
+  className,
+  canEdit = true,
+  visElementKort = false,
+}: {
+  store: CadStore
+  className?: string
+  /** Uten redigering kan delene velges og måles, men ikke dras. */
+  canEdit?: boolean
+  /** Vis mål på valgt vegg/dør/dekke i et kort (når egenskapspanelet ikke vises). */
+  visElementKort?: boolean
+}) {
   const state = useCadState(store)
 
   /**
@@ -53,6 +98,7 @@ export function Scene3D({ store, className }: { store: CadStore; className?: str
   })
 
   const fitViewRef = React.useRef<(() => void) | null>(null)
+  const plukkRef = React.useRef<PlukkFn | null>(null)
 
   // Hjelpeteksten er skrevet for det brukeren faktisk har i hånda (mus eller
   // finger), og forsvinner så snart hen har tatt tak i modellen.
@@ -62,13 +108,180 @@ export function Scene3D({ store, className }: { store: CadStore; className?: str
     setCoarsePointer(window.matchMedia("(pointer: coarse)").matches)
   }, [])
 
+  // --- Importerte filer ---------------------------------------------------------
+  const adapter = useCadImportAdapter()
+  const synligeImporter = React.useMemo(
+    () => (state.model.imports ?? []).filter((entry) => entry.visible),
+    [state.model.imports]
+  )
+  const lastet = useLastedeImporter(synligeImporter, adapter)
+  const importNokkel = lastet.map(({ entry, status }) => `${entry.id}:${status?.status ?? "-"}`).join("|")
+  const { modeller, tegninger, laster, trekanter } = React.useMemo(() => {
+    const modeller: LastetModellLag[] = []
+    const tegninger: LastetTegningLag[] = []
+    let laster = 0
+    let trekanter = 0
+    for (const { entry, status } of lastet) {
+      if (!status || status.status === "laster") laster++
+      if (status?.status !== "klar") continue
+      if (status.modell) {
+        modeller.push({ entry, modell: status.modell })
+        trekanter += status.modell.geometri.trekanter
+      }
+      if (status.tegning) tegninger.push({ entry, tegning: status.tegning })
+    }
+    return { modeller, tegninger, laster, trekanter }
+    // `lastet` er en ny liste hver gang; innholdet endres bare med nøkkelen og modellen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [importNokkel, state.model.imports])
+  const tung = trekanter > TUNG_MODELL_TREKANTER
+
+  // --- Velg og mål ---------------------------------------------------------------
+  const [modus, setModus] = React.useState<Modus>("velg")
+  const [malStart, setMalStart] = React.useState<Snapp | null>(null)
+  const [peker, setPeker] = React.useState<Snapp | null>(null)
+  const [valgtMaling, setValgtMaling] = React.useState<string | null>(null)
+  const [importInfo, setImportInfo] = React.useState<{ importId: string; element: number } | null>(null)
+  // BVH-treet for importerte modeller bygges først når noen trykker eller måler.
+  const [bvhPa, setBvhPa] = React.useState(false)
+
+  const byttModus = (neste: Modus) => {
+    setModus(neste)
+    setMalStart(null)
+    setPeker(null)
+    setValgtMaling(null)
+    if (neste === "mal") {
+      setImportInfo(null)
+      store.setSelection(null)
+      if (modeller.length > 0) setBvhPa(true)
+    }
+  }
+
+  const malinger = state.model.measurements ?? []
+  const valgtMalingData = malinger.find((item) => item.id === valgtMaling) ?? null
+
+  const trykk = React.useRef<{ id: number; x: number; y: number; tid: number } | null>(null)
+  const pekerRamme = React.useRef<number | null>(null)
+
+  const handleTrykk = (event: React.PointerEvent) => {
+    const grense = event.pointerType === "mouse" ? 10 : 22
+    const resultat = plukkRef.current?.(event.clientX, event.clientY, grense) ?? null
+    if (!bvhPa && modeller.length > 0) setBvhPa(true)
+
+    if (modus === "mal") {
+      if (!resultat) return
+      if (!malStart) {
+        setMalStart(resultat)
+        return
+      }
+      const id = store.addMeasurement(tilPlanPunkt(malStart.punkt), tilPlanPunkt(resultat.punkt))
+      setMalStart(null)
+      setPeker(null)
+      setValgtMaling(id)
+      return
+    }
+
+    setValgtMaling(null)
+    if (resultat?.importTreff) {
+      setImportInfo(resultat.importTreff)
+      store.setSelection(null)
+    } else {
+      setImportInfo(null)
+    }
+  }
+
+  React.useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || modus !== "mal") return
+      if (malStart) setMalStart(null)
+      else setModus("velg")
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [malStart, modus])
+
+  React.useEffect(
+    () => () => {
+      if (pekerRamme.current !== null) cancelAnimationFrame(pekerRamme.current)
+    },
+    []
+  )
+
+  const importInfoData = importInfo ? modeller.find((item) => item.entry.id === importInfo.importId) : undefined
+  const valgtStorey = state.selection
+    ? state.model.storeys.find((storey) => storey.id === state.selection?.storeyId)
+    : undefined
+
+  const kort = valgtMalingData ? (
+    <MalingKort
+      maling={valgtMalingData}
+      onLukk={() => setValgtMaling(null)}
+      onSlett={() => {
+        store.removeMeasurement(valgtMalingData.id)
+        setValgtMaling(null)
+      }}
+    />
+  ) : importInfo && importInfoData ? (
+    <ImportElementKort
+      entry={importInfoData.entry}
+      geometri={importInfoData.modell.geometri}
+      element={importInfo.element}
+      hentInfo={importInfoData.modell.hentInfo}
+      onLukk={() => setImportInfo(null)}
+    />
+  ) : visElementKort && modus === "velg" && state.selection && valgtStorey ? (
+    <ElementKort selection={state.selection} storey={valgtStorey} onLukk={() => store.setSelection(null)} />
+  ) : null
+
+  const hint =
+    modus === "mal"
+      ? malStart
+        ? "Trykk på det andre punktet"
+        : coarsePointer
+          ? "Trykk på første punkt · hjørner og kanter fester seg"
+          : "Klikk på første punkt · hjørner og kanter fester seg"
+      : interacted
+        ? null
+        : coarsePointer
+          ? "Dra med én finger for å snu · to fingre for å zoome og flytte"
+          : "Dra for å snu · rull for å zoome · høyreklikk og dra for å flytte"
+
   return (
     <div
-      className={cn("relative h-full w-full bg-gradient-to-b from-sky-50 to-slate-100 dark:from-slate-900 dark:to-slate-950", className)}
-      onPointerDownCapture={() => setInteracted(true)}
+      // `isolate`: etikettene i scenen (mål) skal ikke legge seg over panelet.
+      className={cn("@container relative isolate h-full w-full bg-gradient-to-b from-sky-50 to-slate-100 dark:from-slate-900 dark:to-slate-950", className)}
+      onPointerDownCapture={(event) => {
+        setInteracted(true)
+        if ((event.target as HTMLElement).tagName !== "CANVAS") return
+        trykk.current = { id: event.pointerId, x: event.clientX, y: event.clientY, tid: performance.now() }
+      }}
+      onPointerUpCapture={(event) => {
+        const start = trykk.current
+        trykk.current = null
+        if (!start || start.id !== event.pointerId) return
+        if ((event.target as HTMLElement).tagName !== "CANVAS") return
+        // Et trykk, ikke et drag for å snu modellen.
+        const flyttet = Math.hypot(event.clientX - start.x, event.clientY - start.y)
+        if (flyttet > (event.pointerType === "mouse" ? 5 : 10) || performance.now() - start.tid > 700) return
+        handleTrykk(event)
+      }}
+      onPointerMove={(event) => {
+        if (modus !== "mal" || event.pointerType !== "mouse" || event.buttons !== 0) return
+        if ((event.target as HTMLElement).tagName !== "CANVAS") return
+        if (pekerRamme.current !== null) return
+        const { clientX, clientY } = event
+        pekerRamme.current = requestAnimationFrame(() => {
+          pekerRamme.current = null
+          setPeker(plukkRef.current?.(clientX, clientY, 10) ?? null)
+        })
+      }}
+      onPointerLeave={() => setPeker(null)}
       onWheelCapture={() => setInteracted(true)}
     >
       <Canvas
+        // Tegn bare når noe endrer seg. OrbitControls, r3f-props og etikettene
+        // ber selv om nytt bilde.
+        frameloop="demand"
         // VSM er den eneste skyggetypen i three 0.185 som gir ekte myk kant
         // (shadow-radius). drei sin SoftShadows kan IKKE brukes her: den
         // patcher inn `unpackRGBAToDepth`, som er fjernet i denne versjonen, og
@@ -76,11 +289,12 @@ export function Scene3D({ store, className }: { store: CadStore; className?: str
         // som ren trådramme.
         shadows="variance"
         dpr={[1, 2]}
+        performance={{ min: 0.5 }}
         gl={{
           antialias: true,
-          preserveDrawingBuffer: true,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.1,
+          powerPreference: "high-performance",
         }}
         camera={{
           position: initialView.position,
@@ -90,34 +304,113 @@ export function Scene3D({ store, className }: { store: CadStore; className?: str
           // da slipper vi at kameraet må røres når bygget vokser.
           far: 4000,
         }}
-        onPointerMissed={() => store.setSelection(null)}
+        onPointerMissed={() => {
+          if (modus === "velg") store.setSelection(null)
+        }}
       >
         <SceneContents
           store={store}
           initialTarget={initialView.target}
           fitViewRef={fitViewRef}
+          plukkRef={plukkRef}
+          modus={modus}
+          canEdit={canEdit}
+          lettSkygge={coarsePointer}
+          tung={tung}
+          bvhPa={bvhPa}
+          modeller={modeller}
+          tegninger={tegninger}
+          markert={importInfo}
+          malStart={malStart}
+          peker={peker}
+          valgtMaling={valgtMaling}
+          onVelgMaling={(id) => {
+            setValgtMaling(id)
+            setImportInfo(null)
+          }}
         />
       </Canvas>
 
-      <div
-        className={cn(
-          "pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full border bg-background/90 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur transition-opacity duration-500",
-          interacted && "opacity-0"
-        )}
-      >
-        {coarsePointer
-          ? "Dra med én finger for å snu · to fingre for å zoome og flytte"
-          : "Dra for å snu · rull for å zoome · høyreklikk og dra for å flytte"}
-      </div>
+      {hint && (
+        <div
+          className={cn(
+            "pointer-events-none absolute left-1/2 top-3 z-30 max-w-[calc(100%-1.5rem)] -translate-x-1/2 truncate rounded-full border bg-background/90 px-3 py-1 text-[11px] font-medium shadow-sm backdrop-blur",
+            modus === "mal" ? "border-sky-500/50 text-foreground" : "text-muted-foreground"
+          )}
+        >
+          {hint}
+        </div>
+      )}
 
-      <button
-        type="button"
-        onClick={() => fitViewRef.current?.()}
-        className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full border bg-background/95 px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur hover:bg-accent"
-      >
-        <Maximize className="size-3.5" />
-        Vis hele bygget
-      </button>
+      {laster > 0 && (
+        <div className="pointer-events-none absolute right-3 top-3 z-30 rounded-full border bg-background/90 px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur">
+          Laster {laster === 1 ? "fil" : `${laster} filer`} …
+        </div>
+      )}
+
+      {/* Over etikettene i scenen (z-index opptil 20, se scene-maling.tsx). */}
+      {kort && <div className="absolute inset-x-2 bottom-16 z-30 @md:inset-x-auto @md:left-3 @md:w-80">{kort}</div>}
+
+      {/* Bunnlinja: store mål for fingre. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex items-center justify-between gap-2 px-3">
+        <button
+          type="button"
+          onClick={() => fitViewRef.current?.()}
+          className="pointer-events-auto inline-flex h-10 items-center gap-1.5 rounded-full border bg-background/95 px-3 text-xs font-medium shadow-sm backdrop-blur hover:bg-accent"
+          aria-label="Vis hele bygget"
+        >
+          <Maximize className="size-4" />
+          <span className="hidden whitespace-nowrap @lg:inline">Vis hele bygget</span>
+        </button>
+
+        <div
+          className="pointer-events-auto flex items-center gap-0.5 rounded-full border bg-background/95 p-1 shadow-sm backdrop-blur"
+          role="group"
+          aria-label="Verktøy i 3D"
+        >
+          <button
+            type="button"
+            aria-pressed={modus === "velg"}
+            onClick={() => byttModus("velg")}
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium",
+              modus === "velg" ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-accent"
+            )}
+          >
+            <MousePointer2 className="size-3.5" />
+            Velg
+          </button>
+          <button
+            type="button"
+            aria-pressed={modus === "mal"}
+            onClick={() => byttModus(modus === "mal" ? "velg" : "mal")}
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium",
+              modus === "mal" ? "bg-sky-600 text-white" : "text-muted-foreground hover:bg-accent"
+            )}
+          >
+            <Ruler className="size-3.5" />
+            Mål
+          </button>
+        </div>
+
+        {malinger.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => {
+              store.clearMeasurements()
+              setValgtMaling(null)
+            }}
+            className="pointer-events-auto inline-flex h-10 items-center gap-1.5 rounded-full border bg-background/95 px-3 text-xs font-medium shadow-sm backdrop-blur hover:bg-accent"
+            aria-label="Fjern alle mål"
+          >
+            <Trash2 className="size-4" />
+            <span className="hidden whitespace-nowrap @lg:inline">Fjern mål</span>
+          </button>
+        ) : (
+          <span className="w-10" aria-hidden />
+        )}
+      </div>
     </div>
   )
 }
@@ -126,10 +419,37 @@ function SceneContents({
   store,
   initialTarget,
   fitViewRef,
+  plukkRef,
+  modus,
+  canEdit,
+  lettSkygge,
+  tung,
+  bvhPa,
+  modeller,
+  tegninger,
+  markert,
+  malStart,
+  peker,
+  valgtMaling,
+  onVelgMaling,
 }: {
   store: CadStore
   initialTarget: [number, number, number]
   fitViewRef: React.RefObject<(() => void) | null>
+  plukkRef: React.RefObject<PlukkFn | null>
+  modus: Modus
+  canEdit: boolean
+  /** Telefon/nettbrett: mindre skyggekart. */
+  lettSkygge: boolean
+  tung: boolean
+  bvhPa: boolean
+  modeller: LastetModellLag[]
+  tegninger: LastetTegningLag[]
+  markert: { importId: string; element: number } | null
+  malStart: Snapp | null
+  peker: Snapp | null
+  valgtMaling: string | null
+  onVelgMaling: (id: string) => void
 }) {
   const state = useCadState(store)
   const { camera } = useThree()
@@ -150,22 +470,25 @@ function SceneContents({
   })
 
   const size = useThree((three) => three.size)
+  const invalidate = useThree((three) => three.invalidate)
   const buildingRef = React.useRef<THREE.Group>(null)
+  const importRef = React.useRef<THREE.Group>(null)
+  const [plukkGrupper] = React.useState(() => [buildingRef, importRef])
   // Har brukeren selv flyttet kameraet, står det stille — da skal verken en ny
   // vegg eller et fullskjermbytte rive bildet ut av hendene på hen.
   const userMovedRef = React.useRef(false)
 
   /**
-   * Rammer inn HELE bygget: målt fra det som faktisk tegnes (vegger, dekker
-   * og takets møne — planens omriss alene gir ikke høyden), og tilpasset
-   * bildeformatet, så bygget også får plass i en smal, høy visning. Effekten
-   * bytter bare ut en closure når modellen endrer seg — den rører aldri
-   * kameraet av seg selv.
+   * Rammer inn HELE bygget: målt fra det som faktisk tegnes (vegger, dekker,
+   * takets møne og importerte modeller), og tilpasset bildeformatet, så bygget
+   * også får plass i en smal, høy visning. Effekten bytter bare ut en closure
+   * når modellen endrer seg — den rører aldri kameraet av seg selv.
    */
   React.useEffect(() => {
     fitViewRef.current = () => {
       const box = new THREE.Box3()
       if (buildingRef.current) box.setFromObject(buildingRef.current)
+      if (importRef.current) box.union(new THREE.Box3().setFromObject(importRef.current))
       if (box.isEmpty()) {
         const current = modelBounds(state.model)
         const span = Math.max(current.width, current.height, 8)
@@ -184,6 +507,10 @@ function SceneContents({
       // Et trekvart-blikk litt ovenfra: viser to fasader og taket samtidig.
       const direction = new THREE.Vector3(0.9, 0.6, 1.1).normalize()
       camera.position.copy(sphere.center).addScaledVector(direction, distance)
+      // Store importerte modeller (tomt, terreng) må ikke klippes bort.
+      if (perspective.far < distance * 4) {
+        perspective.far = distance * 4
+      }
       const controls = controlsRef.current
       if (controls) {
         controls.target.copy(sphere.center)
@@ -191,16 +518,18 @@ function SceneContents({
       }
       camera.updateProjectionMatrix()
       userMovedRef.current = false
+      invalidate()
     }
     return () => {
       fitViewRef.current = null
     }
-  }, [camera, fitViewRef, size.height, size.width, state.model])
+  }, [camera, fitViewRef, invalidate, size.height, size.width, state.model])
 
   /**
    * Ramm inn automatisk så lenge brukeren ikke har tatt kameraet selv: når
    * visningen får sin størrelse (første gang, bytte mellom 3D og delt
-   * visning, fullskjerm), og første gang en tom etasje får geometri.
+   * visning, fullskjerm), første gang en tom etasje får geometri, og når en
+   * importert modell er ferdig lastet.
    */
   const hasGeometry = React.useMemo(
     () =>
@@ -219,6 +548,12 @@ function SceneContents({
     if (wasEmpty.current && hasGeometry) fitViewRef.current?.()
     wasEmpty.current = !hasGeometry
   }, [fitViewRef, hasGeometry])
+  const antallModeller = modeller.length
+  const forrigeAntallModeller = React.useRef(antallModeller)
+  React.useEffect(() => {
+    if (antallModeller > forrigeAntallModeller.current && !userMovedRef.current) fitViewRef.current?.()
+    forrigeAntallModeller.current = antallModeller
+  }, [antallModeller, fitViewRef])
 
   const visibleStoreys = React.useMemo(
     () =>
@@ -243,10 +578,38 @@ function SceneContents({
     return result
   }, [visibleStoreys])
 
+  const forsteEtasje = state.model.storeys[0]?.id
+  const synligeTegninger = tegninger.flatMap(({ entry, tegning }) => {
+    const storey = visibleStoreys.find((item) => item.id === (entry.storeyId ?? forsteEtasje))
+    return storey ? [{ entry, tegning, hoyde: storey.elevation }] : []
+  })
+
+  // Skyggene regnes på nytt bare når det som kaster dem endrer seg.
+  const modellNokkel = modeller.map(({ entry }) => entry.id).join("|")
+  const skyggeNokkel = React.useMemo(
+    () => ({}),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entries, modeller]
+  )
+  const [kontaktNokkel, setKontaktNokkel] = React.useState(0)
+  React.useEffect(() => {
+    // Kontaktskyggen tegnes én gang per endring; under et drag venter vi til slipp.
+    if (draggingWall) return
+    const timer = window.setTimeout(() => setKontaktNokkel((n) => n + 1), 120)
+    return () => window.clearTimeout(timer)
+  }, [draggingWall, skyggeNokkel])
+
+  const interaktiv = modus === "velg"
+  const shadowMap = lettSkygge ? 1024 : 2048
+
   return (
     <>
       <color attach="background" args={["#e9eef5"]} />
       <fog attach="fog" args={["#e9eef5", radius * 3, radius * 9]} />
+
+      <Plukker plukkRef={plukkRef} grupper={plukkGrupper} />
+      <SkyggeOppdatering nokkel={skyggeNokkel} />
+      {tung && <AdaptiveDpr />}
 
       {/* Himmel- og bakkelys gir farget omgivelseslys: kjølig ovenfra, varmt
           reflektert nedenfra, slik dagslys faktisk oppfører seg. */}
@@ -255,11 +618,11 @@ function SceneContents({
         castShadow
         position={[radius * 0.7, radius * 1.3, radius * 0.55]}
         intensity={2.4}
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[shadowMap, shadowMap]}
         shadow-bias={-0.0004}
         shadow-normalBias={0.02}
-        shadow-radius={6}
-        shadow-blurSamples={16}
+        shadow-radius={lettSkygge ? 4 : 6}
+        shadow-blurSamples={lettSkygge ? 8 : 16}
       >
         <orthographicCamera
           attach="shadow-camera"
@@ -296,34 +659,67 @@ function SceneContents({
         followCamera={false}
       />
 
+      {/* Tegnes én gang per endring (frames=1), ikke for hvert bilde. */}
       <ContactShadows
+        key={kontaktNokkel}
+        frames={1}
         position={[bounds.center.x, 0.001, -bounds.center.y]}
-        key="contact-shadows"
         scale={radius * 3}
         opacity={0.35}
         blur={2.2}
         far={radius}
+        resolution={lettSkygge ? 256 : 512}
       />
 
       <group ref={buildingRef}>
-      {entries.map(({ storey, solid }) => (
-        <SolidMeshView
-          key={`${storey.id}:${solid.id}`}
-          store={store}
-          storey={storey}
-          solid={solid}
-          model={state.model}
-          selection={state.selection}
-          onDragChange={setDraggingWall}
-        />
-      ))}
+        {entries.map(({ storey, solid }) => (
+          <SolidMeshView
+            key={`${storey.id}:${solid.id}`}
+            store={store}
+            storey={storey}
+            solid={solid}
+            model={state.model}
+            selection={state.selection}
+            interaktiv={interaktiv}
+            kanDra={canEdit}
+            onDragChange={setDraggingWall}
+          />
+        ))}
       </group>
+
+      <Bvh key={modellNokkel} enabled={bvhPa} firstHitOnly>
+        <group ref={importRef}>
+          {modeller.map(({ entry, modell }) => (
+            <ImportertModell
+              key={entry.id}
+              entry={entry}
+              geometri={modell.geometri}
+              markert={markert?.importId === entry.id ? markert.element : null}
+            />
+          ))}
+        </group>
+      </Bvh>
+
+      {synligeTegninger.map(({ entry, tegning, hoyde }) => (
+        <ImportertTegning key={entry.id} entry={entry} tegning={tegning} hoyde={hoyde} />
+      ))}
+
+      {state.showDimensions && <VeggMal3D storeys={visibleStoreys} />}
+
+      <MalingLag
+        malinger={state.model.measurements ?? []}
+        valgt={valgtMaling}
+        onVelg={onVelgMaling}
+        start={malStart}
+        peker={modus === "mal" ? peker : null}
+      />
 
       <OrbitControls
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ref={controlsRef as any}
         makeDefault
         enabled={!draggingWall}
+        regress={tung}
         onStart={() => {
           userMovedRef.current = true
         }}
@@ -339,17 +735,40 @@ function SceneContents({
           RIGHT: THREE.MOUSE.PAN,
         }}
       />
-
     </>
   )
 }
 
-function SolidMeshView({
+/**
+ * Skyggekartet tegnes bare når geometrien endres. Lyset står fast i verden,
+ * så å snu kameraet endrer ingen skygger — uten dette ble kartet (2048², VSM
+ * med uskarphet) tegnet på nytt for hvert eneste bilde.
+ */
+function SkyggeOppdatering({ nokkel }: { nokkel: unknown }) {
+  // Rendereren hentes via `get()`: den eies av r3f, ikke av denne komponenten.
+  const get = useThree((three) => three.get)
+  React.useEffect(() => {
+    const skygger = get().gl.shadowMap
+    skygger.autoUpdate = false
+    return () => {
+      skygger.autoUpdate = true
+    }
+  }, [get])
+  React.useEffect(() => {
+    get().gl.shadowMap.needsUpdate = true
+    get().invalidate()
+  }, [get, nokkel])
+  return null
+}
+
+const SolidMeshView = React.memo(function SolidMeshView({
   store,
   storey,
   solid,
   model,
   selection,
+  interaktiv,
+  kanDra,
   onDragChange,
 }: {
   store: CadStore
@@ -357,6 +776,9 @@ function SolidMeshView({
   solid: ElementSolid
   model: BuildingModel
   selection: SelectionRef | null
+  /** Av i målemodus: da hører trykk til målingen, ikke valg og drag. */
+  interaktiv: boolean
+  kanDra: boolean
   onDragChange: (dragging: boolean) => void
 }) {
   const { camera, raycaster, gl } = useThree()
@@ -395,7 +817,7 @@ function SolidMeshView({
     const selectionRef = selectionFor(solid, storey)
     if (selectionRef) store.setSelection(selectionRef)
 
-    if (!wall || wall.locked || event.button !== 0) return
+    if (!kanDra || !wall || wall.locked || event.button !== 0) return
 
     // Dra i veggen: vi projiserer musa på et vannrett plan i veggens høyde og
     // lar bare bevegelsen LANGS veggnormalen telle. Da glir veggen sidelengs i
@@ -453,6 +875,20 @@ function SolidMeshView({
     window.addEventListener("pointerup", onUp)
   }
 
+  // Uten hendelser er meshen usynlig for r3f sin plukking: i målemodus
+  // slipper den da å testes ved hver musebevegelse.
+  const handlers = interaktiv
+    ? {
+        onPointerDown: handlePointerDown,
+        onPointerOver: (event: ThreeEvent<PointerEvent>) => {
+          event.stopPropagation()
+          setHovered(true)
+        },
+        onPointerOut: () => setHovered(false),
+      }
+    : {}
+  const visHover = hovered && interaktiv
+
   if (solid.elementKind === "opening" && wall && opening) {
     return (
       <OpeningVisual
@@ -461,9 +897,8 @@ function SolidMeshView({
         opening={opening}
         storey={storey}
         isSelected={isSelected}
-        hovered={hovered}
-        setHovered={setHovered}
-        onPointerDown={handlePointerDown}
+        hovered={visHover}
+        handlers={handlers}
         materialColor={
           solid.materialId
             ? model.materials.find((item) => item.id === solid.materialId)?.color ?? null
@@ -474,26 +909,13 @@ function SolidMeshView({
   }
 
   return (
-    <mesh
-      geometry={geometry}
-      castShadow={appearance.castShadow}
-      receiveShadow
-      onPointerDown={handlePointerDown}
-      onPointerOver={(event) => {
-        event.stopPropagation()
-        setHovered(true)
-      }}
-      onPointerOut={() => setHovered(false)}
-    >
+    <mesh geometry={geometry} castShadow={appearance.castShadow} receiveShadow {...handlers}>
       <meshStandardMaterial
-        color={isSelected ? ELEMENT_COLORS.selection : hovered ? ELEMENT_COLORS.hover : appearance.color}
+        color={isSelected ? ELEMENT_COLORS.selection : visHover ? ELEMENT_COLORS.hover : appearance.color}
         roughness={appearance.roughness}
         metalness={0.02}
-        // Matte byggematerialer sprer lys bredt; litt flat skyggelegging
-        // kler dem bedre enn den harde standardmodellen.
-        flatShading={false}
         side={THREE.FrontSide}
-        emissive={isSelected ? new THREE.Color(ELEMENT_COLORS.selection) : new THREE.Color("#000000")}
+        emissive={isSelected ? ELEMENT_COLORS.selection : "#000000"}
         emissiveIntensity={isSelected ? 0.18 : 0}
         transparent={appearance.transparent}
         opacity={appearance.transparent ? 0.2 : 1}
@@ -506,10 +928,11 @@ function SolidMeshView({
         color={isSelected ? ELEMENT_COLORS.selection : "#4a5058"}
         threshold={18}
         scale={1.0008}
+        userData={{ ignorer: true }}
       />
     </mesh>
   )
-}
+})
 
 function OpeningVisual({
   geometry,
@@ -518,8 +941,7 @@ function OpeningVisual({
   storey,
   isSelected,
   hovered,
-  setHovered,
-  onPointerDown,
+  handlers,
   materialColor,
 }: {
   geometry: THREE.BufferGeometry
@@ -528,12 +950,16 @@ function OpeningVisual({
   storey: Storey
   isSelected: boolean
   hovered: boolean
-  setHovered: React.Dispatch<React.SetStateAction<boolean>>
-  onPointerDown: (event: ThreeEvent<PointerEvent>) => void
+  handlers: Partial<Record<"onPointerDown" | "onPointerOver" | "onPointerOut", (event: ThreeEvent<PointerEvent>) => void>>
   /** Fargen på varen som er lagt på åpningen, eller null når ingen er valgt. */
   materialColor: string | null
 }) {
-  const { hitGeometry, pieces } = React.useMemo(() => {
+  /**
+   * Karm, ramme og vannbrett slås sammen til ÉN geometri, glass og dørblad er
+   * egne. Før var hver bit en egen mesh med egen kantlinje — rundt 20
+   * tegnekall per vindu.
+   */
+  const { karm, glass, blad } = React.useMemo(() => {
     const localDirection = normalize(sub(wall.b, wall.a))
     const worldDirection = new THREE.Vector3(localDirection.x, 0, -localDirection.y).normalize()
     const worldUp = new THREE.Vector3(0, 1, 0)
@@ -547,20 +973,19 @@ function OpeningVisual({
     )
     basis.setPosition(center)
 
-    const geometrySet: THREE.BufferGeometry[] = []
-    const pushBox = (
+    const box = (
       width: number,
       height: number,
       depth: number,
       offsetX = 0,
       offsetY = 0,
       offsetZ = 0
-    ) => {
-      if (width <= 0 || height <= 0 || depth <= 0) return
-      const box = new THREE.BoxGeometry(width, height, depth)
-      box.translate(offsetX, offsetY, offsetZ)
-      box.applyMatrix4(basis)
-      geometrySet.push(box)
+    ): THREE.BufferGeometry | null => {
+      if (width <= 0 || height <= 0 || depth <= 0) return null
+      const geometri = new THREE.BoxGeometry(width, height, depth)
+      geometri.translate(offsetX, offsetY, offsetZ)
+      geometri.applyMatrix4(basis)
+      return geometri
     }
 
     const isWindow = opening.kind !== "door"
@@ -572,118 +997,99 @@ function OpeningVisual({
     const innerHeight = Math.max(opening.height - topFrame - bottomFrame, 0.02)
     const outerFaceZ = wall.thickness / 2 - frameDepth / 2
     const innerFaceZ = -wall.thickness / 2 + frameDepth / 2
-    const centerZ = 0
 
     // Ytre og indre ramme gir dybde og skygger som leses bedre i 3D enn en flat boks.
-    pushBox(sideFrame, opening.height, frameDepth, -opening.width / 2 + sideFrame / 2, 0, outerFaceZ)
-    pushBox(sideFrame, opening.height, frameDepth, opening.width / 2 - sideFrame / 2, 0, outerFaceZ)
-    pushBox(innerWidth, topFrame, frameDepth, 0, opening.height / 2 - topFrame / 2, outerFaceZ)
-    if (bottomFrame > 0) {
-      pushBox(innerWidth, bottomFrame, frameDepth, 0, -opening.height / 2 + bottomFrame / 2, outerFaceZ)
+    const rammer: Array<THREE.BufferGeometry | null> = []
+    for (const faceZ of [outerFaceZ, innerFaceZ]) {
+      rammer.push(box(sideFrame, opening.height, frameDepth, -opening.width / 2 + sideFrame / 2, 0, faceZ))
+      rammer.push(box(sideFrame, opening.height, frameDepth, opening.width / 2 - sideFrame / 2, 0, faceZ))
+      rammer.push(box(innerWidth, topFrame, frameDepth, 0, opening.height / 2 - topFrame / 2, faceZ))
+      if (bottomFrame > 0) {
+        rammer.push(box(innerWidth, bottomFrame, frameDepth, 0, -opening.height / 2 + bottomFrame / 2, faceZ))
+      }
     }
 
-    pushBox(sideFrame, opening.height, frameDepth, -opening.width / 2 + sideFrame / 2, 0, innerFaceZ)
-    pushBox(sideFrame, opening.height, frameDepth, opening.width / 2 - sideFrame / 2, 0, innerFaceZ)
-    pushBox(innerWidth, topFrame, frameDepth, 0, opening.height / 2 - topFrame / 2, innerFaceZ)
-    if (bottomFrame > 0) {
-      pushBox(innerWidth, bottomFrame, frameDepth, 0, -opening.height / 2 + bottomFrame / 2, innerFaceZ)
-    }
-
+    let glass: THREE.BufferGeometry | null = null
+    let blad: THREE.BufferGeometry | null = null
     if (isWindow) {
       const glassDepth = Math.min(Math.max(wall.thickness * 0.08, 0.012), 0.03)
-      const glassWidth = Math.max(innerWidth - 0.02, 0.01)
-      const glassHeight = Math.max(innerHeight - 0.02, 0.01)
-      pushBox(glassWidth, glassHeight, glassDepth, 0, (bottomFrame - topFrame) * 0.05, centerZ)
-
+      glass = box(
+        Math.max(innerWidth - 0.02, 0.01),
+        Math.max(innerHeight - 0.02, 0.01),
+        glassDepth,
+        0,
+        (bottomFrame - topFrame) * 0.05,
+        0
+      )
       // Vannbrett: en tynn, utstikkende hylle under vinduet. Liten detalj, men
       // det er slike kanter øyet bruker for å lese et vindu som et vindu.
       const sillDepth = wall.thickness * 0.5 + 0.04
-      pushBox(
-        opening.width + 0.08,
-        0.03,
-        sillDepth,
-        0,
-        -opening.height / 2 + 0.015,
-        outerFaceZ - sillDepth * 0.25
-      )
+      rammer.push(box(opening.width + 0.08, 0.03, sillDepth, 0, -opening.height / 2 + 0.015, outerFaceZ - sillDepth * 0.25))
     } else {
       const leafWidth = Math.max(opening.width - 0.06, 0.02)
       const leafHeight = Math.max(opening.height - 0.07, 0.02)
       const leafDepth = Math.min(Math.max(wall.thickness * 0.18, 0.04), 0.07)
-      pushBox(leafWidth, leafHeight, leafDepth, 0, -0.01, centerZ)
+      blad = box(leafWidth, leafHeight, leafDepth, 0, -0.01, 0)
     }
 
-    return { hitGeometry: geometry, pieces: geometrySet }
-  }, [geometry, opening, storey.elevation, wall])
+    const deler = rammer.filter((item): item is THREE.BufferGeometry => item !== null)
+    const karm = deler.length > 0 ? mergeGeometries(deler, false) : null
+    for (const del of deler) del.dispose()
+    return { karm, glass, blad }
+  }, [opening, storey.elevation, wall])
 
   React.useEffect(
     () => () => {
-      hitGeometry.dispose()
-      for (const piece of pieces) piece.dispose()
+      karm?.dispose()
+      glass?.dispose()
+      blad?.dispose()
     },
-    [hitGeometry, pieces]
+    [blad, glass, karm]
   )
-
-  const isWindow = opening.kind !== "door"
 
   // Karmen tar fargen fra varen brukeren har valgt. Uten valgt vare bruker vi
   // hvit karm på vindu (norsk standard — glasset har sitt eget materiale) og
   // trefarge på dør.
+  const isWindow = opening.kind !== "door"
   const frameColor = materialColor ?? (isWindow ? "#f4f3f0" : ELEMENT_COLORS.door)
+  const fremhevet = isSelected ? ELEMENT_COLORS.selection : hovered ? ELEMENT_COLORS.hover : null
 
   return (
-    <group
-      onPointerDown={onPointerDown}
-      onPointerOver={(event) => {
-        event.stopPropagation()
-        setHovered(true)
-      }}
-      onPointerOut={() => setHovered(false)}
-    >
-      <mesh geometry={hitGeometry} visible={false} />
+    <group {...handlers}>
+      {/* Usynlig treffboks som fyller hullet, så åpningen er lett å treffe. */}
+      <mesh geometry={geometry} visible={false} />
 
-      {pieces.map((piece, index) => {
-        const glass = isWindow && index === pieces.length - 1
-        const leaf = !isWindow && index === pieces.length - 1
-        return (
-          <mesh key={index} geometry={piece} castShadow receiveShadow>
-            {glass ? (
-              <meshPhysicalMaterial
-                color={isSelected ? ELEMENT_COLORS.selection : "#b6d8ea"}
-                transparent
-                opacity={0.58}
-                roughness={0.02}
-                metalness={0}
-                transmission={0.92}
-                thickness={0.02}
-                ior={1.45}
-                clearcoat={1}
-                clearcoatRoughness={0}
-                depthWrite={false}
-                side={THREE.DoubleSide}
-              />
-            ) : leaf ? (
-              <meshPhysicalMaterial
-                color={isSelected ? ELEMENT_COLORS.selection : hovered ? "#c28a57" : frameColor}
-                roughness={0.55}
-                metalness={0.02}
-                clearcoat={0.16}
-                clearcoatRoughness={0.22}
-                side={THREE.FrontSide}
-              />
-            ) : (
-              <meshStandardMaterial
-                color={isSelected ? ELEMENT_COLORS.selection : hovered ? ELEMENT_COLORS.hover : frameColor}
-                roughness={0.72}
-                metalness={0.01}
-                emissive={isSelected ? new THREE.Color(ELEMENT_COLORS.selection) : new THREE.Color("#000000")}
-                emissiveIntensity={isSelected ? 0.12 : 0}
-              />
-            )}
-            <Edges color={isSelected ? ELEMENT_COLORS.selection : "rgba(255,255,255,0.45)"} scale={1.001} />
-          </mesh>
-        )
-      })}
+      {karm && (
+        <mesh geometry={karm} castShadow receiveShadow>
+          <meshStandardMaterial
+            color={fremhevet ?? frameColor}
+            roughness={0.72}
+            metalness={0.01}
+            emissive={isSelected ? ELEMENT_COLORS.selection : "#000000"}
+            emissiveIntensity={isSelected ? 0.12 : 0}
+          />
+          <Edges color={isSelected ? ELEMENT_COLORS.selection : "#9aa0a6"} scale={1.001} userData={{ ignorer: true }} />
+        </mesh>
+      )}
+      {blad && (
+        <mesh geometry={blad} castShadow receiveShadow>
+          <meshStandardMaterial color={fremhevet ?? frameColor} roughness={0.55} metalness={0.02} />
+          <Edges color={isSelected ? ELEMENT_COLORS.selection : "#7a5a3a"} scale={1.001} userData={{ ignorer: true }} />
+        </mesh>
+      )}
+      {glass && (
+        <mesh geometry={glass} renderOrder={2}>
+          <meshStandardMaterial
+            color={isSelected ? ELEMENT_COLORS.selection : "#9cc8e0"}
+            transparent
+            opacity={0.38}
+            roughness={0.05}
+            metalness={0.1}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      )}
     </group>
   )
 }
@@ -758,17 +1164,6 @@ function resolveAppearance(solid: ElementSolid, storey: Storey, model: BuildingM
     transparent: false,
     roughness: 0.96,
     castShadow: true,
-  }
-}
-
-/** Eksporterer den aktive 3D-visningen som PNG (brukes til miniatyrbilde). */
-export function captureCanvasPng(container: HTMLElement | null): string | null {
-  const canvas = container?.querySelector("canvas")
-  if (!canvas) return null
-  try {
-    return (canvas as HTMLCanvasElement).toDataURL("image/png")
-  } catch {
-    return null
   }
 }
 

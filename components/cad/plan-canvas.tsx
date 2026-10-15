@@ -15,6 +15,10 @@
  *   - dra en dør/et vindu langs veggen
  *   - klikk med veggverktøyet for å tegne sammenhengende vegger
  *   - hjul zoomer mot pekeren, midtknapp/mellomrom panorerer
+ *   - to fingre klyper for zoom og panorerer (mobil og nettbrett)
+ *
+ * Importerte tegninger (DXF, PDF, bilde) ligger under alt annet i riktig
+ * målestokk, se plan-underlag.tsx.
  */
 
 import * as React from "react"
@@ -42,6 +46,7 @@ import {
   sub,
 } from "@/lib/cad/math"
 import { CadContextMenu } from "@/components/cad/cad-context-menu"
+import { PlanUnderlag, useImportGrenser, type ImportModus } from "@/components/cad/plan-underlag"
 import { buildCadMenuItems, describeSelectionForMenu } from "@/components/cad/cad-menu-items"
 import { ELEMENT_COLORS } from "@/lib/cad/presets"
 import type { CadStore, OutlineKind } from "@/lib/cad/store"
@@ -60,6 +65,8 @@ type DragState =
   | { kind: "column"; columnId: string }
   | { kind: "outline-point"; outlineKind: OutlineKind; id: string; index: number }
   | { kind: "outline-edge"; outlineKind: OutlineKind; id: string; index: number; last: Point }
+  | { kind: "flytt-import"; importId: string; start: Point; startOffset: Point }
+  | { kind: "pinch"; startDistance: number; startMid: { x: number; y: number }; origin: Viewport }
 
 type DraftState =
   | { kind: "none" }
@@ -76,11 +83,17 @@ export function PlanCanvas({
   onShowProperties,
   onAddFloorFromWalls,
   onAddRoofFromWalls,
+  importModus = null,
+  canEdit = true,
 }: {
   store: CadStore
+  /** Uten redigering kan man se, velge og panorere, men ikke dra i noe. */
+  canEdit?: boolean
   className?: string
-  /** Vises midt i tegneflaten så lenge etasjen er tom. */
+  /** Vises nederst i tegneflaten så lenge etasjen er tom. */
   emptyState?: React.ReactNode
+  /** Kalibrering eller flytting av en importert fil overstyrer verktøyene. */
+  importModus?: ImportModus | null
   onShowProperties?: () => void
   onAddFloorFromWalls?: () => void
   onAddRoofFromWalls?: () => void
@@ -195,11 +208,20 @@ export function PlanCanvas({
     return () => observer.disconnect()
   }, [])
 
+  const importGrenser = useImportGrenser(state.model, storey?.id ?? null)
+  const harImporter = (state.model.imports?.length ?? 0) > 0
+
   const fitToModel = React.useCallback(() => {
     const points: Point[] = []
     for (const wall of storey?.walls ?? []) points.push(wall.a, wall.b)
     for (const slab of storey?.slabs ?? []) points.push(...slab.outline)
     for (const roof of storey?.roofs ?? []) points.push(...roof.outline)
+    if (importGrenser) {
+      points.push(
+        { x: importGrenser.minX, y: importGrenser.minY },
+        { x: importGrenser.maxX, y: importGrenser.maxY }
+      )
+    }
 
     if (points.length === 0) {
       setViewport({ scale: 40, panX: size.width / 2, panY: size.height / 2 })
@@ -225,7 +247,7 @@ export function PlanCanvas({
       panX: size.width / 2 - centerX * nextScale,
       panY: size.height / 2 + centerY * nextScale,
     })
-  }, [size.height, size.width, storey?.roofs, storey?.slabs, storey?.walls])
+  }, [importGrenser, size.height, size.width, storey?.roofs, storey?.slabs, storey?.walls])
 
   // Refit skal skje når FLATEN endrer størrelse — ikke når modellen endrer seg.
   // Uten ref-en her ville hver eneste vegg brukeren tegner ha re-sentrert
@@ -251,6 +273,19 @@ export function PlanCanvas({
     }
     wasEmpty.current = isEmpty
   }, [isEmpty, measured])
+
+  // Det samme når en importert tegning blir ferdig lastet: den skal komme til
+  // syne, ikke ligge utenfor skjermen fordi den er tegnet langt fra origo.
+  const importNokkel = importGrenser
+    ? [importGrenser.minX, importGrenser.minY, importGrenser.maxX, importGrenser.maxY].map((n) => n.toFixed(1)).join(",")
+    : ""
+  const forrigeImportNokkel = React.useRef(importNokkel)
+  React.useEffect(() => {
+    const forrige = forrigeImportNokkel.current
+    forrigeImportNokkel.current = importNokkel
+    if (!measured || !importNokkel || drag.kind === "flytt-import") return
+    if (forrige === "" && !userAdjusted.current) fitRef.current()
+  }, [drag.kind, importNokkel, measured])
 
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => setShiftHeld(event.shiftKey)
@@ -394,7 +429,47 @@ export function PlanCanvas({
   )
 
   // --- Pekerhåndtering ------------------------------------------------------
+  // Fingrene som er nede nå (skjermkoordinater), for klypezoom på mobil.
+  const pekere = React.useRef(new Map<number, { x: number; y: number }>())
+  // Tegneverktøyene setter punkt når fingeren treffer. Blir det en klypebevegelse
+  // i stedet, tas punktet tilbake.
+  const draftForFinger = React.useRef<DraftState | null>(null)
+  // Det samme for valg: første finger av et klyp skal ikke velge rommet (og
+  // åpne panelet) den tilfeldigvis traff.
+  const valgForFinger = React.useRef<SelectionRef | null | undefined>(undefined)
+
+  const lokalPunkt = (event: React.PointerEvent) => {
+    const rect = containerRef.current?.getBoundingClientRect()
+    return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) }
+  }
+
+  const startKlyp = () => {
+    const [a, b] = [...pekere.current.values()]
+    if (!a || !b) return
+    if (drag.kind !== "none" && drag.kind !== "pan" && drag.kind !== "pinch") store.cancelTransient()
+    if (draftForFinger.current) setDraft(draftForFinger.current)
+    draftForFinger.current = null
+    if (valgForFinger.current !== undefined) store.setSelection(valgForFinger.current)
+    valgForFinger.current = undefined
+    setDrag({
+      kind: "pinch",
+      startDistance: Math.max(Math.hypot(a.x - b.x, a.y - b.y), 1),
+      startMid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      origin: viewport,
+    })
+  }
+
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (event.pointerType === "touch") {
+      pekere.current.set(event.pointerId, lokalPunkt(event))
+      if (pekere.current.size === 2) {
+        startKlyp()
+        return
+      }
+      if (pekere.current.size > 2) return
+    }
+    draftForFinger.current = event.pointerType === "touch" ? draft : null
+    valgForFinger.current = event.pointerType === "touch" ? state.selection : undefined
     // setPointerCapture kaster hvis peker-id-en ikke er aktiv (skjer bl.a. ved
     // syntetiske hendelser og på enkelte pekeplater). Sto den ubeskyttet her,
     // tok den med seg HELE klikket — verktøyene så ut til å være døde.
@@ -413,6 +488,18 @@ export function PlanCanvas({
       return
     }
     if (event.button !== 0) return
+
+    if (importModus?.type === "kalibrer") {
+      importModus.onPunkt(world)
+      return
+    }
+    if (importModus?.type === "flytt") {
+      const entry = state.model.imports?.find((item) => item.id === importModus.importId)
+      if (entry) {
+        setDrag({ kind: "flytt-import", importId: entry.id, start: world, startOffset: entry.offset })
+      }
+      return
+    }
 
     if (state.tool === "wall") {
       const snapped = snapWorldPoint(world, {
@@ -469,7 +556,7 @@ export function PlanCanvas({
 
     // Velg-verktøyet. Omriss-håndtak har forrang: de ligger oppå elementet, og
     // det er dem brukeren sikter på når han vil strekke et tak eller et dekke.
-    if (selectedOutline) {
+    if (selectedOutline && canEdit) {
       const grab = 10 / viewport.scale
       const { kind, id, outline } = selectedOutline
 
@@ -506,6 +593,11 @@ export function PlanCanvas({
     }
 
     store.setSelection(hit.selection)
+    if (!canEdit) {
+      // Bare se: et drag på en vegg panorerer i stedet for å flytte den.
+      setDrag({ kind: "pan", startX: event.clientX, startY: event.clientY, origin: viewport })
+      return
+    }
 
     if (hit.selection.kind === "wall" && hit.handle) {
       setDrag({ kind: "wall-endpoint", wallId: hit.selection.id, end: hit.handle })
@@ -525,7 +617,33 @@ export function PlanCanvas({
   }
 
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (event.pointerType === "touch" && pekere.current.has(event.pointerId)) {
+      pekere.current.set(event.pointerId, lokalPunkt(event))
+    }
+    if (drag.kind === "pinch") {
+      const [a, b] = [...pekere.current.values()]
+      if (!a || !b) return
+      userAdjusted.current = true
+      const avstand = Math.max(Math.hypot(a.x - b.x, a.y - b.y), 1)
+      const midt = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+      const o = drag.origin
+      const nextScale = Math.min(Math.max(o.scale * (avstand / drag.startDistance), 4), 600)
+      // Punktet som lå under fingrene da klypet startet, følger fingrene.
+      const wx = (drag.startMid.x - o.panX) / o.scale
+      const wy = (drag.startMid.y - o.panY) / o.scale
+      setViewport({ scale: nextScale, panX: midt.x - wx * nextScale, panY: midt.y - wy * nextScale })
+      return
+    }
+
     const world = pointerWorld(event)
+    if (drag.kind === "flytt-import") {
+      store.updateImport(
+        drag.importId,
+        { offset: { x: drag.startOffset.x + world.x - drag.start.x, y: drag.startOffset.y + world.y - drag.start.y } },
+        { transient: true }
+      )
+      return
+    }
 
     if (draft.kind === "wall" || draft.kind === "polygon") {
       const snapped = snapWorldPoint(world, { from: draft.points[draft.points.length - 1] })
@@ -617,6 +735,12 @@ export function PlanCanvas({
   }
 
   const handlePointerUp = (event: React.PointerEvent<SVGSVGElement>) => {
+    pekere.current.delete(event.pointerId)
+    if (drag.kind === "pinch") {
+      // Klypet er over når én finger slipper; resten av berøringen er ingen ny gest.
+      if (pekere.current.size === 0) setDrag({ kind: "none" })
+      return
+    }
     try {
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId)
@@ -627,6 +751,8 @@ export function PlanCanvas({
     if (drag.kind !== "none" && drag.kind !== "pan") {
       store.commitTransient()
     }
+    draftForFinger.current = null
+    valgForFinger.current = undefined
     setDrag({ kind: "none" })
   }
 
@@ -747,16 +873,20 @@ export function PlanCanvas({
         className={cn(
           "touch-none select-none",
           state.tool === "select" ? "cursor-default" : "cursor-crosshair",
+          importModus?.type === "kalibrer" && "cursor-crosshair",
+          importModus?.type === "flytt" && "cursor-move",
           drag.kind === "pan" && "cursor-grabbing"
         )}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onDoubleClick={handleDoubleClick}
         onWheel={handleWheel}
         onContextMenu={(event) => {
           event.preventDefault()
+          if (!canEdit) return
           const rect = containerRef.current?.getBoundingClientRect()
           if (!rect) return
           const world = pointerWorld(event)
@@ -772,6 +902,11 @@ export function PlanCanvas({
         }}
       >
         {gridLines}
+
+        {/* Importerte tegninger under alt det tegnede */}
+        {harImporter && (
+          <PlanUnderlag model={state.model} storeyId={storey?.id ?? null} viewport={viewport} modus={importModus} />
+        )}
 
         {/* Dekker under alt annet */}
         {storey?.slabs.map((slab) => (
@@ -1060,7 +1195,17 @@ export function PlanCanvas({
           fitToModel()
         }}
         hint={
-          draft.kind === "wall"
+          importModus?.type === "kalibrer"
+            ? importModus.punkter.length === 0
+              ? "Klikk på første punkt med kjent mål på tegningen"
+              : importModus.punkter.length === 1
+                ? "Klikk på det andre punktet"
+                : "Skriv inn den virkelige avstanden i panelet"
+            : importModus?.type === "flytt"
+              ? state.model.imports?.find((item) => item.id === importModus.importId)?.kind === "model"
+                ? "Dra for å flytte modellen"
+                : "Dra for å flytte tegningen"
+              : draft.kind === "wall"
             ? `Klikk for neste hjørne (${draft.points.length} satt)`
             : draft.kind === "polygon"
               ? `Klikk rundt omrisset (${draft.points.length} hjørner satt)`
@@ -1072,7 +1217,7 @@ export function PlanCanvas({
                     ? "Dra mellom to punkter for å måle"
                     : selectedOutline
                       ? "Dra hjørner og kanter · Alt-klikk legger til eller fjerner hjørne"
-                      : state.tool === "select" && !state.selection && !hasSelectedOnce && !isEmpty
+                      : canEdit && state.tool === "select" && !state.selection && !hasSelectedOnce && !isEmpty
                         ? "Klikk på en vegg, en dør eller et vindu for å endre det"
                         : null
         }
@@ -1106,9 +1251,11 @@ export function PlanCanvas({
         />
       )}
 
-      {isEmpty && emptyState && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
-          <div className="pointer-events-auto w-full max-w-md">{emptyState}</div>
+      {/* Tom tegning: en diskré linje nederst, ikke et kort midt i flaten — den
+          skal ikke stå i veien for den som vil begynne å tegne med en gang. */}
+      {isEmpty && !harImporter && emptyState && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3">
+          {emptyState}
         </div>
       )}
     </div>

@@ -52,3 +52,5 @@ playwright-report/
 
 # maplibre-arbeideren kopieres fra node_modules (scripts/copy-maplibre-worker.mjs)
 /public/maplibre/
+# web-ifc.wasm kopieres fra node_modules (scripts/copy-web-ifc-wasm.mjs)
+/public/web-ifc/

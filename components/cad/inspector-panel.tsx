@@ -126,7 +126,7 @@ function selectionTitle(state: ReturnType<typeof useCadState>, storey: Storey) {
  * uten at verdien hopper tilbake mens man skriver. Verdien sendes videre først
  * når feltet er et gyldig tall.
  */
-function NumberField({
+export function NumberField({
   label,
   value,
   onChange,
@@ -251,7 +251,7 @@ function MaterialSelect({
   )
 }
 
-function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
+export function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

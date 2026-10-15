@@ -154,12 +154,56 @@ const metaSchema = z.object({
   assumptions: z.array(z.string().max(400)).max(30).catch([]),
 })
 
+const IMPORT_FORMATS = [
+  "ifc", "glb", "gltf", "obj", "fbx", "dae", "kmz", "stl", "3ds", "3mf", "ply", "wrl", "dxf", "pdf", "png", "jpg",
+] as const
+
+const point3Schema = z.object({ x: finite(0), y: finite(0), z: finite(0) })
+
+export const modelImportSchema = z.object({
+  id: z.string().min(1).max(80),
+  name: z.string().min(1).max(200).catch("Importert fil"),
+  format: z.enum(IMPORT_FORMATS),
+  kind: z.enum(["model", "drawing"]),
+  storagePath: z.string().min(1).max(500),
+  sizeBytes: z.number().int().min(0).catch(0),
+  visible: z.boolean().catch(true),
+  opacity: z.number().min(0.1).max(1).catch(1),
+  scale: z.number().positive().max(1e6).catch(1),
+  offset: z.object({ x: finite(0), y: finite(0) }).catch({ x: 0, y: 0 }),
+  rotationDeg: finite(0),
+  elevation: finite(0),
+  upAxis: z.enum(["y", "z"]).catch("y"),
+  storeyId: z.string().nullish().catch(null).transform((value) => value ?? null),
+  page: z.number().int().min(1).max(500).catch(1),
+  createdAt: z.string().catch(""),
+})
+
+const measurementSchema = z.object({
+  id: z.string().min(1).max(80),
+  a: point3Schema,
+  b: point3Schema,
+  label: z.string().max(120).nullish().catch(null),
+})
+
 export const buildingModelSchema = z.object({
   schemaVersion: z.literal(1).catch(1),
   name: z.string().min(1).max(160).catch("3D-modell"),
   units: z.literal("m").catch("m"),
   storeys: z.array(storeySchema).max(30).catch([]),
   materials: z.array(materialSchema).max(400).catch([]),
+  // Én ødelagt import skal ikke ta med seg de andre: hver rad leses for seg.
+  imports: z
+    .array(z.unknown())
+    .max(40)
+    .catch([])
+    .transform((rows) =>
+      rows.flatMap((row) => {
+        const parsed = modelImportSchema.safeParse(row)
+        return parsed.success ? [parsed.data] : []
+      })
+    ),
+  measurements: z.array(measurementSchema).max(200).catch([]),
   meta: metaSchema.catch({
     gridSize: DEFAULTS.gridSize,
     northAngleDeg: 0,

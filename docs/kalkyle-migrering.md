@@ -3,7 +3,7 @@
 **Status: skisse. Ikke kjørt, og skal ikke kjøres uten gjennomgang.** Kalkylemodulen
 (branch `kalkyle`) er i dag bare UI med mock-data i minnet (`KalkyleProvider`).
 Dette er forslaget til tabellene som erstatter mocken. Neste ledige nummer er
-**db/117** (siste er `116_resend_crm_sync.sql`). Sjekk igjen før det skrives, fordi
+**db/118** (siste er `117_project_models_100mb.sql`). Sjekk igjen før det skrives, fordi
 andre brancher kan ha tatt nummeret.
 
 ## Modellen
@@ -41,10 +41,10 @@ Typene ligger i `lib/kalkyle/types.ts`, og tabellene følger dem felt for felt.
   databasen, bare i visningen (`lib/kalkyle/format.ts`).
 - Idempotent: `IF NOT EXISTS`, `DROP POLICY IF EXISTS`. Trygg å kjøre flere ganger.
 
-## db/117_kalkyler.sql (utkast)
+## db/118_kalkyler.sql (utkast)
 
 ```sql
--- 117_kalkyler.sql
+-- 118_kalkyler.sql
 -- Kalkylemodulen: kalkyler per prosjekt med poster og linjer, tilbud som frosne
 -- kopier, maler, og post på timer/innkjøp for etterkalkyle per post.
 -- Safe to run repeatedly.
@@ -269,7 +269,7 @@ CREATE POLICY active_authenticated_user ON public.kalkyler
 
 ## Utrulling
 
-1. Skriv `db/117_kalkyler.sql` fra utkastet, og kjør den i en Supabase-branch først
+1. Skriv `db/118_kalkyler.sql` fra utkastet, og kjør den i en Supabase-branch først
    (`get_advisors` for RLS og ytelse).
 2. Koble `KalkyleProvider` til server actions (les og skriv per kalkyle), med
    `KalkyleOmrade` som laster prosjektets kalkyler i stedet for mocken.
