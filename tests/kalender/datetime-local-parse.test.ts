@@ -15,7 +15,12 @@ describe('kalender datetime-local parsing (Safari timezone safety)', () => {
     resolve(__dirname, '../../app/kalender/page.tsx'),
     'utf-8'
   )
-  // Kalenderen bruker nå DateTimeField (DatePicker + klokkeslett); tolkningen bor der.
+  // Starter/Slutter i avtaledialogene (AvtaleTidspunkt) bruker DateTimeField
+  // (DatePicker + klokkeslett); tolkningen bor der.
+  const tidspunkt = readFileSync(
+    resolve(__dirname, '../../app/kalender/avtale-tidspunkt.tsx'),
+    'utf-8'
+  )
   const field = readFileSync(
     resolve(__dirname, '../../components/ui/date-time-field.tsx'),
     'utf-8'
@@ -26,10 +31,12 @@ describe('kalender datetime-local parsing (Safari timezone safety)', () => {
     expect(page).not.toMatch(/new Date\(\s*e(vent)?\.target\.value\s*\)/)
     expect(field).not.toMatch(/new Date\(\s*e(vent)?\.target\.value\s*\)/)
     expect(page).not.toContain('type="datetime-local"')
+    expect(tidspunkt).not.toContain('type="datetime-local"')
   })
 
   it('builds dates with the local-time constructor', () => {
-    expect(page).toContain('<DateTimeField')
+    expect(page).toContain('<AvtaleTidspunkt')
+    expect(tidspunkt).toContain('<DateTimeField')
     // new Date(y, m, d, ...) is local time in every engine — never the string parser.
     expect(field).toMatch(/new Date\(\s*year,\s*month - 1,\s*day,\s*hour,\s*minute/)
   })

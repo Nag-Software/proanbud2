@@ -46,17 +46,18 @@ export function DateTimeField({
 
   return (
     <div className={cn("flex gap-2", className)}>
+      {/* Samme høyde og hjørner på dato og klokkeslett, og datoen tar resten av bredden. */}
       <DatePicker
         id={id}
         value={dateValue}
         minDate={minDate}
-        className="min-w-0 flex-1"
+        className="h-9 min-w-0 flex-1 rounded-md pointer-coarse:h-11"
         onChange={(nextDate) => onChange(nextDate ? combine(nextDate, timeValue || "09:00") : null)}
       />
       <Input
         type="time"
         aria-label="Klokkeslett"
-        className="w-32 shrink-0"
+        className="h-9 w-[6.5rem] shrink-0 tabular-nums pointer-coarse:h-11"
         value={timeValue}
         step={300}
         onChange={(event) => {

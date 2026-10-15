@@ -34,12 +34,13 @@ import {
   ResponsiveDialogTitle,
 } from "@/components/ui/responsive-dialog"
 import { Input } from "@/components/ui/input"
-import { DateTimeField } from "@/components/ui/date-time-field"
 import { Label } from "@/components/ui/label"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 import { CalendarToolbar, type CalendarSource, type CalendarView } from "./calendar-toolbar"
+import { AvtaleTidspunkt } from "./avtale-tidspunkt"
+import { HurtigAvtale } from "./hurtig-avtale"
 import { MonthCalendar } from "./month-calendar"
 import type { CalendarEvent } from "./types"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -125,6 +126,8 @@ function KalenderPage() {
   const [eventEnd, setEventEnd] = useState<Date | null>(null)
   const [eventColor, setEventColor] = useState<string>("")
   const [linkedProject, setLinkedProject] = useState<string>("")
+  /** Hvor hurtigopprett-kortet står (pekeren ved klikket). Null = lukket. */
+  const [hurtig, setHurtig] = useState<{ x: number; y: number } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDisconnecting, setIsDisconnecting] = useState(false)
@@ -337,14 +340,39 @@ function KalenderPage() {
     return events;
   }, [events, visibleProvider]);
 
-  const openCreateDialog = (start: Date, end: Date) => {
+  const nullstillNyAvtale = (start: Date, end: Date) => {
     setEventTitle("")
     setEventDescription("")
     setEventStart(start)
     setEventEnd(end)
     setEventColor("")
     setLinkedProject("")
+  }
+
+  const openCreateDialog = (start: Date, end: Date) => {
+    nullstillNyAvtale(start, end)
+    setHurtig(null)
     setIsCreateDialogOpen(true)
+  }
+
+  // Hurtigopprett (PC): klikk eller dra i kalenderen gir et lite kort ved
+  // pekeren med tittel og prosjekt, i stedet for hele dialogen. Mobil beholder
+  // dagsarket og den fulle dialogen (der passer et svevende kort dårlig).
+  const sistePeker = useRef({ x: 0, y: 0 })
+  useEffect(() => {
+    const husk = (e: PointerEvent) => {
+      sistePeker.current = { x: e.clientX, y: e.clientY }
+    }
+    document.addEventListener("pointerdown", husk, true)
+    return () => document.removeEventListener("pointerdown", husk, true)
+  }, [])
+  const openQuickCreate = (start: Date, end: Date) => {
+    if (isMobile) {
+      openCreateDialog(start, end)
+      return
+    }
+    nullstillNyAvtale(start, end)
+    setHurtig({ ...sistePeker.current })
   }
 
   const handleDayClick = (day: Date) => {
@@ -355,7 +383,7 @@ function KalenderPage() {
       return
     }
     const { start, end } = defaultSlotTimes(day)
-    openCreateDialog(start, end)
+    openQuickCreate(start, end)
   }
 
   const daySheetEvents = useMemo(() => {
@@ -383,7 +411,7 @@ function KalenderPage() {
   }
 
   const handleSlotSelect = (slotInfo: any) => {
-    openCreateDialog(slotInfo.start, slotInfo.end)
+    openQuickCreate(slotInfo.start, slotInfo.end)
   }
 
   const handleEventClick = (event: CalendarEvent) => {
@@ -438,6 +466,7 @@ function KalenderPage() {
 
       if (res.ok) {
         setIsCreateDialogOpen(false)
+        setHurtig(null)
         triggerRefetch()
       } else {
         const data = await res.json()
@@ -637,6 +666,26 @@ function KalenderPage() {
         </div>
       </div>
 
+      {hurtig && eventStart && eventEnd && (
+        <HurtigAvtale
+          punkt={hurtig}
+          start={eventStart}
+          slutt={eventEnd}
+          tittel={eventTitle}
+          onTittel={setEventTitle}
+          prosjekt={linkedProject}
+          onProsjekt={setLinkedProject}
+          prosjekter={projects}
+          lagrer={isSubmitting}
+          onLagre={handleCreateEvent}
+          onFlereValg={() => {
+            setHurtig(null)
+            setIsCreateDialogOpen(true)
+          }}
+          onLukk={() => setHurtig(null)}
+        />
+      )}
+
       {/* Dagsark: dagens avtaler + «Ny avtale» — åpnes ved trykk på en dag (mobil)
           eller «+N flere» i månedsvisningen. */}
       <ResponsiveDialog
@@ -718,42 +767,35 @@ function KalenderPage() {
               />
               <Textarea
                 id="description"
+                aria-label="Beskrivelse"
                 placeholder="Beskrivelse (valgfritt)"
                 value={eventDescription}
                 onChange={e => setEventDescription(e.target.value)}
+                rows={2}
+                className="min-h-16 resize-none"
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="create-start">Starter</Label>
-                <DateTimeField id="create-start" value={eventStart} onChange={changeEventStart} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="create-end">Slutter</Label>
-                <DateTimeField id="create-end" value={eventEnd} onChange={setEventEnd} />
-              </div>
-            </div>
+            <AvtaleTidspunkt
+              idPrefix="create"
+              start={eventStart}
+              slutt={eventEnd}
+              onStart={changeEventStart}
+              onSlutt={setEventEnd}
+            />
 
             {projects.length > 0 && (
               <div className="space-y-2">
                 <Label>Koble til prosjekt (valgfritt)</Label>
-                <Select
+                <SearchableSelect
                   value={linkedProject || "none"}
-                  onValueChange={(v) => setLinkedProject(v === "none" ? "" : v)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Velg prosjekt" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Ingen</SelectItem>
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(v) => setLinkedProject(v === "none" ? "" : v)}
+                  searchPlaceholder="Søk etter prosjekt…"
+                  options={[
+                    { value: "none", label: "Ingen" },
+                    ...projects.map((project) => ({ value: project.id, label: project.name })),
+                  ]}
+                />
               </div>
             )}
           </div>
@@ -794,39 +836,31 @@ function KalenderPage() {
                 placeholder="Beskrivelse"
                 value={eventDescription}
                 onChange={e => setEventDescription(e.target.value)}
+                rows={2}
+                className="min-h-16 resize-none"
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="edit-start">Starter</Label>
-                <DateTimeField id="edit-start" value={eventStart} onChange={changeEventStart} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-end">Slutter</Label>
-                <DateTimeField id="edit-end" value={eventEnd} onChange={setEventEnd} />
-              </div>
-            </div>
+            <AvtaleTidspunkt
+              idPrefix="edit"
+              start={eventStart}
+              slutt={eventEnd}
+              onStart={changeEventStart}
+              onSlutt={setEventEnd}
+            />
 
             {projects.length > 0 && (
               <div className="space-y-2">
                 <Label>Koble til prosjekt</Label>
-                <Select
+                <SearchableSelect
                   value={linkedProject || "none"}
-                  onValueChange={(v) => setLinkedProject(v === "none" ? "" : v)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Velg et prosjekt (valgfritt)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Ingen</SelectItem>
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(v) => setLinkedProject(v === "none" ? "" : v)}
+                  searchPlaceholder="Søk etter prosjekt…"
+                  options={[
+                    { value: "none", label: "Ingen" },
+                    ...projects.map((project) => ({ value: project.id, label: project.name })),
+                  ]}
+                />
               </div>
             )}
 
