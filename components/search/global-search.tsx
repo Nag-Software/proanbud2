@@ -357,9 +357,12 @@ export function GlobalSearch() {
 
   const showEmptyState = query.trim().length >= 2 && !loading && items.length === 0
 
+  // Spotlight-stil: frostet glass med store, myke hjørner (temaets rounded-*
+  // er 5 px, så radiene står eksplisitt), rolige gruppetitler og ett snev av
+  // Proanbud-grønt – på ikonet til raden du står på.
   return (
     <div
-      className="fixed inset-0 z-[95] bg-black/30 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[95] bg-black/[0.18] duration-150 animate-in fade-in-0 supports-backdrop-filter:backdrop-blur-[3px] dark:bg-black/40"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) setOpen(false)
       }}
@@ -367,48 +370,56 @@ export function GlobalSearch() {
       aria-modal="true"
       aria-label="Globalt søk"
     >
-      <div className="mx-auto mt-[14vh] w-[calc(100%-1.5rem)] max-w-xl overflow-hidden rounded-2xl border border-border/60 bg-popover/95 text-popover-foreground shadow-2xl ring-1 ring-black/10 backdrop-blur-xl sm:mt-[18vh]">
+      <div className="mx-auto mt-[10vh] w-[calc(100%-1.5rem)] max-w-[640px] overflow-hidden rounded-[18px] bg-[color-mix(in_oklab,var(--popover)_94%,transparent)] text-popover-foreground shadow-[0_0_0_0.5px_rgba(0,0,0,0.14),0_1px_0_0_rgba(255,255,255,0.6)_inset,0_24px_70px_-12px_rgba(0,0,0,0.32),0_8px_24px_-8px_rgba(0,0,0,0.12)] duration-200 animate-in fade-in-0 zoom-in-[0.97] slide-in-from-top-2 supports-backdrop-filter:backdrop-blur-2xl supports-backdrop-filter:backdrop-saturate-150 sm:mt-[16vh] dark:shadow-[0_0_0_0.5px_rgba(255,255,255,0.12),0_24px_70px_-12px_rgba(0,0,0,0.7)]">
         {/* Søkefeltet */}
-        <div className="flex h-13 items-center gap-3 px-4">
+        <div className="flex h-[58px] items-center gap-3 px-5">
           {loading ? (
-            <LoaderCircle className="size-4.5 shrink-0 animate-spin text-muted-foreground" />
+            <LoaderCircle className="size-5 shrink-0 animate-spin text-muted-foreground" strokeWidth={1.75} />
           ) : (
-            <SearchIcon className="size-4.5 shrink-0 text-muted-foreground" />
+            <SearchIcon className="size-5 shrink-0 text-muted-foreground" strokeWidth={1.75} />
           )}
           <input
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onInputKeyDown}
-            placeholder="Søk i prosjekter, kunder, tilbud og sider…"
-            className="h-13 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted-foreground/70"
+            placeholder="Søk i Proanbud"
+            aria-label="Søk i prosjekter, kunder, tilbud og sider"
+            className="h-full flex-1 bg-transparent text-[19px] font-normal tracking-[-0.01em] outline-none placeholder:text-muted-foreground/60"
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
           />
-          <kbd className="pointer-events-none hidden rounded-md border border-border/70 bg-muted px-1.5 py-0.5 font-sans text-[10px] font-medium text-muted-foreground sm:block">
-            esc
-          </kbd>
+          {query ? (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("")
+                inputRef.current?.focus()
+              }}
+              className="rounded-full px-2 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/10"
+            >
+              Tøm
+            </button>
+          ) : null}
         </div>
 
-        <div className="border-t border-border/60" />
+        <div className="mx-4 h-px bg-black/[0.07] dark:bg-white/10" />
 
         {/* Resultater */}
-        <div className="max-h-[46vh] overflow-y-auto overscroll-contain p-2">
+        <div className="max-h-[min(52vh,440px)] overflow-y-auto overscroll-contain px-2 pb-2 pt-1.5">
           {showEmptyState ? (
-            <div className="px-3 py-10 text-center">
-              <p className="text-sm font-medium">Ingen treff for «{query.trim()}»</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Prøv et kortere søkeord, eller sjekk stavemåten.
-              </p>
+            <div className="px-3 py-12 text-center">
+              <p className="text-[15px] font-medium">Ingen treff for «{query.trim()}»</p>
+              <p className="mt-1 text-[13px] text-muted-foreground">Prøv et kortere søkeord, eller sjekk stavemåten.</p>
             </div>
           ) : (
             (["handlinger", "sider", "prosjekter", "kunder", "tilbud"] as const).map((group) => {
               const groupItems = items.filter((item) => item.group === group)
               if (groupItems.length === 0) return null
               return (
-                <div key={group} className="mb-1 last:mb-0">
-                  <p className="px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground/80">
+                <div key={group} role="group" aria-label={GROUP_LABELS[group]} className="mt-1 first:mt-0">
+                  <p className="px-3 pb-1 pt-2.5 text-[11.5px] font-semibold text-muted-foreground/80">
                     {GROUP_LABELS[group]}
                   </p>
                   {groupItems.map((item) => {
@@ -419,32 +430,39 @@ export function GlobalSearch() {
                         key={item.key}
                         id={`global-search-item-${index}`}
                         type="button"
+                        aria-current={isActive ? "true" : undefined}
                         onClick={() => selectItem(item)}
                         onMouseMove={() => setActiveIndex(index)}
                         className={cn(
-                          "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
-                          isActive ? "bg-accent text-accent-foreground" : "text-foreground"
+                          "flex min-h-10 w-full items-center gap-3 rounded-[9px] px-2.5 py-1.5 text-left text-[14px] transition-colors duration-75 pointer-coarse:min-h-12",
+                          isActive ? "bg-black/[0.06] dark:bg-white/[0.09]" : "text-foreground"
                         )}
                       >
                         <span
                           className={cn(
-                            "flex size-7 shrink-0 items-center justify-center rounded-md border border-border/60",
-                            isActive ? "bg-background/70" : "bg-muted/60 text-muted-foreground"
+                            "flex size-7 shrink-0 items-center justify-center rounded-[8px] transition-colors duration-75 [&_svg]:size-[15px]",
+                            isActive
+                              ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)] shadow-[0_1px_2px_rgba(0,0,0,0.12)]"
+                              : "bg-black/[0.045] text-foreground/70 dark:bg-white/[0.08]"
                           )}
                         >
                           {item.icon}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium leading-5">{item.title}</span>
+                          <span className="block truncate font-medium leading-5 tracking-[-0.005em]">{item.title}</span>
                           {item.subtitle ? (
-                            <span className="block truncate text-xs text-muted-foreground">{item.subtitle}</span>
+                            <span className="block truncate text-[12px] leading-4 text-muted-foreground">{item.subtitle}</span>
                           ) : null}
                         </span>
-                        {isActive ? (
-                          <kbd className="rounded-md border border-border/70 bg-background px-1.5 py-0.5 font-sans text-[10px] text-muted-foreground">
-                            ↵
-                          </kbd>
-                        ) : null}
+                        <span
+                          aria-hidden
+                          className={cn(
+                            "shrink-0 text-[13px] text-muted-foreground transition-opacity duration-75",
+                            isActive ? "opacity-100" : "opacity-0"
+                          )}
+                        >
+                          ↵
+                        </span>
                       </button>
                     )
                   })}
@@ -454,23 +472,31 @@ export function GlobalSearch() {
           )}
         </div>
 
-        {/* Bunnlinje med tastehint — signaturen på macOS-paletter */}
-        <div className="flex items-center gap-4 border-t border-border/60 bg-muted/30 px-4 py-2 text-[11px] text-muted-foreground">
+        {/* Bunnlinje: diskré tastehint, som i macOS. */}
+        <div className="hidden items-center justify-end gap-4 border-t border-black/[0.06] px-4 py-2 text-[11.5px] text-muted-foreground sm:flex dark:border-white/10">
           <span className="flex items-center gap-1.5">
-            <kbd className="rounded border border-border/70 bg-background px-1 py-0.5 font-sans text-[10px]">↑</kbd>
-            <kbd className="rounded border border-border/70 bg-background px-1 py-0.5 font-sans text-[10px]">↓</kbd>
-            naviger
+            <Tast>↑</Tast>
+            <Tast>↓</Tast>
+            Velg
           </span>
           <span className="flex items-center gap-1.5">
-            <kbd className="rounded border border-border/70 bg-background px-1 py-0.5 font-sans text-[10px]">↵</kbd>
-            åpne
+            <Tast>↵</Tast>
+            Åpne
           </span>
           <span className="flex items-center gap-1.5">
-            <kbd className="rounded border border-border/70 bg-background px-1 py-0.5 font-sans text-[10px]">esc</kbd>
-            lukk
+            <Tast>esc</Tast>
+            Lukk
           </span>
         </div>
       </div>
     </div>
+  )
+}
+
+function Tast({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[5px] bg-black/[0.06] px-1 font-sans text-[10.5px] font-medium text-foreground/70 dark:bg-white/10">
+      {children}
+    </kbd>
   )
 }
