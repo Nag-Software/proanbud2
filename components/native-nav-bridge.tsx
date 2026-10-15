@@ -140,6 +140,7 @@ const MENU_ICON_BY_TITLE: Record<string, string> = {
   Meldinger: "messages",
   Dokumenter: "documents",
   HMS: "hms",
+  Avvik: "hms",
   "Mine priser": "prices",
   "Min bedrift": "company",
 }

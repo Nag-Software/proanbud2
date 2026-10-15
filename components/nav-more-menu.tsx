@@ -24,7 +24,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 
 /**
- * «Mer» — alt som ikke er en av de fem daglige destinasjonene.
+ * «Mer» — alt som ikke står i hovedmenyen (sidebaren eller bunnbaren).
  *
  * Innholdet kommer fra lib/app-nav (samme kilde som ⌘K-søket og mobilmenyen),
  * så rolle- og planreglene kan ikke komme i utakt med sidebaren. Legges det

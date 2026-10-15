@@ -65,15 +65,16 @@ type NavMainItem = {
 
 // This is sample data.
 /**
- * De seks destinasjonene som brukes hver dag. Alt annet ligger bak «Mer» —
- * menyen skal beskrive arbeidsdagen, ikke katalogisere appen. Utvides denne
- * lista, må «Mer» bli tilsvarende kortere, ikke motsatt. Rekkefølgen følger
- * navMain, så Kart lander rett under Kunder.
+ * De sju destinasjonene som brukes hver dag, i denne rekkefølgen. Alt annet
+ * ligger bak «Mer» — menyen skal beskrive arbeidsdagen, ikke katalogisere
+ * appen. Utvides denne lista, må «Mer» bli tilsvarende kortere, ikke motsatt.
+ * Rekkefølgen i menyen følger navMain, som står i samme rekkefølge.
  *
- * Håndverkere har allerede et bevisst lite sett (Prosjekter, Timeføring,
- * Kart, Kjørebok, Kalender) og får derfor ingen «Mer»-inngang.
+ * Håndverkere har allerede et bevisst lite sett (Prosjekter, Kalender,
+ * Timeføring, Kart, Kjørebok) og får derfor ingen «Mer»-inngang — Kjørebok
+ * står i stedet på toppnivå for dem.
  */
-const PRIMARY_NAV_TITLES = ["Dashbord", "Prosjekter", "Tilbud", "Timeføring", "Kunder", "Kart"] as const
+export const PRIMARY_NAV_TITLES = ["Dashbord", "Prosjekter", "Kalender", "HMS", "Timeføring", "Kunder", "Kart"] as const
 
 const data: {
   user: {
@@ -102,10 +103,16 @@ const data: {
       icon: <FolderIcon className="size-4" />,
     },
     {
-      title: "Tilbud",
-      url: "/tilbud",
-      icon: <FileTextIcon className="size-4" />,
-      tourId: "tilbud",
+      title: "Kalender",
+      url: "/kalender",
+      icon: <CalendarDays className="size-4" />,
+    },
+    {
+      // Flatt punkt til HMS-oversikten — siden lenker selv videre til avvik.
+      // Avvik har egen oppføring under «Mer» (se under).
+      title: "HMS",
+      url: "/hms",
+      icon: <ShieldCheckIcon className="size-4" />,
     },
     {
       // Timeføring er en modul (ikke en plan-feature) — nav-konvensjonen er at
@@ -136,9 +143,10 @@ const data: {
       icon: <CarIcon className="size-4" />,
     },
     {
-      title: "Kalender",
-      url: "/kalender",
-      icon: <CalendarDays className="size-4" />,
+      title: "Tilbud",
+      url: "/tilbud",
+      icon: <FileTextIcon className="size-4" />,
+      tourId: "tilbud",
     },
     {
       title: "Meldinger",
@@ -151,19 +159,9 @@ const data: {
       icon: <FilesIcon className="size-4" />,
     },
     {
-      title: "HMS",
-      url: "/hms",
+      title: "Avvik",
+      url: "/avvik",
       icon: <ShieldCheckIcon className="size-4" />,
-      items: [
-        {
-          title: "Oversikt",
-          url: "/hms",
-        },
-        {
-          title: "Avvik",
-          url: "/avvik",
-        },
-      ],
     },
     {
       title: "Mine priser",
@@ -511,18 +509,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           ),
         };
       }
-      if (item.title === "HMS" && item.items) {
-        return {
-          ...item,
-          // Hide the Avvik subitem when the plan lacks the Avvik feature.
-          items: item.items
-            .filter((subItem) => subItem.title !== "Avvik" || featureEnabled("avvik"))
-            .map((subItem) =>
-              subItem.title === "Avvik" && openDeviationCount > 0
-                ? { ...subItem, badge: openDeviationCount }
-                : subItem
-            ),
-        }
+      // Åpne avvik telles på HMS, som står i hovedmenyen — Avvik selv ligger
+      // bak «Mer», og der ville tallet ellers forsvunnet ut av syne.
+      if (item.title === "HMS" && openDeviationCount > 0 && featureEnabled("avvik")) {
+        return { ...item, badge: openDeviationCount }
       }
       if (item.title === "Min bedrift" && item.items) {
         return {
@@ -550,10 +540,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     if (item.title === "Kalender" && !featureEnabled("kalender")) return false;
     if (item.title === "Meldinger" && !featureEnabled("meldinger")) return false;
     if (item.title === "HMS" && !featureEnabled("hms")) return false;
-    // Workers have a deliberately small surface: Projects, Timeføring, Kart
-    // (read-only locator), Kjørebok (own trips) and Calendar.
+    if (item.title === "Avvik" && !featureEnabled("avvik")) return false;
+    // Workers have a deliberately small surface: Projects, Calendar,
+    // Timeføring, Kart (read-only locator) and Kjørebok (own trips).
     if (isWorker) {
-      return ["Prosjekter", "Timeføring", "Kart", "Kjørebok", "Kalender"].includes(item.title);
+      return ["Prosjekter", "Kalender", "Timeføring", "Kart", "Kjørebok"].includes(item.title);
     }
     // Kjørebok-punktet er worker-varianten; admin/prosjektleder når kjørebok
     // via «Min bedrift» og skal ikke se en duplisert inngang.
@@ -561,7 +552,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     return true;
   });
 
-  // Fem daglige punkter i menyen; resten (med badges intakt) bak «Mer».
+  // Sju daglige punkter i menyen; resten bak «Mer».
   const primaryNav = isWorker
     ? filteredNavMain
     : filteredNavMain.filter((item) =>
@@ -572,8 +563,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     : filteredNavMain.filter(
         (item) => !(PRIMARY_NAV_TITLES as readonly string[]).includes(item.title)
       )
-  // Uleste meldinger og åpne avvik havner bak «Mer» — da må tallet flyttes med,
-  // ellers forsvinner varselet ut av syne.
+  // Uleste meldinger havner bak «Mer» — da må tallet flyttes med, ellers
+  // forsvinner varselet ut av syne.
   const moreBadge = secondaryNav.reduce(
     (sum, item) =>
       sum +
@@ -617,7 +608,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           // håndverker. Samme mønster som CreateProjectDrawer-skeletonen over.
           <SidebarGroup>
             <SidebarMenu className="gap-0.5">
-              {Array.from({ length: 6 }).map((_, i) => (
+              {Array.from({ length: PRIMARY_NAV_TITLES.length }).map((_, i) => (
                 <SidebarMenuItem key={i}>
                   <SidebarMenuSkeleton showIcon />
                 </SidebarMenuItem>
