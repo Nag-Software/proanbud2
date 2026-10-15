@@ -16,7 +16,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { beregnKalkyle } from "@/lib/kalkyle/beregn"
-import { CHAT_EKSEMPLER, tolkMock } from "@/lib/kalkyle/chat-mock"
+import { SMARTKI_EKSEMPLER } from "@/lib/kalkyle/smartki"
 import { beskrivEndringer, brukEndringer, type EndringBeskrivelse, type KalkyleEndring } from "@/lib/kalkyle/endringer"
 import { formatKr, formatKrMedFortegn } from "@/lib/kalkyle/format"
 import type { Kalkyle } from "@/lib/kalkyle/types"
@@ -38,6 +38,8 @@ type Melding =
       status: "venter" | "lagtInn" | "avvist"
       /** Kalkylen før «Legg inn», så «Angre» bare er å sette den tilbake. */
       forrige: Kalkyle | null
+      /** Svaret er en feilmelding (nett, kvote, tilgang), ikke fra modellen. */
+      feil?: boolean
     }
 
 export type ChatForesporsel = { tekst: string; id: number }
@@ -47,17 +49,41 @@ type KalkyleChatProps = {
   onApenChange: (apen: boolean) => void
   /** Sender en melding utenfra (f.eks. «Beskriv jobben» på startskjermen). */
   foresporsel?: ChatForesporsel | null
+  /** Prosjektnavnet, som kontekst til SmartKI. */
+  prosjektNavn?: string
 }
 
-/** Svartiden i mock-runden, så «skriver»-prikkene vises. */
-const MOCK_FORSINKELSE_MS = 600
+type SmartkiRespons = {
+  svar?: string
+  endringer?: KalkyleEndring[]
+  oppfolging?: string[]
+  avvist?: number
+  error?: string
+}
+
+/** Spør SmartKI (app/api/kalkyle/smartki). Kaster med brukervennlig tekst ved feil. */
+async function spørSmartki(body: unknown): Promise<Required<Pick<SmartkiRespons, "svar" | "endringer" | "oppfolging">> & { avvist: number }> {
+  let res: Response
+  try {
+    res = await fetch("/api/kalkyle/smartki", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    throw new Error("Fikk ikke kontakt med SmartKI. Sjekk nettet og prøv igjen.")
+  }
+  const data = (await res.json().catch(() => ({}))) as SmartkiRespons
+  if (!res.ok || !data.svar) throw new Error(data.error || "SmartKI klarte ikke å svare nå. Prøv igjen.")
+  return { svar: data.svar, endringer: data.endringer ?? [], oppfolging: data.oppfolging ?? [], avvist: data.avvist ?? 0 }
+}
 
 /**
  * «Skriv hva du vil endre»: et panel fra høyre (hele skjermen på mobil) som
  * åpnes fra «Endre med SmartKI» i kalkylens verktøylinje. Endrer aldri kalkylen direkte – hvert svar
  * er et forslag med sum før og etter, og først «Legg inn» endrer kalkylen.
  */
-export function KalkyleChat({ apen, onApenChange, foresporsel }: KalkyleChatProps) {
+export function KalkyleChat({ apen, onApenChange, foresporsel, prosjektNavn }: KalkyleChatProps) {
   const { kalkyle, settKalkyle, endre, merk } = useKalkyle()
   const [meldinger, setMeldinger] = React.useState<Melding[]>([])
   const [utkast, setUtkast] = React.useState("")
@@ -70,47 +96,73 @@ export function KalkyleChat({ apen, onApenChange, foresporsel }: KalkyleChatProp
     kalkyleRef.current = kalkyle
   }, [kalkyle])
 
+  const meldingerRef = React.useRef(meldinger)
+  React.useEffect(() => {
+    meldingerRef.current = meldinger
+  }, [meldinger])
+
   const send = React.useCallback(
-    (tekst: string) => {
+    async (tekst: string) => {
       const ren = tekst.trim()
-      if (!ren) return
+      const naa = kalkyleRef.current
+      if (!ren || !naa) return
+      // Samtalen så langt (uten feilmeldinger), som kontekst til neste svar.
+      const samtale = meldingerRef.current
+        .filter((m) => m.fra === "meg" || !m.feil)
+        .slice(-12)
+        .map((m) => ({ rolle: m.fra === "meg" ? ("bruker" as const) : ("smartki" as const), tekst: m.tekst.slice(0, 2_000) }))
       teller.current += 1
       setMeldinger((m) => [...m, { id: teller.current, fra: "meg", tekst: ren }])
       setUtkast("")
       setSkriver(true)
       onApenChange(true)
-      window.setTimeout(() => {
-        const naa = kalkyleRef.current
-        setSkriver(false)
-        if (!naa) return
-        const svar = tolkMock(ren, naa)
-        const etter = svar.endringer.length ? brukEndringer(naa, svar.endringer).kalkyle : naa
+
+      const nyMelding = (felt: Omit<Extract<Melding, { fra: "proanbud" }>, "id" | "fra" | "status" | "forrige">) => {
         teller.current += 1
-        setMeldinger((m) => [
-          ...m,
-          {
-            id: teller.current,
-            fra: "proanbud",
-            tekst: svar.tekst,
-            endringer: svar.endringer,
-            beskrivelser: beskrivEndringer(naa, svar.endringer),
-            for: beregnKalkyle(naa).totalt.inklMva,
-            etter: beregnKalkyle(etter).totalt.inklMva,
-            eksempler: svar.eksempler,
-            status: "venter",
-            forrige: null,
-          },
-        ])
-      }, MOCK_FORSINKELSE_MS)
+        const id = teller.current
+        setMeldinger((m) => [...m, { id, fra: "proanbud", status: "venter", forrige: null, ...felt }])
+      }
+
+      try {
+        const svar = await spørSmartki({
+          generationId: crypto.randomUUID(),
+          sporsmal: ren.slice(0, 2_000),
+          samtale,
+          prosjektNavn: prosjektNavn?.slice(0, 200),
+          kalkyle: naa,
+        })
+        const etter = svar.endringer.length ? brukEndringer(naa, svar.endringer).kalkyle : naa
+        const tillegg = svar.avvist > 0 ? ` (${svar.avvist} forslag kunne ikke brukes og er utelatt.)` : ""
+        nyMelding({
+          tekst: svar.svar + tillegg,
+          endringer: svar.endringer,
+          beskrivelser: beskrivEndringer(naa, svar.endringer),
+          for: beregnKalkyle(naa).totalt.inklMva,
+          etter: beregnKalkyle(etter).totalt.inklMva,
+          eksempler: svar.oppfolging,
+        })
+      } catch (error) {
+        nyMelding({
+          tekst: error instanceof Error ? error.message : "SmartKI klarte ikke å svare nå. Prøv igjen.",
+          endringer: [],
+          beskrivelser: [],
+          for: 0,
+          etter: 0,
+          eksempler: [],
+          feil: true,
+        })
+      } finally {
+        setSkriver(false)
+      }
     },
-    [onApenChange]
+    [onApenChange, prosjektNavn]
   )
 
   const sisteForesporsel = React.useRef<number | null>(null)
   React.useEffect(() => {
     if (!foresporsel || sisteForesporsel.current === foresporsel.id) return
     sisteForesporsel.current = foresporsel.id
-    send(foresporsel.tekst)
+    void send(foresporsel.tekst)
   }, [foresporsel, send])
 
   React.useEffect(() => {
@@ -193,7 +245,7 @@ export function KalkyleChat({ apen, onApenChange, foresporsel }: KalkyleChatProp
                 sperret={skriver}
               />
               <ul aria-label="Forslag" className="flex flex-col gap-0.5 px-1">
-                {CHAT_EKSEMPLER.map((e, i) => {
+                {SMARTKI_EKSEMPLER.map((e, i) => {
                   const Ikon = EKSEMPEL_IKON[i] ?? SquarePenIcon
                   return (
                     <li key={e.tekst}>
@@ -220,7 +272,7 @@ export function KalkyleChat({ apen, onApenChange, foresporsel }: KalkyleChatProp
                   </div>
                 ) : (
                   <div key={m.id} className="flex flex-col gap-3 text-[15px] leading-relaxed">
-                    <p>{m.tekst}</p>
+                    <p className={cn("whitespace-pre-line", m.feil && "text-destructive")}>{m.tekst}</p>
                     {m.endringer.length > 0 && (
                       <Forslag
                         melding={m}

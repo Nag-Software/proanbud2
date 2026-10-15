@@ -182,7 +182,7 @@ function KalkyleInnhold({ prosjekt, tilbud, firma }: Required<KalkyleTabProps>) 
       )}
 
       <LinjeArk valgt={ark} onLukk={() => setArk(null)} />
-      <KalkyleChat apen={chatApen} onApenChange={setChatApen} foresporsel={foresporsel} />
+      <KalkyleChat apen={chatApen} onApenChange={setChatApen} foresporsel={foresporsel} prosjektNavn={prosjekt.navn} />
     </div>
   )
 }

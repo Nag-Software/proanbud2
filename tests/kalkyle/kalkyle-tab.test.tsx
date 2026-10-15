@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { KalkyleTab } from "../../app/prosjekter/[id]/kalkyle-tab"
@@ -71,8 +71,24 @@ describe("Kalkyle-fanen", () => {
     expect(within(ark).getByText("Hvor mange timer?")).toBeTruthy()
   })
 
-  it("«Endre med SmartKI» åpner Proanbud SmartKI, og først «Legg inn» endrer kalkylen", () => {
-    vi.useFakeTimers()
+  it("«Endre med SmartKI» spør SmartKI, og først «Legg inn» endrer kalkylen", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url !== "/api/kalkyle/smartki") throw new Error("ingen nett i testen")
+      const body = JSON.parse(String(init?.body))
+      expect(body.sporsmal).toBe("4 timer ekstra riving")
+      expect(body.kalkyle.poster).toHaveLength(4)
+      return new Response(
+        JSON.stringify({
+          svar: "Jeg legger 4 timer inn under «Riving og rigg».",
+          endringer: [
+            { type: "leggTil", postId: "riving", linje: { beskrivelse: "Ekstra riving", type: "arbeid", antall: 4, enhet: "t", innpris: null } },
+          ],
+          oppfolging: ["Hvor tjener jeg minst?"],
+          avvist: 0,
+        })
+      )
+    })
+    vi.stubGlobal("fetch", fetchMock)
     render(<KalkyleTab />)
     expect(screen.queryByRole("complementary", { name: "Proanbud SmartKI" })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "Endre med SmartKI" }))
@@ -80,11 +96,8 @@ describe("Kalkyle-fanen", () => {
     const felt = within(panel).getByLabelText("Skriv hva du vil endre i kalkylen")
     fireEvent.change(felt, { target: { value: "4 timer ekstra riving" } })
     fireEvent.keyDown(felt, { key: "Enter" })
-    act(() => {
-      vi.advanceTimersByTime(1000)
-    })
 
-    expect(within(panel).getByText("4 timer ekstra riving")).toBeTruthy()
+    expect(await within(panel).findByText(/Jeg legger 4 timer inn/)).toBeTruthy()
     expect(within(panel).getByText("117 187 kr")).toBeTruthy()
     // Ingenting er endret før «Legg inn».
     expect(sammendrag().getByText("113 437 kr")).toBeTruthy()
@@ -94,6 +107,83 @@ describe("Kalkyle-fanen", () => {
 
     fireEvent.click(within(panel).getByRole("button", { name: "Angre" }))
     expect(sammendrag().getByText("113 437 kr")).toBeTruthy()
+    vi.unstubAllGlobals()
+  })
+
+  it("feil fra SmartKI vises i samtalen og endrer ingenting", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url !== "/api/kalkyle/smartki") throw new Error("ingen nett i testen")
+        return new Response(JSON.stringify({ error: "Du har nådd maksgrensen for KI denne perioden." }), { status: 429 })
+      })
+    )
+    render(<KalkyleTab />)
+    fireEvent.click(screen.getByRole("button", { name: "Endre med SmartKI" }))
+    const panel = screen.getByRole("complementary", { name: "Proanbud SmartKI" })
+    const felt = within(panel).getByLabelText("Skriv hva du vil endre i kalkylen")
+    fireEvent.change(felt, { target: { value: "Er prisen markedsdyktig?" } })
+    fireEvent.keyDown(felt, { key: "Enter" })
+    expect(await within(panel).findByText("Du har nådd maksgrensen for KI denne perioden.")).toBeTruthy()
+    expect(within(panel).queryByRole("button", { name: "Legg inn" })).toBeNull()
+    vi.unstubAllGlobals()
+  })
+
+  it("typen kan endres både i tabellen og i arket", () => {
+    render(<KalkyleTab />)
+    expect((screen.getByLabelText("Type for Veggfliser") as HTMLSelectElement).value).toBe("materiell")
+    fireEvent.click(screen.getByRole("button", { name: "Åpne Veggfliser" }))
+    const ark = screen.getByRole("dialog")
+    expect(within(ark).getByRole("button", { name: "Materiell", pressed: true })).toBeTruthy()
+    fireEvent.click(within(ark).getByRole("button", { name: "Fast jobb" }))
+    expect(within(ark).getByText(/Fastpris per/)).toBeTruthy()
+    expect(within(ark).getByRole("button", { name: "Fast jobb", pressed: true })).toBeTruthy()
+  })
+
+  it("påslaget kan endres per linje i tabellen", () => {
+    render(<KalkyleTab />)
+    const paslag = screen.getByLabelText("Påslag for Veggfliser")
+    fireEvent.focus(paslag)
+    fireEvent.change(paslag, { target: { value: "25" } })
+    // 8 558 kr × (25 − 15) % × 1,25 = 1 069,75 kr mer
+    expect(sammendrag().getByText("114 507 kr")).toBeTruthy()
+    expect(screen.getByLabelText("Påslag for Gulvfliser")).toBeTruthy()
+    expect(screen.queryByLabelText("Påslag for Riving")).toBeNull()
+  })
+
+  it("+ Materiell åpner prislisten og legger inn varen med innpris", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (!url.startsWith("/api/mine-priser/sok")) throw new Error("ingen nett i testen")
+        return new Response(
+          JSON.stringify({
+            materials: [
+              { id: "v-1", product: "Trinnlydplate 3 mm", unit: "RUL", unitPriceNok: 400, supplier: "Byggvare AS", nobb: null, supplierSku: null, category: "Gulv" },
+            ],
+          })
+        )
+      })
+    )
+    render(<KalkyleTab />)
+    const tabell = screen.getAllByRole("button", { name: "Skjul Membran og fliser" })[0].closest("tbody") as HTMLElement
+    fireEvent.click(within(tabell).getByRole("button", { name: "Materiell" }))
+    const dialog = screen.getByRole("dialog")
+    fireEvent.click(await within(dialog).findByRole("button", { name: /Trinnlydplate 3 mm/ }))
+    expect(screen.getByLabelText("Beskrivelse for Trinnlydplate 3 mm")).toBeTruthy()
+    expect((screen.getByLabelText("Enhet for Trinnlydplate 3 mm") as HTMLSelectElement).value).toBe("rull")
+    // 400 kr × 1,15 × 1,25 = 575 kr mer
+    expect(sammendrag().getByText("114 012 kr")).toBeTruthy()
+    vi.unstubAllGlobals()
+  })
+
+  it("+ Blank legger inn en tom linje", () => {
+    render(<KalkyleTab />)
+    const tabell = screen.getAllByRole("button", { name: "Skjul Rør" })[0].closest("tbody") as HTMLElement
+    const for_ = within(tabell).getAllByLabelText(/^Beskrivelse for/).length
+    fireEvent.click(within(tabell).getByRole("button", { name: "Blank" }))
+    expect(within(tabell).getAllByLabelText(/^Beskrivelse for/).length).toBe(for_ + 1)
+    expect(within(tabell).queryByRole("button", { name: "Underentreprenør" })).toBeNull()
   })
 
   it("en timelinje kan få sin egen timepris fra Timepriser", () => {
