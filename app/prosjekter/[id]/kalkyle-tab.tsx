@@ -13,6 +13,13 @@ import { KalkylePoster } from "@/components/kalkyle/kalkyle-poster"
 import { LinjeArk } from "@/components/kalkyle/linje-ark"
 import { MinePriserProvider } from "@/components/kalkyle/mine-priser-kontekst"
 import { SmartKIIkon } from "@/components/kalkyle/smartki-merke"
+import {
+  TilbudVisning,
+  type ProsjektTilbud,
+  type TilbudProsjekt,
+  type TilbudValg,
+} from "@/components/kalkyle/tilbud-visning"
+import type { OfferCompanyContext } from "@/lib/tilbud/types"
 import { PrisingLinje } from "@/components/kalkyle/prising-linje"
 import { MOCK_KALKYLE } from "@/lib/kalkyle/mock"
 import { cn } from "@/lib/utils"
@@ -23,17 +30,31 @@ import { useProjectFocus, useProjectShell } from "./project-tabs-shell"
  * «Tilbud» (slik kunden ser det, `?del=tilbud`). Bak KALKYLE_ENABLED, med
  * mock-data til kalkylen kobles til databasen.
  */
-export function KalkyleTab() {
+type KalkyleTabProps = {
+  prosjekt?: TilbudProsjekt
+  /** Tilbudene på prosjektet (samme rader som Økonomi viser). */
+  tilbud?: ProsjektTilbud[]
+  /** Firmahodet til tilbudsdokumentet, strømmet fra serveren. */
+  firma?: Promise<OfferCompanyContext | null> | null
+}
+
+const EKSEMPEL_PROSJEKT: TilbudProsjekt = {
+  id: MOCK_KALKYLE.prosjektId,
+  navn: "Bad 6 m² – Fjellveien 12",
+  kunde: { name: "Kari Hansen", address: "Fjellveien 12" },
+}
+
+export function KalkyleTab({ prosjekt = EKSEMPEL_PROSJEKT, tilbud = [], firma = null }: KalkyleTabProps) {
   return (
     <MinePriserProvider>
       <KalkyleProvider initial={MOCK_KALKYLE}>
-        <KalkyleInnhold />
+        <KalkyleInnhold prosjekt={prosjekt} tilbud={tilbud} firma={firma} />
       </KalkyleProvider>
     </MinePriserProvider>
   )
 }
 
-function KalkyleInnhold() {
+function KalkyleInnhold({ prosjekt, tilbud, firma }: Required<KalkyleTabProps>) {
   const { kalkyle, settKalkyle } = useKalkyle()
   const { setDel } = useProjectShell()
   const visning = useProjectFocus("kalkyle").del === "tilbud" ? "tilbud" : "kalkyle"
@@ -55,6 +76,8 @@ function KalkyleInnhold() {
   }
   const [ark, setArk] = React.useState<{ postId: string; linjeId: string } | null>(null)
   const [chatApen, setChatApen] = React.useState(false)
+  // Valgene for tilbudet ligger her, så de overlever bytte mellom visningene.
+  const [tilbudValg, setTilbudValg] = React.useState<TilbudValg>({ detaljniva: "post", visTimer: true })
   const [foresporsel, setForesporsel] = React.useState<ChatForesporsel | null>(null)
 
   if (!kalkyle || visStart) {
@@ -130,12 +153,14 @@ function KalkyleInnhold() {
       </div>
 
       {visning === "tilbud" ? (
-        <div className="rounded-lg border border-dashed p-8 text-center">
-          <p className="font-semibold">Tilbudet lages fra kalkylen</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Forhåndsvisningen med «Hva skal kunden se?» kommer i neste steg.
-          </p>
-        </div>
+        <TilbudVisning
+          prosjekt={prosjekt}
+          tilbud={tilbud}
+          firma={firma}
+          valg={tilbudValg}
+          onValgChange={setTilbudValg}
+          onTilKalkylen={() => setDel(null)}
+        />
       ) : (
         <div
           className={cn(

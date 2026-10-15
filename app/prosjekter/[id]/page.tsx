@@ -15,6 +15,7 @@ import { getProjectChecklistsAction } from "@/app/ks/actions"
 import { getProjectCustomer, getProjectSiteAddress } from "@/app/prosjekter/project-utils"
 import { fetchProjectProfitability, readProjectBudget } from "@/lib/job-costing/project-profitability"
 import { KALKYLE_ENABLED } from "@/lib/kalkyle/flag"
+import { fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
 import type { ProjectProfitability } from "@/lib/job-costing/types"
 
 import FilerTab from "./filer-tab"
@@ -279,6 +280,32 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     },
   }
 
+  // Kalkyle-fanens tilbud: firmahodet startes her og strømmes inn, så siden
+  // ikke venter på det. Bare når fanen finnes (flagg + ikke håndverker).
+  const visKalkyle = KALKYLE_ENABLED && !isWorker
+  const kalkyleFirma = visKalkyle
+    ? fetchOfferCompanyContext(supabase, user.id, companyId).catch(() => null)
+    : null
+  const kalkyleTilbud = offers.map((offer) => {
+    const row = offer as ProjectOfferRow & {
+      title?: string | null
+      sent_at?: string | null
+      customer_viewed_at?: string | null
+      email_delivered_at?: string | null
+      email_bounced_at?: string | null
+    }
+    return {
+      id: row.id,
+      title: row.title ?? "",
+      status: (row.status ?? "draft") as "draft" | "sent" | "accepted" | "rejected",
+      amountNok: Number(row.amount_nok || 0),
+      sentAt: row.sent_at ?? null,
+      customerViewedAt: row.customer_viewed_at ?? null,
+      emailDeliveredAt: row.email_delivered_at ?? null,
+      emailBouncedAt: row.email_bounced_at ?? null,
+    }
+  })
+
   const page = (
     <Suspense fallback={<div className="h-24 animate-pulse rounded-md bg-muted" />}>
       <ProjectTabsShell
@@ -373,9 +400,17 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               </Suspense>
             </ProjectTabPanel>
 
-            {KALKYLE_ENABLED && (
+            {visKalkyle && (
               <ProjectTabPanel value="kalkyle">
-                <KalkyleTab />
+                <KalkyleTab
+                  prosjekt={{
+                    id: project.id,
+                    navn: project.name,
+                    kunde: { name: customer.name, email: customer.email, phone: customer.phone, address: siteAddress },
+                  }}
+                  tilbud={kalkyleTilbud}
+                  firma={kalkyleFirma}
+                />
               </ProjectTabPanel>
             )}
 
