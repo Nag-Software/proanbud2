@@ -29,6 +29,7 @@ export const PROJECT_TABS = [
   // fanen skjult, og ?tab=kalkyle faller tilbake til standardfanen.
   "kalkyle",
   "etterkalkyle",
+  "faktura",
   "okonomi",
   "oppgaver",
   "timer",
@@ -49,6 +50,7 @@ export const PROJECT_TAB_ALIASES: Record<string, ResolvedProjectTab> = {
   idag: { tab: "idag" },
   kalkyle: { tab: "kalkyle" },
   etterkalkyle: { tab: "etterkalkyle" },
+  faktura: { tab: "faktura" },
   okonomi: { tab: "okonomi" },
   oppgaver: { tab: "oppgaver" },
   timer: { tab: "timer" },
@@ -87,6 +89,27 @@ const isKvalitetLeaf = (value: string | null | undefined): value is string =>
   !!value && (KVALITET_LEAVES as readonly string[]).includes(value)
 
 /**
+ * Med kalkylemodulen (KALKYLE_ENABLED) er Økonomi delt i tre: tilbudet ligger i
+ * Kalkyle, kostnadene i Etterkalkyle og fakturering + tilleggsarbeid i Faktura.
+ * Alle gamle adresser peker til en seksjon på Økonomi (over), så det holder å
+ * oversette den.
+ */
+export function medKalkylemodul(resolved: ResolvedProjectTab): ResolvedProjectTab {
+  if (resolved.tab !== "okonomi") return resolved
+  switch (resolved.del) {
+    case "tilbud":
+      return { tab: "kalkyle", del: "tilbud" }
+    case "tilleggsarbeid":
+    case "fakturering":
+      return { tab: "faktura", del: resolved.del }
+    case "kostnader":
+      return { tab: "etterkalkyle", del: "kostnader" }
+    default:
+      return { tab: "etterkalkyle" }
+  }
+}
+
+/**
  * Oversetter en `?tab=`-verdi (ny eller gammel) til fanen og stedet inne i
  * den. De tre andre parameterne dekker eldre former:
  *
@@ -99,7 +122,8 @@ export function resolveProjectTabParam(
   tabParam: string | null | undefined,
   subParam?: string | null,
   ksParam?: string | null,
-  delParam?: string | null
+  delParam?: string | null,
+  options?: { kalkyle?: boolean }
 ): ResolvedProjectTab | null {
   if (!tabParam) return null
 
@@ -122,7 +146,7 @@ export function resolveProjectTabParam(
 
   if (delParam) base.del = delParam
 
-  return base
+  return options?.kalkyle ? medKalkylemodul(base) : base
 }
 
 /** Lenke til et sted på prosjektsiden i dagens form. */

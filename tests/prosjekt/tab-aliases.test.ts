@@ -15,6 +15,7 @@ const ENKLE_LENKER: Array<[string, { tab: string; del?: string }]> = [
   ["idag", { tab: "idag" }],
   ["kalkyle", { tab: "kalkyle" }],
   ["etterkalkyle", { tab: "etterkalkyle" }],
+  ["faktura", { tab: "faktura" }],
   ["okonomi", { tab: "okonomi" }],
   ["oppgaver", { tab: "oppgaver" }],
   ["timer", { tab: "timer" }],
@@ -111,5 +112,39 @@ describe("prosjektfane-lenker", () => {
       "/prosjekter/p1?tab=okonomi&del=tilleggsarbeid"
     )
     expect(projectTabHref("p1", "kvalitet", "avvik")).toBe("/prosjekter/p1?tab=kvalitet&del=avvik")
+  })
+})
+
+// Med kalkylemodulen (KALKYLE_ENABLED) er Økonomi delt på Kalkyle,
+// Etterkalkyle og Faktura. Alle gamle adresser skal fortsatt lande riktig.
+const MED_KALKYLE: Array<[string, string | null, { tab: string; del?: string }]> = [
+  ["okonomi", null, { tab: "etterkalkyle" }],
+  ["okonomi", "sammendrag", { tab: "etterkalkyle" }],
+  ["okonomi", "kostnader", { tab: "etterkalkyle", del: "kostnader" }],
+  ["okonomi", "tilbud", { tab: "kalkyle", del: "tilbud" }],
+  ["okonomi", "tilleggsarbeid", { tab: "faktura", del: "tilleggsarbeid" }],
+  ["okonomi", "fakturering", { tab: "faktura", del: "fakturering" }],
+  ["tilbud", null, { tab: "kalkyle", del: "tilbud" }],
+  ["lonnsomhet", null, { tab: "etterkalkyle", del: "kostnader" }],
+  ["fakturering", null, { tab: "faktura", del: "fakturering" }],
+  ["tilleggsarbeid", null, { tab: "faktura", del: "tilleggsarbeid" }],
+  ["etterfakturering", null, { tab: "faktura", del: "tilleggsarbeid" }],
+  ["oppgaver", null, { tab: "oppgaver" }],
+]
+
+describe("prosjektfane-lenker med kalkylemodulen", () => {
+  it.each(MED_KALKYLE)("?tab=%s&del=%s lander riktig", (tab, del, forventet) => {
+    expect(resolveProjectTabParam(tab, null, null, del, { kalkyle: true })).toEqual(forventet)
+  })
+
+  it("gammel gruppeform ?tab=okonomi&sub=fakturering lander i Faktura", () => {
+    expect(resolveProjectTabParam("okonomi", "fakturering", null, null, { kalkyle: true })).toEqual({
+      tab: "faktura",
+      del: "fakturering",
+    })
+  })
+
+  it("uten flagget er alt som før", () => {
+    expect(resolveProjectTabParam("okonomi", null, null, "tilbud")).toEqual({ tab: "okonomi", del: "tilbud" })
   })
 })

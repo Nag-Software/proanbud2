@@ -6,6 +6,7 @@ import type { ProjectProfitability } from "@/lib/job-costing/types"
 import type { fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 
 import { EtterkalkyleTab } from "./etterkalkyle-tab"
+import { FakturaTab } from "./faktura-tab"
 import IDagTab from "./i-dag-tab"
 import KvalitetTab from "./kvalitet-tab"
 import { OkonomiTab } from "./okonomi-tab"
@@ -113,6 +114,14 @@ export async function StreamedEtterkalkyleTab({
 }: Omit<ComponentProps<typeof EtterkalkyleTab>, "profitability"> & { data: SecondaryPromise }) {
   const { profitability } = await data
   return <EtterkalkyleTab {...props} profitability={profitability} />
+}
+
+export async function StreamedFakturaTab({
+  data,
+  ...props
+}: Omit<ComponentProps<typeof FakturaTab>, "profitability"> & { data: SecondaryPromise }) {
+  const { profitability } = await data
+  return <FakturaTab {...props} profitability={profitability} />
 }
 
 export async function StreamedTimerTab({

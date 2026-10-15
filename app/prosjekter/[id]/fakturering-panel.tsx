@@ -60,10 +60,13 @@ export function FaktureringPanel({
   canManage,
   /** Økes utenfra når fakturagrunnlaget kan ha endret seg (f.eks. ny ekstrajobb). */
   refreshSignal = 0,
+  /** Kalles etter at en faktura er laget eller kansellert (f.eks. for å friske opp nøkkeltall). */
+  onChanged,
 }: {
   projectId: string
   canManage: boolean
   refreshSignal?: number
+  onChanged?: () => void
 }) {
   const confirm = useConfirm()
   const [billable, setBillable] = React.useState<BillableItem[] | null>(null)
@@ -160,6 +163,7 @@ export function FaktureringPanel({
       )
       setMessage("")
       await load()
+      onChanged?.()
     } catch (error) {
       reportClientError(error, { context: { action: "fakturering_invoice_all" } })
       toast.error(actionErrorMessage(error, "Kunne ikke opprette faktura"))
@@ -202,6 +206,7 @@ export function FaktureringPanel({
       )
       setMessage("")
       await load()
+      onChanged?.()
     } catch (error) {
       reportClientError(error, { context: { action: "fakturering_create" } })
       toast.error(actionErrorMessage(error, "Kunne ikke opprette faktura"))
@@ -227,6 +232,7 @@ export function FaktureringPanel({
       }
       toast.success("Fakturaen er kansellert. Beløpet kan faktureres på nytt.")
       await load()
+      onChanged?.()
     } finally {
       setBusy(false)
     }

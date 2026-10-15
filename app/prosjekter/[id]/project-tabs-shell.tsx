@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation"
 import { Tabs } from "@/components/ui/tabs"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
+import { KALKYLE_ENABLED } from "@/lib/kalkyle/flag"
 import { PEOPLE_DEL, resolveProjectTabParam } from "./project-tab-aliases"
 
 export type ProjectTabItem = {
@@ -122,7 +123,8 @@ export function ProjectTabsShell({ tabs, defaultTab, header, children }: Project
       searchParams.get("tab"),
       searchParams.get("sub"),
       searchParams.get("ks"),
-      searchParams.get("del")
+      searchParams.get("del"),
+      { kalkyle: KALKYLE_ENABLED }
     )
   }, [searchParams])
 
@@ -194,7 +196,7 @@ export function ProjectTabsShell({ tabs, defaultTab, header, children }: Project
 
   const navigate = React.useCallback(
     (target: string, del?: string | null) => {
-      const resolved = resolveProjectTabParam(target) ?? { tab: target }
+      const resolved = resolveProjectTabParam(target, null, null, null, { kalkyle: KALKYLE_ENABLED }) ?? { tab: target }
       const nextDel = del !== undefined ? del : (resolved.del ?? null)
       if (nextDel === PEOPLE_DEL) {
         setPeopleOpen(true)

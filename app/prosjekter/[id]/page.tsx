@@ -28,6 +28,7 @@ import type { ProjectPerson } from "./project-people-sheet"
 import {
   kvalitetWaitingCount,
   StreamedEtterkalkyleTab,
+  StreamedFakturaTab,
   StreamedIDagTab,
   StreamedKvalitetTab,
   StreamedOkonomiTab,
@@ -319,7 +320,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           { value: "oversikt", label: "Oversikt", hidden: isWorker },
           { value: "kalkyle", label: "Kalkyle", hidden: isWorker || !KALKYLE_ENABLED },
           { value: "etterkalkyle", label: "Etterkalkyle", hidden: isWorker || !KALKYLE_ENABLED },
-          { value: "okonomi", label: "Økonomi", hidden: isWorker },
+          { value: "faktura", label: "Faktura", hidden: isWorker || !KALKYLE_ENABLED },
+          // Med kalkylemodulen er Økonomi delt på Kalkyle, Etterkalkyle og Faktura.
+          { value: "okonomi", label: "Økonomi", hidden: isWorker || KALKYLE_ENABLED },
           { value: "oppgaver", label: "Oppgaver", count: hasTasks ? openTasks : 0 },
           {
             value: "timer",
@@ -424,6 +427,21 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   </Suspense>
                 </ProjectTabPanel>
               </KalkyleOmrade>
+            )}
+
+            {visKalkyle && (
+              <ProjectTabPanel value="faktura">
+                <Suspense fallback={<StreamedTabSkeleton />}>
+                  <StreamedFakturaTab
+                    data={secondary}
+                    projectId={project.id}
+                    canManage={isProjectAdmin}
+                    changeOrders={changeOrders}
+                    customerEmail={projectCustomer?.email ?? null}
+                    counts={{ changeOrders: changeOrders.length }}
+                  />
+                </Suspense>
+              </ProjectTabPanel>
             )}
 
             <ProjectTabPanel value="okonomi">

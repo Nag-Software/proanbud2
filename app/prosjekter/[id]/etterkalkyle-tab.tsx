@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 
 import { LonnsomhetTab } from "./lonnsomhet-tab"
 import { useProjectTabNavigation } from "./project-tabs-shell"
+import { useSeksjonFokus } from "./seksjon-fokus"
 
 const SEKSJONER = [
   { id: "etterkalkyle-sammendrag", navn: "Sammendrag" },
@@ -57,6 +58,8 @@ function EtterkalkyleInnhold({ projectId, canManage, profitability }: Etterkalky
     [signertTilbud]
   )
   const seksjoner = e ? SEKSJONER : SEKSJONER.filter((s) => s.id !== "etterkalkyle-poster")
+  // Gamle lenker til Økonomi → kostnader lander her (`?del=kostnader`).
+  useSeksjonFokus("etterkalkyle", (del) => `etterkalkyle-${del}`)
 
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[176px_minmax(0,1fr)]">
