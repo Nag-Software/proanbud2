@@ -101,6 +101,7 @@ const data: {
       title: "Prosjekter",
       url: "/prosjekter",
       icon: <FolderIcon className="size-4" />,
+      tourId: "prosjekter",
     },
     {
       title: "Kalender",
@@ -392,6 +393,7 @@ function NavMoreEntry({ badge, primaryHrefs }: { badge: number; primaryHrefs: st
         <SidebarMenuItem>
           <SidebarMenuButton
             tooltip="Mer"
+            data-tour="mer"
             onClick={() => setOpen(true)}
             className="text-[14px] font-medium"
           >

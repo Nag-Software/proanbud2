@@ -235,7 +235,7 @@ export function BedriftsprofilClient({
           <CardDescription>Dette vises på tilbud og i e-post til kunden.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center" data-tour="logo">
             <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
               {logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element

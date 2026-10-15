@@ -37,6 +37,7 @@ export function ProjectListRow({
   return (
     <MobileListRow
       href={`/prosjekter/${project.id}`}
+      tourId="prosjekt-kort"
       accentClassName={status.fillClass}
       leading={
         <ProjectPhoto

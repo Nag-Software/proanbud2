@@ -83,6 +83,8 @@ export function MobileBottomNav() {
         prefetch={false}
         aria-label={href === "/timeforing" && hasActiveSession ? `${label} – stemplet inn` : label}
         aria-current={isActive ? "page" : undefined}
+        // Mål for omvisningen (lib/onboarding/omvisning.ts).
+        data-tour={href === "/prosjekter" ? "prosjekter" : undefined}
         className={cn(
           "flex flex-1 flex-col items-center justify-center gap-1.5 text-[11px] font-medium leading-none transition-transform active:scale-95",
           isActive ? "font-semibold text-foreground" : "text-muted-foreground"
@@ -174,6 +176,7 @@ export function MobileBottomNav() {
         <button
           type="button"
           onClick={() => setMoreOpen(true)}
+          data-tour="mer"
           aria-label="Mer"
           aria-haspopup="dialog"
           aria-expanded={moreOpen}

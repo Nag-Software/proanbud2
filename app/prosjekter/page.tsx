@@ -111,7 +111,7 @@ export default async function Page({
               Prosjektoversikt
             </h1>
             {canCreateProject && (
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2" data-tour="nytt-prosjekt-side">
                 <CreateProjectDrawer variant="outline" />
               </div>
             )}

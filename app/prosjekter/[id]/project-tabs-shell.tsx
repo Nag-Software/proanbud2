@@ -273,6 +273,8 @@ export function ProjectTabsShell({ tabs, defaultTab, header, children }: Project
                             type="button"
                             role="tab"
                             aria-selected={isActive}
+                            // Mål for omvisningen (lib/onboarding/omvisning.ts).
+                            data-tour={`fane-${tab.value}`}
                             onClick={() => navigate(tab.value, null)}
                             className={cn(
                               "-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-0.5 pb-2.5 text-sm transition-colors",

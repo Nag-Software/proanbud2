@@ -26,6 +26,8 @@ type MobileListRowProps = {
   /** Farget skinne i venstrekanten — brukes til status. */
   accentClassName?: string
   className?: string
+  /** Mål for omvisningen (data-tour). */
+  tourId?: string
 }
 
 /**
@@ -46,6 +48,7 @@ export function MobileListRow({
   action,
   accentClassName,
   className,
+  tourId,
 }: MobileListRowProps) {
   const body = (
     <>
@@ -86,14 +89,14 @@ export function MobileListRow({
   // Uten egen handlingsknapp er raden bare en lenke — enklest og mest robust.
   if (href && !action) {
     return (
-      <Link href={href} prefetch={false} className={shell}>
+      <Link href={href} prefetch={false} className={shell} data-tour={tourId}>
         {body}
       </Link>
     )
   }
 
   return (
-    <div className={shell}>
+    <div className={shell} data-tour={tourId}>
       {href && (
         <Link href={href} prefetch={false} className="absolute inset-0 z-0" aria-label={undefined}>
           <span className="sr-only">{typeof title === "string" ? title : "Åpne"}</span>

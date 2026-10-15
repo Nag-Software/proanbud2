@@ -141,6 +141,8 @@ function MoreLink({
       href={entry.href}
       prefetch={false}
       onClick={onNavigate}
+      // Mål for omvisningen («Mer» → «Bedriftsprofil»).
+      data-tour={`mer-${entry.href}`}
       className={cn(
         // Samme hevede flate som sekundærknappen — se «Knapper — systemet».
         "inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] border border-[color:var(--control-border-soft)] bg-background bg-[image:var(--control-sheen-soft)] px-3 text-[13px] font-semibold shadow-[var(--shadow-surface)] transition-all hover:bg-muted hover:shadow-[var(--shadow-surface-hover)] active:translate-y-px active:shadow-[var(--shadow-surface-pressed)]",
