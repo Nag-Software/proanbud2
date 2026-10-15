@@ -74,7 +74,7 @@ type NavMainItem = {
  * Timeføring, Kart, Kjørebok) og får derfor ingen «Mer»-inngang — Kjørebok
  * står i stedet på toppnivå for dem.
  */
-export const PRIMARY_NAV_TITLES = ["Dashbord", "Prosjekter", "Kalender", "HMS", "Timeføring", "Kunder", "Kart"] as const
+export const PRIMARY_NAV_TITLES = ["Dashbord", "Prosjekter", "Kalender", "Kunder", "Timeføring", "HMS", "Kart"] as const
 
 const data: {
   user: {
@@ -108,11 +108,10 @@ const data: {
       icon: <CalendarDays className="size-4" />,
     },
     {
-      // Flatt punkt til HMS-oversikten — siden lenker selv videre til avvik.
-      // Avvik har egen oppføring under «Mer» (se under).
-      title: "HMS",
-      url: "/hms",
-      icon: <ShieldCheckIcon className="size-4" />,
+      title: "Kunder",
+      url: "/kunder",
+      icon: <UsersIcon className="size-4" />,
+      tourId: "kunder",
     },
     {
       // Timeføring er en modul (ikke en plan-feature) — nav-konvensjonen er at
@@ -124,10 +123,11 @@ const data: {
       tourId: "timeforing",
     },
     {
-      title: "Kunder",
-      url: "/kunder",
-      icon: <UsersIcon className="size-4" />,
-      tourId: "kunder",
+      // Flatt punkt til HMS-oversikten — siden lenker selv videre til avvik.
+      // Avvik har egen oppføring under «Mer» (se under).
+      title: "HMS",
+      url: "/hms",
+      icon: <ShieldCheckIcon className="size-4" />,
     },
     {
       title: "Kart",

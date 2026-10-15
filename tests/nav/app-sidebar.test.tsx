@@ -103,6 +103,13 @@ const PREVIOUS_SIDEBAR_HREFS = [
 ]
 
 beforeEach(() => {
+  // «Mer» er en Radix-dialog som måler seg med ResizeObserver; jsdom har den ikke.
+  // Uten denne åpnet dialogen seg bare noen ganger, og testene feilet tilfeldig.
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
   window.matchMedia = vi.fn().mockReturnValue({
     matches: false,
     addEventListener: vi.fn(),
@@ -148,14 +155,14 @@ async function moreLinks() {
 describe("Sidemenyen", () => {
   it("har de sju daglige punktene i fast rekkefølge, og så «Mer»", () => {
     renderSidebar()
-    expect(PRIMARY_NAV_TITLES).toEqual(["Dashbord", "Prosjekter", "Kalender", "HMS", "Timeføring", "Kunder", "Kart"])
+    expect(PRIMARY_NAV_TITLES).toEqual(["Dashbord", "Prosjekter", "Kalender", "Kunder", "Timeføring", "HMS", "Kart"])
     expect(sidebarLinks()).toEqual([
       { title: "Dashbord", href: "/" },
       { title: "Prosjekter", href: "/prosjekter" },
       { title: "Kalender", href: "/kalender" },
-      { title: "HMS", href: "/hms" },
-      { title: "Timeføring", href: "/timeforing" },
       { title: "Kunder", href: "/kunder" },
+      { title: "Timeføring", href: "/timeforing" },
+      { title: "HMS", href: "/hms" },
       { title: "Kart", href: "/kart" },
     ])
     expect(screen.getByRole("button", { name: "Mer" })).toBeTruthy()
@@ -207,8 +214,8 @@ describe("Sidemenyen", () => {
       "Dashbord",
       "Prosjekter",
       "Kalender",
-      "Timeføring",
       "Kunder",
+      "Timeføring",
       "Kart",
     ])
     const more = (await moreLinks()).map((link) => link.href)
