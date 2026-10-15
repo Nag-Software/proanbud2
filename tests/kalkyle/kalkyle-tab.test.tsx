@@ -20,6 +20,16 @@ afterEach(() => {
 
 const sammendrag = () => within(screen.getByRole("region", { name: "Sammendrag" }))
 
+/**
+ * En post i tabellen er tre deler: den grå raden, linjene (dra-og-slipp) og
+ * knappene for å legge til, hver i sin tbody.
+ */
+function postITabell(navn: string) {
+  const hode = screen.getAllByRole("button", { name: `Skjul ${navn}` })[0].closest("tbody") as HTMLElement
+  const linjer = hode.nextElementSibling as HTMLElement
+  return { linjer: within(linjer), leggTil: within(linjer.nextElementSibling as HTMLElement) }
+}
+
 describe("Kalkyle-fanen", () => {
   it("viser ett hovedtall: kunden betaler 113 437 kr, du sitter igjen med 19 459 kr", () => {
     render(<KalkyleTab />)
@@ -68,7 +78,9 @@ describe("Kalkyle-fanen", () => {
     fireEvent.click(within(mobilKort).getByRole("button", { name: "Timer" }))
     const ark = screen.getByRole("dialog")
     expect(within(ark).getByText("Ny linje: timer")).toBeTruthy()
-    expect(within(ark).getByText("Hvor mange timer?")).toBeTruthy()
+    // Kompakt ark: timer, enhet og timepris som vanlige felt.
+    expect(within(ark).getByLabelText("Timer")).toBeTruthy()
+    expect(within(ark).getByLabelText("Timepris")).toBeTruthy()
   })
 
   it("«Endre med SmartKI» spør SmartKI, og først «Legg inn» endrer kalkylen", async () => {
@@ -166,8 +178,7 @@ describe("Kalkyle-fanen", () => {
       })
     )
     render(<KalkyleTab />)
-    const tabell = screen.getAllByRole("button", { name: "Skjul Membran og fliser" })[0].closest("tbody") as HTMLElement
-    fireEvent.click(within(tabell).getByRole("button", { name: "Materiell" }))
+    fireEvent.click(postITabell("Membran og fliser").leggTil.getByRole("button", { name: "Materiell" }))
     const dialog = screen.getByRole("dialog")
     fireEvent.click(await within(dialog).findByRole("button", { name: /Trinnlydplate 3 mm/ }))
     expect(screen.getByLabelText("Beskrivelse for Trinnlydplate 3 mm")).toBeTruthy()
@@ -179,11 +190,10 @@ describe("Kalkyle-fanen", () => {
 
   it("+ Blank legger inn en tom linje", () => {
     render(<KalkyleTab />)
-    const tabell = screen.getAllByRole("button", { name: "Skjul Rør" })[0].closest("tbody") as HTMLElement
-    const for_ = within(tabell).getAllByLabelText(/^Beskrivelse for/).length
-    fireEvent.click(within(tabell).getByRole("button", { name: "Blank" }))
-    expect(within(tabell).getAllByLabelText(/^Beskrivelse for/).length).toBe(for_ + 1)
-    expect(within(tabell).queryByRole("button", { name: "Underentreprenør" })).toBeNull()
+    const for_ = postITabell("Rør").linjer.getAllByLabelText(/^Beskrivelse for/).length
+    fireEvent.click(postITabell("Rør").leggTil.getByRole("button", { name: "Blank" }))
+    expect(postITabell("Rør").linjer.getAllByLabelText(/^Beskrivelse for/).length).toBe(for_ + 1)
+    expect(postITabell("Rør").leggTil.queryByRole("button", { name: "Underentreprenør" })).toBeNull()
   })
 
   it("en timelinje kan få sin egen timepris fra Timepriser", () => {
@@ -198,8 +208,7 @@ describe("Kalkyle-fanen", () => {
 
   it("«+ Fast jobb» henter fra Lagrede jobber og legger jobben inn i posten", () => {
     render(<KalkyleTab />)
-    const tabellRad = screen.getAllByRole("button", { name: "Skjul Innredning" })[0].closest("tbody") as HTMLElement
-    fireEvent.click(within(tabellRad).getByRole("button", { name: "Fast jobb" }))
+    fireEvent.click(postITabell("Innredning").leggTil.getByRole("button", { name: "Fast jobb" }))
     const dialog = screen.getByRole("dialog")
     expect(within(dialog).getByText("Legg til fast jobb")).toBeTruthy()
     fireEvent.change(within(dialog).getByLabelText("Søk i lagrede jobber"), { target: { value: "toalett" } })

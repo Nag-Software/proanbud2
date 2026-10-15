@@ -47,6 +47,13 @@ import { laborLineMarginPct, sanitizeLaborSnapshot } from "@/lib/tilbud/labor"
 import { formatDocumentQuantity, formatDocumentUnit } from "@/lib/tilbud/offer-document"
 import { toast } from "sonner"
 import {
+  buildGroups,
+  moveItemBetweenGroups,
+  normalizeGroupName,
+  reorderItemsInGroup,
+  resolveNobb,
+} from "@/lib/tilbud/line-item-groups"
+import {
   INCOME_ACCOUNT_CATEGORY_OPTIONS,
   effectiveIncomeAccountCategory,
   type IncomeAccountCategory,
@@ -82,73 +89,6 @@ export type NewOfferItemsTableHandle = {
 function parseNumber(value: string, fallback: number) {
   const parsed = Number(value.replace(",", "."))
   return Number.isFinite(parsed) ? parsed : fallback
-}
-
-function resolveNobb(item: OfferLineItem) {
-  const direct = item.nobb?.trim()
-  if (direct) return direct
-
-  const fallback = item.supplierSku?.trim() || ""
-  const digitsOnly = fallback.replace(/\D/g, "")
-  if (digitsOnly.length >= 6 && digitsOnly.length <= 10) {
-    return digitsOnly
-  }
-
-  return null
-}
-
-function normalizeGroupName(value: string) {
-  return value.trim() || "Generelt"
-}
-
-function buildGroups(items: OfferLineItem[]) {
-  const map: Record<string, OfferLineItem[]> = {}
-  for (const item of items) {
-    const key = normalizeGroupName(item.subproject)
-    if (!map[key]) map[key] = []
-    map[key].push(item)
-  }
-  return map
-}
-
-function flattenGroupedItems(groupOrder: string[], groups: Record<string, OfferLineItem[]>) {
-  return groupOrder.flatMap((group) => groups[group] || [])
-}
-
-function reorderItemsInGroup(items: OfferLineItem[], group: string, fromIndex: number, toIndex: number) {
-  const groups = buildGroups(items)
-  const groupItems = [...(groups[group] || [])]
-  const [moved] = groupItems.splice(fromIndex, 1)
-  if (!moved) return items
-
-  groupItems.splice(toIndex, 0, moved)
-  groups[group] = groupItems
-  const groupOrder = Object.keys(groups)
-  return flattenGroupedItems(groupOrder, groups)
-}
-
-function moveItemBetweenGroups(
-  items: OfferLineItem[],
-  sourceGroup: string,
-  destinationGroup: string,
-  sourceIndex: number,
-  destinationIndex: number
-) {
-  const groups = buildGroups(items)
-  const sourceItems = [...(groups[sourceGroup] || [])]
-  const destinationItems = sourceGroup === destinationGroup ? sourceItems : [...(groups[destinationGroup] || [])]
-
-  const [moved] = sourceItems.splice(sourceIndex, 1)
-  if (!moved) return items
-
-  const nextItem = { ...moved, subproject: destinationGroup }
-  destinationItems.splice(destinationIndex, 0, nextItem)
-
-  groups[sourceGroup] = sourceItems
-  groups[destinationGroup] = destinationItems
-
-  const groupOrder = Object.keys(groups).filter((group) => (groups[group]?.length || 0) > 0)
-  return flattenGroupedItems(groupOrder, groups)
 }
 
 function EditableSelect({
@@ -309,7 +249,7 @@ function PriceSourceBadge({ item }: { item: OfferLineItem }) {
  * «kost 520 kr/t · DG 39 %» på timelinjer som har kostpris fra timeprisen. Intern
  * kalkyleinfo for den som lager tilbudet — står ikke i kundens dokument.
  */
-function LaborCostHint({ item }: { item: OfferLineItem }) {
+export function LaborCostHint({ item }: { item: OfferLineItem }) {
   if (!isHourUnit(item.unit)) return null
   const cost = Number(item.costRateNok)
   if (!Number.isFinite(cost) || cost <= 0) return null
@@ -328,7 +268,7 @@ function LaborCostHint({ item }: { item: OfferLineItem }) {
   )
 }
 
-function LineItemInfoButton({ item }: { item: OfferLineItem }) {
+export function LineItemInfoButton({ item }: { item: OfferLineItem }) {
   const reasoning = item.reasoning?.trim()
   const description = item.description?.trim()
   const hasContent = Boolean(reasoning || description)
@@ -467,7 +407,7 @@ function perUnitLabel(unit: string) {
 }
 
 /** «16 timer × 650 kr + 15 % påslag» — hele regnestykket bak linjesummen. */
-function describeLineItemPrice(item: OfferLineItem) {
+export function describeLineItemPrice(item: OfferLineItem) {
   const base = `${formatDocumentQuantity(item.quantity)} ${formatDocumentUnit(item.unit || "stk")}`
   const parts = [item.unitPriceNok > 0 ? `${base} × ${formatUnitPrice(item.unitPriceNok)}` : base]
   if (item.markupPercent > 0) parts.push(`+ ${formatDocumentQuantity(item.markupPercent)} % påslag`)

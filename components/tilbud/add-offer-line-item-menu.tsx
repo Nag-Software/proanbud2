@@ -54,6 +54,12 @@ type AddOfferLineItemMenuProps = {
   buttonClassName?: string
   /** Kalles med den nye raden etter «Blank rad», f.eks. for å åpne den for redigering. */
   onBlankItemAdded?: (item: OfferLineItem) => void
+  /**
+   * «meny» (standard): én «Legg til»-knapp med nedtrekksmeny. «knapper»: små
+   * knapper på rad (+ Timer, + Materiell, + Fast jobb, + Blank), som under hver
+   * kategori i den felles linjetabellen.
+   */
+  variant?: "meny" | "knapper"
 }
 
 export function AddOfferLineItemMenu({
@@ -64,6 +70,7 @@ export function AddOfferLineItemMenu({
   buttonLabel = "Legg til",
   buttonClassName,
   onBlankItemAdded,
+  variant = "meny",
 }: AddOfferLineItemMenuProps) {
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false)
   const [jobDialogOpen, setJobDialogOpen] = useState(false)
@@ -291,46 +298,64 @@ export function AddOfferLineItemMenu({
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button size="sm" variant="outline" className={buttonClassName || "h-8 text-xs font-medium"}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            {buttonLabel}
-            <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-60" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuItem
-            onSelect={() => {
-              window.setTimeout(() => setMaterialDialogOpen(true), 0)
-            }}
-          >
-            <Package className="mr-2 h-4 w-4" />
-            Fra prisliste
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              window.setTimeout(() => setJobDialogOpen(true), 0)
-            }}
-          >
-            <Briefcase className="mr-2 h-4 w-4" />
-            Fast jobb
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              window.setTimeout(() => setLaborDialogOpen(true), 0)
-            }}
-          >
-            <Clock className="mr-2 h-4 w-4" />
-            Arbeidstimer
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={addBlankLineItem}>
-            <FilePlus2 className="mr-2 h-4 w-4" />
-            Blank rad
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {variant === "knapper" ? (
+        <div className="flex flex-wrap items-center gap-1">
+          {(
+            [
+              ["Timer", () => setLaborDialogOpen(true)],
+              ["Materiell", () => setMaterialDialogOpen(true)],
+              ["Fast jobb", () => setJobDialogOpen(true)],
+              ["Blank", addBlankLineItem],
+            ] as const
+          ).map(([label, onClick]) => (
+            <Button key={label} type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={onClick}>
+              <Plus aria-hidden />
+              {label}
+            </Button>
+          ))}
+        </div>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline" className={buttonClassName || "h-8 text-xs font-medium"}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              {buttonLabel}
+              <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem
+              onSelect={() => {
+                window.setTimeout(() => setMaterialDialogOpen(true), 0)
+              }}
+            >
+              <Package className="mr-2 h-4 w-4" />
+              Fra prisliste
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                window.setTimeout(() => setJobDialogOpen(true), 0)
+              }}
+            >
+              <Briefcase className="mr-2 h-4 w-4" />
+              Fast jobb
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                window.setTimeout(() => setLaborDialogOpen(true), 0)
+              }}
+            >
+              <Clock className="mr-2 h-4 w-4" />
+              Arbeidstimer
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={addBlankLineItem}>
+              <FilePlus2 className="mr-2 h-4 w-4" />
+              Blank rad
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       <Dialog open={materialDialogOpen} onOpenChange={setMaterialDialogOpen}>
         <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-lg">

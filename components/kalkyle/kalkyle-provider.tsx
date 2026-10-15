@@ -37,6 +37,8 @@ type KalkyleContextValue = {
   leggTilPost: (navn: string) => string | null
   oppdaterPost: (postId: string, navn: string) => void
   fjernPost: (postId: string) => void
+  /** Dra-og-slipp: flytter en linje innen posten eller til en annen post. */
+  flyttLinje: (fraPostId: string, fraIndeks: number, tilPostId: string, tilIndeks: number) => void
   /** Linjer lagt inn fra chatten, merket «Ny» til siden lastes på nytt. */
   merket: ReadonlySet<string>
   merk: (ider: string[]) => void
@@ -163,6 +165,21 @@ export function KalkyleProvider({
         const k = aktiv()
         if (!k) return
         settAktiv({ ...k, poster: k.poster.filter((p) => p.id !== postId) })
+      },
+      flyttLinje: (fraPostId, fraIndeks, tilPostId, tilIndeks) => {
+        const k = aktiv()
+        const linje = k?.poster.find((p) => p.id === fraPostId)?.linjer[fraIndeks]
+        if (!k || !linje || !k.poster.some((p) => p.id === tilPostId)) return
+        const uten = k.poster.map((p) => (p.id === fraPostId ? { ...p, linjer: p.linjer.filter((_, i) => i !== fraIndeks) } : p))
+        settAktiv({
+          ...k,
+          poster: uten.map((p) => {
+            if (p.id !== tilPostId) return p
+            const linjer = [...p.linjer]
+            linjer.splice(Math.min(Math.max(tilIndeks, 0), linjer.length), 0, linje)
+            return { ...p, linjer }
+          }),
+        })
       },
       merket,
       merk: (ider) => setMerket((prev) => new Set([...prev, ...ider])),

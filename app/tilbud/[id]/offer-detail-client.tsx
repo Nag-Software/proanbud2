@@ -52,6 +52,8 @@ import { OfferTermsFields } from "@/components/tilbud/offer-terms-fields"
 import { AddOfferLineItemMenu } from "@/components/tilbud/add-offer-line-item-menu"
 import { OfferCalcStrip } from "@/components/tilbud/offer-calc-strip"
 import { NewOfferItemsTable, type NewOfferItemsTableHandle } from "@/components/tilbud/new-offer-items-table"
+import { TilbudLinjetabell } from "@/components/tilbud/tilbud-linjetabell"
+import { KALKYLE_ENABLED } from "@/lib/kalkyle/flag"
 import {
   formatOfferReference,
   getOfferDocumentTotals,
@@ -932,13 +934,26 @@ export function OfferDetailClient({
             </div>
           </div>
 
-          <NewOfferItemsTable
-            ref={itemsTableRef}
-            items={lineItems}
-            onItemsChange={setLineItems}
-            supplierSuggestions={[]}
-            onCategoryChange={handleCategoryChange}
-          />
+          {KALKYLE_ENABLED ? (
+            <TilbudLinjetabell
+              ref={itemsTableRef}
+              items={lineItems}
+              onItemsChange={setLineItems}
+              supplierSuggestions={[]}
+              onCategoryChange={handleCategoryChange}
+              onAddItems={addLineItems}
+              companyName={company?.name}
+              utenRamme
+            />
+          ) : (
+            <NewOfferItemsTable
+              ref={itemsTableRef}
+              items={lineItems}
+              onItemsChange={setLineItems}
+              supplierSuggestions={[]}
+              onCategoryChange={handleCategoryChange}
+            />
+          )}
           {/* Intern dekningsgrad — /tilbud er bare for leder/admin, og kunden ser aldri denne. */}
           <OfferCalcStrip lineItems={lineItems} className="mx-4 mt-4 sm:mx-5" />
           <div className="bg-muted/5 p-4 sm:p-5">

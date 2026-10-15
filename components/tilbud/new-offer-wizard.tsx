@@ -879,6 +879,9 @@ export function NewOfferWizard({ project, customers, company, onCompleted }: New
                 onItemsChange={setLineItems}
                 supplierSuggestions={getDistinctSuppliers()}
                 onCategoryChange={handleCategoryChange}
+                onAddItems={addLineItems}
+                companyName={company?.name}
+                defaultMarkupPercent={globalMarkupPercent}
               />
 
               {/* Totals footer */}
