@@ -26,6 +26,7 @@ import type { OverviewTask } from "./project-overview-tab"
 import type { ProjectPerson } from "./project-people-sheet"
 import {
   kvalitetWaitingCount,
+  StreamedEtterkalkyleTab,
   StreamedIDagTab,
   StreamedKvalitetTab,
   StreamedOkonomiTab,
@@ -316,6 +317,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           { value: "idag", label: "I dag", hidden: !isWorker },
           { value: "oversikt", label: "Oversikt", hidden: isWorker },
           { value: "kalkyle", label: "Kalkyle", hidden: isWorker || !KALKYLE_ENABLED },
+          { value: "etterkalkyle", label: "Etterkalkyle", hidden: isWorker || !KALKYLE_ENABLED },
           { value: "okonomi", label: "Økonomi", hidden: isWorker },
           { value: "oppgaver", label: "Oppgaver", count: hasTasks ? openTasks : 0 },
           {
@@ -411,6 +413,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   tilbud={kalkyleTilbud}
                   firma={kalkyleFirma}
                 />
+              </ProjectTabPanel>
+            )}
+
+            {visKalkyle && (
+              <ProjectTabPanel value="etterkalkyle">
+                <Suspense fallback={<StreamedTabSkeleton />}>
+                  <StreamedEtterkalkyleTab data={secondary} projectId={project.id} canManage={isProjectAdmin} />
+                </Suspense>
               </ProjectTabPanel>
             )}
 

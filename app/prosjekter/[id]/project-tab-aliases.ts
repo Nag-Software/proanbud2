@@ -28,6 +28,7 @@ export const PROJECT_TABS = [
   // Kalkylemodulen, bak KALKYLE_ENABLED (lib/kalkyle/flag). Uten flagget er
   // fanen skjult, og ?tab=kalkyle faller tilbake til standardfanen.
   "kalkyle",
+  "etterkalkyle",
   "okonomi",
   "oppgaver",
   "timer",
@@ -47,6 +48,7 @@ export const PROJECT_TAB_ALIASES: Record<string, ResolvedProjectTab> = {
   oversikt: { tab: "oversikt" },
   idag: { tab: "idag" },
   kalkyle: { tab: "kalkyle" },
+  etterkalkyle: { tab: "etterkalkyle" },
   okonomi: { tab: "okonomi" },
   oppgaver: { tab: "oppgaver" },
   timer: { tab: "timer" },

@@ -5,6 +5,7 @@ import type { getProjectChecklistsAction } from "@/app/ks/actions"
 import type { ProjectProfitability } from "@/lib/job-costing/types"
 import type { fetchParticipantHours } from "@/lib/timeforing/participant-hours"
 
+import { EtterkalkyleTab } from "./etterkalkyle-tab"
 import IDagTab from "./i-dag-tab"
 import KvalitetTab from "./kvalitet-tab"
 import { OkonomiTab } from "./okonomi-tab"
@@ -104,6 +105,14 @@ export async function StreamedOkonomiTab({
 }: Omit<ComponentProps<typeof OkonomiTab>, "profitability"> & { data: SecondaryPromise }) {
   const { profitability } = await data
   return <OkonomiTab {...props} profitability={profitability} />
+}
+
+export async function StreamedEtterkalkyleTab({
+  data,
+  ...props
+}: Omit<ComponentProps<typeof EtterkalkyleTab>, "profitability"> & { data: SecondaryPromise }) {
+  const { profitability } = await data
+  return <EtterkalkyleTab {...props} profitability={profitability} />
 }
 
 export async function StreamedTimerTab({
