@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { format } from "date-fns"
 import { nb } from "date-fns/locale"
-import { Check, Download, Loader2, MessageSquare, Send, X } from "lucide-react"
+import { Check, Download, Loader2, MessageSquare, Paperclip, Send, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { reportClientError, actionErrorMessage } from "@/lib/errors/client"
@@ -67,6 +67,9 @@ type PublicMessage = {
   senderType: "company" | "customer"
   content: string
   createdAt: string
+  attachmentUrl?: string | null
+  attachmentName?: string | null
+  attachmentType?: string | null
 }
 
 function statusLabel(status: PublicOfferPayload["status"], isExpired: boolean) {
@@ -124,7 +127,28 @@ function OfferChatPanel({
                     isCompany ? "bg-neutral-100 text-neutral-900" : "bg-neutral-900 text-white"
                   }`}
                 >
-                  <p>{message.content}</p>
+                  {message.attachmentUrl && message.attachmentType?.startsWith("image/") && (
+                    <a href={message.attachmentUrl} target="_blank" rel="noreferrer" className="mb-1.5 block overflow-hidden rounded-xl">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={message.attachmentUrl}
+                        alt={message.attachmentName || "Bilde"}
+                        className="max-h-56 max-w-full object-cover"
+                      />
+                    </a>
+                  )}
+                  {message.attachmentUrl && !message.attachmentType?.startsWith("image/") && (
+                    <a
+                      href={message.attachmentUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mb-1.5 flex min-h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2 text-neutral-900 underline-offset-2 hover:underline"
+                    >
+                      <Paperclip className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      <span className="min-w-0 truncate text-xs font-medium">{message.attachmentName || "Vedlegg"}</span>
+                    </a>
+                  )}
+                  {message.content && <p className="whitespace-pre-wrap break-words">{message.content}</p>}
                   <p className={`mt-1 text-[10px] ${isCompany ? "text-neutral-500" : "text-neutral-300"}`}>
                     {format(new Date(message.createdAt), "d. MMM HH:mm", { locale: nb })}
                   </p>

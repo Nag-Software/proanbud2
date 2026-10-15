@@ -5,7 +5,7 @@ export default function Loading() {
     <AppPageShell segments={["Meldinger"]} noPadding>
       <div className="flex h-full min-h-0">
         {/* Conversation list */}
-        <div className="hidden w-72 shrink-0 flex-col gap-2 border-r border-border/60 p-3 md:flex">
+        <div className="hidden w-[320px] shrink-0 flex-col gap-3 border-r border-border/60 p-3 md:flex lg:w-[340px]">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3">
               <div className="h-9 w-9 animate-pulse rounded-full bg-muted/60" />

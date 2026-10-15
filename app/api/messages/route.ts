@@ -10,14 +10,20 @@ import { ensureOfferPublicSlug } from "@/lib/tilbud/public-offer"
 
 const resend = new Resend(process.env.RESEND_API_KEY || "re_defaultkey")
 
-const sendSchema = z.object({
-  customerId: z.string().uuid(),
-  offerId: z.string().uuid().optional().nullable(),
-  content: z.string().trim().min(1).max(4000),
-  attachmentUrl: z.string().url().optional().nullable(),
-  attachmentType: z.string().optional().nullable(),
-  attachmentName: z.string().optional().nullable(),
-})
+// Tekst ELLER vedlegg: et bilde alene er en gyldig melding.
+const sendSchema = z
+  .object({
+    customerId: z.string().uuid(),
+    offerId: z.string().uuid().optional().nullable(),
+    content: z.string().trim().max(4000),
+    attachmentUrl: z.string().url().optional().nullable(),
+    attachmentType: z.string().optional().nullable(),
+    attachmentName: z.string().optional().nullable(),
+  })
+  .refine((data) => data.content.length > 0 || Boolean(data.attachmentUrl), {
+    message: "Meldingen er tom",
+    path: ["content"],
+  })
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -108,7 +114,7 @@ export async function POST(request: Request) {
           const html = buildCustomerMessageEmail({
             recipientName: offer.recipient_name || customer?.name || "Kunde",
             companyName: company?.name || "Proanbud",
-            messagePreview: parsed.data.content,
+            messagePreview: parsed.data.content || `Vedlegg: ${parsed.data.attachmentName || "fil"}`,
             publicSlug,
           })
 
