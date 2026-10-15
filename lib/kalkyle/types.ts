@@ -15,7 +15,7 @@
  */
 export type LinjeType = "arbeid" | "materiell" | "ue" | "jobb"
 
-export type Enhet = "t" | "stk" | "m²" | "lm" | "sett" | "rs"
+export type Enhet = "t" | "stk" | "m²" | "lm" | "sett" | "rull" | "pall" | "rs"
 
 export type Linje = {
   id: string
@@ -30,12 +30,22 @@ export type Linje = {
    * (salgs- og kostpris kopieres, som på tilbudslinjer). Null = kalkylens standard.
    */
   timepris?: TimeprisValg | null
+  /**
+   * Materiell/UE: eget påslag i prosent for denne linja. Null/udefinert =
+   * kalkylens påslag for typen (paslagMateriell / paslagUe).
+   */
+  paslag?: number | null
   /** Fast jobb: pris per enhet eks. mva til kunden. Ingen påslag. */
   fastpris?: number | null
   /** Fast jobb: anslåtte arbeidstimer per enhet (fra Lagrede jobber). */
   timerPerEnhet?: number | null
   /** Fast jobb: id-en i Lagrede jobber den kom fra. */
   lagretJobbId?: string | null
+  /**
+   * Innprisen er et anslag fra SmartKI (fant ingen pris i prisfilene). Vises
+   * som «Anslått pris» internt, aldri for kunden. Fjernes når prisen endres.
+   */
+  anslag?: boolean
 }
 
 /** En timepris fra Mine priser → Timepriser. */

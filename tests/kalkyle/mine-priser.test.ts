@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest"
 import { beregnEtterkalkyle, beregnKalkyle, beregnLinje, byggKundevisning } from "../../lib/kalkyle/beregn"
 import { brukEndringer } from "../../lib/kalkyle/endringer"
 import {
+  enhetFraPrisfil,
+  linjeFraPrisliste,
   fraLagredeJobber,
   fraTimepriser,
   linjeFraLagretJobb,
@@ -102,5 +104,24 @@ describe("Lagrede jobber som «Fast jobb»", () => {
     const k = brukEndringer(MOCK_KALKYLE, [{ type: "leggTil", postId: "innredning", linje: linjeFraLagretJobb(jobb) }]).kalkyle
     const e = beregnEtterkalkyle({ ...MOCK_SIGNERT_SNAPSHOT, kalkyle: k }, { poster: [] })
     expect(e.poster.find((p) => p.postId === "innredning")?.kalkulertMateriell).toBe(8990)
+  })
+})
+
+describe("Materiell fra prislisten", () => {
+  it("enheter fra prisfilene blir kalkyle-enheter", () => {
+    expect(["STK", "M2", "m²", "M", "RUL", "PAL", "Sett", "ukjent", null].map(enhetFraPrisfil)).toEqual([
+      "stk", "m²", "m²", "lm", "rull", "pall", "sett", "stk", "stk",
+    ])
+  })
+
+  it("en vare blir en materiell-linje med innprisen fra prislisten", () => {
+    expect(linjeFraPrisliste({ product: " Flislim 15 kg ", unit: "STK", unitPriceNok: 329 })).toEqual({
+      beskrivelse: "Flislim 15 kg",
+      type: "materiell",
+      antall: 1,
+      enhet: "stk",
+      innpris: 329,
+      anslag: false,
+    })
   })
 })

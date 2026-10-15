@@ -65,3 +65,27 @@ export function linjeFraLagretJobb(jobb: LagretJobb): Omit<Linje, "id"> {
     lagretJobbId: jobb.id,
   }
 }
+
+/** Enheten fra en prisfil-rad («STK», «M2», «RUL», «PAL» …) som kalkyle-enhet. Ukjent → stk. */
+export function enhetFraPrisfil(unit: string | null | undefined): Linje["enhet"] {
+  const u = String(unit ?? "").trim().toLowerCase().replace(/\.$/, "")
+  if (["m2", "m²", "kvm", "kvadratmeter"].includes(u)) return "m²"
+  if (["m", "lm", "meter", "løpemeter", "lopemeter"].includes(u)) return "lm"
+  if (["rul", "rull", "ruller", "rl"].includes(u)) return "rull"
+  if (["pal", "pall", "paller", "pl"].includes(u)) return "pall"
+  if (["sett", "set", "sæt"].includes(u)) return "sett"
+  if (["t", "time", "timer", "h"].includes(u)) return "t"
+  return "stk"
+}
+
+/** Et treff i prislisten (/api/mine-priser/sok?type=material) som materiell-linje. */
+export function linjeFraPrisliste(vare: { product: string; unit: string; unitPriceNok: number }): Omit<Linje, "id"> {
+  return {
+    beskrivelse: vare.product.trim(),
+    type: "materiell",
+    antall: 1,
+    enhet: enhetFraPrisfil(vare.unit),
+    innpris: Number.isFinite(vare.unitPriceNok) && vare.unitPriceNok > 0 ? vare.unitPriceNok : 0,
+    anslag: false,
+  }
+}

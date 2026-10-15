@@ -7,14 +7,16 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { paslagFor } from "@/lib/kalkyle/beregn"
 import { formatAntall, formatKr } from "@/lib/kalkyle/format"
-import { linjeFraLagretJobb } from "@/lib/kalkyle/mine-priser"
-import type { Enhet, Kalkyle, Linje, LinjeResultat, LinjeType, Post, PostResultat, TimeprisValg } from "@/lib/kalkyle/types"
+import { linjeFraLagretJobb, linjeFraPrisliste } from "@/lib/kalkyle/mine-priser"
+import type { Enhet, Kalkyle, Linje, LinjeType, Post, PostResultat, TimeprisValg } from "@/lib/kalkyle/types"
 import { cn } from "@/lib/utils"
 import { useKalkyle } from "./kalkyle-provider"
 import { LagretJobbVelger } from "./lagret-jobb-velger"
-import { ENHETER, LINJE_TYPE, enhetKort } from "./linje-type"
+import { ENHETER, LINJE_TYPE, enhetKort, patchForType } from "./linje-type"
 import { useMinePriser } from "./mine-priser-kontekst"
+import { PrislisteVelger } from "./prisliste-velger"
 
 type KalkylePosterProps = {
   onAapneLinje: (postId: string, linjeId: string) => void
@@ -29,7 +31,7 @@ function lesTall(tekst: string): number {
 }
 
 const celle =
-  "h-7 w-full min-w-0 rounded bg-transparent px-1.5 text-sm outline-none transition-colors hover:bg-muted/60 focus:bg-background focus:ring-2 focus:ring-ring/20 pointer-coarse:h-10"
+  "h-7 w-full min-w-0 rounded bg-transparent px-1 text-sm outline-none transition-colors hover:bg-muted/60 focus:bg-background focus:ring-2 focus:ring-ring/20 pointer-coarse:h-10"
 
 /** Tekst som redigeres rett i cellen, som i tilbudsgeneratoren. */
 function CelleTekst({
@@ -38,12 +40,15 @@ function CelleTekst({
   label,
   placeholder,
   className,
+  size,
 }: {
   value: string
   onChange: (v: string) => void
   label: string
   placeholder?: string
   className?: string
+  /** Bredde i tegn, for felt som skal vokse med innholdet. */
+  size?: number
 }) {
   return (
     <input
@@ -51,6 +56,8 @@ function CelleTekst({
       value={value}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
+      title={value || undefined}
+      size={size}
       className={cn(celle, "placeholder:text-muted-foreground/60", className)}
     />
   )
@@ -88,15 +95,6 @@ function CelleTall({
       className={cn(celle, "text-right tabular-nums", className)}
     />
   )
-}
-
-/** Patch når typen på en linje byttes, så prisen følger med på en fornuftig måte. */
-export function patchForType(linje: Linje, type: LinjeType, r: LinjeResultat): Partial<Omit<Linje, "id">> {
-  if (type === "arbeid") return { type, enhet: "t", timepris: null }
-  if (type === "jobb") {
-    return { type, fastpris: Math.round(r.enhetsprisSalg), timerPerEnhet: linje.type === "arbeid" ? 1 : null }
-  }
-  return { type, innpris: linje.innpris ?? 0 }
 }
 
 /** Timeprisen på en timelinje: kalkylens standard eller en av bedriftens timepriser. */
@@ -171,27 +169,20 @@ export function KalkylePoster({ onAapneLinje }: KalkylePosterProps) {
     <>
       <div className="hidden w-full overflow-hidden rounded-lg border bg-background lg:block">
         <div className="overflow-x-auto">
+          {/* Alle kolonner unntatt Beskrivelse er så brede som innholdet (w-px), og
+              Beskrivelse tar resten (w-full), men aldri under ca. 200 px. Er det ikke
+              plass, ruller tabellen i stedet for å kutte tekst. */}
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
-                <TableHead className="w-[34%] text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Beskrivelse
-                </TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Type</TableHead>
-                <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Antall
-                </TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Enhet</TableHead>
-                <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Pris
-                </TableHead>
-                <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Påslag
-                </TableHead>
-                <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Linjesum
-                </TableHead>
-                <TableHead className="w-16" />
+                <TableHead className="w-full pl-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Beskrivelse</TableHead>
+                <TableHead className="w-px px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Type</TableHead>
+                <TableHead className="w-px px-1 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Antall</TableHead>
+                <TableHead className="w-px px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Enhet</TableHead>
+                <TableHead className="w-px px-1 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pris</TableHead>
+                <TableHead className="w-px px-1 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Påslag</TableHead>
+                <TableHead className="w-px px-1 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Linjesum</TableHead>
+                <TableHead className="w-px px-1" />
               </TableRow>
             </TableHeader>
             {postene.map((post, i) => {
@@ -255,10 +246,22 @@ type PostProps = {
   onAapneLinje: (postId: string, linjeId: string) => void
 }
 
+type LeggTilValg = "timer" | "materiell" | "jobb" | "blank"
+
+const LEGG_TIL: Array<{ valg: LeggTilValg; navn: string }> = [
+  { valg: "timer", navn: "Timer" },
+  { valg: "materiell", navn: "Materiell" },
+  { valg: "jobb", navn: "Fast jobb" },
+  { valg: "blank", navn: "Blank" },
+]
+
 /**
- * «+ Timer / Materiell / Underentreprenør / Fast jobb». På PC dukker den nye
- * linja opp i tabellen; på mobil åpnes arket med en gang. «Fast jobb» henter
- * fra Lagrede jobber.
+ * «+ Timer / + Materiell / + Fast jobb / + Blank».
+ * - Materiell åpner prislisten (innpris fra prisfilene).
+ * - Fast jobb åpner Lagrede jobber.
+ * - Timer og Blank legger inn en linje med en gang; Blank kan gjøres om til
+ *   hva som helst (også underentreprenør) i Type.
+ * På PC dukker linja opp i tabellen; på mobil åpnes arket med en gang.
  */
 function LeggTilKnapper({
   post,
@@ -267,32 +270,34 @@ function LeggTilKnapper({
   className,
 }: Pick<PostProps, "post" | "onAapneLinje"> & { apneArk: boolean; className?: string }) {
   const { leggTilLinje, endre, merk } = useKalkyle()
-  const [velgJobb, setVelgJobb] = React.useState(false)
+  const [velger, setVelger] = React.useState<"materiell" | "jobb" | null>(null)
+  const nyLinje = (type: LinjeType) => {
+    const id = leggTilLinje(post.id, type)
+    if (id && apneArk) onAapneLinje(post.id, id)
+  }
+  const klikk = (valg: LeggTilValg) => {
+    if (valg === "materiell" || valg === "jobb") setVelger(valg)
+    else nyLinje(valg === "timer" ? "arbeid" : "materiell")
+  }
+
   return (
     <div className={cn("flex flex-wrap items-center gap-1", className)}>
-      {TYPER.map((t) => (
-        <Button
-          key={t}
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground"
-          onClick={() => {
-            if (t === "jobb") {
-              setVelgJobb(true)
-              return
-            }
-            const id = leggTilLinje(post.id, t)
-            if (id && apneArk) onAapneLinje(post.id, id)
-          }}
-        >
+      {LEGG_TIL.map((k) => (
+        <Button key={k.valg} type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={() => klikk(k.valg)}>
           <PlusIcon aria-hidden />
-          {LINJE_TYPE[t].leggTil}
+          {k.navn}
         </Button>
       ))}
+      <PrislisteVelger
+        open={velger === "materiell"}
+        onOpenChange={(o) => setVelger(o ? "materiell" : null)}
+        postNavn={post.navn}
+        onVelg={(vare) => merk(endre([{ type: "leggTil", postId: post.id, linje: linjeFraPrisliste(vare) }]))}
+        onUtenPrisliste={() => nyLinje("materiell")}
+      />
       <LagretJobbVelger
-        open={velgJobb}
-        onOpenChange={setVelgJobb}
+        open={velger === "jobb"}
+        onOpenChange={(o) => setVelger(o ? "jobb" : null)}
         postNavn={post.navn}
         onVelg={(jobb) => merk(endre([{ type: "leggTil", postId: post.id, linje: linjeFraLagretJobb(jobb) }]))}
       />
@@ -323,12 +328,14 @@ function PostRaderPc({ post, nr, resultat, apen, onBytt, onAapneLinje }: PostPro
               />
             </button>
             <span className="text-xs font-semibold tabular-nums text-muted-foreground">{nr}</span>
+            {/* Bredde etter innholdet, så navnet ikke kuttes (store bokstaver er bredere, derav +3). */}
             <CelleTekst
               label="Navn på posten"
               value={post.navn}
               onChange={(v) => oppdaterPost(post.id, v)}
               placeholder="Navn på posten"
-              className="w-auto max-w-72 flex-none text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+              size={Math.max(8, post.navn.length + 3)}
+              className="w-auto max-w-[min(32rem,100%)] min-w-0 flex-none text-xs font-semibold uppercase tracking-wide text-muted-foreground"
             />
             <Badge variant="outline" className="h-4 rounded-sm px-1.5 text-[10px] font-normal">
               {post.linjer.length}
@@ -355,35 +362,42 @@ function PostRaderPc({ post, nr, resultat, apen, onBytt, onAapneLinje }: PostPro
         post.linjer.map((linje, i) => {
           const r = resultat.linjer[i]
           const harPaslag = linje.type === "materiell" || linje.type === "ue"
-          const paslag = linje.type === "materiell" ? kalkyle.paslagMateriell : kalkyle.paslagUe
+          const standardPaslag = linje.type === "materiell" ? kalkyle.paslagMateriell : kalkyle.paslagUe
+          const egetPaslag = harPaslag && linje.paslag != null && linje.paslag !== standardPaslag
           const navn = linje.beskrivelse || "linje uten navn"
           return (
             <TableRow key={linje.id} className="group/row">
-              <TableCell className="p-1.5 pl-3">
+              <TableCell className="py-1.5 pr-1 pl-3">
                 <div className="flex items-center gap-1.5">
                   <CelleTekst
                     label={`Beskrivelse for ${navn}`}
                     value={linje.beskrivelse}
                     onChange={(v) => endre(linje, { beskrivelse: v })}
                     placeholder="Hva er det?"
-                    className="font-medium"
+                    className="min-w-[200px] text-[15px] font-medium"
                   />
                   {merket.has(linje.id) && (
                     <span className="shrink-0 rounded-sm border border-[#d7e8bf] bg-[color:var(--surface-success)] px-1.5 text-[10px] font-semibold text-[#4d7219]">
                       Ny
                     </span>
                   )}
+                  {linje.anslag && (
+                    <span
+                      title="Prisen er anslått av SmartKI. Sjekk den mot leverandøren."
+                      className="shrink-0 rounded-sm border border-[#f0dcb4] bg-[color:var(--surface-warning)] px-1.5 text-[10px] font-semibold whitespace-nowrap text-[#8a5f1b]"
+                    >
+                      Anslått pris
+                    </span>
+                  )}
                 </div>
               </TableCell>
-              <TableCell className="p-1.5">
-                <div className="flex items-center gap-1.5">
+              <TableCell className="px-1 py-1.5">
+                <div className="flex items-center gap-1">
                   <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", LINJE_TYPE[linje.type].prikk)} />
                   <select
                     aria-label={`Type for ${navn}`}
                     value={linje.type}
-                    onChange={(e) => {
-                      endre(linje, patchForType(linje, e.target.value as LinjeType, r))
-                    }}
+                    onChange={(e) => endre(linje, patchForType(linje, e.target.value as LinjeType, r))}
                     className={cn(celle, "w-auto pr-1 text-muted-foreground")}
                   >
                     {TYPER.map((t) => (
@@ -394,10 +408,10 @@ function PostRaderPc({ post, nr, resultat, apen, onBytt, onAapneLinje }: PostPro
                   </select>
                 </div>
               </TableCell>
-              <TableCell className="p-1.5">
+              <TableCell className="px-1 py-1.5">
                 <CelleTall label={`Antall for ${navn}`} value={linje.antall} onChange={(v) => endre(linje, { antall: v })} className="w-16" />
               </TableCell>
-              <TableCell className="p-1.5">
+              <TableCell className="px-1 py-1.5">
                 <select
                   aria-label={`Enhet for ${navn}`}
                   value={linje.enhet}
@@ -411,14 +425,14 @@ function PostRaderPc({ post, nr, resultat, apen, onBytt, onAapneLinje }: PostPro
                   ))}
                 </select>
               </TableCell>
-              <TableCell className="p-1.5 text-right">
+              <TableCell className="px-1 py-1.5 text-right">
                 {linje.type === "arbeid" ? (
                   <TimeprisVelger
                     linje={linje}
                     standardTimesats={kalkyle.timesats}
                     label={`Timepris for ${navn}`}
                     onVelg={(timepris) => endre(linje, { timepris })}
-                    className={cn(celle, "ml-auto w-auto max-w-44 text-right text-muted-foreground")}
+                    className={cn(celle, "w-auto text-right text-muted-foreground")}
                   />
                 ) : linje.type === "jobb" ? (
                   <CelleTall
@@ -426,23 +440,34 @@ function PostRaderPc({ post, nr, resultat, apen, onBytt, onAapneLinje }: PostPro
                     value={linje.fastpris ?? 0}
                     suffix=" kr"
                     onChange={(v) => endre(linje, { fastpris: v })}
-                    className="ml-auto w-28"
+                    className="w-28"
                   />
                 ) : (
                   <CelleTall
                     label={`Innpris for ${navn}`}
                     value={linje.innpris ?? 0}
                     suffix=" kr"
-                    onChange={(v) => endre(linje, { innpris: v })}
-                    className="ml-auto w-28"
+                    onChange={(v) => endre(linje, { innpris: v, anslag: false })}
+                    className="w-28"
                   />
                 )}
               </TableCell>
-              <TableCell className="p-1.5 text-right text-sm tabular-nums text-muted-foreground">
-                {harPaslag ? `${paslag} %` : "—"}
+              <TableCell className="px-1 py-1.5 text-right text-sm tabular-nums text-muted-foreground">
+                {harPaslag ? (
+                  <CelleTall
+                    label={`Påslag for ${navn}`}
+                    value={paslagFor(linje, kalkyle)}
+                    suffix=" %"
+                    // Tilbake til kalkylens påslag lagres som «ikke satt», så linja følger det igjen.
+                    onChange={(v) => endre(linje, { paslag: v === standardPaslag ? null : v })}
+                    className={cn("w-16", egetPaslag && "font-semibold text-foreground")}
+                  />
+                ) : (
+                  "—"
+                )}
               </TableCell>
-              <TableCell className="p-1.5 text-right text-sm font-semibold tabular-nums">{formatKr(r.salgEksMva)}</TableCell>
-              <TableCell className="p-1.5 pr-2">
+              <TableCell className="px-1 py-1.5 text-right text-sm font-semibold tabular-nums">{formatKr(r.salgEksMva)}</TableCell>
+              <TableCell className="py-1.5 pr-2 pl-0.5">
                 <div className="flex justify-end">
                   <Button
                     type="button"
@@ -537,6 +562,11 @@ function PostKortMobil({ post, resultat, apen, onBytt, onAapneLinje }: PostProps
                           {merket.has(linje.id) && (
                             <span className="ml-1.5 rounded-sm border border-[#d7e8bf] bg-[color:var(--surface-success)] px-1.5 text-[10px] font-semibold text-[#4d7219]">
                               Ny
+                            </span>
+                          )}
+                          {linje.anslag && (
+                            <span className="ml-1.5 rounded-sm border border-[#f0dcb4] bg-[color:var(--surface-warning)] px-1.5 text-[10px] font-semibold text-[#8a5f1b]">
+                              Anslått pris
                             </span>
                           )}
                         </span>

@@ -34,10 +34,11 @@ function belop(kost: number, salgEksMva: number): Belop {
   }
 }
 
-function paslagFor(linje: Pick<Linje, "type">, prising: Prising): number {
-  if (linje.type === "materiell") return tall(prising.paslagMateriell)
-  if (linje.type === "ue") return tall(prising.paslagUe)
-  return 0
+/** Påslaget som gjelder linja: dens eget, ellers kalkylens for typen. Bare materiell og UE har påslag. */
+export function paslagFor(linje: Pick<Linje, "type" | "paslag">, prising: Prising): number {
+  if (linje.type !== "materiell" && linje.type !== "ue") return 0
+  if (typeof linje.paslag === "number" && Number.isFinite(linje.paslag)) return tall(linje.paslag)
+  return linje.type === "materiell" ? tall(prising.paslagMateriell) : tall(prising.paslagUe)
 }
 
 /** Timesats og kost per time for en timelinje: linjas timepris, ellers kalkylens standard. */

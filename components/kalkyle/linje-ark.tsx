@@ -9,14 +9,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { beregnLinje } from "@/lib/kalkyle/beregn"
+import { beregnLinje, paslagFor } from "@/lib/kalkyle/beregn"
 import { formatAntall, formatKr } from "@/lib/kalkyle/format"
-import { MOCK_PRISFIL } from "@/lib/kalkyle/mock"
-import type { Enhet } from "@/lib/kalkyle/types"
+import { enhetFraPrisfil } from "@/lib/kalkyle/mine-priser"
+import type { Enhet, LinjeType } from "@/lib/kalkyle/types"
 import { cn } from "@/lib/utils"
 import { useKalkyle } from "./kalkyle-provider"
-import { ENHETER, LINJE_TYPE, enhetKort } from "./linje-type"
+import { ENHETER, LINJE_TYPE, enhetKort, patchForType } from "./linje-type"
 import { useMinePriser } from "./mine-priser-kontekst"
+import { PrislisteTom, usePrislisteSok } from "./prisliste-velger"
+import { TallStepper } from "./tall-stepper"
 
 type LinjeArkProps = {
   valgt: { postId: string; linjeId: string } | null
@@ -44,7 +46,10 @@ export function LinjeArk({ valgt, onLukk }: LinjeArkProps) {
   const [prisTekst, setPrisTekst] = React.useState("")
   const [timerTekst, setTimerTekst] = React.useState("")
   const { timepriser, kilde } = useMinePriser()
+  // Søket i prislisten kjører bare for materiell, og først når noe er skrevet.
+  const prisliste = usePrislisteSok(sok, linje?.type === "materiell" && sok.trim().length >= 2)
   const linjeId = linje?.id
+  const linjeType = linje?.type
 
   React.useEffect(() => {
     if (!linje) return
@@ -53,22 +58,22 @@ export function LinjeArk({ valgt, onLukk }: LinjeArkProps) {
     setPrisTekst(pris == null ? "" : formatAntall(pris))
     setTimerTekst(linje.timerPerEnhet == null ? "" : formatAntall(linje.timerPerEnhet))
     setSok("")
-    // Bare når en ny linje åpnes, ikke ved hver tastetrykk.
+    // Bare når en linje åpnes eller bytter type, ikke ved hvert tastetrykk.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linjeId])
+  }, [linjeId, linjeType])
 
   if (!kalkyle || !post || !linje) return null
 
   const type = LINJE_TYPE[linje.type]
   const r = beregnLinje(linje, kalkyle)
-  const paslag = linje.type === "materiell" ? kalkyle.paslagMateriell : kalkyle.paslagUe
+  const standardPaslag = linje.type === "materiell" ? kalkyle.paslagMateriell : kalkyle.paslagUe
+  const paslag = paslagFor(linje, kalkyle)
   const oppdater = (patch: Parameters<typeof oppdaterLinje>[2]) => oppdaterLinje(post.id, linje.id, patch)
   const settAntall = (verdi: number) => {
     oppdater({ antall: verdi })
     setAntallTekst(formatAntall(verdi))
   }
-  const q = sok.trim().toLowerCase()
-  const forslag = MOCK_PRISFIL.filter((f) => !q || f.beskrivelse.toLowerCase().includes(q)).slice(0, 4)
+  const forslag = sok.trim().length >= 2 ? prisliste.varer.slice(0, 6) : []
 
   const slett = () => {
     const forrige = kalkyle
@@ -94,10 +99,31 @@ export function LinjeArk({ valgt, onLukk }: LinjeArkProps) {
         </SheetHeader>
 
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-2 text-xs font-medium text-muted-foreground">Type</legend>
+            <div className="grid grid-cols-2 gap-1.5">
+              {(Object.keys(LINJE_TYPE) as LinjeType[]).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={linje.type === t}
+                  onClick={() => linje.type !== t && oppdater(patchForType(linje, t, r))}
+                  className={cn(
+                    "flex min-h-10 items-center gap-2 rounded-[8px] border px-3 text-left text-sm transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11",
+                    linje.type === t ? "border-foreground font-medium" : "border-border text-muted-foreground"
+                  )}
+                >
+                  <span aria-hidden className={cn("size-2 rounded-full", LINJE_TYPE[t].prikk)} />
+                  {LINJE_TYPE[t].navn}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
           {linje.type === "materiell" && (
             <div className="flex flex-col gap-2">
               <label htmlFor="linje-sok" className="text-xs font-medium text-muted-foreground">
-                Finn i prisfilene
+                Finn i prislisten
               </label>
               <div className="relative">
                 <SearchIcon aria-hidden className="absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -110,30 +136,36 @@ export function LinjeArk({ valgt, onLukk }: LinjeArkProps) {
                   className="h-11 pl-10 text-base"
                 />
               </div>
-              <ul className="overflow-hidden rounded-lg border">
-                {forslag.map((f) => (
-                  <li key={f.id} className="border-b last:border-b-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        oppdater({ beskrivelse: f.beskrivelse, enhet: f.enhet, innpris: f.innpris })
-                        setPrisTekst(formatAntall(f.innpris))
-                        setSok("")
-                      }}
-                      className="flex min-h-14 w-full items-center gap-3 px-3.5 py-2 text-left hover:bg-muted/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium">{f.beskrivelse}</span>
-                        <span className="block text-[13px] text-muted-foreground">Prisfil · {f.kilde}</span>
-                      </span>
-                      <span className="whitespace-nowrap text-sm font-semibold tabular-nums">
-                        {formatKr(f.innpris)} / {enhetKort(f.enhet)}
-                      </span>
-                    </button>
-                  </li>
+              {sok.trim().length >= 2 &&
+                (prisliste.status === "laster" ? (
+                  <p className="px-1 text-sm text-muted-foreground">Søker …</p>
+                ) : forslag.length === 0 ? (
+                  <PrislisteTom status={prisliste.status} sokeord={prisliste.sokeord} />
+                ) : (
+                  <ul className="overflow-hidden rounded-lg border">
+                    {forslag.map((f) => (
+                      <li key={f.id} className="border-b last:border-b-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            oppdater({ beskrivelse: f.product, enhet: enhetFraPrisfil(f.unit), innpris: f.unitPriceNok, anslag: false })
+                            setPrisTekst(formatAntall(f.unitPriceNok))
+                            setSok("")
+                          }}
+                          className="flex min-h-14 w-full items-center gap-3 px-3.5 py-2 text-left hover:bg-muted/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium">{f.product}</span>
+                            <span className="block text-[13px] text-muted-foreground">
+                              {[f.supplier, f.unit].filter(Boolean).join(" · ")}
+                            </span>
+                          </span>
+                          <span className="whitespace-nowrap text-sm font-semibold tabular-nums">{formatKr(f.unitPriceNok)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 ))}
-                {forslag.length === 0 && <li className="px-3.5 py-3 text-sm text-muted-foreground">Ingen treff i prisfilene.</li>}
-              </ul>
             </div>
           )}
 
@@ -303,7 +335,7 @@ export function LinjeArk({ valgt, onLukk }: LinjeArkProps) {
                   value={prisTekst}
                   onChange={(e) => {
                     setPrisTekst(e.target.value)
-                    oppdater({ innpris: lesTall(e.target.value) })
+                    oppdater({ innpris: lesTall(e.target.value), anslag: false })
                   }}
                   className="h-11 pr-11 text-base tabular-nums"
                 />
@@ -311,9 +343,33 @@ export function LinjeArk({ valgt, onLukk }: LinjeArkProps) {
                   kr
                 </span>
               </div>
-              <p className="text-[13px] text-muted-foreground">
-                Du legger på {paslag} %. Kunden ser bare sluttprisen.
-              </p>
+              {linje.anslag && (
+                <p className="rounded-md border border-[#f0dcb4] bg-[color:var(--surface-warning)] px-2.5 py-1.5 text-[13px] text-[#8a5f1b]">
+                  Prisen er anslått av SmartKI. Sjekk den mot leverandøren – merket forsvinner når du endrer prisen.
+                </p>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[13px] text-muted-foreground">
+                  Påslag på denne linja{paslag !== standardPaslag ? "" : " (kalkylens)"}. Kunden ser bare sluttprisen.
+                </span>
+                <TallStepper
+                  label="Påslag"
+                  verdi={paslag}
+                  steg={1}
+                  max={1000}
+                  visning={`${formatAntall(paslag)} %`}
+                  onChange={(v) => oppdater({ paslag: v === standardPaslag ? null : v })}
+                />
+              </div>
+              {paslag !== standardPaslag && (
+                <button
+                  type="button"
+                  onClick={() => oppdater({ paslag: null })}
+                  className="self-start text-[13px] font-medium underline underline-offset-4"
+                >
+                  Bruk kalkylens påslag ({formatAntall(standardPaslag)} %)
+                </button>
+              )}
             </div>
           )}
 

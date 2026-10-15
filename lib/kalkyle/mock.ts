@@ -4,7 +4,6 @@
  * dekningsgrad 21,4 %, 50 timer.
  */
 import type {
-  Enhet,
   EtterkalkyleFaktisk,
   Kalkyle,
   KalkyleMal,
@@ -267,16 +266,6 @@ export const MOCK_INNKJOP = [
   { id: "bilag-2230", leverandor: "Rørlegger Berg AS", tekst: "Rørleggerarbeid komplett", postId: "ror", kilde: "Fiken · bilag 2230", belop: 18500 },
 ] as const
 
-/** Et lite utdrag av «prisfilene» for søket i redigeringsarket. Erstattes av ekte prisfil-søk. */
-export const MOCK_PRISFIL = [
-  { id: "pf-1", beskrivelse: "Veggflis 30×60 hvit matt", enhet: "m²", innpris: 389, kilde: "Flis AS" },
-  { id: "pf-2", beskrivelse: "Veggflis 60×60 lys grå", enhet: "m²", innpris: 529, kilde: "Flis AS" },
-  { id: "pf-3", beskrivelse: "Gulvflis 20×20 grå, sklisikker", enhet: "m²", innpris: 449, kilde: "Flis AS" },
-  { id: "pf-4", beskrivelse: "Flislim, 15 kg", enhet: "stk", innpris: 329, kilde: "Byggvare AS" },
-  { id: "pf-5", beskrivelse: "Smøremembran, sett for bad", enhet: "sett", innpris: 3900, kilde: "Byggvare AS" },
-  { id: "pf-6", beskrivelse: "Fugemasse, 5 kg", enhet: "stk", innpris: 219, kilde: "Flis AS" },
-  { id: "pf-7", beskrivelse: "Varmekabelmatte, 6 m²", enhet: "sett", innpris: 2490, kilde: "Elektrogrossist AS" },
-] as const satisfies ReadonlyArray<{ id: string; beskrivelse: string; enhet: Enhet; innpris: number; kilde: string }>
 
 /** Reserve når bedriften ikke har lagt inn timepriser i Mine priser. Første er standard. */
 export const MOCK_TIMEPRISER: TimeprisValg[] = [

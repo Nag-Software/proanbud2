@@ -11,7 +11,8 @@ export type KalkyleEndring =
   | { type: "leggTil"; postId: string; linje: Omit<Linje, "id"> }
   | { type: "endre"; postId: string; linjeId: string; patch: Partial<Omit<Linje, "id">> }
   | { type: "fjern"; postId: string; linjeId: string }
-  | { type: "nyPost"; navn: string }
+  /** `id` er valgfri: SmartKI gir nye poster en id den kan legge linjer inn under i samme forslag. */
+  | { type: "nyPost"; navn: string; id?: string }
   | { type: "prising"; felt: keyof Prising; verdi: number }
 
 export type BrukteEndringer = {
@@ -73,6 +74,7 @@ export function brukEndringer(
         const endret = { ...post.linjer[index], ...endring.patch }
         if (utenInnpris(endret.type)) endret.innpris = null
         if (endret.type !== "arbeid") endret.timepris = null
+        if (endret.type !== "materiell" && endret.type !== "ue") endret.paslag = null
         post.linjer[index] = endret
         berort.push(endret.id)
         break
@@ -88,7 +90,9 @@ export function brukEndringer(
       }
       case "nyPost": {
         const rekkefolge = Math.max(0, ...neste.poster.map((p) => p.rekkefolge)) + 1
-        neste.poster.push({ id: nyId("post"), navn: endring.navn, rekkefolge, linjer: [] })
+        const onsket = endring.id?.trim()
+        const id = onsket && !neste.poster.some((p) => p.id === onsket) ? onsket : nyId("post")
+        neste.poster.push({ id, navn: endring.navn, rekkefolge, linjer: [] })
         break
       }
       case "prising": {
@@ -137,6 +141,8 @@ const ENHET_TEKST: Record<Linje["enhet"], string> = {
   "m²": "m²",
   lm: "m",
   sett: "sett",
+  rull: "rull",
+  pall: "pall",
   rs: "",
 }
 
@@ -154,7 +160,8 @@ function mengdeTekst(linje: Pick<Linje, "antall" | "enhet">): string {
 
 /** Gjør endringene om til linjer brukeren kan lese før de legges inn. */
 export function beskrivEndringer(kalkyle: Kalkyle, endringer: KalkyleEndring[]): EndringBeskrivelse[] {
-  const postNavn = (postId: string) => kalkyle.poster.find((p) => p.id === postId)?.navn ?? "Ny post"
+  const nyePoster = new Map(endringer.flatMap((e) => (e.type === "nyPost" && e.id ? [[e.id, e.navn] as const] : [])))
+  const postNavn = (postId: string) => kalkyle.poster.find((p) => p.id === postId)?.navn ?? nyePoster.get(postId) ?? "Ny post"
   const finnLinje = (postId: string, linjeId: string) =>
     kalkyle.poster.find((p) => p.id === postId)?.linjer.find((l) => l.id === linjeId)
 
@@ -162,14 +169,18 @@ export function beskrivEndringer(kalkyle: Kalkyle, endringer: KalkyleEndring[]):
     switch (e.type) {
       case "leggTil": {
         const salg = beregnLinje({ ...e.linje, id: "forslag" }, kalkyle).salgEksMva
-        return [{ tegn: "+", tekst: `${e.linje.beskrivelse}${mengdeTekst(e.linje)}`, sted: postNavn(e.postId), belop: salg }]
+        const anslag = e.linje.anslag ? " · anslått pris" : ""
+        return [{ tegn: "+", tekst: `${e.linje.beskrivelse}${mengdeTekst(e.linje)}${anslag}`, sted: postNavn(e.postId), belop: salg }]
       }
       case "endre": {
         const gammel = finnLinje(e.postId, e.linjeId)
         if (!gammel) return []
         const ny = { ...gammel, ...e.patch }
         const diff = beregnLinje(ny, kalkyle).salgEksMva - beregnLinje(gammel, kalkyle).salgEksMva
-        const tekst = ny.beskrivelse !== gammel.beskrivelse ? `${gammel.beskrivelse} → ${ny.beskrivelse}` : `${gammel.beskrivelse}${mengdeTekst(ny)}`
+        const tekst =
+          (ny.beskrivelse !== gammel.beskrivelse ? `${gammel.beskrivelse} → ${ny.beskrivelse}` : `${gammel.beskrivelse}${mengdeTekst(ny)}`) +
+          (e.patch.paslag != null ? ` · påslag ${e.patch.paslag} %` : "") +
+          (e.patch.anslag ? " · anslått pris" : "")
         return [{ tegn: "~", tekst, sted: postNavn(e.postId), belop: diff }]
       }
       case "fjern": {

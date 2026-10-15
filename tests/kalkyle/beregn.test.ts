@@ -89,6 +89,25 @@ describe("beregnLinje", () => {
   })
 })
 
+describe("påslag per linje", () => {
+  it("en linje med eget påslag bruker det, andre følger kalkylens", () => {
+    const l = beregnLinje({ id: "v", beskrivelse: "Veggfliser", type: "materiell", antall: 22, enhet: "m²", innpris: 389, paslag: 25 }, MOCK_PRISING)
+    expect(l.salgEksMva).toBeCloseTo(8558 * 1.25, 6)
+    expect(l.enhetsprisSalg).toBeCloseTo(389 * 1.25, 6)
+  })
+
+  it("endret påslag for hele kalkylen rører ikke linjer med eget påslag", () => {
+    const linje = { id: "v", beskrivelse: "Veggfliser", type: "materiell" as const, antall: 1, enhet: "stk" as const, innpris: 100, paslag: 30 }
+    expect(beregnLinje(linje, { ...MOCK_PRISING, paslagMateriell: 50 }).salgEksMva).toBeCloseTo(130, 6)
+    expect(beregnLinje({ ...linje, paslag: null }, { ...MOCK_PRISING, paslagMateriell: 50 }).salgEksMva).toBeCloseTo(150, 6)
+  })
+
+  it("arbeid og fast jobb har aldri påslag, selv om feltet er satt", () => {
+    const l = beregnLinje({ id: "a", beskrivelse: "Riving", type: "arbeid", antall: 2, enhet: "t", innpris: null, paslag: 40 }, MOCK_PRISING)
+    expect(l.salgEksMva).toBe(1500)
+  })
+})
+
 describe("kanttilfeller", () => {
   it("tom kalkyle gir dekningsgrad 0 og ingen NaN", () => {
     const tom: Kalkyle = { ...MOCK_PRISING, id: "tom", prosjektId: "p", poster: [] }
@@ -142,7 +161,7 @@ describe("byggKundevisning – kunden ser aldri innpris, påslag eller fortjenes
   it.each(nivaer)("nivå %s: ingen interne tall i det som sendes til kunden", (niva) => {
     const visning = byggKundevisning(MOCK_KALKYLE, niva, true)
     const json = JSON.stringify(visning).toLowerCase()
-    for (const forbudt of ["innpris", "kost", "paslag", "fortjeneste", "dekningsgrad", "internkost"]) {
+    for (const forbudt of ["innpris", "kost", "paslag", "fortjeneste", "dekningsgrad", "internkost", "anslag"]) {
       expect(json).not.toContain(forbudt)
     }
     // Ingen innpris skal lekke som tall heller.
