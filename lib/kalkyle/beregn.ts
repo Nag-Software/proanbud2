@@ -135,13 +135,14 @@ export function instansierMal(
   mal: KalkyleMal,
   parameterverdi: number,
   prising: Prising,
-  ider: { kalkyleId: string; prosjektId: string },
+  ider: { kalkyleId: string; prosjektId: string; navn?: string },
 ): Kalkyle {
   const x = klemParameter(mal, parameterverdi)
   return {
     ...prising,
     id: ider.kalkyleId,
     prosjektId: ider.prosjektId,
+    navn: ider.navn ?? `${mal.navn} ${x.toLocaleString("nb-NO")} ${mal.parameter.enhet === "lm" ? "m" : mal.parameter.enhet}`,
     poster: sorterte(mal.poster).map((post) => ({
       id: post.id,
       navn: post.navn,

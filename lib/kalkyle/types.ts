@@ -87,9 +87,15 @@ export type Prising = {
   paslagUe: number
 }
 
+/**
+ * En kalkyle er én jobb på prosjektet («Bad 6 m²», «Kjøkken», «Tillegg:
+ * varmekabler») – det andre kaller underprosjekt. Et prosjekt kan ha flere,
+ * og hver kan gi ett eller flere tilbud.
+ */
 export type Kalkyle = Prising & {
   id: string
   prosjektId: string
+  navn: string
   poster: Post[]
 }
 
@@ -132,12 +138,23 @@ export type KalkyleMal = {
 /** Hva kunden ser i tilbudet. */
 export type Detaljniva = "total" | "post" | "linje"
 
-/** Kopi av kalkylen i det øyeblikket tilbudet sendes. Låses ved signering. */
+export type TilbudStatus = "utkast" | "sendt" | "signert" | "avvist"
+
+/**
+ * Et tilbud fra en kalkyle: en frossen kopi av kalkylen og valgene for hva
+ * kunden ser. En kalkyle kan ha flere (revisjoner v1, v2 eller alternativer);
+ * ett kan signeres, og det låser kalkylen for etterkalkylen.
+ */
 export type TilbudSnapshot = {
   id: string
+  /** «v1», «v2», «Alternativ B» … */
+  navn: string
+  versjon: number
+  status: TilbudStatus
   kalkyle: Kalkyle
   detaljniva: Detaljniva
   visTimer: boolean
+  opprettet: string
   sendtDato: string | null
   signertDato: string | null
   erLast: boolean

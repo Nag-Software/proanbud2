@@ -31,3 +31,9 @@ export function formatAntall(value: number): string {
 export function formatTimer(value: number): string {
   return `${formatAntall(value)} t`
 }
+
+/** ISO-dato («2026-09-12») → «12.09.2026». */
+export function formatDato(iso: string): string {
+  const [aar, mnd, dag] = iso.slice(0, 10).split("-")
+  return aar && mnd && dag ? `${dag}.${mnd}.${aar}` : iso
+}

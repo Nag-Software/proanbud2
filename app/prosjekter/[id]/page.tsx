@@ -17,6 +17,7 @@ import { fetchProjectProfitability, readProjectBudget } from "@/lib/job-costing/
 import { KALKYLE_ENABLED } from "@/lib/kalkyle/flag"
 import { fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
 import type { ProjectProfitability } from "@/lib/job-costing/types"
+import { KalkyleOmrade } from "@/components/kalkyle/kalkyle-omrade"
 
 import FilerTab from "./filer-tab"
 import { KalkyleTab } from "./kalkyle-tab"
@@ -403,25 +404,26 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             </ProjectTabPanel>
 
             {visKalkyle && (
-              <ProjectTabPanel value="kalkyle">
-                <KalkyleTab
-                  prosjekt={{
-                    id: project.id,
-                    navn: project.name,
-                    kunde: { name: customer.name, email: customer.email, phone: customer.phone, address: siteAddress },
-                  }}
-                  tilbud={kalkyleTilbud}
-                  firma={kalkyleFirma}
-                />
-              </ProjectTabPanel>
-            )}
+              // Én tilstand for begge fanene: Etterkalkyle ser de samme kalkylene og tilbudene.
+              <KalkyleOmrade>
+                <ProjectTabPanel value="kalkyle">
+                  <KalkyleTab
+                    prosjekt={{
+                      id: project.id,
+                      navn: project.name,
+                      kunde: { name: customer.name, email: customer.email, phone: customer.phone, address: siteAddress },
+                    }}
+                    tilbud={kalkyleTilbud}
+                    firma={kalkyleFirma}
+                  />
+                </ProjectTabPanel>
 
-            {visKalkyle && (
-              <ProjectTabPanel value="etterkalkyle">
-                <Suspense fallback={<StreamedTabSkeleton />}>
-                  <StreamedEtterkalkyleTab data={secondary} projectId={project.id} canManage={isProjectAdmin} />
-                </Suspense>
-              </ProjectTabPanel>
+                <ProjectTabPanel value="etterkalkyle">
+                  <Suspense fallback={<StreamedTabSkeleton />}>
+                    <StreamedEtterkalkyleTab data={secondary} projectId={project.id} canManage={isProjectAdmin} />
+                  </Suspense>
+                </ProjectTabPanel>
+              </KalkyleOmrade>
             )}
 
             <ProjectTabPanel value="okonomi">

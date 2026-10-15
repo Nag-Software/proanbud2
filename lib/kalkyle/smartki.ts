@@ -77,6 +77,7 @@ export const smartkiForesporselSkjema = z.object({
   kalkyle: z.object({
     id: z.string().max(100),
     prosjektId: z.string().max(100),
+    navn: tekst.default("Kalkyle"),
     timesats: tall,
     internKostPerTime: tall,
     paslagMateriell: tall,

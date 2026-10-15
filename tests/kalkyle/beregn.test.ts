@@ -110,7 +110,7 @@ describe("påslag per linje", () => {
 
 describe("kanttilfeller", () => {
   it("tom kalkyle gir dekningsgrad 0 og ingen NaN", () => {
-    const tom: Kalkyle = { ...MOCK_PRISING, id: "tom", prosjektId: "p", poster: [] }
+    const tom: Kalkyle = { ...MOCK_PRISING, id: "tom", prosjektId: "p", navn: "Tom", poster: [] }
     const r = beregnKalkyle(tom)
     expect(r.totalt.salgEksMva).toBe(0)
     expect(r.totalt.dekningsgrad).toBe(0)

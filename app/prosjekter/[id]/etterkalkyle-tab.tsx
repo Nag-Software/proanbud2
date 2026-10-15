@@ -1,18 +1,22 @@
 "use client"
 
 import * as React from "react"
-import { RefreshCwIcon } from "lucide-react"
+import { ArrowRightIcon, RefreshCwIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { KalkyleOmrade } from "@/components/kalkyle/kalkyle-omrade"
+import { useHarKalkyleKontekst, useKalkyle } from "@/components/kalkyle/kalkyle-provider"
+import { KalkyleVelger } from "@/components/kalkyle/kalkyle-velger"
 import { beregnEtterkalkyle } from "@/lib/kalkyle/beregn"
-import { formatAntall, formatKr, formatKrMedFortegn, formatProsent } from "@/lib/kalkyle/format"
-import { MOCK_FAKTISK, MOCK_SIGNERT_SNAPSHOT } from "@/lib/kalkyle/mock"
-import type { EtterkalkylePost, EtterkalkyleResultat } from "@/lib/kalkyle/types"
+import { formatAntall, formatDato, formatKr, formatKrMedFortegn, formatProsent } from "@/lib/kalkyle/format"
+import { MOCK_FAKTISK, MOCK_KALKYLE } from "@/lib/kalkyle/mock"
+import type { EtterkalkyleFaktisk, EtterkalkylePost, EtterkalkyleResultat } from "@/lib/kalkyle/types"
 import type { ProjectProfitability } from "@/lib/job-costing/types"
 import { cn } from "@/lib/utils"
 
 import { LonnsomhetTab } from "./lonnsomhet-tab"
+import { useProjectTabNavigation } from "./project-tabs-shell"
 
 const SEKSJONER = [
   { id: "etterkalkyle-sammendrag", navn: "Sammendrag" },
@@ -28,22 +32,37 @@ type EtterkalkyleTabProps = {
 }
 
 /**
- * Prosjekt → Etterkalkyle. Signert tilbud mot det som faktisk ble ført.
- * Sammendrag og per post bygger på kalkylens snapshot (mock til kalkylen
- * lagres); «Kostnader og innkjøp» er dagens ekte lønnsomhet, så ingenting
- * fra Økonomi går tapt når den fanen fjernes.
+ * Prosjekt → Etterkalkyle. Det signerte tilbudet på valgt kalkyle mot det som
+ * faktisk ble ført. Sammendrag og per post bygger på tilbudets frosne kopi av
+ * kalkylen (mock til kalkylen lagres); «Kostnader og innkjøp» er dagens ekte
+ * lønnsomhet, så ingenting fra Økonomi går tapt når den fanen fjernes.
  */
-export function EtterkalkyleTab({ projectId, canManage, profitability }: EtterkalkyleTabProps) {
-  const e = React.useMemo(() => beregnEtterkalkyle(MOCK_SIGNERT_SNAPSHOT, MOCK_FAKTISK), [])
-  const signert = MOCK_SIGNERT_SNAPSHOT.signertDato
-    ? new Date(MOCK_SIGNERT_SNAPSHOT.signertDato).toLocaleDateString("nb-NO", { day: "2-digit", month: "2-digit", year: "numeric" })
-    : null
+export function EtterkalkyleTab(props: EtterkalkyleTabProps) {
+  // Samme kalkyler som Kalkyle-fanen (KalkyleOmrade i page.tsx); alene lager fanen sin egen.
+  const delt = useHarKalkyleKontekst()
+  const innhold = <EtterkalkyleInnhold {...props} />
+  return delt ? innhold : <KalkyleOmrade>{innhold}</KalkyleOmrade>
+}
+
+/** Ført tid og innkjøp per post. Mock: bare eksempelbadet har føringer ennå. */
+function faktiskFor(kalkyleId: string): EtterkalkyleFaktisk {
+  return kalkyleId === MOCK_KALKYLE.id ? MOCK_FAKTISK : { poster: [] }
+}
+
+function EtterkalkyleInnhold({ projectId, canManage, profitability }: EtterkalkyleTabProps) {
+  const { kalkyle, kalkyler, tilbud } = useKalkyle()
+  const signertTilbud = tilbud.find((o) => o.status === "signert") ?? null
+  const e = React.useMemo(
+    () => (signertTilbud ? beregnEtterkalkyle(signertTilbud, faktiskFor(signertTilbud.kalkyle.id)) : null),
+    [signertTilbud]
+  )
+  const seksjoner = e ? SEKSJONER : SEKSJONER.filter((s) => s.id !== "etterkalkyle-poster")
 
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[176px_minmax(0,1fr)]">
       <nav aria-label="Seksjoner i etterkalkylen" className="sticky top-4 hidden lg:block">
         <ul className="flex flex-col">
-          {SEKSJONER.map((s) => (
+          {seksjoner.map((s) => (
             <li key={s.id}>
               <a
                 href={`#${s.id}`}
@@ -67,19 +86,31 @@ export function EtterkalkyleTab({ projectId, canManage, profitability }: Etterka
               Etterkalkyle
             </h2>
             <p className="text-sm text-muted-foreground">
-              Signert tilbud mot ført tid og innkjøp.{signert ? ` Kalkylen er låst fra signeringen ${signert}.` : ""}
+              Signert tilbud mot ført tid og innkjøp.
+              {signertTilbud?.signertDato
+                ? ` ${signertTilbud.navn} ble signert ${formatDato(signertTilbud.signertDato)}, og tallene er låst fra da.`
+                : ""}
             </p>
           </div>
-          <Nokkeltall e={e} />
-          <div className="grid items-start gap-3 lg:grid-cols-2">
-            <DetSomSkjedde poster={e.poster} />
-            <NesteGang poster={e.poster} />
-          </div>
+          {kalkyler.length > 0 && <KalkyleVelger />}
+          {e ? (
+            <>
+              <Nokkeltall e={e} />
+              <div className="grid items-start gap-3 lg:grid-cols-2">
+                <DetSomSkjedde poster={e.poster} />
+                <NesteGang poster={e.poster} />
+              </div>
+            </>
+          ) : (
+            <IngenSignert kalkyleNavn={kalkyle?.navn ?? null} />
+          )}
         </section>
 
-        <section id="etterkalkyle-poster" aria-labelledby="etterkalkyle-poster-tittel" className="scroll-mt-4 space-y-3">
-          <PerPost poster={e.poster} />
-        </section>
+        {e && (
+          <section id="etterkalkyle-poster" aria-labelledby="etterkalkyle-poster-tittel" className="scroll-mt-4 space-y-3">
+            <PerPost poster={e.poster} />
+          </section>
+        )}
 
         <section id="etterkalkyle-kostnader" aria-labelledby="etterkalkyle-kostnader-tittel" className="scroll-mt-4 space-y-3">
           <div>
@@ -93,6 +124,25 @@ export function EtterkalkyleTab({ projectId, canManage, profitability }: Etterka
           <LonnsomhetTab projectId={projectId} canManage={canManage} initialData={profitability} />
         </section>
       </div>
+    </div>
+  )
+}
+
+function IngenSignert({ kalkyleNavn }: { kalkyleNavn: string | null }) {
+  const navigate = useProjectTabNavigation()
+  return (
+    <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-6 text-center">
+      <p className="text-sm font-medium">
+        {kalkyleNavn ? `Ingen signert tilbud på «${kalkyleNavn}» ennå` : "Ingen kalkyle på prosjektet ennå"}
+      </p>
+      <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">
+        Etterkalkylen kommer når kunden har signert et tilbud fra kalkylen. Da ser du timer og innkjøp mot det du regnet med,
+        per post.
+      </p>
+      <Button type="button" variant="outline" className="mt-3" onClick={() => navigate("kalkyle", kalkyleNavn ? "tilbud" : null)}>
+        {kalkyleNavn ? "Gå til tilbudet" : "Lag kalkyle"}
+        <ArrowRightIcon aria-hidden />
+      </Button>
     </div>
   )
 }

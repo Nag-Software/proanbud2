@@ -31,6 +31,7 @@ export const MOCK_KALKYLE: Kalkyle = {
   ...MOCK_PRISING,
   id: "kalkyle-fjellveien-12",
   prosjektId: "mock-prosjekt",
+  navn: "Bad 6 m²",
   poster: [
     {
       id: "riving",
@@ -239,6 +240,10 @@ export const MOCK_MALER: KalkyleMal[] = [
 
 export const MOCK_SIGNERT_SNAPSHOT: TilbudSnapshot = {
   id: "snapshot-t-2026-041",
+  navn: "v1",
+  versjon: 1,
+  status: "signert",
+  opprettet: "2026-09-12",
   kalkyle: MOCK_KALKYLE,
   detaljniva: "post",
   visTimer: true,

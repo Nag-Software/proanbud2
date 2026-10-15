@@ -53,15 +53,19 @@ function gjettMal(tekst: string): KalkyleMal {
   return MOCK_MALER.find((m) => m.id === id) ?? MOCK_MALER[0]
 }
 
-function lagKalkyle(mal: KalkyleMal, verdi: number, prosjektId: string, prising: Prising): Kalkyle {
-  return instansierMal(mal, verdi, prising, { kalkyleId: `kalkyle-${mal.id}`, prosjektId })
+/** Ny, unik id per kalkyle, så flere kalkyler fra samme mal kan ligge på prosjektet. */
+const nyId = () => `kalkyle-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Date.now()}`
+
+function lagKalkyle(mal: KalkyleMal, verdi: number, prosjektId: string, prising: Prising, id = "forhandsvisning"): Kalkyle {
+  return instansierMal(mal, verdi, prising, { kalkyleId: id, prosjektId })
 }
 
 function lagBlank(prosjektId: string, prising: Prising): Kalkyle {
   return {
     ...prising,
-    id: "kalkyle-blank",
+    id: nyId(),
     prosjektId,
+    navn: "Ny kalkyle",
     poster: [{ id: "post-1", navn: "Post 1", rekkefolge: 1, linjer: [] }],
   }
 }
@@ -167,7 +171,7 @@ export function KalkyleStart({ prosjektId, onFerdig, onBeskriv, onAvbryt, startM
             disabled={beskrivelse.trim().length < 3}
             onClick={() => {
               const m = gjettMal(beskrivelse)
-              onBeskriv(lagKalkyle(m, m.parameter.standard, prosjektId, prising), beskrivelse.trim())
+              onBeskriv(lagKalkyle(m, m.parameter.standard, prosjektId, prising, nyId()), beskrivelse.trim())
             }}
           >
             Lag forslag
@@ -212,7 +216,7 @@ export function KalkyleStart({ prosjektId, onFerdig, onBeskriv, onAvbryt, startM
               type="button"
               size="xl"
               className="rounded-[10px] bg-accent text-accent-foreground hover:bg-accent/90"
-              onClick={() => onFerdig(lagKalkyle(mal, verdi, prosjektId, prising))}
+              onClick={() => onFerdig(lagKalkyle(mal, verdi, prosjektId, prising, nyId()))}
             >
               Lag kalkylen
               <ArrowRightIcon aria-hidden />

@@ -6,12 +6,13 @@ import { ArrowRightIcon, LayoutTemplateIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { KalkyleChat, type ChatForesporsel } from "@/components/kalkyle/kalkyle-chat"
-import { KalkyleProvider, useKalkyle } from "@/components/kalkyle/kalkyle-provider"
+import { KalkyleOmrade } from "@/components/kalkyle/kalkyle-omrade"
+import { useHarKalkyleKontekst, useKalkyle } from "@/components/kalkyle/kalkyle-provider"
 import { KalkyleSammendrag } from "@/components/kalkyle/kalkyle-sammendrag"
 import { KalkyleStart } from "@/components/kalkyle/kalkyle-start"
 import { KalkylePoster } from "@/components/kalkyle/kalkyle-poster"
 import { LinjeArk } from "@/components/kalkyle/linje-ark"
-import { MinePriserProvider } from "@/components/kalkyle/mine-priser-kontekst"
+import { KalkyleVelger } from "@/components/kalkyle/kalkyle-velger"
 import { SmartKIIkon } from "@/components/kalkyle/smartki-merke"
 import {
   TilbudVisning,
@@ -45,17 +46,15 @@ const EKSEMPEL_PROSJEKT: TilbudProsjekt = {
 }
 
 export function KalkyleTab({ prosjekt = EKSEMPEL_PROSJEKT, tilbud = [], firma = null }: KalkyleTabProps) {
-  return (
-    <MinePriserProvider>
-      <KalkyleProvider initial={MOCK_KALKYLE}>
-        <KalkyleInnhold prosjekt={prosjekt} tilbud={tilbud} firma={firma} />
-      </KalkyleProvider>
-    </MinePriserProvider>
-  )
+  // På prosjektsiden ligger tilstanden rundt både Kalkyle og Etterkalkyle
+  // (KalkyleOmrade i page.tsx); alene (f.eks. i tester) lager fanen sin egen.
+  const delt = useHarKalkyleKontekst()
+  const innhold = <KalkyleInnhold prosjekt={prosjekt} tilbud={tilbud} firma={firma} />
+  return delt ? innhold : <KalkyleOmrade>{innhold}</KalkyleOmrade>
 }
 
 function KalkyleInnhold({ prosjekt, tilbud, firma }: Required<KalkyleTabProps>) {
-  const { kalkyle, settKalkyle } = useKalkyle()
+  const { kalkyle, settKalkyle, leggTilKalkyle } = useKalkyle()
   const { setDel } = useProjectShell()
   const visning = useProjectFocus("kalkyle").del === "tilbud" ? "tilbud" : "kalkyle"
   // «Bruk i prosjektet» på Kalkylemaler lenker hit med ?mal=…&storrelse=…
@@ -65,7 +64,8 @@ function KalkyleInnhold({ prosjekt, tilbud, firma }: Required<KalkyleTabProps>) 
   const [fraMal] = React.useState(() =>
     malParam ? { malId: malParam, verdi: Number.isFinite(storrelseParam) && storrelseParam > 0 ? storrelseParam : null } : null
   )
-  const [visStart, setVisStart] = React.useState(() => fraMal !== null)
+  // «ny» legger til en kalkyle på prosjektet; «erstatt» (Hent fra mal) bytter innholdet i den valgte.
+  const [visStart, setVisStart] = React.useState<"ny" | "erstatt" | null>(() => (fraMal !== null ? "ny" : null))
   // Malvalget er brukt (eller avbrutt): rydd adressen så en ny lasting ikke åpner startskjermen igjen.
   const ryddMalParam = () => {
     const url = new URL(window.location.href)
@@ -90,19 +90,21 @@ function KalkyleInnhold({ prosjekt, tilbud, firma }: Required<KalkyleTabProps>) 
           kalkyle
             ? () => {
                 ryddMalParam()
-                setVisStart(false)
+                setVisStart(null)
               }
             : undefined
         }
         onFerdig={(k) => {
           ryddMalParam()
-          settKalkyle(k)
-          setVisStart(false)
+          if (visStart === "erstatt" && kalkyle) settKalkyle({ ...k, id: kalkyle.id })
+          else leggTilKalkyle(k)
+          setVisStart(null)
         }}
         onBeskriv={(k, tekst) => {
           ryddMalParam()
-          settKalkyle(k)
-          setVisStart(false)
+          if (visStart === "erstatt" && kalkyle) settKalkyle({ ...k, id: kalkyle.id })
+          else leggTilKalkyle(k)
+          setVisStart(null)
           setForesporsel({ tekst, id: Date.now() })
         }}
       />
@@ -111,6 +113,7 @@ function KalkyleInnhold({ prosjekt, tilbud, firma }: Required<KalkyleTabProps>) 
 
   return (
     <div className={cn("transition-[padding]", chatApen && "lg:pr-[440px]")}>
+      <KalkyleVelger className="mb-3" onNyKalkyle={() => setVisStart("ny")} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <nav aria-label="Visning" className="inline-flex gap-0.5 rounded-[9px] bg-secondary p-[3px]">
           {(
@@ -139,7 +142,7 @@ function KalkyleInnhold({ prosjekt, tilbud, firma }: Required<KalkyleTabProps>) 
             <SmartKIIkon />
             Endre med SmartKI
           </Button>
-          <Button type="button" variant="outline" onClick={() => setVisStart(true)}>
+          <Button type="button" variant="outline" onClick={() => setVisStart("erstatt")}>
             <LayoutTemplateIcon aria-hidden />
             Hent fra mal
           </Button>
