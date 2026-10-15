@@ -25,6 +25,7 @@ import {
 import { LayoutDashboardIcon, UsersIcon, InboxIcon, BadgePercentIcon, Building2Icon, CarIcon, FrameIcon, PieChartIcon, MapIcon, CalendarDays, ClockIcon, FolderIcon, FilesIcon, FileTextIcon, ShieldCheckIcon, MoreHorizontalIcon } from "lucide-react"
 import { useUserRole } from "@/hooks/use-user-role"
 import { canInviteEmployees, canManageSubscription } from "@/lib/roles"
+import { KALKYLE_ENABLED } from "@/lib/kalkyle/flag"
 import { useAuth } from "@/components/auth-provider"
 import { createClient } from "@/lib/supabase/client"
 import { CreateProjectDrawer } from "@/app/prosjekter/create-project-dialog"
@@ -176,6 +177,12 @@ const data: {
         {
           title: "Lagrede jobber",
           url: "/mine-priser/lagrede-jobber",
+        },
+        {
+          // Kalkylemodulen er bak flagg (lib/kalkyle/flag) til malene lagres i databasen.
+          title: "Kalkylemaler",
+          url: "/mine-priser/kalkylemaler",
+          hidden: !KALKYLE_ENABLED,
         },
         {
           title: "Timepriser",

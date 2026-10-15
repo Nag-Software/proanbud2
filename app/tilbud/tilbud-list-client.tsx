@@ -15,10 +15,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { FileText, PlusCircle, Search } from "lucide-react"
+import { Calculator, FileText, PlusCircle, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { OfferCustomerSignalLabel } from "@/components/tilbud/customer-signal"
 import type { OfferCustomerSignal } from "@/lib/tilbud/customer-signal"
+import { KALKYLE_ENABLED } from "@/lib/kalkyle/flag"
 
 export type OfferListRow = {
   id: string
@@ -139,7 +140,18 @@ export function TilbudListClient({ rows }: { rows: OfferListRow[] }) {
             Tilbud
           </h1>
         </div>
-        <div className="flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Malene bor under Mine priser; snarveien er her fordi det er her
+              man tenker «tilbud». Skjult på mobil, der raden er trang – der
+              ligger den i Mer-menyen. */}
+          {KALKYLE_ENABLED && (
+            <Button asChild variant="outline" className="hidden sm:inline-flex">
+              <Link href="/mine-priser/kalkylemaler">
+                <Calculator className="mr-2 h-4 w-4" />
+                Kalkylemaler
+              </Link>
+            </Button>
+          )}
           <Button asChild size="default">
             <Link href="/nytt-tilbud">
               <PlusCircle className="mr-2 h-4 w-4" />

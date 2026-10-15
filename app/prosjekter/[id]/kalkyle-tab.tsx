@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useSearchParams } from "next/navigation"
 import { ArrowRightIcon, LayoutTemplateIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -36,7 +37,22 @@ function KalkyleInnhold() {
   const { kalkyle, settKalkyle } = useKalkyle()
   const { setDel } = useProjectShell()
   const visning = useProjectFocus("kalkyle").del === "tilbud" ? "tilbud" : "kalkyle"
-  const [visStart, setVisStart] = React.useState(false)
+  // «Bruk i prosjektet» på Kalkylemaler lenker hit med ?mal=…&storrelse=…
+  const searchParams = useSearchParams()
+  const malParam = searchParams?.get("mal") ?? null
+  const storrelseParam = Number(searchParams?.get("storrelse"))
+  const [fraMal] = React.useState(() =>
+    malParam ? { malId: malParam, verdi: Number.isFinite(storrelseParam) && storrelseParam > 0 ? storrelseParam : null } : null
+  )
+  const [visStart, setVisStart] = React.useState(() => fraMal !== null)
+  // Malvalget er brukt (eller avbrutt): rydd adressen så en ny lasting ikke åpner startskjermen igjen.
+  const ryddMalParam = () => {
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has("mal") && !url.searchParams.has("storrelse")) return
+    url.searchParams.delete("mal")
+    url.searchParams.delete("storrelse")
+    window.history.replaceState(null, "", url.pathname + url.search)
+  }
   const [ark, setArk] = React.useState<{ postId: string; linjeId: string } | null>(null)
   const [chatApen, setChatApen] = React.useState(false)
   const [foresporsel, setForesporsel] = React.useState<ChatForesporsel | null>(null)
@@ -45,12 +61,23 @@ function KalkyleInnhold() {
     return (
       <KalkyleStart
         prosjektId={kalkyle?.prosjektId ?? MOCK_KALKYLE.prosjektId}
-        onAvbryt={kalkyle ? () => setVisStart(false) : undefined}
+        startMalId={fraMal?.malId}
+        startVerdi={fraMal?.verdi}
+        onAvbryt={
+          kalkyle
+            ? () => {
+                ryddMalParam()
+                setVisStart(false)
+              }
+            : undefined
+        }
         onFerdig={(k) => {
+          ryddMalParam()
           settKalkyle(k)
           setVisStart(false)
         }}
         onBeskriv={(k, tekst) => {
+          ryddMalParam()
           settKalkyle(k)
           setVisStart(false)
           setForesporsel({ tekst, id: Date.now() })

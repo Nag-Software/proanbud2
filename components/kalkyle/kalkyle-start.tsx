@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   AppWindowIcon,
   ArrowRightIcon,
@@ -71,13 +72,22 @@ type KalkyleStartProps = {
   /** Fritekst: lager et utgangspunkt fra nærmeste mal og åpner samtalen med teksten. */
   onBeskriv: (kalkyle: Kalkyle, tekst: string) => void
   onAvbryt?: () => void
+  /** Forhåndsvalgt mal og størrelse (fra «Bruk i prosjektet» på Kalkylemaler). */
+  startMalId?: string | null
+  startVerdi?: number | null
 }
 
 /** «Hva skal du lage kalkyle for?» – velg jobb, svar på ett spørsmål om størrelse, ferdig. */
-export function KalkyleStart({ prosjektId, onFerdig, onBeskriv, onAvbryt }: KalkyleStartProps) {
-  const [valgt, setValgt] = React.useState<string>(MOCK_MALER[0].id)
+export function KalkyleStart({ prosjektId, onFerdig, onBeskriv, onAvbryt, startMalId, startVerdi }: KalkyleStartProps) {
+  const startMal = MOCK_MALER.find((m) => m.id === startMalId)
+  const [valgt, setValgt] = React.useState<string>(startMal?.id ?? MOCK_MALER[0].id)
   const [verdier, setVerdier] = React.useState<Record<string, number>>(() =>
-    Object.fromEntries(MOCK_MALER.map((m) => [m.id, m.parameter.standard]))
+    Object.fromEntries(
+      MOCK_MALER.map((m) => [
+        m.id,
+        m === startMal && startVerdi != null ? klemParameter(m, startVerdi) : m.parameter.standard,
+      ])
+    )
   )
   const [beskrivelse, setBeskrivelse] = React.useState("")
   // Ny kalkyle prises med bedriftens standard timepris (første i Timepriser).
@@ -98,7 +108,12 @@ export function KalkyleStart({ prosjektId, onFerdig, onBeskriv, onAvbryt }: Kalk
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-extrabold tracking-tight">Hva skal du lage kalkyle for?</h2>
-          <p className="mt-1 text-[15px] text-muted-foreground">Velg jobben som ligner mest. Alt kan endres etterpå.</p>
+          <p className="mt-1 text-[15px] text-muted-foreground">
+            Velg jobben som ligner mest. Alt kan endres etterpå.{" "}
+            <Link href="/mine-priser/kalkylemaler" className="font-medium text-foreground underline underline-offset-4">
+              Se og rediger maler
+            </Link>
+          </p>
         </div>
         {onAvbryt && (
           <Button type="button" variant="ghost" className="h-11" onClick={onAvbryt}>

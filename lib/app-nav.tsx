@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react"
 import {
   BadgePercentIcon,
   Building2Icon,
+  CalculatorIcon,
   CalendarDays,
   CarIcon,
   ClipboardCheckIcon,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react"
 
 import type { FeatureKey } from "@/lib/billing/plans"
+import { KALKYLE_ENABLED } from "@/lib/kalkyle/flag"
 import { canInviteEmployees, canManageSubscription } from "@/lib/roles"
 
 /**
@@ -81,6 +83,10 @@ export const APP_NAV_ENTRIES: AppNavEntry[] = [
   { title: "Mine priser", href: "/mine-priser", icon: BadgePercentIcon, keywords: "prisliste påslag", group: "priser", menuHidden: true },
   { title: "Prisfiler", href: "/mine-priser/prisfiler", icon: BadgePercentIcon, keywords: "prisliste leverandør grossist efo nelfo import", group: "priser" },
   { title: "Lagrede jobber", href: "/mine-priser/lagrede-jobber", icon: BadgePercentIcon, keywords: "maler standardjobber fastpris", group: "priser" },
+  // Kalkylemodulen er bak flagg (lib/kalkyle/flag) til malene lagres i databasen.
+  ...(KALKYLE_ENABLED
+    ? [{ title: "Kalkylemaler", href: "/mine-priser/kalkylemaler", icon: CalculatorIcon, keywords: "kalkyle mal bad terrasse størrelse", group: "priser" } satisfies AppNavEntry]
+    : []),
   { title: "Timepriser", href: "/mine-priser/timepriser", icon: ClockIcon, keywords: "timesats timelønn", group: "priser" },
 
   // ── Min bedrift ───────────────────────────────────────────────────────

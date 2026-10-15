@@ -10,8 +10,8 @@ import { checkRoleAccess } from "@/lib/auth-utils"
 import { fetchCompanyOfferDefaults, fetchOfferCompanyContext } from "@/lib/tilbud/company-profile"
 import { resolveCustomerKind } from "@/lib/tilbud/offer-terms"
 import { type OfferCustomerOption, type OfferProjectOption } from "@/lib/tilbud/types"
-import { ACTIVE_PROJECT_STATUSES } from "@/app/prosjekter/project-utils"
-import { ProjectPicker, type PickerProject } from "./project-picker"
+import { fetchPickerProjects } from "./picker-projects"
+import { ProjectPicker } from "./project-picker"
 import { getServerAuthContext } from "@/lib/auth/server-context"
 
 type ProjectRow = {
@@ -48,13 +48,6 @@ type Props = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
-type PickerProjectRow = {
-  id: string
-  name: string
-  status: string | null
-  customers?: { name: string | null } | { name: string | null }[] | null
-}
-
 export default async function NyttTilbudPage({ searchParams }: Props) {
   await checkRoleAccess(["admin", "manager"])
 
@@ -66,23 +59,7 @@ export default async function NyttTilbudPage({ searchParams }: Props) {
   // Uten ?projectId: ikke stille-redirect til /prosjekter, men forklar at
   // tilbud alltid hører til et prosjekt — og la brukeren velge det her.
   if (!projectIdParam) {
-    const { data: activeProjectRows } = await supabase
-      .from("projects")
-      .select("id, name, status, updated_at, customers(name)")
-      .in("status", [...ACTIVE_PROJECT_STATUSES])
-      .order("updated_at", { ascending: false })
-
-    const pickerProjects: PickerProject[] = ((activeProjectRows || []) as PickerProjectRow[]).map(
-      (row) => {
-        const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers
-        return {
-          id: row.id,
-          name: row.name,
-          status: row.status,
-          customerName: customer?.name || null,
-        }
-      }
-    )
+    const pickerProjects = await fetchPickerProjects(supabase)
 
     return (
       <AppPageShell segments={["Nytt tilbud"]}>

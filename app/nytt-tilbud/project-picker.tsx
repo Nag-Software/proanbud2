@@ -23,7 +23,14 @@ export type PickerProject = {
 // Under denne grensen er hele listen synlig på én skjerm — da er søk bare støy.
 const SEARCH_THRESHOLD = 8
 
-export function ProjectPicker({ projects }: { projects: PickerProject[] }) {
+export function ProjectPicker({
+  projects,
+  hrefFor = (project) => `/nytt-tilbud?projectId=${project.id}`,
+}: {
+  projects: PickerProject[]
+  /** Hvor et valgt prosjekt leder. Standard: nytt tilbud på prosjektet. */
+  hrefFor?: (project: PickerProject) => string
+}) {
   const [search, setSearch] = React.useState("")
 
   const showSearch = projects.length > SEARCH_THRESHOLD
@@ -78,7 +85,7 @@ export function ProjectPicker({ projects }: { projects: PickerProject[] }) {
               return (
                 <li key={project.id}>
                   <Link
-                    href={`/nytt-tilbud?projectId=${project.id}`}
+                    href={hrefFor(project)}
                     className="group flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
                   >
                     <div className="min-w-0 flex-1">
