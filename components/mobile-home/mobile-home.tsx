@@ -26,6 +26,7 @@ import { useSidebar } from "@/components/ui/sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { WORK_SESSION_CHANGED_EVENT } from "@/hooks/use-active-work-session"
 import { useCompanyNotifications } from "@/hooks/use-company-notifications"
+import { useNyheter } from "@/hooks/use-nyheter"
 import { useUserRole } from "@/hooks/use-user-role"
 import { fetchCalendarEvents, type RawCalendarEvent } from "@/lib/calendar/client-data"
 import { reportClientError } from "@/lib/errors/client"
@@ -132,7 +133,10 @@ function Greeting({ userId, isWorker, roleKnown }: { userId: string | null; isWo
   const { user } = useAuth()
   const { toggleSidebar } = useSidebar()
   // Varselprikken deler kilde med bjella i sidebaren, som den peker til.
-  const { unreadCount } = useCompanyNotifications({ enabled: roleKnown && !isWorker })
+  const { unreadCount: ulesteVarsler } = useCompanyNotifications({ enabled: roleKnown && !isWorker })
+  // Nyheter (lib/nyheter.ts) ligger i samme bjelle i sidemenyen.
+  const { uleste: ulesteNyheter } = useNyheter()
+  const unreadCount = ulesteVarsler + ulesteNyheter
   const [fullName, setFullName] = React.useState<string | null>(null)
 
   React.useEffect(() => {

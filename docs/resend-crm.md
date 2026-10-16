@@ -46,7 +46,7 @@ Synken kjører når billing endres (webhook, checkout, reconcile), når et tilbu
 ## Sette det opp (én gang)
 
 1. Kjør migreringen: `pnpm db:migrate` (db/116).
-2. Legg til avsenderdomenet `mail.proanbud.no` i Resend og verifiser DNS.
+2. Avsenderdomenet er `proanbud.no` (allerede verifisert i Resend). Ikke bruk underdomener.
 3. Kjør `node --env-file=.env.local scripts/resend-crm-setup.mjs`. Det lager feltene, segmentene og eventene.
 4. Sett `RESEND_CRM=on` i Vercel og deploy.
 5. Importer eksisterende bedrifter uten å sende noe:
@@ -55,7 +55,7 @@ Synken kjører når billing endres (webhook, checkout, reconcile), når et tilbu
 
 ## Maler: ren tekst, personlig
 
-- Avsender `Casper <casper@mail.proanbud.no>`, svar til innboksen din.
+- Avsender `Casper <casper@proanbud.no>`, svar til `post@proanbud.no`.
 - Ingen logo, ingen knapper, én lenke, signatur «-Casper».
 - Bunntekst: `Nag Software · adresse · {{{RESEND_UNSUBSCRIBE_URL}}}`. Resend legger ikke til avmelding selv i automatiseringer.
 - Slå av klikk- og åpningssporing på domenet. Sporede lenker ser mindre personlige ut.

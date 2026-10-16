@@ -34,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useNotifications, type NotificationItem } from "@/hooks/use-notifications"
 import { useCompanyNotifications, type CompanyNotificationItem } from "@/hooks/use-company-notifications"
 import { NotificationsPopover } from "@/components/notifications-popover"
+import { useNyheter, type NyhetMedStatus } from "@/hooks/use-nyheter"
 import { useOpenDeviationCount } from "@/hooks/use-open-deviation-count"
 import { useActiveWorkSession } from "@/hooks/use-active-work-session"
 import { SIDEBAR_PROJECTS_CHANGED_EVENT } from "@/lib/client/sidebar-projects"
@@ -307,6 +308,8 @@ function AppSidebarHeader({
   onMarkAllRead,
   onMarkThreadRead,
   onMarkNotificationRead,
+  nyheter,
+  onNyhetLest,
   canCreateProject,
   roleLoading,
 }: {
@@ -318,6 +321,8 @@ function AppSidebarHeader({
   onMarkAllRead: () => void
   onMarkThreadRead: (customerId: string) => void
   onMarkNotificationRead: (id: string) => void
+  nyheter: NyhetMedStatus[]
+  onNyhetLest: (id: string) => void
   canCreateProject: boolean
   roleLoading: boolean
 }) {
@@ -355,6 +360,8 @@ function AppSidebarHeader({
               onMarkAllRead={onMarkAllRead}
               onMarkThreadRead={onMarkThreadRead}
               onMarkNotificationRead={onMarkNotificationRead}
+              nyheter={nyheter}
+              onNyhetLest={onNyhetLest}
             />
           </div>
         )}
@@ -445,12 +452,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     loadingRole || hasFeature(feature);
   // Suppress the messages badge entirely when the plan lacks Meldinger.
   const visibleUnreadCount = featureEnabled("meldinger") ? unreadCount : 0;
-  // Bjella teller begge deler; «Meldinger» i menyen teller fortsatt bare meldinger.
-  const bellUnreadCount = visibleUnreadCount + offerUnreadCount;
+  // «Nytt i Proanbud» (lib/nyheter.ts) står i bjella sammen med varslene.
+  const { nyheter, uleste: ulesteNyheter, merkLest: merkNyhetLest, merkAlleLest: merkAlleNyheterLest } = useNyheter();
+  // Bjella teller alt; «Meldinger» i menyen teller fortsatt bare meldinger.
+  const bellUnreadCount = visibleUnreadCount + offerUnreadCount + ulesteNyheter;
   const markAllNotificationsRead = React.useCallback(() => {
     void markAllRead();
     void markAllOfferNotificationsRead();
-  }, [markAllRead, markAllOfferNotificationsRead]);
+    merkAlleNyheterLest();
+  }, [markAllRead, markAllOfferNotificationsRead, merkAlleNyheterLest]);
 
   // Prosjektlista males fra forrige besøk med en gang, og hentes én gang per
   // økt. Nøklet på bruker-id (ikke user-objektet), så den ikke hentes på nytt
@@ -593,6 +603,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         onMarkAllRead={markAllNotificationsRead}
         onMarkThreadRead={markThreadRead}
         onMarkNotificationRead={markOfferNotificationRead}
+        nyheter={nyheter}
+        onNyhetLest={merkNyhetLest}
         canCreateProject={!isWorker}
         roleLoading={!roleKnown}
       />
